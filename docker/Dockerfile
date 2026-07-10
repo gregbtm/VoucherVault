@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-openbsd \
     media-types \
     postgresql-client \
+    tesseract-ocr \
     unzip &&\
     mkdir -p /opt/app/docker/ /opt/app/database /opt/app/logs /opt/app/locale
 

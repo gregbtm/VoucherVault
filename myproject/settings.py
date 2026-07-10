@@ -107,6 +107,7 @@ INSTALLED_APPS = [
     'api',
     'notify',
     'imports',
+    'ocr',
     'django_celery_beat',
     'django.contrib.admin',
     'django.contrib.auth',

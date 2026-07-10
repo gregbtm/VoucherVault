@@ -538,7 +538,22 @@ body.dark-mode .error-alert {
         <!-- Item Form -->
         <form id="myform" method="POST" action="{% url 'create_item' %}" enctype="multipart/form-data">
           {% csrf_token %}
-          
+
+          {% if ocr_enabled %}
+          <!-- AI Scan Section -->
+          <div class="scanner-section" id="aiScanSection">
+            <div class="form-section-title" style="margin-bottom: 0.75rem;">
+              <i class="bi bi-stars"></i>
+              {% trans "Scan with AI" %}
+            </div>
+            <p style="color: #6c757d; margin-bottom: 0.75rem; font-size: 0.85rem;">
+              {% trans "Upload a photo of the voucher, coupon, gift card or loyalty card and we'll try to pre-fill the fields below." %}
+            </p>
+            <input type="file" id="aiScanInput" accept="image/jpeg,image/png,image/webp" class="modern-input">
+            <div id="aiScanStatus" style="margin-top: 0.75rem; font-size: 0.85rem;"></div>
+          </div>
+          {% endif %}
+
           <!-- Basic Info Section -->
           <div class="form-section">
             <div class="form-section-title">
@@ -916,6 +931,59 @@ document.addEventListener("DOMContentLoaded", function () {
 
   toggleFields();
   
+  {% if ocr_enabled %}
+  // AI Scan: upload a photo, pre-fill fields from the extracted result
+  document.getElementById('aiScanInput').addEventListener('change', function () {
+    const file = this.files[0];
+    if (!file) return;
+    const statusEl = document.getElementById('aiScanStatus');
+    statusEl.innerHTML = '<span class="text-muted"><i class="bi bi-arrow-repeat spin"></i> {% trans "Scanning..." %}</span>';
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    fetch("{% url 'api-ocr-extract' %}", {
+      method: 'POST',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+      body: formData,
+    })
+      .then(response => response.json().then(data => ({ ok: response.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          statusEl.innerHTML = `<span class="text-danger">${data.detail || data.image || "{% trans 'Scan failed.' %}"}</span>`;
+          return;
+        }
+
+        const filled = [];
+        if (data.code && redeemCodeField && !redeemCodeField.value) {
+          redeemCodeField.value = data.code;
+          filled.push("{% trans 'code' %}");
+        }
+        if (data.name && !document.getElementById('name').value) {
+          document.getElementById('name').value = data.name;
+          filled.push("{% trans 'name' %}");
+        }
+        if (data.issuer && !issuerCodeField.value) {
+          issuerCodeField.value = data.issuer;
+          filled.push("{% trans 'issuer' %}");
+        }
+        if (data.expiry_date) {
+          document.getElementById('expiry_date').value = data.expiry_date;
+          filled.push("{% trans 'expiry date' %}");
+        }
+
+        if (filled.length) {
+          statusEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> {% trans "Filled from photo:" %} ${filled.join(', ')}</span>`;
+        } else {
+          statusEl.innerHTML = '<span class="text-muted">{% trans "Nothing could be confidently read from that photo." %}</span>';
+        }
+      })
+      .catch(() => {
+        statusEl.innerHTML = '<span class="text-danger">{% trans "Scan failed. Please try again." %}</span>';
+      });
+  });
+  {% endif %}
+
   // Prefill form from GET parameters (for import links)
   function prefillFromUrlParams() {
     const urlParams = new URLSearchParams(window.location.search);

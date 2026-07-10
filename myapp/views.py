@@ -28,6 +28,7 @@ from .decorators import require_authorization_header_with_api_token
 from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items_by_wallet
 from .merchant_logos import get_cached_logo, get_cached_logos_for_issuers
 from .tasks import fetch_merchant_logo_task
+from ocr.backends import ocr_enabled
 from django.db.models import Count, Sum, Q, F, ExpressionWrapper, DecimalField
 from django.db.models.functions import Coalesce
 from django.db.models import Value
@@ -407,7 +408,7 @@ def create_item(request):
                 form.add_error(None, f'Failed to generate barcode. Error: {str(e)}')
                 form.add_error(None, f'Use the browser\'s back button to refill previous file uploads')
                 # Return the form filled with the user's previously entered data and errors
-                return render(request, 'create-item.html', {'form': form})
+                return render(request, 'create-item.html', {'form': form, 'ocr_enabled': ocr_enabled()})
 
             # Handle file upload
             if 'file' in request.FILES:
@@ -431,13 +432,13 @@ def create_item(request):
             return redirect('show_items')
         else:
             # If form is not valid, render the form with validation errors
-            return render(request, 'create-item.html', {'form': form})
+            return render(request, 'create-item.html', {'form': form, 'ocr_enabled': ocr_enabled()})
     else:
         # If not a POST request, initialize form with user's preferred currency
         preferences, _ = UserPreference.objects.get_or_create(user=request.user)
         form = ItemForm(initial={'currency': preferences.default_currency or 'EUR'}, user=request.user)
 
-    return render(request, 'create-item.html', {'form': form})
+    return render(request, 'create-item.html', {'form': form, 'ocr_enabled': ocr_enabled()})
 
 @login_required
 def edit_item(request, item_uuid):
@@ -478,7 +479,7 @@ def edit_item(request, item_uuid):
                 except Exception as e:
                     form.add_error(None, f'Failed to generate barcode. Error: {str(e)}')
                     # Return the form filled with the user's previously entered data and errors
-                    return render(request, 'edit-item.html', {'form': form, 'item': item})
+                    return render(request, 'edit-item.html', {'form': form, 'item': item, 'ocr_enabled': ocr_enabled()})
                     
             # Handle file upload
             if 'file' in request.FILES:
@@ -513,7 +514,7 @@ def edit_item(request, item_uuid):
     else:
         form = ItemForm(instance=item, user=request.user)
 
-    return render(request, 'edit-item.html', {'form': form, 'item': item})
+    return render(request, 'edit-item.html', {'form': form, 'item': item, 'ocr_enabled': ocr_enabled()})
 
 @require_GET
 @login_required
@@ -540,6 +541,7 @@ def duplicate_item(request, item_uuid):
     form = ItemForm(initial=initial_data)
     return render(request, 'create-item.html', {
         'form': form,
+        'ocr_enabled': ocr_enabled(),
     })
 
 @require_POST
