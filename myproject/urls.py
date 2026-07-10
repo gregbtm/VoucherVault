@@ -27,6 +27,7 @@ urlpatterns = i18n_patterns(
 )
 
 urlpatterns.append(path("", include("pwa.urls")))
+urlpatterns.append(path("api/v1/", include("api.urls")))
 
 # Conditionally include OIDC URLs if OIDC_ENABLED is False
 if not settings.OIDC_ENABLED:

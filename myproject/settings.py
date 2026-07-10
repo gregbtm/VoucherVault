@@ -104,6 +104,7 @@ CONTENT_SECURITY_POLICY = {
 # Application definition
 INSTALLED_APPS = [
     'myapp',
+    'api',
     'django_celery_beat',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -113,6 +114,11 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'csp',
     'pwa',
+    'rest_framework',
+    'rest_framework.authtoken',
+    'django_filters',
+    'drf_spectacular',
+    'drf_spectacular_sidecar',
 ]
 
 MIDDLEWARE = [
@@ -285,6 +291,32 @@ PWA_APP_ICONS_APPLE = [
     },
 ]
 PWA_SERVICE_WORKER_PATH = os.path.join(BASE_DIR, 'myapp', 'serviceworker.js')
+
+# REST API (token + session auth; every queryset in `api/` is scoped to
+# request.user, see api/views.py). Swagger/OpenAPI assets are served from the
+# sidecar package (no CDN) so they work under the strict CSP above and in
+# fully offline/self-hosted deployments.
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 25,
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'VoucherVault API',
+    'DESCRIPTION': 'REST API for managing vouchers, gift cards, coupons and loyalty cards.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'SWAGGER_UI_DIST': 'SIDECAR',
+    'SWAGGER_UI_FAVICON_HREF': 'SIDECAR',
+}
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
