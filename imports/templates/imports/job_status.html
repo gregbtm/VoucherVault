@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+{% if job.status == 'pending' or job.status == 'processing' %}
+<meta http-equiv="refresh" content="3">
+{% endif %}
+
+<div class="pagetitle">
+  <h1>{% trans "Import Job" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'upload_import' %}">{% trans "Import / Export" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "Job" %}</li>
+    </ol>
+  </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+  <div class="card">
+    <div class="card-body">
+      <h5 class="card-title">{{ job.get_source_type_display }}</h5>
+
+      <div class="mb-3">
+        {% if job.status == 'complete' %}
+        <span class="badge bg-success fs-6">{% trans "Complete" %}</span>
+        {% elif job.status == 'failed' %}
+        <span class="badge bg-danger fs-6">{% trans "Failed" %}</span>
+        {% elif job.status == 'processing' %}
+        <span class="badge bg-info fs-6">{% trans "Processing…" %}</span>
+        {% else %}
+        <span class="badge bg-secondary fs-6">{% trans "Pending…" %}</span>
+        {% endif %}
+      </div>
+
+      {% if job.status == 'pending' or job.status == 'processing' %}
+      <p class="text-muted">{% trans "This page refreshes automatically." %}</p>
+      {% endif %}
+
+      {% if job.status == 'complete' or job.status == 'failed' %}
+      <p>
+        <strong>{% trans "Imported:" %}</strong> {{ job.imported_count }}
+        &nbsp;|&nbsp;
+        <strong>{% trans "Errors:" %}</strong> {{ job.error_count }}
+      </p>
+
+      {% if job.errors %}
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>{% trans "Row" %}</th>
+            <th>{% trans "Message" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for error in job.errors %}
+          <tr>
+            <td>{{ error.row|default:"—" }}</td>
+            <td class="text-danger">{{ error.message }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+
+      {% if job.imported_count %}
+      <a href="{% url 'show_items' %}" class="btn btn-primary">{% trans "View Items" %}</a>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock content %}

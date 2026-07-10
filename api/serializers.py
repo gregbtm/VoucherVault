@@ -7,6 +7,7 @@ from django.utils.text import get_valid_filename
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
+from imports.models import ImportJob
 from myapp.models import Item, ItemShare, Tag, Transaction, UserPreference, UserProfile, Wallet
 from myapp.utils import generate_code_image_base64
 from notify.models import NotificationLog, NotificationRule
@@ -129,11 +130,11 @@ class ItemSerializer(serializers.ModelSerializer):
             'value_type', 'currency', 'is_used', 'is_pinned', 'tile_color',
             'file', 'qr_code_base64', 'default_expiry_notification_sent',
             'final_expiry_notification_sent', 'days_until_expiry', 'transaction_total',
-            'wallet', 'wallet_name', 'tags', 'tag_ids', 'notes', 'notify_days_before',
+            'wallet', 'wallet_name', 'tags', 'tag_ids', 'notes', 'notify_days_before', 'source',
         ]
         read_only_fields = [
             'id', 'qr_code_base64', 'default_expiry_notification_sent',
-            'final_expiry_notification_sent',
+            'final_expiry_notification_sent', 'source',
         ]
         extra_kwargs = {
             'wallet': {'required': False, 'allow_null': True, 'queryset': Wallet.objects.none()},
@@ -300,4 +301,14 @@ class NotificationLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = NotificationLog
         fields = ['id', 'rule', 'rule_name', 'item', 'item_name', 'event_type', 'sent_at', 'success', 'detail']
+        read_only_fields = fields
+
+
+class ImportJobSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ImportJob
+        fields = [
+            'id', 'source_type', 'status', 'imported_count', 'error_count',
+            'errors', 'created_at', 'completed_at',
+        ]
         read_only_fields = fields

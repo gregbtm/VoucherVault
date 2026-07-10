@@ -1,12 +1,15 @@
+import json
 from datetime import date, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
+from imports.models import ImportJob
 from myapp.models import Item, ItemShare, Tag, Transaction, Wallet
 from notify.models import NotificationLog, NotificationRule
 
@@ -470,3 +473,88 @@ class NotificationLogApiTests(APITestCase):
     def test_log_is_read_only(self):
         response = self.client.post('/api/v1/notifications/log/', {'event_type': 'test', 'success': True})
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+CATIMA_SAMPLE = (
+    'Group,Description,Note,Card Number,EAN Barcode ID,Card Type,Expiry,Balance,Balance Type,Colour,Star\n'
+    'Supermarkets,Tesco Clubcard,My loyalty card,1234567890,,QR_CODE,,0,,,1\n'
+)
+
+
+class ImportApiTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+
+    @patch('api.views.process_import_job.delay')
+    def test_upload_creates_job_and_dispatches_task(self, mock_delay):
+        upload = SimpleUploadedFile('catima.csv', CATIMA_SAMPLE.encode('utf-8'))
+        response = self.client.post('/api/v1/imports/upload/', {'source_type': 'catima_csv', 'file': upload}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED, response.data)
+        job = ImportJob.objects.get(user=self.alice)
+        self.assertEqual(response.data['id'], str(job.id))
+        mock_delay.assert_called_once_with(str(job.id))
+
+    def test_upload_rejects_invalid_source_type(self):
+        upload = SimpleUploadedFile('x.csv', b'a,b\n1,2\n')
+        response = self.client.post('/api/v1/imports/upload/', {'source_type': 'nope', 'file': upload}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch('api.views.process_import_job.delay', side_effect=RuntimeError('Retry limit exceeded'))
+    def test_broker_unreachable_fails_gracefully(self, mock_delay):
+        upload = SimpleUploadedFile('catima.csv', CATIMA_SAMPLE.encode('utf-8'))
+        response = self.client.post('/api/v1/imports/upload/', {'source_type': 'catima_csv', 'file': upload}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertEqual(response.data['status'], 'failed')
+
+    def test_preview_does_not_create_items_or_job(self):
+        upload = SimpleUploadedFile('catima.csv', CATIMA_SAMPLE.encode('utf-8'))
+        response = self.client.post('/api/v1/imports/preview/', {'source_type': 'catima_csv', 'file': upload}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['row_count'], 1)
+        self.assertEqual(response.data['rows'][0]['name'], 'Tesco Clubcard')
+        self.assertEqual(ImportJob.objects.count(), 0)
+        self.assertEqual(Item.objects.count(), 0)
+
+    def test_job_status_polling(self):
+        job = ImportJob.objects.create(user=self.alice, source_type='catima_csv', file=SimpleUploadedFile('x.csv', b'x'), status='complete', imported_count=3)
+        response = self.client.get(f'/api/v1/imports/jobs/{job.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['imported_count'], 3)
+
+    def test_cannot_view_another_users_job(self):
+        bob_job = ImportJob.objects.create(user=self.bob, source_type='catima_csv', file=SimpleUploadedFile('x.csv', b'x'))
+        response = self.client.get(f'/api/v1/imports/jobs/{bob_job.id}/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_job_list_only_shows_own_jobs(self):
+        ImportJob.objects.create(user=self.bob, source_type='catima_csv', file=SimpleUploadedFile('x.csv', b'x'))
+        response = self.client.get('/api/v1/imports/jobs/')
+        self.assertEqual(response.data['count'], 0)
+
+
+class ExportApiTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+        make_item(self.alice, name='Alice Item')
+        make_item(self.bob, name='Bob Item', redeem_code='BOBCODE')
+
+    def test_csv_export_only_own_items(self):
+        response = self.client.get('/api/v1/exports/csv/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        content = response.content.decode()
+        self.assertIn('Alice Item', content)
+        self.assertNotIn('Bob Item', content)
+
+    def test_json_export_only_own_items(self):
+        response = self.client.get('/api/v1/exports/json/')
+        data = json.loads(response.content)
+        self.assertEqual([row['name'] for row in data], ['Alice Item'])
+
+    def test_exports_require_authentication(self):
+        self.client.force_authenticate(user=None)
+        self.assertEqual(self.client.get('/api/v1/exports/csv/').status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(self.client.get('/api/v1/exports/json/').status_code, status.HTTP_401_UNAUTHORIZED)

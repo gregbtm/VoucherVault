@@ -1,14 +1,26 @@
+import json
+
 from django.db.models import Count
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils.translation import gettext_lazy as _
-from rest_framework import generics, status, viewsets
+from rest_framework import generics, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
 
+from imports.exporters.csv_export import export_items_csv
+from imports.exporters.json_export import export_items_json
+from imports.models import ImportJob
+from imports.parsers import get_parser
+from imports.tasks import process_import_job
 from myapp.models import Item, ItemShare, Tag, Transaction, UserPreference, UserProfile, Wallet
 from notify.models import NotificationLog, NotificationRule
 from notify.tasks import send_test_notification
@@ -16,6 +28,7 @@ from notify.tasks import send_test_notification
 from .filters import ItemFilter
 from .permissions import IsOwner
 from .serializers import (
+    ImportJobSerializer,
     ItemSerializer,
     ItemShareSerializer,
     NotificationLogSerializer,
@@ -26,6 +39,9 @@ from .serializers import (
     UserProfileSerializer,
     WalletSerializer,
 )
+
+PREVIEW_ROW_LIMIT = 50
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 
 
 class ItemViewSet(viewsets.ModelViewSet):
@@ -49,7 +65,7 @@ class ItemViewSet(viewsets.ModelViewSet):
         return Item.objects.filter(user=self.request.user).select_related('wallet').prefetch_related('transactions', 'tags')
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        serializer.save(user=self.request.user, source='api')
 
     @action(detail=True, methods=['post'])
     def redeem(self, request, pk=None):
@@ -193,3 +209,133 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         profile, _created = UserProfile.objects.get_or_create(user=self.request.user)
         return profile
+
+
+def _validated_upload(request):
+    """Shared validation for the import upload/preview endpoints. Returns
+    (source_type, file) on success, or a Response describing the 400 error."""
+    source_type = request.data.get('source_type')
+    upload = request.FILES.get('file')
+
+    if source_type not in dict(ImportJob.SOURCE_CHOICES):
+        return None, None, Response({'source_type': _('Invalid or missing source_type.')}, status=status.HTTP_400_BAD_REQUEST)
+    if not upload:
+        return None, None, Response({'file': _('No file uploaded.')}, status=status.HTTP_400_BAD_REQUEST)
+    if upload.size > MAX_UPLOAD_SIZE:
+        return None, None, Response({'file': _('File is too large (max 10MB).')}, status=status.HTTP_400_BAD_REQUEST)
+
+    return source_type, upload, None
+
+
+_upload_request_schema = {
+    'multipart/form-data': inline_serializer(
+        name='ImportUploadRequest',
+        fields={
+            'source_type': serializers.ChoiceField(choices=ImportJob.SOURCE_CHOICES),
+            'file': serializers.FileField(),
+        },
+    ),
+}
+
+
+class ImportUploadView(APIView):
+    """POST a file + source_type to start an async import job."""
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(request=_upload_request_schema, responses=ImportJobSerializer)
+    def post(self, request):
+        source_type, upload, error_response = _validated_upload(request)
+        if error_response:
+            return error_response
+
+        job = ImportJob.objects.create(user=request.user, source_type=source_type, file=upload)
+        try:
+            process_import_job.delay(str(job.id))
+        except Exception as exc:
+            job.status = 'failed'
+            job.errors = [{'row': None, 'message': f'Could not queue the import task: {exc}'}]
+            job.save(update_fields=['status', 'errors'])
+            return Response(ImportJobSerializer(job).data, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        return Response(ImportJobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
+
+
+class ImportPreviewView(APIView):
+    """POST a file + source_type to parse it synchronously without saving anything."""
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        request=_upload_request_schema,
+        responses=inline_serializer(
+            name='ImportPreviewResponse',
+            fields={
+                'row_count': serializers.IntegerField(),
+                'error_count': serializers.IntegerField(),
+                'rows': serializers.ListField(child=serializers.DictField()),
+                'errors': serializers.ListField(child=serializers.DictField()),
+            },
+        ),
+    )
+    def post(self, request):
+        source_type, upload, error_response = _validated_upload(request)
+        if error_response:
+            return error_response
+
+        parser = get_parser(source_type)
+        try:
+            rows, errors = parser(upload)
+        except Exception as exc:
+            return Response({'file': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        preview_rows = rows[:PREVIEW_ROW_LIMIT]
+        for row in preview_rows:
+            if row.get('value') is not None:
+                row['value'] = str(row['value'])
+            for key in ('issue_date', 'expiry_date'):
+                if row.get(key) is not None:
+                    row[key] = row[key].isoformat()
+
+        return Response({
+            'row_count': len(rows),
+            'error_count': len(errors),
+            'rows': preview_rows,
+            'errors': errors,
+        })
+
+
+class ImportJobViewSet(viewsets.ReadOnlyModelViewSet):
+    """Poll import job status/results. Jobs are created via ImportUploadView."""
+    serializer_class = ImportJobSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return ImportJob.objects.none()
+        return ImportJob.objects.filter(user=self.request.user)
+
+
+class ExportCsvView(APIView):
+    """Download all of the authenticated user's items as a VoucherVault CSV backup."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    def get(self, request):
+        items = Item.objects.filter(user=request.user).select_related('wallet').prefetch_related('tags')
+        response = HttpResponse(export_items_csv(items), content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="vouchervault-export.csv"'
+        return response
+
+
+class ExportJsonView(APIView):
+    """Download all of the authenticated user's items as a VoucherVault JSON backup."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    def get(self, request):
+        items = Item.objects.filter(user=request.user).select_related('wallet').prefetch_related('tags')
+        payload = json.dumps(export_items_json(items), indent=2)
+        response = HttpResponse(payload, content_type='application/json')
+        response['Content-Disposition'] = 'attachment; filename="vouchervault-export.json"'
+        return response
