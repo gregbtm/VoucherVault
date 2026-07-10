@@ -25,6 +25,8 @@ drf-spectacular-sidecar==2024.7.1
 
 # NOTIFICATIONS
 requests==2.34.2
+pywebpush==2.3.0
+py-vapid==1.9.4
 
 # TASKS
 celery[redis]

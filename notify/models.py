@@ -15,6 +15,7 @@ class NotificationRule(models.Model):
         ('apprise', 'Apprise URL'),
         ('ntfy', 'ntfy'),
         ('webhook', 'Webhook (n8n etc.)'),
+        ('webpush', 'Web Push'),
     ]
     EVENT_CHOICES = [
         ('expiry_warning', 'Expiry Warning'),
@@ -56,3 +57,25 @@ class NotificationLog(models.Model):
 
     def __str__(self):
         return f'{self.event_type} via {self.rule_id} @ {self.sent_at}'
+
+
+class WebPushSubscription(models.Model):
+    """
+    A browser/device's Push API subscription, created client-side via
+    PushManager.subscribe() and posted to us. A user may have several (one
+    per browser/device) — the webpush backend delivers to all of a user's
+    active subscriptions, unlike ntfy/webhook which target one fixed
+    destination per rule.
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='webpush_subscriptions')
+    endpoint = models.URLField(max_length=500, unique=True)
+    p256dh = models.CharField(max_length=255)
+    auth = models.CharField(max_length=255)
+    user_agent = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.user} @ {self.endpoint[:50]}'
