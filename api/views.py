@@ -19,6 +19,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 
 from imports.exporters.csv_export import export_items_csv
 from imports.exporters.json_export import export_items_json
+from imports.exporters.pkpass import generate_pkpass, pkpass_enabled
 from imports.models import ImportJob
 from imports.parsers import get_parser
 from imports.tasks import process_import_job
@@ -112,6 +113,28 @@ class ItemViewSet(viewsets.ModelViewSet):
         share = get_object_or_404(ItemShare, item=item, pk=share_id)
         share.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['get'], url_path='pkpass')
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    def pkpass(self, request, pk=None):
+        """Download a signed Apple Wallet .pkpass for this item. 501 if not configured."""
+        item = self.get_object()
+        if not pkpass_enabled():
+            return Response(
+                {'detail': _('Apple Wallet export is not configured on this server.')},
+                status=status.HTTP_501_NOT_IMPLEMENTED,
+            )
+        try:
+            data = generate_pkpass(item)
+        except Exception as exc:
+            logger.warning('pkpass generation failed for item %s: %s', item.id, exc, exc_info=True)
+            return Response(
+                {'detail': _('Apple Wallet export failed: %(error)s') % {'error': str(exc)}},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        response = HttpResponse(data, content_type='application/vnd.apple.pkpass')
+        response['Content-Disposition'] = f'attachment; filename="{item.id}.pkpass"'
+        return response
 
 
 class WalletViewSet(viewsets.ModelViewSet):

@@ -24,12 +24,22 @@ services:
       - OCR_BACKEND=${OCR_BACKEND:-none}
       # required if OCR_BACKEND=claude
       #- ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:?Set ANTHROPIC_API_KEY in .env}
+      # ------- OPTIONAL APPLE WALLET EXPORT --------
+      # set all of these (and mount the cert files below) to enable .pkpass export
+      #- PKPASS_CERT_PATH=/opt/app/pkpass/pass-cert.p12
+      #- PKPASS_CERT_PASSWORD=${PKPASS_CERT_PASSWORD}
+      #- PKPASS_WWDR_CERT_PATH=/opt/app/pkpass/AppleWWDRCAG4.pem
+      #- PKPASS_TEAM_ID=${PKPASS_TEAM_ID}
+      #- PKPASS_PASS_TYPE_ID=${PKPASS_PASS_TYPE_ID}
+      #- PKPASS_ORGANIZATION_NAME=${PKPASS_ORGANIZATION_NAME:-VoucherVault}
     expose:
       - 8000
     ports:
       - 8000:8000
     volumes:
       - ./volume-data/database:/opt/app/database
+      # mount your Apple Wallet certs here if PKPASS_CERT_PATH is set above
+      #- ./volume-data/pkpass:/opt/app/pkpass:ro
 
   redis:
     image: redis:7-alpine

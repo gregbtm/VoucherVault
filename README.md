@@ -19,8 +19,8 @@
 > This is [gregbtm](https://github.com/gregbtm)'s fork of the upstream
 > [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault) project,
 > adding a REST API, Wallets/Tags, a notification rules engine,
-> import/export, an analytics dashboard, auto-fetched merchant logos, and
-> AI-assisted OCR scanning of physical vouchers.
+> import/export, an analytics dashboard, auto-fetched merchant logos,
+> AI-assisted OCR scanning of physical vouchers, and Apple Wallet export.
 > See [`FORK_CHANGES.md`](FORK_CHANGES.md) for the full feature list, and
 > [`docs/UPGRADE.md`](docs/UPGRADE.md) if you're already running the
 > upstream Docker image and want to switch to this fork.
@@ -44,6 +44,7 @@
 - REST API endpoint with stats for Home Assisstant (HA) and other dashboards
 - Multi-currency support via free fixer.io API
 - AI-assisted "Scan with AI" photo capture that pre-fills the item form (Claude vision or local Tesseract OCR)
+- Apple Wallet export — download a signed `.pkpass` for any item (opt-in, requires your own Apple Developer certificate)
 
 ## 📷 Screenshots
 
@@ -126,6 +127,12 @@ The docker container takes various environment variables:
 | `OCR_BACKEND`                     | Set to `claude` or `tesseract` to enable the "Scan with AI" button on the item form.                           | `none`                     | Optional            |
 | `ANTHROPIC_API_KEY`               | Required if `OCR_BACKEND=claude`. Get one at [console.anthropic.com](https://console.anthropic.com/).          | `None`                     | Optional            |
 | `ANTHROPIC_OCR_MODEL`             | Overrides the Claude model used for OCR extraction.                                                            | `claude-sonnet-5`          | Optional            |
+| `PKPASS_CERT_PATH`                | Path to your Apple Pass Type ID certificate (`.p12`). Enables Apple Wallet export when set.                    | `None`                     | Optional            |
+| `PKPASS_CERT_PASSWORD`            | Password for `PKPASS_CERT_PATH`, if any.                                                                       | `None`                     | Optional            |
+| `PKPASS_WWDR_CERT_PATH`           | Path to Apple's WWDR intermediate certificate. Required if `PKPASS_CERT_PATH` is set.                          | `None`                     | Optional            |
+| `PKPASS_TEAM_ID`                  | Your Apple Developer Team ID. Required if `PKPASS_CERT_PATH` is set.                                           | `None`                     | Optional            |
+| `PKPASS_PASS_TYPE_ID`             | Your registered Pass Type ID, e.g. `pass.com.example.vouchervault`. Required if `PKPASS_CERT_PATH` is set.     | `None`                     | Optional            |
+| `PKPASS_ORGANIZATION_NAME`        | Organization name shown on the generated pass.                                                                 | `VoucherVault`             | Optional            |
 
 You can find detailed instructions on how to setup OIDC SSO in the [wiki](https://github.com/l4rm4nd/VoucherVault/wiki/02-%E2%80%90-Authentication#oidc-authentication).
 

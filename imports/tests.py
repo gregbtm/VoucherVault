@@ -1,10 +1,21 @@
 import csv
+import datetime
+import hashlib
 import io
 import json
+import os
+import subprocess
+import tempfile
+import zipfile
 from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.serialization import BestAvailableEncryption, Encoding, pkcs12
+from cryptography.x509.oid import NameOID
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -14,6 +25,7 @@ from myapp.models import Item, Tag, Wallet
 
 from .exporters.csv_export import export_items_csv
 from .exporters.json_export import export_items_json
+from .exporters.pkpass import generate_pkpass, pkpass_enabled
 from .models import ImportJob
 from .parsers.catima import parse as parse_catima
 from .parsers.native_csv import parse as parse_native_csv
@@ -294,3 +306,140 @@ class ExportViewTests(TestCase):
         data = json.loads(response.content)
         names = [row['name'] for row in data]
         self.assertEqual(names, ['Alice Item'])
+
+
+def _make_self_signed_cert(common_name):
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject).issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.datetime.utcnow())
+        .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365))
+        .sign(key, hashes.SHA256())
+    )
+    return key, cert
+
+
+class PkpassExporterTests(TestCase):
+    """
+    Generates real self-signed certs (never touches Apple's actual cert
+    chain) and drives generate_pkpass() end-to-end, then verifies the
+    resulting CMS/PKCS7 signature with the openssl binary — proves the
+    signing pipeline actually produces a well-formed, verifiable .pkpass,
+    not just that our mocks were called correctly.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.tmpdir = tempfile.TemporaryDirectory()
+        pass_key, pass_cert = _make_self_signed_cert('Pass Type ID: pass.test.vouchervault')
+        _wwdr_key, wwdr_cert = _make_self_signed_cert('Fake WWDR')
+
+        p12_bytes = pkcs12.serialize_key_and_certificates(
+            b'test-pass', pass_key, pass_cert, None, BestAvailableEncryption(b'testpass')
+        )
+        cls.cert_path = os.path.join(cls.tmpdir.name, 'pass-cert.p12')
+        with open(cls.cert_path, 'wb') as f:
+            f.write(p12_bytes)
+
+        cls.wwdr_path = os.path.join(cls.tmpdir.name, 'wwdr.pem')
+        with open(cls.wwdr_path, 'wb') as f:
+            f.write(wwdr_cert.public_bytes(Encoding.PEM))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmpdir.cleanup()
+        super().tearDownClass()
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.env_patch = patch.dict(os.environ, {
+            'PKPASS_CERT_PATH': self.cert_path,
+            'PKPASS_CERT_PASSWORD': 'testpass',
+            'PKPASS_WWDR_CERT_PATH': self.wwdr_path,
+            'PKPASS_TEAM_ID': 'TEAM1234',
+            'PKPASS_PASS_TYPE_ID': 'pass.test.vouchervault',
+        })
+        self.env_patch.start()
+        self.addCleanup(self.env_patch.stop)
+
+    def test_pkpass_enabled_true_when_cert_path_exists(self):
+        self.assertTrue(pkpass_enabled())
+
+    def test_pkpass_disabled_when_cert_path_unset(self):
+        with patch.dict(os.environ, {'PKPASS_CERT_PATH': ''}):
+            self.assertFalse(pkpass_enabled())
+
+    def test_pkpass_disabled_when_cert_path_missing_file(self):
+        with patch.dict(os.environ, {'PKPASS_CERT_PATH': '/nonexistent/path.p12'}):
+            self.assertFalse(pkpass_enabled())
+
+    def test_generate_pkpass_produces_valid_signed_bundle(self):
+        item = make_item(
+            self.user, type='giftcard', name='Coffee Gift Card', issuer='Bean Co',
+            redeem_code='GC12345', value='25.00', currency='EUR', code_type='qrcode',
+            expiry_date=date(2026, 12, 31), tile_color='#ff5733',
+        )
+        data = generate_pkpass(item)
+
+        self.assertTrue(zipfile.is_zipfile(io.BytesIO(data)))
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            names = set(zf.namelist())
+            self.assertEqual(names, {'pass.json', 'icon.png', 'icon@2x.png', 'manifest.json', 'signature'})
+
+            manifest = json.loads(zf.read('manifest.json'))
+            for name in ('pass.json', 'icon.png', 'icon@2x.png'):
+                expected_hash = hashlib.sha1(zf.read(name), usedforsecurity=False).hexdigest()
+                self.assertEqual(manifest[name], expected_hash)
+
+            pass_dict = json.loads(zf.read('pass.json'))
+            self.assertEqual(pass_dict['serialNumber'], str(item.id))
+            self.assertEqual(pass_dict['passTypeIdentifier'], 'pass.test.vouchervault')
+            self.assertEqual(pass_dict['teamIdentifier'], 'TEAM1234')
+            self.assertEqual(pass_dict['barcodes'][0]['message'], 'GC12345')
+            self.assertEqual(pass_dict['barcodes'][0]['format'], 'PKBarcodeFormatQR')
+            self.assertIn('storeCard', pass_dict)
+            self.assertEqual(pass_dict['storeCard']['primaryFields'][0]['value'], '25.00 EUR')
+            self.assertEqual(pass_dict['backgroundColor'], 'rgb(255, 87, 51)')
+
+            manifest_bytes = zf.read('manifest.json')
+            signature_bytes = zf.read('signature')
+
+        with tempfile.TemporaryDirectory() as d:
+            manifest_path = os.path.join(d, 'manifest.json')
+            sig_path = os.path.join(d, 'signature')
+            with open(manifest_path, 'wb') as f:
+                f.write(manifest_bytes)
+            with open(sig_path, 'wb') as f:
+                f.write(signature_bytes)
+
+            result = subprocess.run(
+                ['openssl', 'smime', '-verify', '-in', sig_path, '-inform', 'DER',
+                 '-content', manifest_path, '-noverify', '-CAfile', self.wwdr_path],
+                capture_output=True, text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_generate_pkpass_coupon_style_for_vouchers(self):
+        item = make_item(self.user, type='voucher', name='20% Off', issuer='Shop')
+        data = generate_pkpass(item)
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            pass_dict = json.loads(zf.read('pass.json'))
+        self.assertIn('coupon', pass_dict)
+        self.assertNotIn('storeCard', pass_dict)
+
+    def test_generate_pkpass_raises_when_disabled(self):
+        with patch.dict(os.environ, {'PKPASS_CERT_PATH': ''}):
+            item = make_item(self.user)
+            with self.assertRaises(RuntimeError):
+                generate_pkpass(item)
+
+    def test_generate_pkpass_raises_when_team_id_missing(self):
+        with patch.dict(os.environ, {'PKPASS_TEAM_ID': ''}):
+            item = make_item(self.user)
+            with self.assertRaises(RuntimeError):
+                generate_pkpass(item)

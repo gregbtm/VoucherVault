@@ -686,3 +686,43 @@ class OCRExtractApiTests(APITestCase):
         with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
             response = self.client.post('/api/v1/ocr/extract/', {'image': _tiny_image_upload()}, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+class PkpassApiTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+        self.item = make_item(self.alice)
+
+    def test_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(f'/api/v1/items/{self.item.id}/pkpass/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    @patch('api.views.pkpass_enabled', return_value=False)
+    def test_disabled_by_default(self, mock_enabled):
+        response = self.client.get(f'/api/v1/items/{self.item.id}/pkpass/')
+        self.assertEqual(response.status_code, status.HTTP_501_NOT_IMPLEMENTED)
+
+    @patch('api.views.pkpass_enabled', return_value=True)
+    @patch('api.views.generate_pkpass', return_value=b'fake-pkpass-bytes')
+    def test_success_returns_binary_pkpass(self, mock_generate, mock_enabled):
+        response = self.client.get(f'/api/v1/items/{self.item.id}/pkpass/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.content, b'fake-pkpass-bytes')
+        self.assertEqual(response['Content-Type'], 'application/vnd.apple.pkpass')
+        self.assertIn(str(self.item.id), response['Content-Disposition'])
+        mock_generate.assert_called_once()
+
+    @patch('api.views.pkpass_enabled', return_value=True)
+    @patch('api.views.generate_pkpass', side_effect=RuntimeError('PKPASS_TEAM_ID is not set.'))
+    def test_generation_failure_returns_503(self, mock_generate, mock_enabled):
+        response = self.client.get(f'/api/v1/items/{self.item.id}/pkpass/')
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    @patch('api.views.pkpass_enabled', return_value=True)
+    def test_cannot_download_another_users_item_pkpass(self, mock_enabled):
+        bob_item = make_item(self.bob, redeem_code='BOBCODE')
+        response = self.client.get(f'/api/v1/items/{bob_item.id}/pkpass/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
