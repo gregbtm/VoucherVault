@@ -484,3 +484,23 @@ class OCRScanUIWiringTests(TestCase):
         with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
             response = self.client.get(reverse('duplicate_item', args=[item.id]))
         self.assertTrue(response.context['ocr_enabled'])
+
+
+class PkpassUIWiringTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_view_item_pkpass_disabled_by_default(self):
+        item = make_item(self.user)
+        with patch.dict(os.environ, {'PKPASS_CERT_PATH': ''}):
+            response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertFalse(response.context['pkpass_enabled'])
+        self.assertNotContains(response, 'Add to Apple Wallet')
+
+    @patch('myapp.views.pkpass_enabled', return_value=True)
+    def test_view_item_shows_pkpass_link_when_enabled(self, mock_enabled):
+        item = make_item(self.user)
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertTrue(response.context['pkpass_enabled'])
+        self.assertContains(response, 'Add to Apple Wallet')

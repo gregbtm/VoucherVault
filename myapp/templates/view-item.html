@@ -1135,6 +1135,11 @@ body.dark-mode .action-btn-secondary:hover {
             <a href="{% url 'share_item' item.id %}" class="action-btn action-btn-success">
               <i class="bi bi-share"></i> {% trans "Share" %}
             </a>
+            {% if pkpass_enabled %}
+            <a href="{% url 'item-pkpass' item.id %}" class="action-btn action-btn-secondary">
+              <i class="bi bi-wallet2"></i> {% trans "Add to Apple Wallet" %}
+            </a>
+            {% endif %}
             {% if item.type != "loyaltycard" %}
             <form action="{% url 'toggle_item_status' item.id %}" method="post" style="display:contents;">
               {% csrf_token %}

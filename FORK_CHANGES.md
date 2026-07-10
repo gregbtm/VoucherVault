@@ -84,6 +84,22 @@ physical voucher/coupon/gift card and pre-fill the form from it.
 - `tesseract-ocr` added to the Docker image so the local backend works
   out of the box with no extra sidecar container
 
+## Phase 8 — Apple Wallet export ([`ca4d76f`](https://github.com/gregbtm/VoucherVault/commit/ca4d76f))
+
+Download a signed `.pkpass` for any item and add it to Apple Wallet.
+
+- New `items/{id}/pkpass/` API endpoint plus an "Add to Apple Wallet" link
+  on the item detail page
+- Pass bundle (pass.json, generated icon, manifest, PKCS7 detached
+  signature) built entirely in-process with the `cryptography` library —
+  no external signing service or CLI dependency
+- Loyalty/gift cards use Apple's `storeCard` style, vouchers/coupons use
+  `coupon`; barcode format mapped from the item's code type where
+  PassKit supports it, falling back to QR otherwise
+- Opt-in and disabled (501) unless `PKPASS_CERT_PATH` is set, since it
+  requires the operator's own Apple Developer Pass Type ID certificate
+  plus Apple's WWDR intermediate certificate
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
@@ -96,6 +112,12 @@ On top of everything documented in the README, this fork adds:
 | `OCR_BACKEND` | Set to `claude` or `tesseract` to enable the "Scan with AI" button. | `none` |
 | `ANTHROPIC_API_KEY` | Required if `OCR_BACKEND=claude`. | `None` |
 | `ANTHROPIC_OCR_MODEL` | Overrides the Claude model used for OCR extraction. | `claude-sonnet-5` |
+| `PKPASS_CERT_PATH` | Path to your Apple Pass Type ID certificate (`.p12`). Enables Apple Wallet export when set. | `None` |
+| `PKPASS_CERT_PASSWORD` | Password for `PKPASS_CERT_PATH`, if any. | `None` |
+| `PKPASS_WWDR_CERT_PATH` | Path to Apple's WWDR intermediate certificate. Required if `PKPASS_CERT_PATH` is set. | `None` |
+| `PKPASS_TEAM_ID` | Your Apple Developer Team ID. Required if `PKPASS_CERT_PATH` is set. | `None` |
+| `PKPASS_PASS_TYPE_ID` | Your registered Pass Type ID. Required if `PKPASS_CERT_PATH` is set. | `None` |
+| `PKPASS_ORGANIZATION_NAME` | Organization name shown on the generated pass. | `VoucherVault` |
 
 See `docker/env.example` for the full, commented list.
 
