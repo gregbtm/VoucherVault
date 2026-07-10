@@ -3,6 +3,7 @@ import io
 import base64
 import os
 import json
+import logging
 import treepoem
 import unicodedata
 import mimetypes
@@ -25,10 +26,14 @@ from django.contrib import messages
 from django.utils.timezone import now
 from .decorators import require_authorization_header_with_api_token
 from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items_by_wallet
+from .merchant_logos import get_cached_logo, get_cached_logos_for_issuers
+from .tasks import fetch_merchant_logo_task
 from django.db.models import Count, Sum, Q, F, ExpressionWrapper, DecimalField
 from django.db.models.functions import Coalesce
 from django.db.models import Value
 from django.utils.text import get_valid_filename
+
+logger = logging.getLogger(__name__)
 
 apprise_txt = _('Apprise URLs were already configured. Will not display them again here to protect secrets. You can freely re-configure the URLs now and hit update though.')
 
@@ -269,8 +274,9 @@ def show_items(request):
     items = items.select_related('wallet').prefetch_related('tags').order_by('-is_pinned', f'{order_prefix}{sort_by}')
 
     items_with_qr = []
+    merchant_logos = get_cached_logos_for_issuers(i.issuer for i in items)
 
-    for item in items:       
+    for item in items:
         # Calculate current value
         transactions_sum = Transaction.objects.filter(item=item).aggregate(Sum('value'))['value__sum'] or 0
         current_value = item.value + transactions_sum
@@ -279,6 +285,7 @@ def show_items(request):
             'item': item,
             'qr_code_base64': item.qr_code_base64,
             'current_value': current_value,
+            'merchant_logo_url': merchant_logos.get(item.issuer.strip().lower()),
         })
 
     context = {
@@ -345,6 +352,8 @@ def view_item(request, item_uuid):
     else:
         form = TransactionForm(item=item)
     
+    cached_merchant = get_cached_logo(item.issuer)
+
     context = {
         'item': item,
         'transactions': transactions,
@@ -354,6 +363,7 @@ def view_item(request, item_uuid):
         'current_date': timezone.now(),
         'is_owner': is_owner,  # Pass the owner flag to the template
         'is_shared': is_shared,  # Pass the shared status to the template
+        'merchant_logo_url': cached_merchant.logo_url if cached_merchant else None,
     }
     return render(request, 'view-item.html', context)
 
@@ -410,6 +420,13 @@ def create_item(request):
                 file_name = f"{item.id}_{safe_name}"
                 relative_path = os.path.join(user_folder, file_name)
                 item.file.save(relative_path, file)
+
+            if item.issuer:
+                try:
+                    fetch_merchant_logo_task.delay(item.issuer)
+                except Exception:
+                    # Best-effort: a broker outage shouldn't block saving the item.
+                    logger.warning('Could not queue merchant logo fetch for %r', item.issuer, exc_info=True)
 
             return redirect('show_items')
         else:
@@ -484,6 +501,14 @@ def edit_item(request, item_uuid):
             for tag_name in form.cleaned_data.get('new_tags', []):
                 tag, _ = Tag.objects.get_or_create(user=request.user, name=tag_name)
                 item.tags.add(tag)
+
+            if item.issuer:
+                try:
+                    fetch_merchant_logo_task.delay(item.issuer)
+                except Exception:
+                    # Best-effort: a broker outage shouldn't block saving the item.
+                    logger.warning('Could not queue merchant logo fetch for %r', item.issuer, exc_info=True)
+
             return redirect('view_item', item_uuid=item.id)
     else:
         form = ItemForm(instance=item, user=request.user)

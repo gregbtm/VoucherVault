@@ -752,14 +752,19 @@ body.dark-mode .mobile-filter-select {
           <!-- Top Row: Logo + Info -->
           <div class="card-top-row">
             {% if entry.item.logo_slug %}
-            <img class="item-logo" 
-                 src="https://img.logo.dev/{{ entry.item.logo_slug }}?token=pk_NaUHDkw4SSeHCapveLJtjg" 
+            <img class="item-logo"
+                 src="https://img.logo.dev/{{ entry.item.logo_slug }}?token=pk_NaUHDkw4SSeHCapveLJtjg"
+                 alt="{{ entry.item.issuer }}"
+                 onerror="this.onerror=null;this.src='data:image/png;base64,{{ entry.item.qr_code_base64 }}';this.style.filter='blur(2px)';">
+            {% elif entry.merchant_logo_url %}
+            <img class="item-logo"
+                 src="{{ entry.merchant_logo_url }}"
                  alt="{{ entry.item.issuer }}"
                  onerror="this.onerror=null;this.src='data:image/png;base64,{{ entry.item.qr_code_base64 }}';this.style.filter='blur(2px)';">
             {% else %}
-            <img class="item-logo" 
-                 src="data:image/png;base64,{{ entry.item.qr_code_base64 }}" 
-                 alt="QR Code" 
+            <img class="item-logo"
+                 src="data:image/png;base64,{{ entry.item.qr_code_base64 }}"
+                 alt="QR Code"
                  style="filter: blur(2px);">
             {% endif %}
             

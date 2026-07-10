@@ -22,7 +22,7 @@ from imports.models import ImportJob
 from imports.parsers import get_parser
 from imports.tasks import process_import_job
 from myapp.analytics import get_expiry_timeline, get_summary_stats
-from myapp.models import Item, ItemShare, Tag, Transaction, UserPreference, UserProfile, Wallet
+from myapp.models import Item, ItemShare, MerchantProfile, Tag, Transaction, UserPreference, UserProfile, Wallet
 from notify.models import NotificationLog, NotificationRule
 from notify.tasks import send_test_notification
 
@@ -32,6 +32,7 @@ from .serializers import (
     ImportJobSerializer,
     ItemSerializer,
     ItemShareSerializer,
+    MerchantProfileSerializer,
     NotificationLogSerializer,
     NotificationRuleSerializer,
     TagSerializer,
@@ -315,6 +316,13 @@ class ImportJobViewSet(viewsets.ReadOnlyModelViewSet):
         if getattr(self, 'swagger_fake_view', False):
             return ImportJob.objects.none()
         return ImportJob.objects.filter(user=self.request.user)
+
+
+class MerchantProfileViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only cached merchant logos, shared across all users."""
+    queryset = MerchantProfile.objects.all()
+    serializer_class = MerchantProfileSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class ExportCsvView(APIView):

@@ -13,6 +13,7 @@ router.register('tags', views.TagViewSet, basename='tag')
 router.register('notifications/rules', views.NotificationRuleViewSet, basename='notification-rule')
 router.register('notifications/log', views.NotificationLogViewSet, basename='notification-log')
 router.register('imports/jobs', views.ImportJobViewSet, basename='import-job')
+router.register('merchants', views.MerchantProfileViewSet, basename='merchant')
 
 urlpatterns = [
     path('auth/token/', obtain_auth_token, name='api-token-auth'),

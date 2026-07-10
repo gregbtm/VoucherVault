@@ -92,7 +92,7 @@ CONTENT_SECURITY_POLICY = {
         "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
         "font-src": ["'self'", "https://fonts.googleapis.com", "https://fonts.gstatic.com"],
-        "img-src": ["'self'", "data:", "https://img.logo.dev"],
+        "img-src": ["'self'", "data:", "https://img.logo.dev", "https://logo.clearbit.com", "https://www.google.com"],
         "manifest-src": ["'self'"],
         "worker-src": ["'self'"],
         "object-src": ["'none'"],

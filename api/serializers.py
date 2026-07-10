@@ -8,7 +8,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from imports.models import ImportJob
-from myapp.models import Item, ItemShare, Tag, Transaction, UserPreference, UserProfile, Wallet
+from myapp.models import Item, ItemShare, MerchantProfile, Tag, Transaction, UserPreference, UserProfile, Wallet
 from myapp.utils import generate_code_image_base64
 from notify.models import NotificationLog, NotificationRule
 
@@ -311,4 +311,11 @@ class ImportJobSerializer(serializers.ModelSerializer):
             'id', 'source_type', 'status', 'imported_count', 'error_count',
             'errors', 'created_at', 'completed_at',
         ]
+        read_only_fields = fields
+
+
+class MerchantProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MerchantProfile
+        fields = ['id', 'name', 'domain', 'logo_url', 'brand_color', 'fetched_at']
         read_only_fields = fields

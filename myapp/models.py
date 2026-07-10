@@ -113,6 +113,33 @@ class Tag(models.Model):
         return self.name
 
 
+class MerchantProfile(models.Model):
+    """
+    Cached merchant metadata (logo, domain, brand colour), looked up by
+    Item.issuer (case-insensitive). Shared across all users — fetched once
+    from an external logo service, reused thereafter — so this is a global
+    cache table, not scoped to a user. No FK from Item: `issuer` is
+    freeform text the user already types, so the cache is looked up by
+    normalized name at display/serialization time instead of requiring a
+    relation to stay in sync with it.
+    """
+    name = models.CharField(max_length=200, unique=True)
+    domain = models.CharField(max_length=200, blank=True)
+    logo_url = models.URLField(blank=True)
+    brand_color = models.CharField(
+        max_length=20,
+        blank=True,
+        validators=[RegexValidator(regex=r'^#(?:[0-9a-fA-F]{3}){1,2}$', message='Enter a valid hex color.')],
+    )
+    fetched_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 class Item(models.Model):
     ITEM_TYPES = (
         ('voucher', 'Voucher'),

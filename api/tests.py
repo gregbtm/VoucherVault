@@ -10,7 +10,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
 from imports.models import ImportJob
-from myapp.models import Item, ItemShare, Tag, Transaction, Wallet
+from myapp.models import Item, ItemShare, MerchantProfile, Tag, Transaction, Wallet
 from notify.models import NotificationLog, NotificationRule
 
 
@@ -603,3 +603,25 @@ class AnalyticsApiTests(APITestCase):
 
         response = self.client.get('/api/v1/analytics/expiry-timeline/?months=1')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class MerchantProfileApiTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+
+    def test_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get('/api/v1/merchants/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_list_returns_cached_profiles(self):
+        MerchantProfile.objects.create(name='Amazon', domain='amazon.com', logo_url='https://logo.clearbit.com/amazon.com')
+        response = self.client.get('/api/v1/merchants/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['name'], 'Amazon')
+
+    def test_read_only(self):
+        response = self.client.post('/api/v1/merchants/', {'name': 'Amazon'})
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
