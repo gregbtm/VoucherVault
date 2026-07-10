@@ -186,3 +186,126 @@ class ShowItemsWalletFilterTests(TestCase):
         response = self.client.get(reverse('show_items'), {'wallet': self.wallet.id, 'status': 'all'})
         names = [entry['item'].name for entry in response.context['items_with_qr']]
         self.assertEqual(names, ['In Wallet'])
+
+
+class AnalyticsHelperTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.wallet = Wallet.objects.create(user=self.user, name='Travel', color='#4154f1')
+
+    def test_get_items_by_wallet_groups_and_labels_no_wallet(self):
+        from .analytics import get_items_by_wallet
+
+        make_item(self.user, name='In Wallet', wallet=self.wallet)
+        make_item(self.user, name='No Wallet Item', redeem_code='NW1')
+
+        breakdown = {row['name']: row for row in get_items_by_wallet(self.user)}
+        self.assertEqual(breakdown['Travel']['count'], 1)
+        self.assertEqual(breakdown['Travel']['color'], '#4154f1')
+        self.assertEqual(breakdown['No Wallet']['count'], 1)
+
+    def test_get_items_by_wallet_folds_extras_into_other(self):
+        from .analytics import get_items_by_wallet
+
+        for i in range(10):
+            w = Wallet.objects.create(user=self.user, name=f'Wallet{i}')
+            make_item(self.user, name=f'Item{i}', redeem_code=f'C{i}', wallet=w)
+
+        breakdown = get_items_by_wallet(self.user, limit=8)
+        self.assertEqual(len(breakdown), 9)  # 8 real wallets + 1 "Other"
+        other = next(row for row in breakdown if row['name'] == 'Other')
+        self.assertEqual(other['count'], 2)
+
+    def test_get_items_by_wallet_excludes_used_items(self):
+        from .analytics import get_items_by_wallet
+
+        make_item(self.user, wallet=self.wallet, is_used=True)
+        self.assertEqual(get_items_by_wallet(self.user), [])
+
+    def test_get_expiring_soon_items_respects_window_and_attaches_days_left(self):
+        from .analytics import get_expiring_soon_items
+
+        within = make_item(self.user, name='Within', redeem_code='W1', expiry_date=date.today() + timedelta(days=3))
+        make_item(self.user, name='Outside', redeem_code='O1', expiry_date=date.today() + timedelta(days=30))
+        make_item(self.user, name='AlreadyExpired', redeem_code='E1', expiry_date=date.today() - timedelta(days=1))
+
+        results = get_expiring_soon_items(self.user, days=7)
+        self.assertEqual([i.name for i in results], ['Within'])
+        self.assertEqual(within.id, results[0].id)
+        self.assertEqual(results[0].days_left, 3)
+
+    def test_get_expiring_soon_items_excludes_used(self):
+        from .analytics import get_expiring_soon_items
+
+        make_item(self.user, is_used=True, expiry_date=date.today() + timedelta(days=1))
+        self.assertEqual(get_expiring_soon_items(self.user), [])
+
+    def test_build_expiry_calendar_shape_and_counts(self):
+        from .analytics import build_expiry_calendar
+
+        target_date = date.today() + timedelta(days=2)
+        make_item(self.user, expiry_date=target_date)
+
+        months = build_expiry_calendar(self.user, months_ahead=2)
+        self.assertEqual(len(months), 2)
+        self.assertTrue(all('label' in m and 'weeks' in m for m in months))
+
+        found_count = None
+        for month in months:
+            for week in month['weeks']:
+                for day in week:
+                    if day and day['date'] == target_date:
+                        found_count = day['count']
+        self.assertEqual(found_count, 1)
+
+    def test_get_summary_stats_shape(self):
+        from .analytics import get_summary_stats
+
+        make_item(self.user, type='giftcard', wallet=self.wallet, value='15.00', currency='EUR',
+                  expiry_date=date.today() + timedelta(days=5))
+        make_item(self.user, type='loyaltycard', redeem_code='LOY1', value='0', expiry_date=date.today() + timedelta(days=400))
+
+        stats = get_summary_stats(self.user)
+        self.assertEqual(stats['total_items'], 2)
+        self.assertEqual(stats['expiring_7_days'], 1)
+        self.assertEqual(stats['value_by_currency'], {'EUR': '15.00'})
+        self.assertEqual(stats['at_risk_value_by_currency'], {'EUR': '15.00'})
+        type_counts = {row['type']: row['count'] for row in stats['by_type']}
+        self.assertEqual(type_counts, {'giftcard': 1, 'loyaltycard': 1})
+
+    def test_get_expiry_timeline_groups_by_date(self):
+        from .analytics import get_expiry_timeline
+
+        target_date = date.today() + timedelta(days=10)
+        item = make_item(self.user, name='Grouped', expiry_date=target_date)
+
+        timeline = get_expiry_timeline(self.user)
+        key = target_date.isoformat()
+        self.assertIn(key, timeline)
+        self.assertEqual(timeline[key][0]['id'], str(item.id))
+        self.assertEqual(timeline[key][0]['name'], 'Grouped')
+
+
+class DashboardAnalyticsContextTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+        self.wallet = Wallet.objects.create(user=self.user, name='Travel', color='#4154f1')
+
+    def test_dashboard_includes_analytics_context(self):
+        make_item(self.user, name='Soon', wallet=self.wallet, expiry_date=date.today() + timedelta(days=3), value='25.00', currency='EUR')
+
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['at_risk_value'], 25.0)
+        self.assertEqual(len(response.context['expiry_calendar']), 3)
+        self.assertEqual(response.context['items_by_wallet'][0]['name'], 'Travel')
+        self.assertEqual(len(response.context['expiring_soon_list']), 1)
+        self.assertGreaterEqual(response.context['wallet_chart_height'], 200)
+
+    def test_dashboard_handles_no_items(self):
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context['at_risk_value'])
+        self.assertEqual(response.context['items_by_wallet'], [])
+        self.assertEqual(response.context['expiring_soon_list'], [])

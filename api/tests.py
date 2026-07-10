@@ -558,3 +558,48 @@ class ExportApiTests(APITestCase):
         self.client.force_authenticate(user=None)
         self.assertEqual(self.client.get('/api/v1/exports/csv/').status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(self.client.get('/api/v1/exports/json/').status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class AnalyticsApiTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+        self.wallet = Wallet.objects.create(user=self.alice, name='Travel', color='#4154f1')
+
+    def test_summary_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get('/api/v1/analytics/summary/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_summary_only_reflects_own_items(self):
+        make_item(self.alice, name='Alice Item', wallet=self.wallet, value='25.00', currency='EUR',
+                   expiry_date=date.today() + timedelta(days=3))
+        make_item(self.bob, name='Bob Item', redeem_code='BOBCODE')
+
+        response = self.client.get('/api/v1/analytics/summary/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['total_items'], 1)
+        self.assertEqual(response.data['expiring_7_days'], 1)
+        self.assertEqual(response.data['value_by_currency'], {'EUR': '25.00'})
+        self.assertEqual(response.data['at_risk_value_by_currency'], {'EUR': '25.00'})
+        self.assertEqual(response.data['by_wallet'][0]['name'], 'Travel')
+
+    def test_expiry_timeline_only_reflects_own_items(self):
+        target_date = date.today() + timedelta(days=15)
+        make_item(self.alice, name='Alice Item', expiry_date=target_date)
+        make_item(self.bob, name='Bob Item', redeem_code='BOBCODE', expiry_date=target_date)
+
+        response = self.client.get('/api/v1/analytics/expiry-timeline/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        key = target_date.isoformat()
+        self.assertIn(key, response.data)
+        self.assertEqual(len(response.data[key]), 1)
+        self.assertEqual(response.data[key][0]['name'], 'Alice Item')
+
+    def test_expiry_timeline_months_param_bounds(self):
+        response = self.client.get('/api/v1/analytics/expiry-timeline/?months=notanumber')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        response = self.client.get('/api/v1/analytics/expiry-timeline/?months=1')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

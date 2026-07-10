@@ -24,6 +24,7 @@ from django.utils.translation import gettext_lazy as _
 from django.contrib import messages
 from django.utils.timezone import now
 from .decorators import require_authorization_header_with_api_token
+from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items_by_wallet
 from django.db.models import Count, Sum, Q, F, ExpressionWrapper, DecimalField
 from django.db.models.functions import Coalesce
 from django.db.models import Value
@@ -77,6 +78,11 @@ def dashboard(request):
     fixer_api_key = preferences.fixer_api_key
     default_currency = preferences.default_currency or 'EUR'
 
+    # Get threshold days from environment variable or default to 30
+    threshold_days = int(os.getenv('EXPIRY_THRESHOLD_DAYS', 30))
+    # Calculate soon-to-expire date (used for both "soon expiring" count and at-risk value)
+    soon_expiry_date = now() + timedelta(days=threshold_days)
+
     # Calculate the current total value of available money-type items
     items = Item.objects.filter(user=user, is_used=False, value_type='money', expiry_date__gte=timezone.now())
     items = items.exclude(type='loyaltycard')
@@ -85,6 +91,7 @@ def dashboard(request):
 
     total_value = None
     total_currency = None
+    at_risk_value = None
     currency_conversion_failed = False
     needs_fixer_key = False
 
@@ -93,16 +100,22 @@ def dashboard(request):
             # All items share the same currency — sum directly
             single_currency = next(iter(currencies_used))
             total_value = 0
+            at_risk_value = 0
             for item in items:
                 transactions_sum = Transaction.objects.filter(item=item).aggregate(Sum('value'))['value__sum'] or 0
-                total_value += float(item.value) + float(transactions_sum)
+                item_value = float(item.value) + float(transactions_sum)
+                total_value += item_value
+                if item.expiry_date < soon_expiry_date.date():
+                    at_risk_value += item_value
             total_value = round(total_value, 2)
+            at_risk_value = round(at_risk_value, 2)
             total_currency = single_currency
         elif fixer_api_key:
             # Mixed currencies — convert all to default_currency via Fixer.io
             rates = get_fixer_rates(fixer_api_key)
             if rates:
                 total_value = 0
+                at_risk_value = 0
                 for item in items:
                     transactions_sum = Transaction.objects.filter(item=item).aggregate(Sum('value'))['value__sum'] or 0
                     item_value = float(item.value) + float(transactions_sum)
@@ -110,10 +123,14 @@ def dashboard(request):
                     if converted is None:
                         currency_conversion_failed = True
                         total_value = None
+                        at_risk_value = None
                         break
                     total_value += converted
+                    if item.expiry_date < soon_expiry_date.date():
+                        at_risk_value += converted
                 if total_value is not None:
                     total_value = round(total_value, 2)
+                    at_risk_value = round(at_risk_value, 2)
                 total_currency = default_currency
             else:
                 currency_conversion_failed = True
@@ -134,17 +151,15 @@ def dashboard(request):
         item__expiry_date__gte=now().date()
     ).exclude(item__user=user).values('item').distinct().count()
 
-    # Get threshold days from environment variable or default to 30
-    threshold_days = int(os.getenv('EXPIRY_THRESHOLD_DAYS', 30))
-    # Calculate soon-to-expire date
-    soon_expiry_date = now() + timedelta(days=threshold_days)
     # Count the number of items soon expiring based on EXPIRY_THRESHOLD_DAYS
     soon_expiring_items = Item.objects.filter(
-        user=user, 
+        user=user,
         is_used=False,
-        expiry_date__gte=now(), 
+        expiry_date__gte=now(),
         expiry_date__lt=soon_expiry_date
     ).count()
+
+    items_by_wallet = get_items_by_wallet(user)
 
     context = {
         'total_items': total_items,
@@ -152,6 +167,7 @@ def dashboard(request):
         'used_items': used_items,
         'total_value': total_value,
         'total_currency': total_currency,
+        'at_risk_value': at_risk_value,
         'needs_fixer_key': needs_fixer_key,
         'currency_conversion_failed': currency_conversion_failed,
         'coupons_count': coupons_count,
@@ -160,6 +176,10 @@ def dashboard(request):
         'loyaltycards_count':loyaltycards_count,
         'expired_items': expired_items,
         "soon_expiring_items": soon_expiring_items,
+        'items_by_wallet': items_by_wallet,
+        'wallet_chart_height': max(200, len(items_by_wallet) * 40 + 60),
+        'expiring_soon_list': get_expiring_soon_items(user),
+        'expiry_calendar': build_expiry_calendar(user),
         'shared_items_count_by_you': shared_items_count_by_you,
         'shared_items_count_with_you': shared_items_count_with_you,
     }

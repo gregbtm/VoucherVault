@@ -21,6 +21,7 @@ from imports.exporters.json_export import export_items_json
 from imports.models import ImportJob
 from imports.parsers import get_parser
 from imports.tasks import process_import_job
+from myapp.analytics import get_expiry_timeline, get_summary_stats
 from myapp.models import Item, ItemShare, Tag, Transaction, UserPreference, UserProfile, Wallet
 from notify.models import NotificationLog, NotificationRule
 from notify.tasks import send_test_notification
@@ -339,3 +340,41 @@ class ExportJsonView(APIView):
         response = HttpResponse(payload, content_type='application/json')
         response['Content-Disposition'] = 'attachment; filename="vouchervault-export.json"'
         return response
+
+
+class AnalyticsSummaryView(APIView):
+    """Aggregate KPI stats for the authenticated user's items (counts, by type/wallet, value by currency)."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        responses=inline_serializer(
+            name='AnalyticsSummaryResponse',
+            fields={
+                'total_items': serializers.IntegerField(),
+                'used_items': serializers.IntegerField(),
+                'expired_items': serializers.IntegerField(),
+                'expiring_7_days': serializers.IntegerField(),
+                'expiring_30_days': serializers.IntegerField(),
+                'by_type': serializers.ListField(child=serializers.DictField()),
+                'by_wallet': serializers.ListField(child=serializers.DictField()),
+                'value_by_currency': serializers.DictField(),
+                'at_risk_value_by_currency': serializers.DictField(),
+            },
+        )
+    )
+    def get(self, request):
+        return Response(get_summary_stats(request.user))
+
+
+class AnalyticsExpiryTimelineView(APIView):
+    """Items grouped by ISO expiry date over the next `months` months (default 3) — a calendar feed."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    def get(self, request):
+        months = request.query_params.get('months', 3)
+        try:
+            months = max(1, min(int(months), 12))
+        except ValueError:
+            return Response({'months': 'Must be an integer.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(get_expiry_timeline(request.user, months_ahead=months))
