@@ -27,5 +27,6 @@ urlpatterns = [
     path('exports/json/', views.ExportJsonView.as_view(), name='api-export-json'),
     path('analytics/summary/', views.AnalyticsSummaryView.as_view(), name='api-analytics-summary'),
     path('analytics/expiry-timeline/', views.AnalyticsExpiryTimelineView.as_view(), name='api-analytics-expiry-timeline'),
+    path('ocr/extract/', views.OCRExtractView.as_view(), name='api-ocr-extract'),
     path('', include(router.urls)),
 ]

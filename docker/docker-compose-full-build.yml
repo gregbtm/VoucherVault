@@ -28,6 +28,10 @@ services:
       - NTFY_DEFAULT_SERVER=${NTFY_DEFAULT_SERVER:-https://ntfy.sh}
       # set to False to disable auto-fetching merchant logos
       - MERCHANT_LOGOS_ENABLED=${MERCHANT_LOGOS_ENABLED:-True}
+      # set to "claude" or "tesseract" to enable the "Scan with AI" button
+      - OCR_BACKEND=${OCR_BACKEND:-none}
+      # required if OCR_BACKEND=claude
+      #- ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:?Set ANTHROPIC_API_KEY in .env}
       # define custom frame-ancestor csp directive
       #- CSP_FRAME_ANCESTORS=${CSP_FRAME_ANCESTORS:?Set CSP_FRAME_ANCESTORS in .env}
       #- SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env}

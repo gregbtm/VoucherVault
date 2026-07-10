@@ -29,3 +29,8 @@ requests==2.34.2
 # TASKS
 celery[redis]
 django-celery-beat==2.9.0
+
+# OCR
+anthropic==0.116.0
+pytesseract==0.3.13
+Pillow==12.3.0

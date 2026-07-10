@@ -1,6 +1,7 @@
 import json
+import os
 from datetime import date, timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -625,3 +626,63 @@ class MerchantProfileApiTests(APITestCase):
     def test_read_only(self):
         response = self.client.post('/api/v1/merchants/', {'name': 'Amazon'})
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+def _tiny_image_upload(name='voucher.png', content_type='image/png', size=None):
+    content = b'0' * size if size else b'\x89PNG\r\n\x1a\n' + b'0' * 100
+    return SimpleUploadedFile(name, content, content_type=content_type)
+
+
+class OCRExtractApiTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+
+    def test_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.post('/api/v1/ocr/extract/', {'image': _tiny_image_upload()}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_disabled_by_default(self):
+        with patch.dict(os.environ, {'OCR_BACKEND': 'none'}):
+            response = self.client.post('/api/v1/ocr/extract/', {'image': _tiny_image_upload()}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_501_NOT_IMPLEMENTED)
+
+    def test_no_image_provided(self):
+        with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
+            response = self.client.post('/api/v1/ocr/extract/', {}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_oversized_image_rejected(self):
+        upload = _tiny_image_upload(size=8 * 1024 * 1024 + 1)
+        with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
+            response = self.client.post('/api/v1/ocr/extract/', {'image': upload}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_unsupported_content_type_rejected(self):
+        upload = _tiny_image_upload(name='voucher.txt', content_type='text/plain')
+        with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
+            response = self.client.post('/api/v1/ocr/extract/', {'image': upload}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch('api.views.get_backend')
+    def test_success_returns_backend_result(self, mock_get_backend):
+        mock_backend = MagicMock()
+        mock_backend.extract.return_value = {
+            'code': 'SAVE20', 'name': 'Acme', 'issuer': None, 'expiry_date': '2026-12-31', 'confidence': 0.8,
+        }
+        mock_get_backend.return_value = mock_backend
+
+        with patch.dict(os.environ, {'OCR_BACKEND': 'claude'}):
+            response = self.client.post('/api/v1/ocr/extract/', {'image': _tiny_image_upload()}, format='multipart')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['code'], 'SAVE20')
+        self.assertEqual(response.data['name'], 'Acme')
+        mock_backend.extract.assert_called_once()
+
+    @patch('api.views.get_backend', side_effect=RuntimeError('tesseract binary missing'))
+    def test_backend_unavailable_returns_503(self, mock_get_backend):
+        with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
+            response = self.client.post('/api/v1/ocr/extract/', {'image': _tiny_image_upload()}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)

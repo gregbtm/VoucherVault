@@ -453,3 +453,34 @@ class MerchantLogoViewIntegrationTests(TestCase):
 
         response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
         self.assertEqual(response.context['merchant_logo_url'], 'https://logo.clearbit.com/amazon.com')
+
+
+class OCRScanUIWiringTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_create_item_ocr_disabled_by_default(self):
+        with patch.dict(os.environ, {'OCR_BACKEND': 'none'}):
+            response = self.client.get(reverse('create_item'))
+        self.assertFalse(response.context['ocr_enabled'])
+        self.assertNotContains(response, 'aiScanSection')
+
+    def test_create_item_ocr_enabled_shows_scan_section(self):
+        with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
+            response = self.client.get(reverse('create_item'))
+        self.assertTrue(response.context['ocr_enabled'])
+        self.assertContains(response, 'aiScanSection')
+
+    def test_edit_item_reflects_ocr_setting(self):
+        item = make_item(self.user)
+        with patch.dict(os.environ, {'OCR_BACKEND': 'claude'}):
+            response = self.client.get(reverse('edit_item', args=[item.id]))
+        self.assertTrue(response.context['ocr_enabled'])
+        self.assertContains(response, 'aiScanSection')
+
+    def test_duplicate_item_reflects_ocr_setting(self):
+        item = make_item(self.user)
+        with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
+            response = self.client.get(reverse('duplicate_item', args=[item.id]))
+        self.assertTrue(response.context['ocr_enabled'])

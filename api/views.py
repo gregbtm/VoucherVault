@@ -1,4 +1,5 @@
 import json
+import logging
 
 from django.db.models import Count
 from django.http import HttpResponse
@@ -25,6 +26,7 @@ from myapp.analytics import get_expiry_timeline, get_summary_stats
 from myapp.models import Item, ItemShare, MerchantProfile, Tag, Transaction, UserPreference, UserProfile, Wallet
 from notify.models import NotificationLog, NotificationRule
 from notify.tasks import send_test_notification
+from ocr.backends import get_backend, ocr_enabled
 
 from .filters import ItemFilter
 from .permissions import IsOwner
@@ -42,8 +44,12 @@ from .serializers import (
     WalletSerializer,
 )
 
+logger = logging.getLogger(__name__)
+
 PREVIEW_ROW_LIMIT = 50
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_OCR_IMAGE_SIZE = 8 * 1024 * 1024  # 8MB
+OCR_ALLOWED_CONTENT_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
 
 
 class ItemViewSet(viewsets.ModelViewSet):
@@ -323,6 +329,58 @@ class MerchantProfileViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = MerchantProfile.objects.all()
     serializer_class = MerchantProfileSerializer
     permission_classes = [IsAuthenticated]
+
+
+class OCRExtractView(APIView):
+    """
+    POST a photo of a physical voucher/coupon/loyalty card, get back a
+    best-guess redeem code (and, with the Claude backend, merchant name/
+    issuer/expiry date) to pre-fill the item form with. Processes the
+    image synchronously — no ImportJob-style polling needed for a single
+    image. Disabled (501) unless OCR_BACKEND is set.
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        request={'multipart/form-data': inline_serializer(name='OCRExtractRequest', fields={'image': serializers.ImageField()})},
+        responses=inline_serializer(
+            name='OCRExtractResponse',
+            fields={
+                'code': serializers.CharField(allow_null=True),
+                'name': serializers.CharField(allow_null=True),
+                'issuer': serializers.CharField(allow_null=True),
+                'expiry_date': serializers.CharField(allow_null=True),
+                'confidence': serializers.FloatField(),
+            },
+        ),
+    )
+    def post(self, request):
+        if not ocr_enabled():
+            return Response(
+                {'detail': _('OCR scanning is disabled on this server.')},
+                status=status.HTTP_501_NOT_IMPLEMENTED,
+            )
+
+        upload = request.FILES.get('image')
+        if not upload:
+            return Response({'image': _('No image uploaded.')}, status=status.HTTP_400_BAD_REQUEST)
+        if upload.size > MAX_OCR_IMAGE_SIZE:
+            return Response({'image': _('Image is too large (max 8MB).')}, status=status.HTTP_400_BAD_REQUEST)
+        if upload.content_type not in OCR_ALLOWED_CONTENT_TYPES:
+            return Response({'image': _('Unsupported image type. Use JPEG, PNG, or WebP.')}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            backend = get_backend()
+            result = backend.extract(upload.read(), upload.content_type)
+        except Exception as exc:
+            logger.warning('OCR extraction failed: %s', exc, exc_info=True)
+            return Response(
+                {'detail': _('OCR scanning is temporarily unavailable: %(error)s') % {'error': str(exc)}},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response(result)
 
 
 class ExportCsvView(APIView):
