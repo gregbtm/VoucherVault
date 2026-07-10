@@ -25,6 +25,10 @@ WORKDIR /opt/app
 # copy relevant source code
 COPY myproject /opt/app/myproject
 COPY myapp /opt/app/myapp
+COPY api /opt/app/api
+COPY notify /opt/app/notify
+COPY imports /opt/app/imports
+COPY ocr /opt/app/ocr
 COPY manage.py /opt/app/manage.py
 COPY requirements.txt /opt/app/requirements.txt
 COPY /docker/entrypoint.sh /opt/app/docker/entrypoint.sh
