@@ -693,13 +693,27 @@ body.dark-mode .mobile-filter-select {
           <i class="bi bi-percent"></i> {% trans "Coupons" %}
           <span class="count">{{ coupon_count }}</span>
         </a>
-        <a href="?type=loyaltycard&status={{ item_status }}{% if search_query %}&query={{ search_query }}{% endif %}" 
+        <a href="?type=loyaltycard&status={{ item_status }}{% if search_query %}&query={{ search_query }}{% endif %}"
            class="filter-chip {% if item_type == 'loyaltycard' %}active{% endif %}">
           <i class="bi bi-star"></i> {% trans "Loyalty" %}
           <span class="count">{{ loyaltycard_count }}</span>
         </a>
       </div>
-      
+
+      {% if wallets %}
+      <!-- Wallet Filter -->
+      <div class="mobile-filters" style="margin-top: 0.5rem;">
+        <select class="mobile-filter-select" name="wallet" onchange="this.form.submit()">
+          <option value="">{% trans "All Wallets" %}</option>
+          {% for wallet in wallets %}
+          <option value="{{ wallet.id }}" {% if selected_wallet_id == wallet.id %}selected{% endif %}>
+            {{ wallet.name }} ({{ wallet.item_count }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+
       <!-- Hidden inputs for form submission -->
       <input type="hidden" name="type" id="hiddenType" value="{{ item_type }}">
       <input type="hidden" name="status" id="hiddenStatus" value="{{ item_status }}">
@@ -815,6 +829,20 @@ body.dark-mode .mobile-filter-select {
               {{ entry.item.description|truncatewords:25 }}
               {% endif %}
             </small>
+          </div>
+          {% endif %}
+
+          <!-- Wallet + Tags -->
+          {% if entry.item.wallet or entry.item.tags.all %}
+          <div class="item-tag-row" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem;">
+            {% if entry.item.wallet %}
+            <span class="badge rounded-pill" style="background-color: {{ entry.item.wallet.color }}; color: #fff;">
+              <i class="bi {{ entry.item.wallet.icon|default:'bi-wallet2' }}"></i> {{ entry.item.wallet.name }}
+            </span>
+            {% endif %}
+            {% for tag in entry.item.tags.all %}
+            <span class="badge rounded-pill" style="background-color: {{ tag.color }}; color: #fff;">{{ tag.name }}</span>
+            {% endfor %}
           </div>
           {% endif %}
         </div>

@@ -7,8 +7,56 @@ from django.utils.text import get_valid_filename
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
-from myapp.models import Item, ItemShare, Transaction, UserPreference, UserProfile
+from myapp.models import Item, ItemShare, Tag, Transaction, UserPreference, UserProfile, Wallet
 from myapp.utils import generate_code_image_base64
+
+_UNSET = object()
+
+
+class WalletSerializer(serializers.ModelSerializer):
+    item_count = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = Wallet
+        fields = ['id', 'name', 'description', 'icon', 'color', 'item_count', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'item_count', 'created_at', 'updated_at']
+
+    def get_item_count(self, wallet) -> int:
+        # Uses the queryset's annotation when present (list/retrieve); falls
+        # back to a live count otherwise (e.g. right after create/update).
+        count = getattr(wallet, 'item_count', None)
+        return count if count is not None else wallet.items.count()
+
+    def validate_name(self, name):
+        request = self.context['request']
+        qs = Wallet.objects.filter(user=request.user, name=name)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(_('You already have a wallet with this name.'))
+        return name
+
+
+class TagSerializer(serializers.ModelSerializer):
+    item_count = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = Tag
+        fields = ['id', 'name', 'color', 'item_count']
+        read_only_fields = ['id', 'item_count']
+
+    def get_item_count(self, tag) -> int:
+        count = getattr(tag, 'item_count', None)
+        return count if count is not None else tag.items.count()
+
+    def validate_name(self, name):
+        request = self.context['request']
+        qs = Tag.objects.filter(user=request.user, name=name)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(_('You already have a tag with this name.'))
+        return name
 
 
 class TransactionSerializer(serializers.ModelSerializer):
@@ -66,6 +114,11 @@ class ItemShareSerializer(serializers.ModelSerializer):
 class ItemSerializer(serializers.ModelSerializer):
     days_until_expiry = serializers.SerializerMethodField(read_only=True)
     transaction_total = serializers.SerializerMethodField(read_only=True)
+    wallet_name = serializers.CharField(source='wallet.name', read_only=True, default=None)
+    tags = TagSerializer(many=True, read_only=True)
+    tag_ids = serializers.PrimaryKeyRelatedField(
+        many=True, write_only=True, required=False, source='tags', queryset=Tag.objects.none()
+    )
 
     class Meta:
         model = Item
@@ -75,17 +128,30 @@ class ItemSerializer(serializers.ModelSerializer):
             'value_type', 'currency', 'is_used', 'is_pinned', 'tile_color',
             'file', 'qr_code_base64', 'default_expiry_notification_sent',
             'final_expiry_notification_sent', 'days_until_expiry', 'transaction_total',
+            'wallet', 'wallet_name', 'tags', 'tag_ids', 'notes',
         ]
         read_only_fields = [
             'id', 'qr_code_base64', 'default_expiry_notification_sent',
             'final_expiry_notification_sent',
         ]
+        extra_kwargs = {
+            'wallet': {'required': False, 'allow_null': True, 'queryset': Wallet.objects.none()},
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Mirrors ItemForm: expiry_date defaults to +50y, value is optional for loyalty cards.
         self.fields['expiry_date'].required = False
         self.fields['value'].required = False
+
+        # Scope wallet/tag choices to the requesting user so an item can never
+        # be filed under, or tagged with, another user's wallet/tags.
+        request = self.context.get('request')
+        if request is not None and request.user.is_authenticated:
+            self.fields['wallet'].queryset = Wallet.objects.filter(user=request.user)
+            # tag_ids is many=True, so DRF wraps it in a ManyRelatedField whose
+            # own .queryset is unused — the child_relation holds the real one.
+            self.fields['tag_ids'].child_relation.queryset = Tag.objects.filter(user=request.user)
 
     def get_days_until_expiry(self, item) -> int | None:
         if not item.expiry_date:
@@ -130,6 +196,7 @@ class ItemSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         file_obj = validated_data.pop('file', None)
+        tags = validated_data.pop('tags', _UNSET)
         if not validated_data.get('expiry_date'):
             validated_data['expiry_date'] = timezone.now().date() + timedelta(days=50 * 365)
         # Item.issue_date's model default is timezone.now (a datetime) even though
@@ -140,6 +207,9 @@ class ItemSerializer(serializers.ModelSerializer):
         item.qr_code_base64, item.code_type = generate_code_image_base64(item)
         item.save()
 
+        if tags is not _UNSET:
+            item.tags.set(tags)
+
         if file_obj:
             self._save_uploaded_file(item, file_obj)
 
@@ -147,6 +217,7 @@ class ItemSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         file_obj = validated_data.pop('file', None)
+        tags = validated_data.pop('tags', _UNSET)
         original_redeem_code = instance.redeem_code
         original_code_type = instance.code_type
 
@@ -157,6 +228,9 @@ class ItemSerializer(serializers.ModelSerializer):
             instance.qr_code_base64, instance.code_type = generate_code_image_base64(instance)
 
         instance.save()
+
+        if tags is not _UNSET:
+            instance.tags.set(tags)
 
         if file_obj:
             old_file_path = instance.file.path if instance.file else None

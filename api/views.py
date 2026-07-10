@@ -1,3 +1,4 @@
+from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from django.utils.translation import gettext_lazy as _
 from rest_framework import generics, status, viewsets
@@ -8,16 +9,18 @@ from rest_framework.response import Response
 
 from django_filters.rest_framework import DjangoFilterBackend
 
-from myapp.models import Item, ItemShare, Transaction, UserPreference, UserProfile
+from myapp.models import Item, ItemShare, Tag, Transaction, UserPreference, UserProfile, Wallet
 
 from .filters import ItemFilter
 from .permissions import IsOwner
 from .serializers import (
     ItemSerializer,
     ItemShareSerializer,
+    TagSerializer,
     TransactionSerializer,
     UserPreferenceSerializer,
     UserProfileSerializer,
+    WalletSerializer,
 )
 
 
@@ -39,7 +42,7 @@ class ItemViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return Item.objects.none()
-        return Item.objects.filter(user=self.request.user).prefetch_related('transactions')
+        return Item.objects.filter(user=self.request.user).select_related('wallet').prefetch_related('transactions', 'tags')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -81,6 +84,44 @@ class ItemViewSet(viewsets.ModelViewSet):
         share = get_object_or_404(ItemShare, item=item, pk=share_id)
         share.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class WalletViewSet(viewsets.ModelViewSet):
+    """Full CRUD for the authenticated user's wallets, plus /items/ sub-resource."""
+    serializer_class = WalletSerializer
+    permission_classes = [IsAuthenticated, IsOwner]
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Wallet.objects.none()
+        return Wallet.objects.filter(user=self.request.user).annotate(item_count=Count('items')).order_by('name')
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=['get'])
+    def items(self, request, pk=None):
+        wallet = self.get_object()
+        items = Item.objects.filter(user=request.user, wallet=wallet).select_related('wallet').prefetch_related('tags').order_by('expiry_date')
+        page = self.paginate_queryset(items)
+        serializer = ItemSerializer(page if page is not None else items, many=True, context={'request': request})
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+
+class TagViewSet(viewsets.ModelViewSet):
+    """Full CRUD for the authenticated user's tags."""
+    serializer_class = TagSerializer
+    permission_classes = [IsAuthenticated, IsOwner]
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Tag.objects.none()
+        return Tag.objects.filter(user=self.request.user).annotate(item_count=Count('items')).order_by('name')
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
 
 class TransactionViewSet(viewsets.ModelViewSet):

@@ -1091,7 +1091,33 @@ body.dark-mode .action-btn-secondary:hover {
             <p>{{ item.description }}</p>
           </div>
           {% endif %}
-          
+
+          <!-- Wallet + Tags -->
+          {% if item.wallet or item.tags.all %}
+          <div class="item-description-section">
+            <h6><i class="bi bi-folder2-open"></i> {% trans "Organization" %}</h6>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+              {% if item.wallet %}
+              <a href="{% url 'show_items' %}?wallet={{ item.wallet.id }}&status=all"
+                 class="badge rounded-pill text-decoration-none" style="background-color: {{ item.wallet.color }}; color: #fff;">
+                <i class="bi {{ item.wallet.icon|default:'bi-wallet2' }}"></i> {{ item.wallet.name }}
+              </a>
+              {% endif %}
+              {% for tag in item.tags.all %}
+              <span class="badge rounded-pill" style="background-color: {{ tag.color }}; color: #fff;">{{ tag.name }}</span>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- Notes -->
+          {% if item.notes %}
+          <div class="item-description-section">
+            <h6><i class="bi bi-journal-text"></i> {% trans "Notes" %}</h6>
+            <p>{{ item.notes|linebreaksbr }}</p>
+          </div>
+          {% endif %}
+
           <!-- Action Buttons (Owner only) -->
           {% if is_owner %}
           <div class="action-buttons">

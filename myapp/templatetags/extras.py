@@ -22,6 +22,15 @@ def comma_to_dot(value):
     return str(value).replace(',', '.')
 
 @register.filter
+def in_list(value, the_list):
+    """Membership check that tolerates str/int mismatches (e.g. form field
+    values submitted as strings vs. model PKs as ints)."""
+    try:
+        return str(value) in [str(item) for item in the_list]
+    except TypeError:
+        return False
+
+@register.filter
 def is_image_file(filename):
     if not filename:
         return False

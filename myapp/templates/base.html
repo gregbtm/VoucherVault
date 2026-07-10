@@ -300,7 +300,37 @@
           <i class="bi bi-people"></i>
           <span>{% trans "Sharing Center" %}</span>
         </a>
-      </li>      
+      </li>
+
+      <li class="nav-heading">{% trans "My Wallets" %}</li>
+
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="{% url 'show_items' %}">
+          <i class="bi bi-inboxes"></i>
+          <span>{% trans "All Items" %}</span>
+        </a>
+      </li>
+      {% for wallet in sidebar_wallets %}
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="{% url 'show_items' %}?wallet={{ wallet.id }}&status=all">
+          <i class="bi {{ wallet.icon|default:'bi-wallet2' }}" style="color: {{ wallet.color }};"></i>
+          <span>{{ wallet.name }}</span>
+          <span class="badge bg-secondary ms-auto">{{ wallet.item_count }}</span>
+        </a>
+      </li>
+      {% endfor %}
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="{% url 'manage_wallets' %}">
+          <i class="bi bi-gear"></i>
+          <span>{% trans "Manage Wallets" %}</span>
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="{% url 'manage_tags' %}">
+          <i class="bi bi-tags"></i>
+          <span>{% trans "Manage Tags" %}</span>
+        </a>
+      </li>
 
       <li class="nav-heading">{% trans "Functions" %}</li>
 

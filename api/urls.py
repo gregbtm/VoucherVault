@@ -8,6 +8,8 @@ from . import views
 router = DefaultRouter()
 router.register('items', views.ItemViewSet, basename='item')
 router.register('transactions', views.TransactionViewSet, basename='transaction')
+router.register('wallets', views.WalletViewSet, basename='wallet')
+router.register('tags', views.TagViewSet, basename='tag')
 
 urlpatterns = [
     path('auth/token/', obtain_auth_token, name='api-token-auth'),

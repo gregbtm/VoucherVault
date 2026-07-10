@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
-from myapp.models import Item, ItemShare, Transaction
+from myapp.models import Item, ItemShare, Tag, Transaction, Wallet
 
 
 def make_item(user, **kwargs):
@@ -232,3 +232,134 @@ class ItemShareTests(APITestCase):
         response = self.client.delete(f'/api/v1/items/{self.item.id}/shares/{share.id}/')
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(ItemShare.objects.filter(pk=share.id).exists())
+
+
+class WalletApiTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+
+    def test_create_and_list_wallet(self):
+        response = self.client.post('/api/v1/wallets/', {'name': 'Travel', 'color': '#123456'})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['item_count'], 0)
+
+        list_response = self.client.get('/api/v1/wallets/')
+        self.assertEqual(list_response.data['count'], 1)
+
+    def test_wallet_item_count_updates(self):
+        wallet = Wallet.objects.create(user=self.alice, name='Travel')
+        make_item(self.alice, wallet=wallet)
+        response = self.client.get(f'/api/v1/wallets/{wallet.id}/')
+        self.assertEqual(response.data['item_count'], 1)
+
+    def test_wallet_items_action_lists_only_its_items(self):
+        wallet = Wallet.objects.create(user=self.alice, name='Travel')
+        in_wallet = make_item(self.alice, wallet=wallet, name='In Wallet')
+        make_item(self.alice, name='No Wallet', redeem_code='OTHER')
+
+        response = self.client.get(f'/api/v1/wallets/{wallet.id}/items/')
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['id'], str(in_wallet.id))
+
+    def test_duplicate_wallet_name_rejected(self):
+        Wallet.objects.create(user=self.alice, name='Travel')
+        response = self.client.post('/api/v1/wallets/', {'name': 'Travel'})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cannot_access_another_users_wallet(self):
+        bob_wallet = Wallet.objects.create(user=self.bob, name='Groceries')
+        self.assertEqual(self.client.get(f'/api/v1/wallets/{bob_wallet.id}/').status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(self.client.delete(f'/api/v1/wallets/{bob_wallet.id}/').status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(Wallet.objects.filter(pk=bob_wallet.pk).exists())
+
+    def test_deleting_wallet_unassigns_items(self):
+        wallet = Wallet.objects.create(user=self.alice, name='Travel')
+        item = make_item(self.alice, wallet=wallet)
+        response = self.client.delete(f'/api/v1/wallets/{wallet.id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        item.refresh_from_db()
+        self.assertIsNone(item.wallet)
+
+
+class TagApiTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+
+    def test_create_and_list_tag(self):
+        response = self.client.post('/api/v1/tags/', {'name': 'discount', 'color': '#654321'})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        list_response = self.client.get('/api/v1/tags/')
+        self.assertEqual(list_response.data['count'], 1)
+
+    def test_cannot_access_another_users_tag(self):
+        bob_tag = Tag.objects.create(user=self.bob, name='discount')
+        self.assertEqual(self.client.get(f'/api/v1/tags/{bob_tag.id}/').status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(self.client.delete(f'/api/v1/tags/{bob_tag.id}/').status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(Tag.objects.filter(pk=bob_tag.pk).exists())
+
+
+class ItemWalletAndTagsTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+        self.wallet = Wallet.objects.create(user=self.alice, name='Travel')
+        self.tag = Tag.objects.create(user=self.alice, name='discount')
+
+    def test_create_item_with_wallet_and_tags(self):
+        payload = {
+            'type': 'voucher', 'name': 'Flight Voucher', 'redeem_code': 'FLY100', 'issuer': 'Airline',
+            'value': '100.00', 'wallet': self.wallet.id, 'tag_ids': [self.tag.id], 'notes': 'Show at gate.',
+        }
+        response = self.client.post('/api/v1/items/', payload)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        item = Item.objects.get(pk=response.data['id'])
+        self.assertEqual(item.wallet, self.wallet)
+        self.assertEqual(item.notes, 'Show at gate.')
+        self.assertEqual(list(item.tags.values_list('id', flat=True)), [self.tag.id])
+        self.assertEqual(response.data['wallet_name'], 'Travel')
+        self.assertEqual(response.data['tags'][0]['name'], 'discount')
+
+    def test_cannot_assign_another_users_wallet_to_item(self):
+        bob_wallet = Wallet.objects.create(user=self.bob, name='Groceries')
+        payload = {
+            'type': 'voucher', 'name': 'X', 'redeem_code': 'X', 'issuer': 'X',
+            'value': '5.00', 'wallet': bob_wallet.id,
+        }
+        response = self.client.post('/api/v1/items/', payload)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cannot_assign_another_users_tag_to_item(self):
+        bob_tag = Tag.objects.create(user=self.bob, name='discount')
+        payload = {
+            'type': 'voucher', 'name': 'X', 'redeem_code': 'X', 'issuer': 'X',
+            'value': '5.00', 'tag_ids': [bob_tag.id],
+        }
+        response = self.client.post('/api/v1/items/', payload)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_clear_tags_with_empty_list(self):
+        item = make_item(self.alice)
+        item.tags.add(self.tag)
+        response = self.client.patch(f'/api/v1/items/{item.id}/', {'tag_ids': []}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        item.refresh_from_db()
+        self.assertEqual(item.tags.count(), 0)
+
+    def test_filter_items_by_wallet_and_tag(self):
+        make_item(self.alice, name='In Wallet', wallet=self.wallet)
+        tagged = make_item(self.alice, name='Tagged', redeem_code='TAG1')
+        tagged.tags.add(self.tag)
+        make_item(self.alice, name='Neither', redeem_code='NEITHER')
+
+        by_wallet = self.client.get(f'/api/v1/items/?wallet={self.wallet.id}')
+        self.assertEqual(by_wallet.data['count'], 1)
+
+        by_tag = self.client.get(f'/api/v1/items/?tags={self.tag.id}')
+        self.assertEqual(by_tag.data['count'], 1)
+        self.assertEqual(by_tag.data['results'][0]['name'], 'Tagged')

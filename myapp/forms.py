@@ -19,16 +19,24 @@ class ItemForm(forms.ModelForm):
         widget=forms.TextInput(attrs={'type': 'color', 'class': 'form-control form-control-color'}),
         label=_('Tile Color')
     )
+    new_tags = forms.CharField(
+        required=False,
+        label=_('New Tags'),
+        help_text=_('Comma-separated names of new tags to create and attach.'),
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': _('e.g. groceries, discount')}),
+    )
 
     class Meta:
         model = Item
-        fields = ['name', 'issuer', 'redeem_code', 'pin', 'issue_date', 'expiry_date', 'description', 'logo_slug', 'type', 'value', 'value_type', 'currency', 'file', 'code_type', 'tile_color']
+        fields = ['name', 'issuer', 'redeem_code', 'pin', 'issue_date', 'expiry_date', 'description', 'logo_slug', 'type', 'value', 'value_type', 'currency', 'file', 'code_type', 'tile_color', 'wallet', 'tags', 'notes']
         widgets = {
             'issue_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
             'expiry_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+            'tags': forms.CheckboxSelectMultiple(),
+            'notes': forms.Textarea(attrs={'rows': 3}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super(ItemForm, self).__init__(*args, **kwargs)
         if 'data' in kwargs:
             item_type = kwargs['data'].get('type')
@@ -39,6 +47,20 @@ class ItemForm(forms.ModelForm):
 
         # Make expiry_date optional
         self.fields['expiry_date'].required = False
+
+        # Scope wallet/tag choices to the owning user so items can't be
+        # organised into another user's wallet or tags.
+        self.fields['wallet'].required = False
+        if user is not None:
+            self.fields['wallet'].queryset = Wallet.objects.filter(user=user)
+            self.fields['tags'].queryset = Tag.objects.filter(user=user)
+        else:
+            self.fields['wallet'].queryset = Wallet.objects.none()
+            self.fields['tags'].queryset = Tag.objects.none()
+
+    def clean_new_tags(self):
+        raw = self.cleaned_data.get('new_tags', '')
+        return [name.strip() for name in raw.split(',') if name.strip()]
 
     def clean_tile_color(self):
         color = self.cleaned_data.get('tile_color')
@@ -154,3 +176,49 @@ class UserPreferenceForm(forms.ModelForm):
             'fixer_api_key': forms.TextInput(attrs={'class': 'form-control', 'placeholder': _('Enter your Fixer.io API key')}),
             'default_currency': forms.Select(attrs={'class': 'form-select'}),
         }
+
+class WalletForm(forms.ModelForm):
+    class Meta:
+        model = Wallet
+        fields = ['name', 'description', 'icon', 'color']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': _('e.g. Supermarkets')}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'icon': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'bi-cart'}),
+            'color': forms.TextInput(attrs={'type': 'color', 'class': 'form-control form-control-color'}),
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+
+    def clean_name(self):
+        name = self.cleaned_data['name']
+        qs = Wallet.objects.filter(user=self.user, name=name)
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if self.user is not None and qs.exists():
+            raise forms.ValidationError(_('You already have a wallet with this name.'))
+        return name
+
+class TagForm(forms.ModelForm):
+    class Meta:
+        model = Tag
+        fields = ['name', 'color']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': _('e.g. discount')}),
+            'color': forms.TextInput(attrs={'type': 'color', 'class': 'form-control form-control-color'}),
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+
+    def clean_name(self):
+        name = self.cleaned_data['name']
+        qs = Tag.objects.filter(user=self.user, name=name)
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if self.user is not None and qs.exists():
+            raise forms.ValidationError(_('You already have a tag with this name.'))
+        return name

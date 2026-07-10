@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{% trans "Wallets" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "Wallets" %}</li>
+    </ol>
+  </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+  <div class="row">
+    <div class="col-lg-5">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">
+            {% if editing_wallet %}{% trans "Edit Wallet" %}{% else %}{% trans "New Wallet" %}{% endif %}
+          </h5>
+
+          <form method="POST" action="{% if editing_wallet %}{% url 'edit_wallet' wallet_id=editing_wallet.id %}{% else %}{% url 'manage_wallets' %}{% endif %}">
+            {% csrf_token %}
+
+            {% for field in form %}
+            <div class="mb-3">
+              <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+              {{ field }}
+              {% if field.errors %}
+              <div class="text-danger small">{{ field.errors }}</div>
+              {% endif %}
+              {% if field.help_text %}
+              <small class="form-text text-muted">{{ field.help_text }}</small>
+              {% endif %}
+            </div>
+            {% endfor %}
+
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-check-circle me-1"></i>
+              {% if editing_wallet %}{% trans "Save Changes" %}{% else %}{% trans "Create Wallet" %}{% endif %}
+            </button>
+            {% if editing_wallet %}
+            <a href="{% url 'manage_wallets' %}" class="btn btn-outline-secondary">{% trans "Cancel" %}</a>
+            {% endif %}
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">{% trans "Your Wallets" %}</h5>
+
+          {% if wallets %}
+          <table class="table table-hover align-middle">
+            <thead>
+              <tr>
+                <th>{% trans "Name" %}</th>
+                <th>{% trans "Items" %}</th>
+                <th class="text-end">{% trans "Actions" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for wallet in wallets %}
+              <tr>
+                <td>
+                  <i class="bi {{ wallet.icon|default:'bi-wallet2' }} me-2" style="color: {{ wallet.color }};"></i>
+                  <a href="{% url 'show_items' %}?wallet={{ wallet.id }}&status=all">{{ wallet.name }}</a>
+                  {% if wallet.description %}
+                  <div class="small text-muted">{{ wallet.description }}</div>
+                  {% endif %}
+                </td>
+                <td>{{ wallet.item_count }}</td>
+                <td class="text-end">
+                  <a href="{% url 'edit_wallet' wallet_id=wallet.id %}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-pencil"></i>
+                  </a>
+                  <form method="POST" action="{% url 'delete_wallet' wallet_id=wallet.id %}" style="display:inline;"
+                        onsubmit="return confirm('{% trans "Delete this wallet? Items inside it are kept and become unassigned." %}');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="text-muted">{% trans "You haven't created any wallets yet." %}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock content %}
