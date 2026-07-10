@@ -100,6 +100,25 @@ Download a signed `.pkpass` for any item and add it to Apple Wallet.
   requires the operator's own Apple Developer Pass Type ID certificate
   plus Apple's WWDR intermediate certificate
 
+## Phase 9 — Web Push notifications ([`b8eb30e`](https://github.com/gregbtm/VoucherVault/commit/b8eb30e))
+
+A "Web Push" notification backend alongside ntfy/webhook/Apprise — real
+browser/OS push notifications, no third-party push relay required beyond
+the browser vendor's own service (Chrome/Firefox/Safari all speak the
+standard Push API).
+
+- New `WebPushSubscription` model — a user can have several (one per
+  browser/device); the backend delivers to all of them, unlike
+  ntfy/webhook which target one fixed destination per rule
+- "Enable Push Notifications on This Device" button on the notification
+  rules page registers a subscription via the browser's Push API
+- `push` / `notificationclick` handlers added to the PWA service worker
+- `python manage.py generate_vapid_keys` prints a ready-to-paste VAPID
+  key pair — no separate tool needed
+- Opt-in: the "Web Push" backend choice and subscribe button stay hidden
+  unless both `WEBPUSH_VAPID_PUBLIC_KEY` and `WEBPUSH_VAPID_PRIVATE_KEY`
+  are set
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
@@ -118,6 +137,9 @@ On top of everything documented in the README, this fork adds:
 | `PKPASS_TEAM_ID` | Your Apple Developer Team ID. Required if `PKPASS_CERT_PATH` is set. | `None` |
 | `PKPASS_PASS_TYPE_ID` | Your registered Pass Type ID. Required if `PKPASS_CERT_PATH` is set. | `None` |
 | `PKPASS_ORGANIZATION_NAME` | Organization name shown on the generated pass. | `VoucherVault` |
+| `WEBPUSH_VAPID_PUBLIC_KEY` | VAPID public key. Enables the Web Push backend when set along with the private key below. | `None` |
+| `WEBPUSH_VAPID_PRIVATE_KEY` | VAPID private key. Generate a pair with `python manage.py generate_vapid_keys`. | `None` |
+| `WEBPUSH_VAPID_CLAIMS_EMAIL` | Contact email sent to push services as the VAPID claim. | `mailto:admin@example.com` |
 
 See `docker/env.example` for the full, commented list.
 
