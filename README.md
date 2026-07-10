@@ -17,12 +17,15 @@
 
 > [!NOTE]
 > This is [gregbtm](https://github.com/gregbtm)'s fork of the upstream
-> [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault) project,
-> adding a REST API, Wallets/Tags, a notification rules engine (including
-> Web Push), import/export, an analytics dashboard, auto-fetched merchant
-> logos, AI-assisted OCR scanning of physical vouchers, and Apple Wallet
-> export.
-> See [`FORK_CHANGES.md`](FORK_CHANGES.md) for the full feature list, and
+> [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault) project.
+> Nine phases of additive features have been layered on top without
+> touching upstream's own code: a full **REST API**, **Wallets/Tags/Notes**,
+> a rules-based **notification engine** (ntfy, webhook, Apprise, and native
+> **Web Push**), bulk **Import/Export**, an **Analytics dashboard**,
+> **auto-fetched merchant logos**, an AI-assisted **"Scan with AI"** photo
+> capture, and **Apple Wallet export**.
+> See [`FORK_CHANGES.md`](FORK_CHANGES.md) for the full changelog, the
+> [Wiki](https://github.com/gregbtm/VoucherVault/wiki) for feature-by-feature guides, and
 > [`docs/UPGRADE.md`](docs/UPGRADE.md) if you're already running the
 > upstream Docker image and want to switch to this fork.
 
@@ -42,11 +45,19 @@
 - Multi-language support (English, German, French, Italian)
 - Single Sign-On (SSO) via OIDC
 - Database compatibility with SQLite3 and PostgreSQL
-- REST API endpoint with stats for Home Assisstant (HA) and other dashboards
 - Multi-currency support via free fixer.io API
-- AI-assisted "Scan with AI" photo capture that pre-fills the item form (Claude vision or local Tesseract OCR)
-- Apple Wallet export — download a signed `.pkpass` for any item (opt-in, requires your own Apple Developer certificate)
-- Web Push notifications — installable-PWA browser/device notifications for expiry rules, no third-party push service required (opt-in, requires VAPID keys)
+
+### 🚀 New in this fork
+
+- 🔌 **Full REST API** — token-authenticated CRUD for every item, wallet, tag and transaction, plus interactive Swagger/OpenAPI docs at `/api/v1/docs/`. Build your own Home Assistant dashboards, scripts, or integrations against it.
+- 🗂️ **Wallets, Tags & Notes** — group items into named wallets ("Travel", "Groceries"), label them with colour-coded tags, and jot a free-text note on any item.
+- 🔔 **Rules-based notification engine** — ntfy, generic webhooks, Apprise, and native browser **Web Push**, each configurable per item with its own expiry threshold and a full delivery log so you can see exactly what fired and when.
+- 📲 **Web Push notifications** — real browser/OS push alerts for expiring items straight from the installed PWA, no third-party relay required beyond the browser vendor's own push service (opt-in, requires VAPID keys — generate a pair with one command).
+- 📥 **Import & Export** — bulk-import your existing vault from a Catima CSV export or this app's own CSV/JSON, and export everything back out for backups or migration, processed in the background with per-row error reporting.
+- 📊 **Analytics dashboard** — KPI tiles, an expiry calendar heatmap, and a live "value at risk" figure so nothing quietly expires unnoticed.
+- 🏷️ **Auto-fetched merchant logos** — item cards get real brand logos automatically (fetched and cached in the background), so page loads never wait on a network call.
+- 🤖 **AI-assisted "Scan with AI"** — snap a photo of a physical voucher, coupon, or gift card and let Claude's vision model (or a fully local, free Tesseract OCR backend) pre-fill the redeem code, merchant, and expiry date for you.
+- 🍏 **Apple Wallet export** — download a signed `.pkpass` for any item and add it straight to Apple Wallet, built entirely in-process with no external signing service (opt-in, requires your own Apple Developer certificate).
 
 ## 📷 Screenshots
 
@@ -171,6 +182,24 @@ Therefore, by backing up this bind mount volume, all your application data is sa
 
 > [!WARNING]
 > Read the official [SQLite3 documentation](https://sqlite.org/backup.html) or [PostgreSQL documentation](https://www.postgresql.org/docs/current/backup.html) regarding backups.
+
+## 💛 About This Fork & Support
+
+All nine feature phases in this fork ([`FORK_CHANGES.md`](FORK_CHANGES.md)) were
+implemented with [Claude](https://claude.com/claude-code) — but every plan,
+feature scope, and priority behind them was mine, worked out phase by phase
+before a line of code was written. If there's something you'd like to see
+added — an integration, an export format, another notification backend —
+open an issue and I'm happy to help scope and build it out.
+
+If this fork has been useful to you, tips are always appreciated:
+
+<!-- TODO(gregbtm): replace with your PayPal.me link -->
+[![Donate via PayPal](https://img.shields.io/badge/Donate-PayPal-00457C.svg?logo=paypal&logoColor=white)](https://paypal.me/YOUR_PAYPAL_HERE)
+
+And don't forget the original upstream maintainer, whose project this fork is built on:
+
+<a href="https://www.buymeacoffee.com/LRVT" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" style="height: 41px !important;width: 174px !important;" ></a>
 
 ## 🤖 Repo Statistics
 ![Alt](https://repobeats.axiom.co/api/embed/a8e369506f50bb08a3295b495639d42f7e20d1ba.svg "Repobeats analytics image")
