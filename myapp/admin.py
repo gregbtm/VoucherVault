@@ -66,7 +66,19 @@ class UserPreferenceAdmin(admin.ModelAdmin):
     list_filter = ('show_issue_date', 'show_expiry_date', 'show_value', 'show_description')
     search_fields = ('user__username',)
 
+class WalletAdmin(admin.ModelAdmin):
+    list_display = ('name', 'user', 'created_at')
+    search_fields = ('name', 'user__username')
+    list_filter = ('user',)
+
+class TagAdmin(admin.ModelAdmin):
+    list_display = ('name', 'user', 'color')
+    search_fields = ('name', 'user__username')
+    list_filter = ('user',)
+
 admin.site.register(Item, ItemAdmin)
 admin.site.register(Transaction)
 admin.site.register(AppSettings, AppSettingsAdmin)
 admin.site.register(UserPreference, UserPreferenceAdmin)
+admin.site.register(Wallet, WalletAdmin)
+admin.site.register(Tag, TagAdmin)

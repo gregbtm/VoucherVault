@@ -3,6 +3,7 @@ import io
 import base64
 import os
 import json
+import logging
 import treepoem
 import unicodedata
 import mimetypes
@@ -24,10 +25,15 @@ from django.utils.translation import gettext_lazy as _
 from django.contrib import messages
 from django.utils.timezone import now
 from .decorators import require_authorization_header_with_api_token
+from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items_by_wallet
+from .merchant_logos import get_cached_logo, get_cached_logos_for_issuers
+from .tasks import fetch_merchant_logo_task
 from django.db.models import Count, Sum, Q, F, ExpressionWrapper, DecimalField
 from django.db.models.functions import Coalesce
 from django.db.models import Value
 from django.utils.text import get_valid_filename
+
+logger = logging.getLogger(__name__)
 
 apprise_txt = _('Apprise URLs were already configured. Will not display them again here to protect secrets. You can freely re-configure the URLs now and hit update though.')
 
@@ -77,6 +83,11 @@ def dashboard(request):
     fixer_api_key = preferences.fixer_api_key
     default_currency = preferences.default_currency or 'EUR'
 
+    # Get threshold days from environment variable or default to 30
+    threshold_days = int(os.getenv('EXPIRY_THRESHOLD_DAYS', 30))
+    # Calculate soon-to-expire date (used for both "soon expiring" count and at-risk value)
+    soon_expiry_date = now() + timedelta(days=threshold_days)
+
     # Calculate the current total value of available money-type items
     items = Item.objects.filter(user=user, is_used=False, value_type='money', expiry_date__gte=timezone.now())
     items = items.exclude(type='loyaltycard')
@@ -85,6 +96,7 @@ def dashboard(request):
 
     total_value = None
     total_currency = None
+    at_risk_value = None
     currency_conversion_failed = False
     needs_fixer_key = False
 
@@ -93,16 +105,22 @@ def dashboard(request):
             # All items share the same currency — sum directly
             single_currency = next(iter(currencies_used))
             total_value = 0
+            at_risk_value = 0
             for item in items:
                 transactions_sum = Transaction.objects.filter(item=item).aggregate(Sum('value'))['value__sum'] or 0
-                total_value += float(item.value) + float(transactions_sum)
+                item_value = float(item.value) + float(transactions_sum)
+                total_value += item_value
+                if item.expiry_date < soon_expiry_date.date():
+                    at_risk_value += item_value
             total_value = round(total_value, 2)
+            at_risk_value = round(at_risk_value, 2)
             total_currency = single_currency
         elif fixer_api_key:
             # Mixed currencies — convert all to default_currency via Fixer.io
             rates = get_fixer_rates(fixer_api_key)
             if rates:
                 total_value = 0
+                at_risk_value = 0
                 for item in items:
                     transactions_sum = Transaction.objects.filter(item=item).aggregate(Sum('value'))['value__sum'] or 0
                     item_value = float(item.value) + float(transactions_sum)
@@ -110,10 +128,14 @@ def dashboard(request):
                     if converted is None:
                         currency_conversion_failed = True
                         total_value = None
+                        at_risk_value = None
                         break
                     total_value += converted
+                    if item.expiry_date < soon_expiry_date.date():
+                        at_risk_value += converted
                 if total_value is not None:
                     total_value = round(total_value, 2)
+                    at_risk_value = round(at_risk_value, 2)
                 total_currency = default_currency
             else:
                 currency_conversion_failed = True
@@ -134,17 +156,15 @@ def dashboard(request):
         item__expiry_date__gte=now().date()
     ).exclude(item__user=user).values('item').distinct().count()
 
-    # Get threshold days from environment variable or default to 30
-    threshold_days = int(os.getenv('EXPIRY_THRESHOLD_DAYS', 30))
-    # Calculate soon-to-expire date
-    soon_expiry_date = now() + timedelta(days=threshold_days)
     # Count the number of items soon expiring based on EXPIRY_THRESHOLD_DAYS
     soon_expiring_items = Item.objects.filter(
-        user=user, 
+        user=user,
         is_used=False,
-        expiry_date__gte=now(), 
+        expiry_date__gte=now(),
         expiry_date__lt=soon_expiry_date
     ).count()
+
+    items_by_wallet = get_items_by_wallet(user)
 
     context = {
         'total_items': total_items,
@@ -152,6 +172,7 @@ def dashboard(request):
         'used_items': used_items,
         'total_value': total_value,
         'total_currency': total_currency,
+        'at_risk_value': at_risk_value,
         'needs_fixer_key': needs_fixer_key,
         'currency_conversion_failed': currency_conversion_failed,
         'coupons_count': coupons_count,
@@ -160,6 +181,10 @@ def dashboard(request):
         'loyaltycards_count':loyaltycards_count,
         'expired_items': expired_items,
         "soon_expiring_items": soon_expiring_items,
+        'items_by_wallet': items_by_wallet,
+        'wallet_chart_height': max(200, len(items_by_wallet) * 40 + 60),
+        'expiring_soon_list': get_expiring_soon_items(user),
+        'expiry_calendar': build_expiry_calendar(user),
         'shared_items_count_by_you': shared_items_count_by_you,
         'shared_items_count_with_you': shared_items_count_with_you,
     }
@@ -172,6 +197,7 @@ def show_items(request):
     item_type = request.GET.get('type')
     filter_value = request.GET.get('status', 'available')  # Get the combined filter value
     search_query = request.GET.get('query', '')
+    wallet_id = request.GET.get('wallet')
 
     # Retrieve or create user preferences (only once)
     preferences, _ = UserPreference.objects.get_or_create(user=user)
@@ -226,6 +252,10 @@ def show_items(request):
     if item_type:
         items = items.filter(type=item_type)
 
+    # Apply the wallet filter if provided
+    if wallet_id:
+        items = items.filter(wallet_id=wallet_id)
+
     # Apply search query filter if provided
     if search_query:
         items = items.filter(
@@ -241,11 +271,12 @@ def show_items(request):
     order_prefix = '-' if sort_order == 'desc' else ''
     
     # Apply sorting - pinned items first, then by user preference
-    items = items.order_by('-is_pinned', f'{order_prefix}{sort_by}')
+    items = items.select_related('wallet').prefetch_related('tags').order_by('-is_pinned', f'{order_prefix}{sort_by}')
 
     items_with_qr = []
+    merchant_logos = get_cached_logos_for_issuers(i.issuer for i in items)
 
-    for item in items:       
+    for item in items:
         # Calculate current value
         transactions_sum = Transaction.objects.filter(item=item).aggregate(Sum('value'))['value__sum'] or 0
         current_value = item.value + transactions_sum
@@ -254,6 +285,7 @@ def show_items(request):
             'item': item,
             'qr_code_base64': item.qr_code_base64,
             'current_value': current_value,
+            'merchant_logo_url': merchant_logos.get(item.issuer.strip().lower()),
         })
 
     context = {
@@ -274,6 +306,9 @@ def show_items(request):
         'coupon_count': coupon_count,
         'loyaltycard_count': loyaltycard_count,
         'all_types_count': available_count,
+        # Wallet filter
+        'wallets': Wallet.objects.filter(user=user).annotate(item_count=Count('items')),
+        'selected_wallet_id': int(wallet_id) if wallet_id and wallet_id.isdigit() else None,
     }
     return render(request, 'inventory.html', context)
 
@@ -317,6 +352,8 @@ def view_item(request, item_uuid):
     else:
         form = TransactionForm(item=item)
     
+    cached_merchant = get_cached_logo(item.issuer)
+
     context = {
         'item': item,
         'transactions': transactions,
@@ -326,13 +363,14 @@ def view_item(request, item_uuid):
         'current_date': timezone.now(),
         'is_owner': is_owner,  # Pass the owner flag to the template
         'is_shared': is_shared,  # Pass the shared status to the template
+        'merchant_logo_url': cached_merchant.logo_url if cached_merchant else None,
     }
     return render(request, 'view-item.html', context)
 
 @login_required
 def create_item(request):
     if request.method == 'POST':
-        form = ItemForm(request.POST, request.FILES)
+        form = ItemForm(request.POST, request.FILES, user=request.user)
         if form.is_valid():
             item = form.save(commit=False)
             item.user = request.user  # Set the user from the session
@@ -360,6 +398,10 @@ def create_item(request):
                 item.qr_code_base64 = base64.b64encode(buffer.getvalue()).decode()
                 item.file = None
                 item.save()  # Save the item after generating the barcode
+                form.save_m2m()  # Persist the selected tags (Item is now saved)
+                for tag_name in form.cleaned_data.get('new_tags', []):
+                    tag, _ = Tag.objects.get_or_create(user=request.user, name=tag_name)
+                    item.tags.add(tag)
             except Exception as e:
                 # Print the error for debugging and add a user-friendly error to the form
                 form.add_error(None, f'Failed to generate barcode. Error: {str(e)}')
@@ -379,6 +421,13 @@ def create_item(request):
                 relative_path = os.path.join(user_folder, file_name)
                 item.file.save(relative_path, file)
 
+            if item.issuer:
+                try:
+                    fetch_merchant_logo_task.delay(item.issuer)
+                except Exception:
+                    # Best-effort: a broker outage shouldn't block saving the item.
+                    logger.warning('Could not queue merchant logo fetch for %r', item.issuer, exc_info=True)
+
             return redirect('show_items')
         else:
             # If form is not valid, render the form with validation errors
@@ -386,7 +435,7 @@ def create_item(request):
     else:
         # If not a POST request, initialize form with user's preferred currency
         preferences, _ = UserPreference.objects.get_or_create(user=request.user)
-        form = ItemForm(initial={'currency': preferences.default_currency or 'EUR'})
+        form = ItemForm(initial={'currency': preferences.default_currency or 'EUR'}, user=request.user)
 
     return render(request, 'create-item.html', {'form': form})
 
@@ -398,7 +447,7 @@ def edit_item(request, item_uuid):
     old_file_path = item.file.path if item.file else None  # Store the old file path
 
     if request.method == 'POST':
-        form = ItemForm(request.POST, request.FILES, instance=item)
+        form = ItemForm(request.POST, request.FILES, instance=item, user=request.user)
         if form.is_valid():
             item = form.save(commit=False)
 
@@ -447,10 +496,22 @@ def edit_item(request, item_uuid):
 
                 item.file.save(relative_path, file)
 
-            item.save()    
+            item.save()
+            form.save_m2m()  # Persist the selected tags
+            for tag_name in form.cleaned_data.get('new_tags', []):
+                tag, _ = Tag.objects.get_or_create(user=request.user, name=tag_name)
+                item.tags.add(tag)
+
+            if item.issuer:
+                try:
+                    fetch_merchant_logo_task.delay(item.issuer)
+                except Exception:
+                    # Best-effort: a broker outage shouldn't block saving the item.
+                    logger.warning('Could not queue merchant logo fetch for %r', item.issuer, exc_info=True)
+
             return redirect('view_item', item_uuid=item.id)
     else:
-        form = ItemForm(instance=item)
+        form = ItemForm(instance=item, user=request.user)
 
     return render(request, 'edit-item.html', {'form': form, 'item': item})
 
@@ -944,8 +1005,92 @@ def toggle_view_mode(request):
     preferences, _ = UserPreference.objects.get_or_create(user=request.user)
     preferences.view_mode = 'standard' if preferences.view_mode == 'compact' else 'compact'
     preferences.save()
-    
+
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({'success': True, 'view_mode': preferences.view_mode})
-    
+
     return redirect('show_items')
+
+# --- Wallets ---
+
+@login_required
+def manage_wallets(request):
+    """List, create wallets. Editing/deleting happens inline via the same page."""
+    if request.method == 'POST':
+        form = WalletForm(request.POST, user=request.user)
+        if form.is_valid():
+            wallet = form.save(commit=False)
+            wallet.user = request.user
+            wallet.save()
+            messages.success(request, _('Wallet created successfully!'))
+            return redirect('manage_wallets')
+    else:
+        form = WalletForm(user=request.user)
+
+    wallets = Wallet.objects.filter(user=request.user).annotate(item_count=Count('items'))
+    return render(request, 'manage-wallets.html', {'form': form, 'wallets': wallets})
+
+@login_required
+def edit_wallet(request, wallet_id):
+    wallet = get_object_or_404(Wallet, id=wallet_id, user=request.user)
+    if request.method == 'POST':
+        form = WalletForm(request.POST, instance=wallet, user=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, _('Wallet updated successfully!'))
+            return redirect('manage_wallets')
+    else:
+        form = WalletForm(instance=wallet, user=request.user)
+
+    wallets = Wallet.objects.filter(user=request.user).annotate(item_count=Count('items'))
+    return render(request, 'manage-wallets.html', {'form': form, 'wallets': wallets, 'editing_wallet': wallet})
+
+@require_POST
+@login_required
+def delete_wallet(request, wallet_id):
+    wallet = get_object_or_404(Wallet, id=wallet_id, user=request.user)
+    wallet.delete()  # Items in this wallet are kept; their `wallet` FK is set to NULL.
+    messages.success(request, _('Wallet deleted. Its items were kept and unassigned from any wallet.'))
+    return redirect('manage_wallets')
+
+# --- Tags ---
+
+@login_required
+def manage_tags(request):
+    """List, create tags. Editing/deleting happens inline via the same page."""
+    if request.method == 'POST':
+        form = TagForm(request.POST, user=request.user)
+        if form.is_valid():
+            tag = form.save(commit=False)
+            tag.user = request.user
+            tag.save()
+            messages.success(request, _('Tag created successfully!'))
+            return redirect('manage_tags')
+    else:
+        form = TagForm(user=request.user)
+
+    tags = Tag.objects.filter(user=request.user).annotate(item_count=Count('items'))
+    return render(request, 'manage-tags.html', {'form': form, 'tags': tags})
+
+@login_required
+def edit_tag(request, tag_id):
+    tag = get_object_or_404(Tag, id=tag_id, user=request.user)
+    if request.method == 'POST':
+        form = TagForm(request.POST, instance=tag, user=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, _('Tag updated successfully!'))
+            return redirect('manage_tags')
+    else:
+        form = TagForm(instance=tag, user=request.user)
+
+    tags = Tag.objects.filter(user=request.user).annotate(item_count=Count('items'))
+    return render(request, 'manage-tags.html', {'form': form, 'tags': tags, 'editing_tag': tag})
+
+@require_POST
+@login_required
+def delete_tag(request, tag_id):
+    tag = get_object_or_404(Tag, id=tag_id, user=request.user)
+    tag.delete()  # Items keep existing; only the tag association is removed.
+    messages.success(request, _('Tag deleted successfully!'))
+    return redirect('manage_tags')

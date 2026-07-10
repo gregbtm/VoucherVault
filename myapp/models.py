@@ -68,6 +68,78 @@ class UserPreference(models.Model):
     fixer_api_key = models.CharField(max_length=64, blank=True, null=True, default=None)
     default_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='EUR')
 
+class Wallet(models.Model):
+    """
+    User-defined folder for grouping items (e.g. "Supermarkets", "Travel").
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='wallets')
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    icon = models.CharField(max_length=50, blank=True, default='bi-wallet2')
+    color = models.CharField(
+        max_length=20,
+        blank=True,
+        default='#4154f1',
+        validators=[RegexValidator(regex=r'^#(?:[0-9a-fA-F]{3}){1,2}$', message='Enter a valid hex color.')],
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        unique_together = ('user', 'name')
+
+    def __str__(self):
+        return self.name
+
+
+class Tag(models.Model):
+    """
+    Freeform, per-user label that can be attached to multiple items.
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='tags')
+    name = models.CharField(max_length=50)
+    color = models.CharField(
+        max_length=20,
+        default='#6b7280',
+        validators=[RegexValidator(regex=r'^#(?:[0-9a-fA-F]{3}){1,2}$', message='Enter a valid hex color.')],
+    )
+
+    class Meta:
+        ordering = ['name']
+        unique_together = ('user', 'name')
+
+    def __str__(self):
+        return self.name
+
+
+class MerchantProfile(models.Model):
+    """
+    Cached merchant metadata (logo, domain, brand colour), looked up by
+    Item.issuer (case-insensitive). Shared across all users — fetched once
+    from an external logo service, reused thereafter — so this is a global
+    cache table, not scoped to a user. No FK from Item: `issuer` is
+    freeform text the user already types, so the cache is looked up by
+    normalized name at display/serialization time instead of requiring a
+    relation to stay in sync with it.
+    """
+    name = models.CharField(max_length=200, unique=True)
+    domain = models.CharField(max_length=200, blank=True)
+    logo_url = models.URLField(blank=True)
+    brand_color = models.CharField(
+        max_length=20,
+        blank=True,
+        validators=[RegexValidator(regex=r'^#(?:[0-9a-fA-F]{3}){1,2}$', message='Enter a valid hex color.')],
+    )
+    fetched_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 class Item(models.Model):
     ITEM_TYPES = (
         ('voucher', 'Voucher'),
@@ -108,6 +180,21 @@ class Item(models.Model):
     )
     is_pinned = models.BooleanField(default=False)
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='EUR')
+    wallet = models.ForeignKey(
+        Wallet, on_delete=models.SET_NULL, null=True, blank=True, related_name='items'
+    )
+    tags = models.ManyToManyField(Tag, blank=True, related_name='items')
+    notes = models.TextField(blank=True, help_text="Redemption instructions, terms, etc.")
+    notify_days_before = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Override the global expiry notification threshold for this item (in days)."
+    )
+    SOURCE_CHOICES = (
+        ('manual', 'Manual'),
+        ('csv_import', 'CSV Import'),
+        ('api', 'API'),
+    )
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='manual')
 
     def __str__(self):
         return self.name

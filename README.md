@@ -15,6 +15,15 @@
     <a href="https://www.buymeacoffee.com/LRVT" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" style="height: 41px !important;width: 174px !important;box-shadow: 0px 3px 2px 0px rgba(190, 190, 190, 0.5) !important;-webkit-box-shadow: 0px 3px 2px 0px rgba(190, 190, 190, 0.5) !important;" ></a>
 </div>
 
+> [!NOTE]
+> This is [gregbtm](https://github.com/gregbtm)'s fork of the upstream
+> [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault) project,
+> adding a REST API, Wallets/Tags, a notification rules engine,
+> import/export, an analytics dashboard, and auto-fetched merchant logos.
+> See [`FORK_CHANGES.md`](FORK_CHANGES.md) for the full feature list, and
+> [`docs/UPGRADE.md`](docs/UPGRADE.md) if you're already running the
+> upstream Docker image and want to switch to this fork.
+
 ## ⭐ Features
 
 - User-friendly, mobile-optimized web portal with PWA support
@@ -110,6 +119,8 @@ The docker container takes various environment variables:
 | `CELERY_WORKER_CONCURRENCY`           | Celery worker concurrency.                                                                                 | `1`                        | Optional            |
 | `CELERY_WORKER_PREFETCH_MULTIPLIER`   | Celery worker prefetch multiplier.                                                                         | `1`                        | Optional            |
 | `DEBUG`                           | Enable HTTP debug logging.                                                                                     | `False`                    | Optional            |
+| `NTFY_DEFAULT_SERVER`             | Default ntfy server pre-filled when a user creates a new ntfy notification rule.                               | `https://ntfy.sh`          | Optional            |
+| `MERCHANT_LOGOS_ENABLED`          | Set to `False` to disable auto-fetching merchant logos on item cards.                                          | `True`                     | Optional            |
 
 You can find detailed instructions on how to setup OIDC SSO in the [wiki](https://github.com/l4rm4nd/VoucherVault/wiki/02-%E2%80%90-Authentication#oidc-authentication).
 

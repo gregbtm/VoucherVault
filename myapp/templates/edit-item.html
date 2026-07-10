@@ -739,17 +739,72 @@ body.dark-mode .error-alert {
             </div>
           </div>
           
+          <!-- Organization Section -->
+          <div class="form-section">
+            <div class="form-section-title">
+              <i class="bi bi-folder2-open"></i>
+              {% trans "Organization" %}
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="wallet">{% trans "Wallet" %}</label>
+              <select class="modern-select" id="wallet" name="wallet">
+                <option value="">{% trans "No Wallet" %}</option>
+                {% for wallet in form.fields.wallet.queryset %}
+                <option value="{{ wallet.id }}" {% if item.wallet_id == wallet.id %}selected{% endif %}>{{ wallet.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            {% if form.fields.tags.queryset %}
+            <div class="form-group">
+              <label class="form-label">{% trans "Tags" %}</label>
+              <div style="display: flex; flex-wrap: wrap; gap: 0.6rem;">
+                {% for tag in form.fields.tags.queryset %}
+                <label style="display: flex; align-items: center; gap: 0.3rem; font-weight: normal;">
+                  <input type="checkbox" name="tags" value="{{ tag.id }}"
+                         {% if tag in item.tags.all %}checked{% endif %}>
+                  {{ tag.name }}
+                </label>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+
+            <div class="form-group">
+              <label class="form-label" for="new_tags">{% trans "New Tags" %}</label>
+              <input type="text" class="modern-input" id="new_tags" name="new_tags"
+                     placeholder="{% trans 'e.g. groceries, discount' %}">
+              <small class="form-text text-muted">{{ form.new_tags.help_text }}</small>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="notes">{% trans "Notes" %}</label>
+              <textarea class="modern-textarea" id="notes" name="notes"
+                        placeholder="{% trans 'Redemption instructions, terms, etc.' %}"
+                        rows="3">{{ item.notes }}</textarea>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="notify_days_before">{% trans "Notify Me Before Expiry" %}</label>
+              <input type="number" class="modern-input" id="notify_days_before" name="notify_days_before"
+                     placeholder="{% trans 'Use global default' %}" min="0"
+                     value="{{ item.notify_days_before|default_if_none:'' }}">
+              <small class="form-text text-muted">{% trans "Days before expiry to notify, overriding the global default. Leave blank to use the global setting." %}</small>
+            </div>
+          </div>
+
           <!-- Additional Info Section -->
           <div class="form-section">
             <div class="form-section-title">
               <i class="bi bi-card-text"></i>
               {% trans "Additional Information" %}
             </div>
-            
+
             <div class="form-group">
               <label class="form-label" for="description">{% trans "Description" %}</label>
-              <textarea class="modern-textarea" id="description" name="description" 
-                        placeholder="{% trans 'The description of the item' %}" 
+              <textarea class="modern-textarea" id="description" name="description"
+                        placeholder="{% trans 'The description of the item' %}"
                         rows="3">{{ item.description }}</textarea>
             </div>
             

@@ -1,5 +1,6 @@
 # ignore virtual environment folder
 venv/
+.venv/
 
 # ignore secret .env
 **.env**
@@ -21,6 +22,7 @@ venv/
 
 # ignore file uploads
 database/uploads/
+database/imports/
 
 # ignore signed licenses
 **license.txt

@@ -22,11 +22,14 @@ from django.conf.urls.i18n import i18n_patterns
 urlpatterns = i18n_patterns(
     path('admin/', admin.site.urls),
     path("", include("myapp.urls")),
+    path('notifications/', include('notify.urls')),
+    path('import-export/', include('imports.urls')),
     path('accounts/', include('django.contrib.auth.urls')),
     path("i18n/", include("django.conf.urls.i18n")),
 )
 
 urlpatterns.append(path("", include("pwa.urls")))
+urlpatterns.append(path("api/v1/", include("api.urls")))
 
 # Conditionally include OIDC URLs if OIDC_ENABLED is False
 if not settings.OIDC_ENABLED:

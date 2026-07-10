@@ -17,6 +17,15 @@ apprise==1.9.9
 treepoem==3.28.0
 mozilla-django-oidc==5.0.2
 
+# API
+djangorestframework==3.15.2
+django-filter==24.3
+drf-spectacular==0.27.2
+drf-spectacular-sidecar==2024.7.1
+
+# NOTIFICATIONS
+requests==2.34.2
+
 # TASKS
 celery[redis]
 django-celery-beat==2.9.0

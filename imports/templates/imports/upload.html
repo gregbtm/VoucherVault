@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{% trans "Import / Export" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "Import / Export" %}</li>
+    </ol>
+  </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+  <div class="row">
+    <div class="col-lg-5">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">{% trans "Import Items" %}</h5>
+
+          <form method="POST" enctype="multipart/form-data" action="{% url 'upload_import' %}">
+            {% csrf_token %}
+
+            <div class="mb-3">
+              <label for="source_type" class="form-label">{% trans "Format" %}</label>
+              <select class="form-select" id="source_type" name="source_type" required>
+                <option value="catima_csv">{% trans "Catima CSV export" %}</option>
+                <option value="native_csv">{% trans "VoucherVault CSV backup" %}</option>
+                <option value="native_json">{% trans "VoucherVault JSON backup" %}</option>
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label for="file" class="form-label">{% trans "File" %}</label>
+              <input type="file" class="form-control" id="file" name="file" accept=".csv,.json" required>
+              <small class="form-text text-muted">{% trans "Max 10MB." %}</small>
+            </div>
+
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-upload me-1"></i>{% trans "Start Import" %}
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card mt-3">
+        <div class="card-body">
+          <h5 class="card-title">{% trans "Export / Backup" %}</h5>
+          <p class="text-muted small">{% trans "Download all your items. Both formats can be re-imported above for a full backup/restore round trip." %}</p>
+          <a href="{% url 'export_csv' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-filetype-csv me-1"></i>{% trans "Download CSV" %}
+          </a>
+          <a href="{% url 'export_json' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-filetype-json me-1"></i>{% trans "Download JSON" %}
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">{% trans "Recent Import Jobs" %}</h5>
+
+          {% if jobs %}
+          <table class="table table-hover align-middle">
+            <thead>
+              <tr>
+                <th>{% trans "Started" %}</th>
+                <th>{% trans "Format" %}</th>
+                <th>{% trans "Status" %}</th>
+                <th>{% trans "Imported" %}</th>
+                <th>{% trans "Errors" %}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for job in jobs %}
+              <tr>
+                <td><small>{{ job.created_at|date:"Y-m-d H:i" }}</small></td>
+                <td>{{ job.get_source_type_display }}</td>
+                <td>
+                  {% if job.status == 'complete' %}
+                  <span class="badge bg-success">{% trans "Complete" %}</span>
+                  {% elif job.status == 'failed' %}
+                  <span class="badge bg-danger">{% trans "Failed" %}</span>
+                  {% elif job.status == 'processing' %}
+                  <span class="badge bg-info">{% trans "Processing" %}</span>
+                  {% else %}
+                  <span class="badge bg-secondary">{% trans "Pending" %}</span>
+                  {% endif %}
+                </td>
+                <td>{{ job.imported_count }}</td>
+                <td>{{ job.error_count }}</td>
+                <td><a href="{% url 'import_job_status' job_id=job.id %}" class="btn btn-sm btn-outline-primary">{% trans "Details" %}</a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="text-muted">{% trans "No imports yet." %}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock content %}

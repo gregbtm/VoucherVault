@@ -92,7 +92,7 @@ CONTENT_SECURITY_POLICY = {
         "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
         "font-src": ["'self'", "https://fonts.googleapis.com", "https://fonts.gstatic.com"],
-        "img-src": ["'self'", "data:", "https://img.logo.dev"],
+        "img-src": ["'self'", "data:", "https://img.logo.dev", "https://logo.clearbit.com", "https://www.google.com"],
         "manifest-src": ["'self'"],
         "worker-src": ["'self'"],
         "object-src": ["'none'"],
@@ -104,6 +104,9 @@ CONTENT_SECURITY_POLICY = {
 # Application definition
 INSTALLED_APPS = [
     'myapp',
+    'api',
+    'notify',
+    'imports',
     'django_celery_beat',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -113,6 +116,11 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'csp',
     'pwa',
+    'rest_framework',
+    'rest_framework.authtoken',
+    'django_filters',
+    'drf_spectacular',
+    'drf_spectacular_sidecar',
 ]
 
 MIDDLEWARE = [
@@ -140,6 +148,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'myapp.context_processors.sidebar_wallets',
             ],
         },
     },
@@ -198,7 +207,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Internationalization
 # https://docs.djangoproject.com/en/3.2/topics/i18n/
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'en'
 TIME_ZONE = os.environ.get('TZ', 'Europe/Berlin')
 USE_I18N = True
 USE_L10N = True
@@ -285,6 +294,32 @@ PWA_APP_ICONS_APPLE = [
     },
 ]
 PWA_SERVICE_WORKER_PATH = os.path.join(BASE_DIR, 'myapp', 'serviceworker.js')
+
+# REST API (token + session auth; every queryset in `api/` is scoped to
+# request.user, see api/views.py). Swagger/OpenAPI assets are served from the
+# sidecar package (no CDN) so they work under the strict CSP above and in
+# fully offline/self-hosted deployments.
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 25,
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'VoucherVault API',
+    'DESCRIPTION': 'REST API for managing vouchers, gift cards, coupons and loyalty cards.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'SWAGGER_UI_DIST': 'SIDECAR',
+    'SWAGGER_UI_FAVICON_HREF': 'SIDECAR',
+}
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{% trans "Notification Log" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'manage_notification_rules' %}">{% trans "Notification Rules" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "Log" %}</li>
+    </ol>
+  </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+  <div class="card">
+    <div class="card-body">
+      {% if logs %}
+      <table class="table table-hover align-middle">
+        <thead>
+          <tr>
+            <th>{% trans "When" %}</th>
+            <th>{% trans "Event" %}</th>
+            <th>{% trans "Rule" %}</th>
+            <th>{% trans "Item" %}</th>
+            <th>{% trans "Status" %}</th>
+            <th>{% trans "Detail" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in logs %}
+          <tr>
+            <td><small>{{ log.sent_at|date:"Y-m-d H:i" }}</small></td>
+            <td>{{ log.event_type }}</td>
+            <td>{{ log.rule.name|default:"—" }}</td>
+            <td>
+              {% if log.item %}
+              <a href="{% url 'view_item' item_uuid=log.item.id %}">{{ log.item.name }}</a>
+              {% else %}
+              —
+              {% endif %}
+            </td>
+            <td>
+              {% if log.success %}
+              <span class="badge bg-success">{% trans "Sent" %}</span>
+              {% else %}
+              <span class="badge bg-danger">{% trans "Failed" %}</span>
+              {% endif %}
+            </td>
+            <td><small class="text-muted">{{ log.detail|truncatechars:80 }}</small></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="text-muted">{% trans "No notifications have been sent yet." %}</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock content %}

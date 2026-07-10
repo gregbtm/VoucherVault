@@ -3,6 +3,10 @@ import urllib.request
 import urllib.error
 import json
 import logging
+import io
+import base64
+import qrcode
+import treepoem
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +35,46 @@ def get_fixer_rates(api_key):
     except (urllib.error.URLError, Exception) as exc:
         logger.warning("Fixer.io request failed: %s", exc)
         return None
+
+
+def _calculate_ean13_check_digit(code):
+    sum_odd = sum(int(code[i]) for i in range(0, 12, 2))
+    sum_even = sum(int(code[i]) for i in range(1, 12, 2))
+    checksum = (sum_odd + 3 * sum_even) % 10
+    return (10 - checksum) % 10
+
+
+def _is_valid_ean13(code):
+    if len(code) != 13 or not code.isdigit():
+        return False
+    return int(code[-1]) == _calculate_ean13_check_digit(code)
+
+
+def generate_code_image_base64(item):
+    """
+    Renders the QR code / barcode image for an Item's redeem_code and
+    returns (base64_string, resolved_code_type). Mirrors the logic used
+    by the create-item/edit-item web views so items created through any
+    entry point (form or API) get a consistent code image.
+    """
+    if item.code_type != "qrcode" and _is_valid_ean13(item.redeem_code):
+        code_type = "ean13"
+    else:
+        code_type = item.code_type
+
+    buffer = io.BytesIO()
+    if code_type == "qrcode":
+        qr = qrcode.make(item.redeem_code)
+        qr.save(buffer)
+    else:
+        barcode = treepoem.generate_barcode(
+            barcode_type=code_type,
+            data=item.redeem_code,
+            scale=2
+        )
+        barcode.save(buffer, 'PNG')
+
+    return base64.b64encode(buffer.getvalue()).decode(), code_type
 
 
 def convert_currency(amount, from_currency, to_currency, rates):

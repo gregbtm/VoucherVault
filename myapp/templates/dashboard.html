@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% load i18n %}
 {% load static %}
+{% load extras %}
 
 {% block content %}
 
@@ -411,6 +412,172 @@ body.dark-mode .stat-card.total-value .stat-card-icon {
     font-size: 1rem;
   }
 }
+
+/* At-Risk Value Card (status colour: warning, not decorative) */
+.value-display.at-risk {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3);
+}
+
+body.dark-mode .value-display.at-risk {
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+}
+
+/* Expiring Soon List */
+.expiring-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.expiring-list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: var(--card-bg, #fff);
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  text-decoration: none;
+  transition: transform 0.2s ease;
+}
+
+.expiring-list-item:hover {
+  transform: translateY(-2px);
+}
+
+.expiring-list-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  color: #fff;
+}
+
+.expiring-list-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.expiring-list-name {
+  font-weight: 600;
+  color: var(--text-color, #212529);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.expiring-list-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted, #6c757d);
+}
+
+.expiring-list-days {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.expiring-list-days.urgent {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.expiring-list-days.warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+body.dark-mode .expiring-list-item {
+  background: var(--card-bg, #1e1e1e);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+
+body.dark-mode .expiring-list-name {
+  color: #e0e0e0;
+}
+
+/* Expiry Calendar — sequential single-hue magnitude encoding (amber, light -> dark) */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+}
+
+.calendar-month-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-color, #212529);
+  margin-bottom: 0.6rem;
+  text-align: center;
+}
+
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.calendar-weekdays span {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted, #6c757d);
+  text-align: center;
+}
+
+.calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  color: var(--text-color, #212529);
+  background: var(--border-color, #f1f3f5);
+  position: relative;
+}
+
+.calendar-day.empty {
+  background: transparent;
+}
+
+.calendar-day.is-past {
+  opacity: 0.4;
+}
+
+.calendar-day.is-today {
+  box-shadow: 0 0 0 2px var(--primary-color, #4154f1) inset;
+  font-weight: 700;
+}
+
+.calendar-day.level-1 { background: rgba(245, 158, 11, 0.25); }
+.calendar-day.level-2 { background: rgba(245, 158, 11, 0.5); }
+.calendar-day.level-3 { background: rgba(245, 158, 11, 0.75); color: #fff; }
+.calendar-day.level-4 { background: #d97706; color: #fff; }
+
+body.dark-mode .calendar-day {
+  background: #2a2a2a;
+  color: #e0e0e0;
+}
+
+body.dark-mode .calendar-month-label {
+  color: #e0e0e0;
+}
 </style>
 
 <div class="dashboard-container">
@@ -522,6 +689,93 @@ body.dark-mode .stat-card.total-value .stat-card-icon {
         </div>
       </div>
 
+      <!-- Expiring in 7 Days -->
+      <div class="dashboard-section">
+        <div class="section-header">
+          <i class="bi bi-alarm"></i>
+          <h2>{% trans "Expiring in 7 Days" %}</h2>
+        </div>
+        {% if expiring_soon_list %}
+        <div class="expiring-list">
+          {% for item in expiring_soon_list %}
+          <a href="{% url 'view_item' item_uuid=item.id %}" class="expiring-list-item">
+            <div class="expiring-list-icon" style="background-color: {{ item.wallet.color|default:'#4154f1' }};">
+              {% if item.type == 'voucher' %}
+              <i class="bi bi-ticket-perforated"></i>
+              {% elif item.type == 'giftcard' %}
+              <i class="bi bi-gift"></i>
+              {% elif item.type == 'coupon' %}
+              <i class="bi bi-percent"></i>
+              {% else %}
+              <i class="bi bi-star"></i>
+              {% endif %}
+            </div>
+            <div class="expiring-list-content">
+              <div class="expiring-list-name">{{ item.name }}</div>
+              <div class="expiring-list-meta">
+                {{ item.issuer }}{% if item.wallet %} &middot; {{ item.wallet.name }}{% endif %}
+              </div>
+            </div>
+            <span class="expiring-list-days {% if item.days_left <= 2 %}urgent{% else %}warning{% endif %}">
+              {% if item.days_left <= 0 %}{% trans "Today" %}{% else %}{% blocktrans count counter=item.days_left %}{{ counter }}d{% plural %}{{ counter }}d{% endblocktrans %}{% endif %}
+            </span>
+          </a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-chart">
+          <i class="bi bi-check-circle"></i>
+          <p>{% trans "Nothing expiring in the next 7 days." %}</p>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Expiry Calendar -->
+      <div class="dashboard-section">
+        <div class="section-header">
+          <i class="bi bi-calendar-week"></i>
+          <h2>{% trans "Expiry Calendar" %}</h2>
+        </div>
+        <div class="calendar-grid">
+          {% for month in expiry_calendar %}
+          <div class="calendar-month">
+            <div class="calendar-month-label">{{ month.label }}</div>
+            <div class="calendar-weekdays">
+              <span>{% trans "Mo" %}</span><span>{% trans "Tu" %}</span><span>{% trans "We" %}</span>
+              <span>{% trans "Th" %}</span><span>{% trans "Fr" %}</span><span>{% trans "Sa" %}</span><span>{% trans "Su" %}</span>
+            </div>
+            {% for week in month.weeks %}
+            <div class="calendar-days">
+              {% for day in week %}
+              {% if day %}
+              <div class="calendar-day {% if day.is_today %}is-today{% elif day.is_past %}is-past{% endif %} level-{{ day.count|heat_level }}"
+                   {% if day.count %}title="{% blocktrans count counter=day.count %}{{ counter }} item expires{% plural %}{{ counter }} items expire{% endblocktrans %}"{% endif %}>
+                {{ day.day }}
+              </div>
+              {% else %}
+              <div class="calendar-day empty"></div>
+              {% endif %}
+              {% endfor %}
+            </div>
+            {% endfor %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Items by Wallet -->
+      {% if items_by_wallet %}
+      <div class="dashboard-section">
+        <div class="section-header">
+          <i class="bi bi-bar-chart-line"></i>
+          <h2>{% trans "Items by Wallet" %}</h2>
+        </div>
+        <div class="chart-card">
+          <div id="walletChart" style="height: {{ wallet_chart_height }}px;"></div>
+        </div>
+      </div>
+      {% endif %}
+
       <!-- Shared Items Section -->
       <div class="dashboard-section">
         <div class="section-header">
@@ -599,6 +853,24 @@ body.dark-mode .stat-card.total-value .stat-card-icon {
         </div>
       </div>
 
+      <!-- At-Risk Value Card -->
+      {% if soon_expiring_items > 0 %}
+      <div class="value-display at-risk">
+        <div class="value-display-label">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          {% trans "At-Risk Value" %}
+        </div>
+        {% if at_risk_value is not None %}
+        <div class="value-display-value">{{ at_risk_value|floatformat:2 }} {{ total_currency }}</div>
+        {% else %}
+        <div class="value-display-value" style="font-size:1.1rem; opacity:0.85;">—</div>
+        {% endif %}
+        <div class="value-display-subtitle">
+          {% blocktrans count counter=soon_expiring_items %}{{ counter }} item expiring soon{% plural %}{{ counter }} items expiring soon{% endblocktrans %}
+        </div>
+      </div>
+      {% endif %}
+
       <!-- Item Distribution Chart -->
       <div class="chart-card">
         <div class="chart-card-header">
@@ -622,7 +894,7 @@ body.dark-mode .stat-card.total-value .stat-card-icon {
   </div>
 </div>
 
-{% if giftcards_count or coupons_count or vouchers_count or loyaltycards_count %}
+{% if giftcards_count or coupons_count or vouchers_count or loyaltycards_count or items_by_wallet %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const setChartOptions = (isDarkMode) => {
@@ -712,25 +984,91 @@ document.addEventListener('DOMContentLoaded', () => {
     const isDarkMode = localStorage.getItem('darkMode') === 'enabled';
     const chartEl = document.querySelector("#itemDistributionChart");
     if (!chartEl) return null;
-    
+
     const chart = echarts.init(chartEl);
     chart.setOption(setChartOptions(isDarkMode));
-    
+
     // Handle resize
     window.addEventListener('resize', () => chart.resize());
-    
+
     return chart;
   };
 
+  const setWalletChartOptions = (isDarkMode) => {
+    const walletNames = [{% for w in items_by_wallet %}"{{ w.name|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const walletCounts = [{% for w in items_by_wallet %}{{ w.count }}{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const walletColors = [{% for w in items_by_wallet %}"{{ w.color }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+
+    return {
+      grid: { left: 8, right: 24, top: 8, bottom: 8, containLabel: true },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        backgroundColor: isDarkMode ? '#2d2d2d' : '#fff',
+        borderColor: isDarkMode ? '#404040' : '#e5e7eb',
+        borderWidth: 1,
+        textStyle: { color: isDarkMode ? '#e5e7eb' : '#374151' }
+      },
+      xAxis: {
+        type: 'value',
+        minInterval: 1,
+        axisLabel: { color: isDarkMode ? '#9ca3af' : '#6b7280' },
+        splitLine: { lineStyle: { color: isDarkMode ? '#333' : '#f1f3f5' } }
+      },
+      yAxis: {
+        type: 'category',
+        data: walletNames,
+        axisLabel: { color: isDarkMode ? '#e5e7eb' : '#374151' },
+        axisLine: { lineStyle: { color: isDarkMode ? '#404040' : '#e5e7eb' } }
+      },
+      series: [{
+        name: '{% trans "Items" %}',
+        type: 'bar',
+        barMaxWidth: 24,
+        itemStyle: {
+          borderRadius: [0, 4, 4, 0],
+          color: (params) => walletColors[params.dataIndex]
+        },
+        label: {
+          show: true,
+          position: 'right',
+          color: isDarkMode ? '#e5e7eb' : '#374151',
+          fontWeight: '600'
+        },
+        data: walletCounts
+      }]
+    };
+  };
+
+  const initializeWalletChart = () => {
+    const isDarkMode = localStorage.getItem('darkMode') === 'enabled';
+    const chartEl = document.querySelector("#walletChart");
+    if (!chartEl) return null;
+
+    const walletChart = echarts.init(chartEl);
+    walletChart.setOption(setWalletChartOptions(isDarkMode));
+
+    window.addEventListener('resize', () => walletChart.resize());
+
+    return walletChart;
+  };
+
   let chart = initializeChart();
+  let walletChart = initializeWalletChart();
 
   // Dark mode toggle listener
   const darkModeToggle = document.getElementById('darkModeToggle');
-  if (darkModeToggle && chart) {
+  if (darkModeToggle && (chart || walletChart)) {
     darkModeToggle.addEventListener('click', () => {
       setTimeout(() => {
-        chart.dispose();
-        chart = initializeChart();
+        if (chart) {
+          chart.dispose();
+          chart = initializeChart();
+        }
+        if (walletChart) {
+          walletChart.dispose();
+          walletChart = initializeWalletChart();
+        }
       }, 100);
     });
   }

@@ -693,13 +693,27 @@ body.dark-mode .mobile-filter-select {
           <i class="bi bi-percent"></i> {% trans "Coupons" %}
           <span class="count">{{ coupon_count }}</span>
         </a>
-        <a href="?type=loyaltycard&status={{ item_status }}{% if search_query %}&query={{ search_query }}{% endif %}" 
+        <a href="?type=loyaltycard&status={{ item_status }}{% if search_query %}&query={{ search_query }}{% endif %}"
            class="filter-chip {% if item_type == 'loyaltycard' %}active{% endif %}">
           <i class="bi bi-star"></i> {% trans "Loyalty" %}
           <span class="count">{{ loyaltycard_count }}</span>
         </a>
       </div>
-      
+
+      {% if wallets %}
+      <!-- Wallet Filter -->
+      <div class="mobile-filters" style="margin-top: 0.5rem;">
+        <select class="mobile-filter-select" name="wallet" onchange="this.form.submit()">
+          <option value="">{% trans "All Wallets" %}</option>
+          {% for wallet in wallets %}
+          <option value="{{ wallet.id }}" {% if selected_wallet_id == wallet.id %}selected{% endif %}>
+            {{ wallet.name }} ({{ wallet.item_count }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+
       <!-- Hidden inputs for form submission -->
       <input type="hidden" name="type" id="hiddenType" value="{{ item_type }}">
       <input type="hidden" name="status" id="hiddenStatus" value="{{ item_status }}">
@@ -738,14 +752,19 @@ body.dark-mode .mobile-filter-select {
           <!-- Top Row: Logo + Info -->
           <div class="card-top-row">
             {% if entry.item.logo_slug %}
-            <img class="item-logo" 
-                 src="https://img.logo.dev/{{ entry.item.logo_slug }}?token=pk_NaUHDkw4SSeHCapveLJtjg" 
+            <img class="item-logo"
+                 src="https://img.logo.dev/{{ entry.item.logo_slug }}?token=pk_NaUHDkw4SSeHCapveLJtjg"
+                 alt="{{ entry.item.issuer }}"
+                 onerror="this.onerror=null;this.src='data:image/png;base64,{{ entry.item.qr_code_base64 }}';this.style.filter='blur(2px)';">
+            {% elif entry.merchant_logo_url %}
+            <img class="item-logo"
+                 src="{{ entry.merchant_logo_url }}"
                  alt="{{ entry.item.issuer }}"
                  onerror="this.onerror=null;this.src='data:image/png;base64,{{ entry.item.qr_code_base64 }}';this.style.filter='blur(2px)';">
             {% else %}
-            <img class="item-logo" 
-                 src="data:image/png;base64,{{ entry.item.qr_code_base64 }}" 
-                 alt="QR Code" 
+            <img class="item-logo"
+                 src="data:image/png;base64,{{ entry.item.qr_code_base64 }}"
+                 alt="QR Code"
                  style="filter: blur(2px);">
             {% endif %}
             
@@ -815,6 +834,20 @@ body.dark-mode .mobile-filter-select {
               {{ entry.item.description|truncatewords:25 }}
               {% endif %}
             </small>
+          </div>
+          {% endif %}
+
+          <!-- Wallet + Tags -->
+          {% if entry.item.wallet or entry.item.tags.all %}
+          <div class="item-tag-row" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem;">
+            {% if entry.item.wallet %}
+            <span class="badge rounded-pill" style="background-color: {{ entry.item.wallet.color }}; color: #fff;">
+              <i class="bi {{ entry.item.wallet.icon|default:'bi-wallet2' }}"></i> {{ entry.item.wallet.name }}
+            </span>
+            {% endif %}
+            {% for tag in entry.item.tags.all %}
+            <span class="badge rounded-pill" style="background-color: {{ tag.color }}; color: #fff;">{{ tag.name }}</span>
+            {% endfor %}
           </div>
           {% endif %}
         </div>

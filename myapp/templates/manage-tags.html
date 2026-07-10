@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{% trans "Tags" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "Tags" %}</li>
+    </ol>
+  </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+  <div class="row">
+    <div class="col-lg-5">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">
+            {% if editing_tag %}{% trans "Edit Tag" %}{% else %}{% trans "New Tag" %}{% endif %}
+          </h5>
+
+          <form method="POST" action="{% if editing_tag %}{% url 'edit_tag' tag_id=editing_tag.id %}{% else %}{% url 'manage_tags' %}{% endif %}">
+            {% csrf_token %}
+
+            {% for field in form %}
+            <div class="mb-3">
+              <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+              {{ field }}
+              {% if field.errors %}
+              <div class="text-danger small">{{ field.errors }}</div>
+              {% endif %}
+            </div>
+            {% endfor %}
+
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-check-circle me-1"></i>
+              {% if editing_tag %}{% trans "Save Changes" %}{% else %}{% trans "Create Tag" %}{% endif %}
+            </button>
+            {% if editing_tag %}
+            <a href="{% url 'manage_tags' %}" class="btn btn-outline-secondary">{% trans "Cancel" %}</a>
+            {% endif %}
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">{% trans "Your Tags" %}</h5>
+
+          {% if tags %}
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            {% for tag in tags %}
+            <span class="badge rounded-pill d-inline-flex align-items-center gap-2" style="background-color: {{ tag.color }}; color: #fff; padding: 0.5em 0.9em;">
+              {{ tag.name }}
+              <span class="text-white-50">{{ tag.item_count }}</span>
+              <a href="{% url 'edit_tag' tag_id=tag.id %}" class="text-white" title="{% trans 'Edit' %}"><i class="bi bi-pencil"></i></a>
+              <form method="POST" action="{% url 'delete_tag' tag_id=tag.id %}" style="display:inline;"
+                    onsubmit="return confirm('{% trans "Delete this tag? It will be removed from all items." %}');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm p-0 border-0 text-white" style="background: transparent;" title="{% trans 'Delete' %}">
+                  <i class="bi bi-x-circle"></i>
+                </button>
+              </form>
+            </span>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="text-muted">{% trans "You haven't created any tags yet." %}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock content %}
