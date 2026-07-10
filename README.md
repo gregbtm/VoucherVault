@@ -18,9 +18,10 @@
 > [!NOTE]
 > This is [gregbtm](https://github.com/gregbtm)'s fork of the upstream
 > [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault) project,
-> adding a REST API, Wallets/Tags, a notification rules engine,
-> import/export, an analytics dashboard, auto-fetched merchant logos,
-> AI-assisted OCR scanning of physical vouchers, and Apple Wallet export.
+> adding a REST API, Wallets/Tags, a notification rules engine (including
+> Web Push), import/export, an analytics dashboard, auto-fetched merchant
+> logos, AI-assisted OCR scanning of physical vouchers, and Apple Wallet
+> export.
 > See [`FORK_CHANGES.md`](FORK_CHANGES.md) for the full feature list, and
 > [`docs/UPGRADE.md`](docs/UPGRADE.md) if you're already running the
 > upstream Docker image and want to switch to this fork.
@@ -45,6 +46,7 @@
 - Multi-currency support via free fixer.io API
 - AI-assisted "Scan with AI" photo capture that pre-fills the item form (Claude vision or local Tesseract OCR)
 - Apple Wallet export — download a signed `.pkpass` for any item (opt-in, requires your own Apple Developer certificate)
+- Web Push notifications — installable-PWA browser/device notifications for expiry rules, no third-party push service required (opt-in, requires VAPID keys)
 
 ## 📷 Screenshots
 
@@ -133,6 +135,9 @@ The docker container takes various environment variables:
 | `PKPASS_TEAM_ID`                  | Your Apple Developer Team ID. Required if `PKPASS_CERT_PATH` is set.                                           | `None`                     | Optional            |
 | `PKPASS_PASS_TYPE_ID`             | Your registered Pass Type ID, e.g. `pass.com.example.vouchervault`. Required if `PKPASS_CERT_PATH` is set.     | `None`                     | Optional            |
 | `PKPASS_ORGANIZATION_NAME`        | Organization name shown on the generated pass.                                                                 | `VoucherVault`             | Optional            |
+| `WEBPUSH_VAPID_PUBLIC_KEY`        | VAPID public key. Enables the "Web Push" notification backend when set along with the private key below. Generate a pair with `python manage.py generate_vapid_keys`. | `None` | Optional |
+| `WEBPUSH_VAPID_PRIVATE_KEY`       | VAPID private key. See above.                                                                                  | `None`                     | Optional            |
+| `WEBPUSH_VAPID_CLAIMS_EMAIL`      | Contact email sent to push services as the VAPID claim.                                                        | `mailto:admin@example.com` | Optional            |
 
 You can find detailed instructions on how to setup OIDC SSO in the [wiki](https://github.com/l4rm4nd/VoucherVault/wiki/02-%E2%80%90-Authentication#oidc-authentication).
 

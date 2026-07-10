@@ -3,6 +3,7 @@ import os
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
+from .backends.webpush import webpush_enabled
 from .models import NotificationRule
 
 PRIORITY_CHOICES = [
@@ -74,6 +75,8 @@ class NotificationRuleForm(forms.ModelForm):
     def __init__(self, *args, user=None, **kwargs):
         self.user = user
         super().__init__(*args, **kwargs)
+        if not webpush_enabled() and (not self.instance.pk or self.instance.backend != 'webpush'):
+            self.fields['backend'].choices = [c for c in self.fields['backend'].choices if c[0] != 'webpush']
         if not self.instance.pk:
             self.fields['ntfy_server'].initial = os.environ.get('NTFY_DEFAULT_SERVER', 'https://ntfy.sh')
         if self.instance.pk:

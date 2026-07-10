@@ -1,10 +1,20 @@
+import base64
+import io
+import json
+import os
+import re
 from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.urls import reverse
+from py_vapid import Vapid02
+from pywebpush import webpush as real_webpush
 
 from myapp.models import Item
 
@@ -12,8 +22,9 @@ from .backends import get_backend
 from .backends.apprise_backend import AppriseBackend
 from .backends.ntfy import NtfyBackend
 from .backends.webhook import WebhookBackend
+from .backends.webpush import WebPushBackend, get_vapid_public_key, webpush_enabled
 from .forms import NotificationRuleForm
-from .models import NotificationLog, NotificationRule
+from .models import NotificationLog, NotificationRule, WebPushSubscription
 from .tasks import check_and_notify_expiry, fire_notifications, send_test_notification
 
 
@@ -36,6 +47,7 @@ def make_rule(user, backend='ntfy', event_types=None, **config_overrides):
         'ntfy': {'server': 'https://ntfy.example.com', 'topic': 'vouchervault'},
         'webhook': {'url': 'https://n8n.example.com/webhook/vv'},
         'apprise': {'urls': 'json://example.com/notify'},
+        'webpush': {},
     }[backend]
     config.update(config_overrides)
     return NotificationRule.objects.create(
@@ -128,6 +140,217 @@ class BackendTests(TestCase):
         rule = make_rule(user, backend='webhook')
         backend = get_backend(rule)
         self.assertIsInstance(backend, WebhookBackend)
+
+    def test_get_backend_injects_user_id_for_webpush(self):
+        user = User.objects.create_user(username='dave', password='pw12345!')
+        rule = make_rule(user, backend='webpush')
+        backend = get_backend(rule)
+        self.assertIsInstance(backend, WebPushBackend)
+        self.assertEqual(backend.config['user_id'], user.id)
+
+
+class WebPushBackendTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_send_fails_without_vapid_key(self):
+        with patch.dict(os.environ, {'WEBPUSH_VAPID_PRIVATE_KEY': ''}):
+            backend = WebPushBackend({'user_id': self.user.id})
+            self.assertFalse(backend.send('title', 'message'))
+
+    @patch.dict(os.environ, {'WEBPUSH_VAPID_PRIVATE_KEY': 'fake-key'})
+    def test_send_fails_with_no_subscriptions(self):
+        backend = WebPushBackend({'user_id': self.user.id})
+        self.assertFalse(backend.send('title', 'message'))
+
+    @patch.dict(os.environ, {'WEBPUSH_VAPID_PRIVATE_KEY': 'fake-key'})
+    @patch('notify.backends.webpush.webpush')
+    def test_send_delivers_to_every_subscription(self, mock_webpush):
+        WebPushSubscription.objects.create(user=self.user, endpoint='https://push.example.com/1', p256dh='a', auth='b')
+        WebPushSubscription.objects.create(user=self.user, endpoint='https://push.example.com/2', p256dh='c', auth='d')
+        backend = WebPushBackend({'user_id': self.user.id})
+        result = backend.send('title', 'message')
+        self.assertTrue(result)
+        self.assertEqual(mock_webpush.call_count, 2)
+
+    @patch.dict(os.environ, {'WEBPUSH_VAPID_PRIVATE_KEY': 'fake-key'})
+    @patch('notify.backends.webpush.webpush')
+    def test_send_ignores_other_users_subscriptions(self, mock_webpush):
+        other = User.objects.create_user(username='bob', password='pw12345!')
+        WebPushSubscription.objects.create(user=other, endpoint='https://push.example.com/1', p256dh='a', auth='b')
+        backend = WebPushBackend({'user_id': self.user.id})
+        self.assertFalse(backend.send('title', 'message'))
+        mock_webpush.assert_not_called()
+
+    @patch.dict(os.environ, {'WEBPUSH_VAPID_PRIVATE_KEY': 'fake-key'})
+    @patch('notify.backends.webpush.webpush')
+    def test_expired_subscription_is_deleted_on_410(self, mock_webpush):
+        from pywebpush import WebPushException
+        sub = WebPushSubscription.objects.create(user=self.user, endpoint='https://push.example.com/1', p256dh='a', auth='b')
+        fake_response = MagicMock(status_code=410)
+        mock_webpush.side_effect = WebPushException('gone', response=fake_response)
+
+        backend = WebPushBackend({'user_id': self.user.id})
+        result = backend.send('title', 'message')
+
+        self.assertFalse(result)
+        self.assertFalse(WebPushSubscription.objects.filter(pk=sub.pk).exists())
+
+    @patch.dict(os.environ, {'WEBPUSH_VAPID_PRIVATE_KEY': 'fake-key'})
+    @patch('notify.backends.webpush.webpush')
+    def test_network_error_on_one_subscription_does_not_abort_others(self, mock_webpush):
+        # pywebpush lets connection errors propagate as raw requests
+        # exceptions rather than WebPushException - a dead endpoint on one
+        # of a user's devices must not block delivery to their other devices.
+        import requests
+        WebPushSubscription.objects.create(user=self.user, endpoint='https://push.example.com/dead', p256dh='a', auth='b')
+        WebPushSubscription.objects.create(user=self.user, endpoint='https://push.example.com/alive', p256dh='c', auth='d')
+        mock_webpush.side_effect = [requests.ConnectionError('unreachable'), None]
+
+        backend = WebPushBackend({'user_id': self.user.id})
+        result = backend.send('title', 'message')
+
+        self.assertTrue(result)
+        self.assertEqual(mock_webpush.call_count, 2)
+
+    def test_webpush_enabled_requires_both_keys(self):
+        with patch.dict(os.environ, {'WEBPUSH_VAPID_PUBLIC_KEY': '', 'WEBPUSH_VAPID_PRIVATE_KEY': ''}):
+            self.assertFalse(webpush_enabled())
+        with patch.dict(os.environ, {'WEBPUSH_VAPID_PUBLIC_KEY': 'pub', 'WEBPUSH_VAPID_PRIVATE_KEY': 'priv'}):
+            self.assertTrue(webpush_enabled())
+            self.assertEqual(get_vapid_public_key(), 'pub')
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
+
+
+class VapidKeyGenerationIntegrationTests(TestCase):
+    """
+    Proves the exact key format `generate_vapid_keys` prints is actually
+    loadable by pywebpush and produces a cryptographically valid,
+    independently-verifiable VAPID signature — not just that our code
+    calls a mocked webpush() function.
+    """
+
+    def test_generated_keys_produce_a_verifiable_vapid_signature(self):
+        out = io.StringIO()
+        call_command('generate_vapid_keys', stdout=out)
+        output = out.getvalue()
+
+        public_key = re.search(r'WEBPUSH_VAPID_PUBLIC_KEY=(\S+)', output).group(1)
+        private_key = re.search(r'WEBPUSH_VAPID_PRIVATE_KEY=(\S+)', output).group(1)
+
+        # A fake "browser" client keypair so pywebpush's payload encryption
+        # step (which needs a real EC point, not garbage bytes) succeeds.
+        client_key = ec.generate_private_key(ec.SECP256R1())
+        client_pub_bytes = client_key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+        subscription_info = {
+            'endpoint': 'https://fcm.googleapis.com/fcm/send/fake-endpoint-id',
+            'keys': {'p256dh': _b64url(client_pub_bytes), 'auth': _b64url(os.urandom(16))},
+        }
+
+        curl_output = real_webpush(
+            subscription_info=subscription_info,
+            data='{"title": "Test"}',
+            vapid_private_key=private_key,
+            vapid_claims={'sub': 'mailto:admin@example.com'},
+            curl=True,
+        )
+
+        match = re.search(r'authorization:\s*vapid t=([^\s"]+),k=([^\s"]+)', curl_output, re.IGNORECASE)
+        self.assertIsNotNone(match, curl_output)
+        auth_header = f'vapid t={match.group(1)},k={match.group(2)}'
+
+        self.assertTrue(Vapid02.verify(auth_header))
+        self.assertEqual(match.group(2), public_key)
+
+
+class WebPushSubscriptionModelTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_endpoint_is_unique(self):
+        WebPushSubscription.objects.create(user=self.user, endpoint='https://push.example.com/1', p256dh='a', auth='b')
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                WebPushSubscription.objects.create(user=self.user, endpoint='https://push.example.com/1', p256dh='x', auth='y')
+
+
+class WebPushSubscribeViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_subscribe_creates_subscription(self):
+        response = self.client.post(
+            reverse('webpush_subscribe'),
+            data=json.dumps({'endpoint': 'https://push.example.com/1', 'keys': {'p256dh': 'a', 'auth': 'b'}}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(WebPushSubscription.objects.filter(user=self.user, endpoint='https://push.example.com/1').exists())
+
+    def test_subscribe_rejects_malformed_payload(self):
+        response = self.client.post(reverse('webpush_subscribe'), data='not json', content_type='application/json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_subscribe_requires_authentication(self):
+        self.client.logout()
+        response = self.client.post(
+            reverse('webpush_subscribe'),
+            data=json.dumps({'endpoint': 'https://push.example.com/1', 'keys': {'p256dh': 'a', 'auth': 'b'}}),
+            content_type='application/json',
+        )
+        self.assertNotEqual(response.status_code, 200)
+
+    def test_unsubscribe_removes_subscription(self):
+        WebPushSubscription.objects.create(user=self.user, endpoint='https://push.example.com/1', p256dh='a', auth='b')
+        response = self.client.post(
+            reverse('webpush_unsubscribe'),
+            data=json.dumps({'endpoint': 'https://push.example.com/1'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WebPushSubscription.objects.filter(endpoint='https://push.example.com/1').exists())
+
+    def test_cannot_unsubscribe_another_users_subscription(self):
+        other = User.objects.create_user(username='bob', password='pw12345!')
+        sub = WebPushSubscription.objects.create(user=other, endpoint='https://push.example.com/1', p256dh='a', auth='b')
+        self.client.post(
+            reverse('webpush_unsubscribe'),
+            data=json.dumps({'endpoint': 'https://push.example.com/1'}),
+            content_type='application/json',
+        )
+        self.assertTrue(WebPushSubscription.objects.filter(pk=sub.pk).exists())
+
+
+class NotificationRuleFormWebPushGatingTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_webpush_choice_hidden_when_disabled(self):
+        with patch.dict(os.environ, {'WEBPUSH_VAPID_PUBLIC_KEY': '', 'WEBPUSH_VAPID_PRIVATE_KEY': ''}):
+            form = NotificationRuleForm(user=self.user)
+        choices = [c[0] for c in form.fields['backend'].choices]
+        self.assertNotIn('webpush', choices)
+
+    def test_webpush_choice_shown_when_enabled(self):
+        with patch.dict(os.environ, {'WEBPUSH_VAPID_PUBLIC_KEY': 'pub', 'WEBPUSH_VAPID_PRIVATE_KEY': 'priv'}):
+            form = NotificationRuleForm(user=self.user)
+        choices = [c[0] for c in form.fields['backend'].choices]
+        self.assertIn('webpush', choices)
+
+    def test_valid_webpush_rule_has_empty_config(self):
+        with patch.dict(os.environ, {'WEBPUSH_VAPID_PUBLIC_KEY': 'pub', 'WEBPUSH_VAPID_PRIVATE_KEY': 'priv'}):
+            form = NotificationRuleForm(data={
+                'name': 'push me', 'backend': 'webpush', 'enabled': 'on', 'event_types': ['expiry_warning'],
+            }, user=self.user)
+            self.assertTrue(form.is_valid(), form.errors)
+            rule = form.save(commit=False)
+            rule.user = self.user
+            rule.save()
+        self.assertEqual(rule.config, {})
 
 
 class FireNotificationsTests(TestCase):

@@ -516,3 +516,43 @@ async function syncOfflineChanges() {
         return Promise.reject(error);
     }
 }
+
+// Web Push - show a notification for incoming push messages
+self.addEventListener('push', event => {
+    let payload = { title: 'VoucherVault', body: '' };
+    if (event.data) {
+        try {
+            payload = { ...payload, ...event.data.json() };
+        } catch (error) {
+            payload.body = event.data.text();
+        }
+    }
+
+    event.waitUntil(
+        self.registration.showNotification(payload.title, {
+            body: payload.body,
+            icon: '/static/assets/img/manifest-icon-192.png',
+            badge: '/static/assets/img/manifest-icon-192.png',
+            data: { url: payload.url || '/' },
+        })
+    );
+});
+
+// Web Push - focus/open the app when a notification is clicked
+self.addEventListener('notificationclick', event => {
+    event.notification.close();
+    const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+
+    event.waitUntil(
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+            for (const client of clientList) {
+                if (client.url === targetUrl && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            if (self.clients.openWindow) {
+                return self.clients.openWindow(targetUrl);
+            }
+        })
+    );
+});

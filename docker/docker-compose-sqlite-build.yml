@@ -18,6 +18,10 @@ services:
       - TZ=${TZ:-Europe/Berlin}
       # default ntfy server pre-filled for new ntfy notification rules
       - NTFY_DEFAULT_SERVER=${NTFY_DEFAULT_SERVER:-https://ntfy.sh}
+      # set both to enable the Web Push notification backend; generate with:
+      #   docker compose exec app python manage.py generate_vapid_keys
+      #- WEBPUSH_VAPID_PUBLIC_KEY=${WEBPUSH_VAPID_PUBLIC_KEY}
+      #- WEBPUSH_VAPID_PRIVATE_KEY=${WEBPUSH_VAPID_PRIVATE_KEY}
       # set to False to disable auto-fetching merchant logos
       - MERCHANT_LOGOS_ENABLED=${MERCHANT_LOGOS_ENABLED:-True}
       # set to "claude" or "tesseract" to enable the "Scan with AI" button
