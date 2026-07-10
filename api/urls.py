@@ -10,6 +10,8 @@ router.register('items', views.ItemViewSet, basename='item')
 router.register('transactions', views.TransactionViewSet, basename='transaction')
 router.register('wallets', views.WalletViewSet, basename='wallet')
 router.register('tags', views.TagViewSet, basename='tag')
+router.register('notifications/rules', views.NotificationRuleViewSet, basename='notification-rule')
+router.register('notifications/log', views.NotificationLogViewSet, basename='notification-log')
 
 urlpatterns = [
     path('auth/token/', obtain_auth_token, name='api-token-auth'),

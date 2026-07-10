@@ -18,6 +18,10 @@ class Command(BaseCommand):
         # Create default periodic tasks (disabled by default)
         tasks = [
             {'name': 'Periodic Expiry Check', 'task': 'myapp.tasks.run_expiration_check', 'crontab': crontab_schedule, 'enabled': True},
+            # Per-item threshold + multi-backend (ntfy/webhook/apprise) notification rules.
+            # A no-op until a user creates a NotificationRule, so it's safe to enable by default
+            # alongside the legacy Apprise-only task above.
+            {'name': 'Notification Rules Expiry Check', 'task': 'notify.tasks.check_and_notify_expiry', 'crontab': crontab_schedule, 'enabled': True},
             # Add more tasks as needed
         ]
 

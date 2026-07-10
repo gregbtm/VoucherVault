@@ -784,6 +784,14 @@ body.dark-mode .error-alert {
                         placeholder="{% trans 'Redemption instructions, terms, etc.' %}"
                         rows="3">{{ item.notes }}</textarea>
             </div>
+
+            <div class="form-group">
+              <label class="form-label" for="notify_days_before">{% trans "Notify Me Before Expiry" %}</label>
+              <input type="number" class="modern-input" id="notify_days_before" name="notify_days_before"
+                     placeholder="{% trans 'Use global default' %}" min="0"
+                     value="{{ item.notify_days_before|default_if_none:'' }}">
+              <small class="form-text text-muted">{% trans "Days before expiry to notify, overriding the global default. Leave blank to use the global setting." %}</small>
+            </div>
           </div>
 
           <!-- Additional Info Section -->

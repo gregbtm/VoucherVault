@@ -105,6 +105,7 @@ CONTENT_SECURITY_POLICY = {
 INSTALLED_APPS = [
     'myapp',
     'api',
+    'notify',
     'django_celery_beat',
     'django.contrib.admin',
     'django.contrib.auth',

@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{% trans "Notification Rules" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "Notification Rules" %}</li>
+    </ol>
+  </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+  <div class="row">
+    <div class="col-lg-5">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">
+            {% if editing_rule %}{% trans "Edit Rule" %}{% else %}{% trans "New Rule" %}{% endif %}
+          </h5>
+
+          <form method="POST" action="{% if editing_rule %}{% url 'edit_notification_rule' rule_id=editing_rule.id %}{% else %}{% url 'manage_notification_rules' %}{% endif %}">
+            {% csrf_token %}
+
+            <div class="mb-3">
+              <label for="{{ form.name.id_for_label }}" class="form-label">{{ form.name.label }}</label>
+              {{ form.name }}
+              {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors }}</div>{% endif %}
+            </div>
+
+            <div class="mb-3">
+              <label for="{{ form.backend.id_for_label }}" class="form-label">{% trans "Backend" %}</label>
+              {{ form.backend }}
+            </div>
+
+            <div class="mb-3 form-check">
+              {{ form.enabled }}
+              <label class="form-check-label" for="{{ form.enabled.id_for_label }}">{% trans "Enabled" %}</label>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">{{ form.event_types.label }}</label>
+              {{ form.event_types }}
+              {% if form.event_types.errors %}<div class="text-danger small">{{ form.event_types.errors }}</div>{% endif %}
+            </div>
+
+            <div id="backend-fields-ntfy" class="backend-fields">
+              <h6 class="text-muted mt-3">{% trans "ntfy Settings" %}</h6>
+              <div class="mb-2">
+                <label class="form-label">{{ form.ntfy_server.label }}</label>
+                {{ form.ntfy_server }}
+              </div>
+              <div class="mb-2">
+                <label class="form-label">{{ form.ntfy_topic.label }}</label>
+                {{ form.ntfy_topic }}
+              </div>
+              <div class="mb-2">
+                <label class="form-label">{{ form.ntfy_priority.label }}</label>
+                {{ form.ntfy_priority }}
+              </div>
+              <div class="mb-2">
+                <label class="form-label">{{ form.ntfy_token.label }}</label>
+                {{ form.ntfy_token }}
+              </div>
+            </div>
+
+            <div id="backend-fields-webhook" class="backend-fields">
+              <h6 class="text-muted mt-3">{% trans "Webhook Settings" %}</h6>
+              <div class="mb-2">
+                <label class="form-label">{{ form.webhook_url.label }}</label>
+                {{ form.webhook_url }}
+              </div>
+              <div class="mb-2">
+                <label class="form-label">{{ form.webhook_header_name.label }}</label>
+                {{ form.webhook_header_name }}
+              </div>
+              <div class="mb-2">
+                <label class="form-label">{{ form.webhook_header_value.label }}</label>
+                {{ form.webhook_header_value }}
+              </div>
+            </div>
+
+            <div id="backend-fields-apprise" class="backend-fields">
+              <h6 class="text-muted mt-3">{% trans "Apprise Settings" %}</h6>
+              <div class="mb-2">
+                <label class="form-label">{{ form.apprise_urls.label }}</label>
+                {{ form.apprise_urls }}
+              </div>
+            </div>
+
+            {% if form.non_field_errors %}
+            <div class="text-danger small mb-2">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-check-circle me-1"></i>
+              {% if editing_rule %}{% trans "Save Changes" %}{% else %}{% trans "Create Rule" %}{% endif %}
+            </button>
+            {% if editing_rule %}
+            <a href="{% url 'manage_notification_rules' %}" class="btn btn-outline-secondary">{% trans "Cancel" %}</a>
+            {% endif %}
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="card-title mb-0">{% trans "Your Rules" %}</h5>
+            <a href="{% url 'notification_log' %}" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-clock-history"></i> {% trans "View Log" %}
+            </a>
+          </div>
+
+          {% if rules %}
+          <table class="table table-hover align-middle">
+            <thead>
+              <tr>
+                <th>{% trans "Name" %}</th>
+                <th>{% trans "Backend" %}</th>
+                <th>{% trans "Events" %}</th>
+                <th>{% trans "Status" %}</th>
+                <th class="text-end">{% trans "Actions" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for rule in rules %}
+              <tr>
+                <td>{{ rule.name }}</td>
+                <td>{{ rule.get_backend_display }}</td>
+                <td><small class="text-muted">{{ rule.event_types|join:", " }}</small></td>
+                <td>
+                  {% if rule.enabled %}
+                  <span class="badge bg-success">{% trans "Enabled" %}</span>
+                  {% else %}
+                  <span class="badge bg-secondary">{% trans "Disabled" %}</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  <form method="POST" action="{% url 'test_notification_rule' rule_id=rule.id %}" style="display:inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-info" title="{% trans 'Send test notification' %}">
+                      <i class="bi bi-send"></i>
+                    </button>
+                  </form>
+                  <a href="{% url 'edit_notification_rule' rule_id=rule.id %}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-pencil"></i>
+                  </a>
+                  <form method="POST" action="{% url 'delete_notification_rule' rule_id=rule.id %}" style="display:inline;"
+                        onsubmit="return confirm('{% trans "Delete this notification rule?" %}');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="text-muted">{% trans "You haven't created any notification rules yet." %}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const backendSelect = document.getElementById('{{ form.backend.id_for_label }}');
+  const sections = {
+    ntfy: document.getElementById('backend-fields-ntfy'),
+    webhook: document.getElementById('backend-fields-webhook'),
+    apprise: document.getElementById('backend-fields-apprise'),
+  };
+
+  function updateVisibility() {
+    const selected = backendSelect.value;
+    Object.entries(sections).forEach(([key, el]) => {
+      if (el) el.style.display = key === selected ? 'block' : 'none';
+    });
+  }
+
+  if (backendSelect) {
+    backendSelect.addEventListener('change', updateVisibility);
+    updateVisibility();
+  }
+});
+</script>
+{% endblock content %}

@@ -158,6 +158,10 @@ class Item(models.Model):
     )
     tags = models.ManyToManyField(Tag, blank=True, related_name='items')
     notes = models.TextField(blank=True, help_text="Redemption instructions, terms, etc.")
+    notify_days_before = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Override the global expiry notification threshold for this item (in days)."
+    )
 
     def __str__(self):
         return self.name

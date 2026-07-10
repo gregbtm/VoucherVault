@@ -10,12 +10,16 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
 from myapp.models import Item, ItemShare, Tag, Transaction, UserPreference, UserProfile, Wallet
+from notify.models import NotificationLog, NotificationRule
+from notify.tasks import send_test_notification
 
 from .filters import ItemFilter
 from .permissions import IsOwner
 from .serializers import (
     ItemSerializer,
     ItemShareSerializer,
+    NotificationLogSerializer,
+    NotificationRuleSerializer,
     TagSerializer,
     TransactionSerializer,
     UserPreferenceSerializer,
@@ -137,6 +141,38 @@ class TransactionViewSet(viewsets.ModelViewSet):
         if getattr(self, 'swagger_fake_view', False):
             return Transaction.objects.none()
         return Transaction.objects.filter(item__user=self.request.user).order_by('-date')
+
+
+class NotificationRuleViewSet(viewsets.ModelViewSet):
+    """Full CRUD for the authenticated user's notification rules, plus /test/."""
+    serializer_class = NotificationRuleSerializer
+    permission_classes = [IsAuthenticated, IsOwner]
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return NotificationRule.objects.none()
+        return NotificationRule.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def test(self, request, pk=None):
+        rule = self.get_object()
+        success, detail = send_test_notification(rule)
+        status_code = status.HTTP_200_OK if success else status.HTTP_502_BAD_GATEWAY
+        return Response({'success': success, 'detail': detail}, status=status_code)
+
+
+class NotificationLogViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only notification history for the authenticated user."""
+    serializer_class = NotificationLogSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return NotificationLog.objects.none()
+        return NotificationLog.objects.filter(user=self.request.user).select_related('rule', 'item').order_by('-sent_at')
 
 
 class UserPreferenceView(generics.RetrieveUpdateAPIView):

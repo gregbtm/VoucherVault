@@ -23,6 +23,9 @@ django-filter==24.3
 drf-spectacular==0.27.2
 drf-spectacular-sidecar==2024.7.1
 
+# NOTIFICATIONS
+requests==2.34.2
+
 # TASKS
 celery[redis]
 django-celery-beat==2.9.0

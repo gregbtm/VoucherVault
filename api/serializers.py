@@ -9,6 +9,7 @@ from rest_framework import serializers
 
 from myapp.models import Item, ItemShare, Tag, Transaction, UserPreference, UserProfile, Wallet
 from myapp.utils import generate_code_image_base64
+from notify.models import NotificationLog, NotificationRule
 
 _UNSET = object()
 
@@ -128,7 +129,7 @@ class ItemSerializer(serializers.ModelSerializer):
             'value_type', 'currency', 'is_used', 'is_pinned', 'tile_color',
             'file', 'qr_code_base64', 'default_expiry_notification_sent',
             'final_expiry_notification_sent', 'days_until_expiry', 'transaction_total',
-            'wallet', 'wallet_name', 'tags', 'tag_ids', 'notes',
+            'wallet', 'wallet_name', 'tags', 'tag_ids', 'notes', 'notify_days_before',
         ]
         read_only_fields = [
             'id', 'qr_code_base64', 'default_expiry_notification_sent',
@@ -254,3 +255,49 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = ['apprise_urls']
+
+
+class NotificationRuleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NotificationRule
+        fields = ['id', 'name', 'backend', 'config', 'enabled', 'event_types', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+    def validate_name(self, name):
+        request = self.context['request']
+        qs = NotificationRule.objects.filter(user=request.user, name=name)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(_('You already have a notification rule with this name.'))
+        return name
+
+    def validate_event_types(self, event_types):
+        valid = {choice for choice, _label in NotificationRule.EVENT_CHOICES}
+        invalid = set(event_types) - valid
+        if invalid:
+            raise serializers.ValidationError(_('Invalid event type(s): %(types)s') % {'types': ', '.join(sorted(invalid))})
+        return event_types
+
+    def validate(self, attrs):
+        backend = attrs.get('backend', getattr(self.instance, 'backend', None))
+        config = attrs.get('config', getattr(self.instance, 'config', None) or {})
+
+        if backend == 'ntfy' and not (config.get('server') and config.get('topic')):
+            raise serializers.ValidationError({'config': _('ntfy config requires "server" and "topic".')})
+        elif backend == 'webhook' and not config.get('url'):
+            raise serializers.ValidationError({'config': _('webhook config requires "url".')})
+        elif backend == 'apprise' and not config.get('urls'):
+            raise serializers.ValidationError({'config': _('apprise config requires "urls".')})
+
+        return attrs
+
+
+class NotificationLogSerializer(serializers.ModelSerializer):
+    rule_name = serializers.CharField(source='rule.name', read_only=True, default=None)
+    item_name = serializers.CharField(source='item.name', read_only=True, default=None)
+
+    class Meta:
+        model = NotificationLog
+        fields = ['id', 'rule', 'rule_name', 'item', 'item_name', 'event_type', 'sent_at', 'success', 'detail']
+        read_only_fields = fields

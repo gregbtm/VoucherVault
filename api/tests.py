@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.urls import reverse
@@ -7,6 +8,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
 from myapp.models import Item, ItemShare, Tag, Transaction, Wallet
+from notify.models import NotificationLog, NotificationRule
 
 
 def make_item(user, **kwargs):
@@ -363,3 +365,108 @@ class ItemWalletAndTagsTests(APITestCase):
         by_tag = self.client.get(f'/api/v1/items/?tags={self.tag.id}')
         self.assertEqual(by_tag.data['count'], 1)
         self.assertEqual(by_tag.data['results'][0]['name'], 'Tagged')
+
+    def test_item_serializer_exposes_notify_days_before(self):
+        response = self.client.post('/api/v1/items/', {
+            'type': 'voucher', 'name': 'X', 'redeem_code': 'X', 'issuer': 'X',
+            'value': '5.00', 'notify_days_before': 14,
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['notify_days_before'], 14)
+
+
+class NotificationRuleApiTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+
+    def test_create_ntfy_rule(self):
+        payload = {
+            'name': 'My ntfy', 'backend': 'ntfy', 'enabled': True,
+            'event_types': ['expiry_warning'],
+            'config': {'server': 'https://ntfy.example.com', 'topic': 'vv'},
+        }
+        response = self.client.post('/api/v1/notifications/rules/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertTrue(NotificationRule.objects.filter(user=self.alice, name='My ntfy').exists())
+
+    def test_create_rule_rejects_incomplete_config(self):
+        payload = {
+            'name': 'Bad', 'backend': 'webhook', 'enabled': True,
+            'event_types': ['expiry_warning'], 'config': {},
+        }
+        response = self.client.post('/api/v1/notifications/rules/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_create_rule_rejects_invalid_event_type(self):
+        payload = {
+            'name': 'Bad', 'backend': 'webhook', 'enabled': True,
+            'event_types': ['not_a_real_event'], 'config': {'url': 'https://example.com'},
+        }
+        response = self.client.post('/api/v1/notifications/rules/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_duplicate_name_rejected(self):
+        NotificationRule.objects.create(user=self.alice, name='dup', backend='ntfy', config={'server': 'https://ntfy.example.com', 'topic': 'vv'})
+        payload = {
+            'name': 'dup', 'backend': 'webhook', 'enabled': True,
+            'event_types': ['expiry_warning'], 'config': {'url': 'https://example.com'},
+        }
+        response = self.client.post('/api/v1/notifications/rules/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cannot_access_another_users_rule(self):
+        bob_rule = NotificationRule.objects.create(
+            user=self.bob, name='bob rule', backend='ntfy',
+            config={'server': 'https://ntfy.example.com', 'topic': 'vv'}, event_types=['expiry_warning'],
+        )
+        self.assertEqual(self.client.get(f'/api/v1/notifications/rules/{bob_rule.id}/').status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(self.client.delete(f'/api/v1/notifications/rules/{bob_rule.id}/').status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(NotificationRule.objects.filter(pk=bob_rule.pk).exists())
+
+    @patch('api.views.send_test_notification', return_value=(True, ''))
+    def test_test_action_success(self, mock_send):
+        rule = NotificationRule.objects.create(
+            user=self.alice, name='r', backend='ntfy',
+            config={'server': 'https://ntfy.example.com', 'topic': 'vv'}, event_types=['expiry_warning'],
+        )
+        response = self.client.post(f'/api/v1/notifications/rules/{rule.id}/test/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+        mock_send.assert_called_once_with(rule)
+
+    @patch('api.views.send_test_notification', return_value=(False, 'boom'))
+    def test_test_action_failure_returns_502(self, mock_send):
+        rule = NotificationRule.objects.create(
+            user=self.alice, name='r', backend='ntfy',
+            config={'server': 'https://ntfy.example.com', 'topic': 'vv'}, event_types=['expiry_warning'],
+        )
+        response = self.client.post(f'/api/v1/notifications/rules/{rule.id}/test/')
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertFalse(response.data['success'])
+
+    def test_cannot_test_another_users_rule(self):
+        bob_rule = NotificationRule.objects.create(
+            user=self.bob, name='bob rule', backend='ntfy',
+            config={'server': 'https://ntfy.example.com', 'topic': 'vv'}, event_types=['expiry_warning'],
+        )
+        response = self.client.post(f'/api/v1/notifications/rules/{bob_rule.id}/test/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class NotificationLogApiTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+
+    def test_log_only_shows_own_entries(self):
+        NotificationLog.objects.create(user=self.alice, event_type='test', success=True)
+        NotificationLog.objects.create(user=self.bob, event_type='test', success=True)
+        response = self.client.get('/api/v1/notifications/log/')
+        self.assertEqual(response.data['count'], 1)
+
+    def test_log_is_read_only(self):
+        response = self.client.post('/api/v1/notifications/log/', {'event_type': 'test', 'success': True})
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
