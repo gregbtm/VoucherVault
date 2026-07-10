@@ -71,6 +71,19 @@ Automatic brand logos on item cards, without slowing down page loads.
 - Read-only `merchants/` API endpoint
 - Gated behind `MERCHANT_LOGOS_ENABLED` (see `docker/env.example`)
 
+## Phase 7 — AI-assisted OCR scanning ([`e1add21`](https://github.com/gregbtm/VoucherVault/commit/e1add21))
+
+A "Scan with AI" button on the create/edit item forms: upload a photo of a
+physical voucher/coupon/gift card and pre-fill the form from it.
+
+- Two backends behind `OCR_BACKEND`: `claude` (Claude vision API — reads
+  the redeem code plus, where legible, merchant name/issuer/expiry date)
+  and `tesseract` (free, fully local, redeem-code extraction only)
+- Processed synchronously via a new read-only `ocr/extract/` API endpoint
+  — no persisted model, no Celery task, disabled by default
+- `tesseract-ocr` added to the Docker image so the local backend works
+  out of the box with no extra sidecar container
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
@@ -80,6 +93,9 @@ On top of everything documented in the README, this fork adds:
 | `NTFY_DEFAULT_SERVER` | Default ntfy server pre-filled when a user creates a new ntfy notification rule. | `https://ntfy.sh` |
 | `MERCHANT_LOGOS_ENABLED` | Set to `False` to disable auto-fetching merchant logos. | `True` |
 | `EXPIRY_THRESHOLD_DAYS_FINAL` | "Final reminder" window in days before expiry, used by the new per-item notification rules. | `7` |
+| `OCR_BACKEND` | Set to `claude` or `tesseract` to enable the "Scan with AI" button. | `none` |
+| `ANTHROPIC_API_KEY` | Required if `OCR_BACKEND=claude`. | `None` |
+| `ANTHROPIC_OCR_MODEL` | Overrides the Claude model used for OCR extraction. | `claude-sonnet-5` |
 
 See `docker/env.example` for the full, commented list.
 
