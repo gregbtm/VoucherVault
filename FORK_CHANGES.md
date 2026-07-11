@@ -241,6 +241,33 @@ API call is needed to provision anything ahead of time.
   family deployment can usually stay in Google's "demo mode" permanently
   instead of requesting full publishing access).
 
+## Phase 12.1 — Ledger balance refactor
+
+Pure internal cleanup, no user-facing or API-facing behavior change: a
+gift card's current balance (`item.value` plus every `Transaction` against
+it) was independently recalculated in **six separate places** across
+`views.py` and once more in the API serializer and the transaction form —
+one of those copies had already drifted (inconsistent field naming between
+`transaction_total`/`net_value` in one spot vs. plain summation
+elsewhere), which is exactly the kind of bug this refactor removes the
+opportunity for.
+
+- New `Item.get_current_balance(transactions=None)` — the single-instance
+  calculation, reused by `view_item`, `toggle_item_status`, the shared-items
+  list, `TransactionForm.clean_value()`, and `TransactionSerializer.validate()`.
+  Accepts an already-fetched `transactions` queryset/list to avoid a
+  redundant query when the caller already has one (e.g. `view_item` already
+  loads the item's transactions to render the ledger history).
+- New `Item.objects.with_current_balance()` — a queryset method that
+  annotates `current_balance` via a single `Sum`/`ExpressionWrapper` query,
+  used by the dashboard summary and the Inventory list. The dashboard
+  summary's per-item loop previously ran one extra `Transaction` query
+  *per item* (N+1) to compute this; the annotated version replaces that
+  with the single query it should have always been.
+- No new fields, no migration — this is a computed value, not stored data.
+- New `LedgerBalanceTests` in `myapp/tests.py` locks in the instance
+  method, the queryset annotation, and that they agree with each other.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

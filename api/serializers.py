@@ -88,7 +88,7 @@ class TransactionSerializer(serializers.ModelSerializer):
         value = attrs.get('value', getattr(self.instance, 'value', None))
         if item is not None and value is not None:
             other_transactions = item.transactions.exclude(pk=getattr(self.instance, 'pk', None))
-            total_value = item.value + sum(t.value for t in other_transactions) + value
+            total_value = item.get_current_balance(other_transactions) + value
             if total_value < 0:
                 raise serializers.ValidationError(_('Transaction would result in negative item value.'))
         return attrs

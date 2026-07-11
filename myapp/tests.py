@@ -1,5 +1,6 @@
 import os
 from datetime import date, timedelta
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
@@ -12,7 +13,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 
 from .forms import ItemForm, TagForm, WalletForm
 from .merchant_logos import fetch_merchant_logo, get_cached_logo, get_cached_logos_for_issuers, guess_domain
-from .models import Document, Item, MerchantProfile, Tag, UserPreference, Wallet
+from .models import Document, Item, MerchantProfile, Tag, Transaction, UserPreference, Wallet
 from .tasks import fetch_merchant_logo_task
 
 
@@ -28,6 +29,55 @@ def make_item(user, **kwargs):
     }
     defaults.update(kwargs)
     return Item.objects.create(**defaults)
+
+
+class LedgerBalanceTests(TestCase):
+    """
+    Item.get_current_balance() / Item.objects.with_current_balance() are the
+    single source of truth for "starting value plus every transaction",
+    replacing several independent copies of this formula that used to live
+    in views.py, analytics.py, forms.py, and the API serializer.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_balance_with_no_transactions_equals_item_value(self):
+        item = make_item(self.user, value='25.00')
+        item.refresh_from_db()
+        self.assertEqual(item.get_current_balance(), item.value)
+
+    def test_balance_subtracts_transactions(self):
+        item = make_item(self.user, value='25.00')
+        item.refresh_from_db()
+        Transaction.objects.create(item=item, description='Spend 1', value='-5.00')
+        Transaction.objects.create(item=item, description='Spend 2', value='-3.50')
+        self.assertEqual(item.get_current_balance(), item.value - Decimal('5') - Decimal('3.50'))
+
+    def test_balance_accepts_prefetched_transactions_without_extra_query(self):
+        item = make_item(self.user, value='25.00')
+        item.refresh_from_db()
+        Transaction.objects.create(item=item, description='Spend', value='-5.00')
+        transactions = item.transactions.all()
+        list(transactions)  # evaluate once, populating the queryset's result cache
+
+        with self.assertNumQueries(0):
+            balance = item.get_current_balance(transactions)
+        self.assertEqual(balance, item.value - Decimal('5'))
+
+    def test_with_current_balance_annotation_matches_instance_method(self):
+        item = make_item(self.user, value='25.00')
+        item.refresh_from_db()
+        Transaction.objects.create(item=item, description='Spend', value='-5.00')
+
+        annotated = Item.objects.with_current_balance().get(pk=item.pk)
+        self.assertEqual(annotated.current_balance, item.get_current_balance())
+
+    def test_with_current_balance_annotation_with_no_transactions(self):
+        item = make_item(self.user, value='25.00')
+        item.refresh_from_db()
+        annotated = Item.objects.with_current_balance().get(pk=item.pk)
+        self.assertEqual(annotated.current_balance, item.value)
 
 
 class DefaultCurrencyTests(TestCase):
