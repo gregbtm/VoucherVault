@@ -703,6 +703,29 @@ doesn't mean opening each one individually.
   scoping across users, and the login/method requirements on all four
   endpoints.
 
+## Phase 14.6 — n8n integration setup doc
+
+Zero-build, as scoped: no VoucherVault code changed. `drf-spectacular`
+was already generating a live OpenAPI schema at `/api/v1/schema/` (Phase
+1) for every `/api/v1/` endpoint added since — n8n's built-in HTTP
+Request Tool (and the AI Agent node's tool-calling) can import that
+schema URL directly and get every operation as a callable tool, with no
+custom node or per-endpoint wiring.
+
+- New [`docs/N8N_SETUP.md`](docs/N8N_SETUP.md), mirroring the structure
+  of the existing `docs/MCP_SERVER_SETUP.md`: generate a token with the
+  same `manage.py drf_create_token <username>` command already used for
+  the MCP server, add it as an n8n Header Auth credential
+  (`Authorization: Token <token>`), then either wire a single HTTP
+  Request node by hand for a fixed call or point an AI Agent's HTTP
+  Request Tool at `/api/v1/schema/` for the full API as tools.
+  - Also documents the *other* direction: the existing webhook system
+    (Phase 12.2, `Notifications → Rules` → Webhook backend) can point at
+    an n8n Webhook trigger node for VoucherVault-initiated events
+    (item created/used/archived/balance changed/shared), so the doc
+    covers n8n-as-consumer and n8n-as-trigger-target as the two halves
+    of the integration.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
