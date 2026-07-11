@@ -2,11 +2,13 @@ from django.conf import settings
 
 from .base import OCRBackend
 from .claude_backend import ClaudeOCRBackend
+from .openai_backend import OpenAIOCRBackend
 from .tesseract import TesseractOCRBackend
 
 BACKENDS = {
     'tesseract': TesseractOCRBackend,
     'claude': ClaudeOCRBackend,
+    'openai': OpenAIOCRBackend,
 }
 
 

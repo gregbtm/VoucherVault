@@ -27,12 +27,16 @@ services:
       - WEBPUSH_VAPID_CLAIMS_EMAIL=${WEBPUSH_VAPID_CLAIMS_EMAIL:-mailto:admin@example.com}
       # set to False to disable auto-fetching merchant logos
       - MERCHANT_LOGOS_ENABLED=${MERCHANT_LOGOS_ENABLED:-True}
-      # set to "claude" or "tesseract" to enable the "Scan with AI" button
+      # set to "claude", "openai", or "tesseract" to enable the "Scan with AI" button
       - OCR_BACKEND=${OCR_BACKEND:-none}
       # required if OCR_BACKEND=claude
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       # optional; overrides the Claude model used for OCR extraction
       - ANTHROPIC_OCR_MODEL=${ANTHROPIC_OCR_MODEL:-claude-sonnet-5}
+      # required if OCR_BACKEND=openai
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # optional; overrides the OpenAI model used for OCR extraction
+      - OPENAI_OCR_MODEL=${OPENAI_OCR_MODEL:-gpt-4o-mini}
       # ------- OPTIONAL APPLE WALLET EXPORT --------
       # set all of these (and mount the cert files below) to enable .pkpass export
       - PKPASS_CERT_PATH=${PKPASS_CERT_PATH:-}

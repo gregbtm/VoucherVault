@@ -11,6 +11,7 @@ import pytesseract
 
 from .backends import get_backend, ocr_enabled
 from .backends.claude_backend import ClaudeOCRBackend
+from .backends.openai_backend import OpenAIOCRBackend
 from .backends.tesseract import TesseractOCRBackend
 
 DEJAVU_FONT_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
@@ -48,6 +49,10 @@ class BackendSelectionTests(TestCase):
     def test_get_backend_returns_claude(self):
         with override_settings(OCR_BACKEND='claude', ANTHROPIC_API_KEY='test-key'):
             self.assertIsInstance(get_backend(), ClaudeOCRBackend)
+
+    def test_get_backend_returns_openai(self):
+        with override_settings(OCR_BACKEND='openai', OPENAI_API_KEY='test-key'):
+            self.assertIsInstance(get_backend(), OpenAIOCRBackend)
 
 
 class TesseractBackendTests(TestCase):
@@ -155,3 +160,50 @@ class ClaudeBackendTests(TestCase):
     def test_model_env_override(self, mock_anthropic_cls):
         backend = ClaudeOCRBackend()
         self.assertEqual(backend.model, 'claude-haiku-4-5-20251001')
+
+
+class OpenAIBackendTests(TestCase):
+    def test_raises_without_api_key(self):
+        with override_settings(OPENAI_API_KEY=None):
+            with self.assertRaises(RuntimeError):
+                OpenAIOCRBackend()
+
+    @override_settings(OPENAI_API_KEY='test-key')
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_extract_parses_json_response(self, mock_openai_cls):
+        mock_client = MagicMock()
+        mock_message = MagicMock(
+            content='{"code": "SAVE20", "name": "Acme", "issuer": null, "expiry_date": "2026-12-31", "confidence": 0.9}',
+        )
+        mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
+        mock_openai_cls.return_value = mock_client
+
+        backend = OpenAIOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertEqual(result['code'], 'SAVE20')
+        self.assertEqual(result['name'], 'Acme')
+        self.assertIsNone(result['issuer'])
+        self.assertEqual(result['expiry_date'], '2026-12-31')
+        self.assertEqual(result['confidence'], 0.9)
+        mock_client.chat.completions.create.assert_called_once()
+
+    @override_settings(OPENAI_API_KEY='test-key')
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_extract_handles_malformed_response_gracefully(self, mock_openai_cls):
+        mock_client = MagicMock()
+        mock_message = MagicMock(content='not valid json')
+        mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
+        mock_openai_cls.return_value = mock_client
+
+        backend = OpenAIOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertIsNone(result['code'])
+        self.assertEqual(result['confidence'], 0.0)
+
+    @override_settings(OPENAI_API_KEY='test-key', OPENAI_OCR_MODEL='gpt-4o')
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_model_env_override(self, mock_openai_cls):
+        backend = OpenAIOCRBackend()
+        self.assertEqual(backend.model, 'gpt-4o')

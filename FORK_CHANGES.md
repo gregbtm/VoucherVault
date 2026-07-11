@@ -562,6 +562,30 @@ instead of per cached page.
   button visibility by preference, the redirect signal in both the
   plain-save and toggled-off cases).
 
+## Phase 14.2 — OpenAI OCR backend
+
+Adds `openai` alongside `claude`/`tesseract` as an `OCR_BACKEND` choice,
+for anyone who already has an OpenAI key and no interest in a second
+provider's billing relationship just for card scanning.
+
+- New `ocr/backends/openai_backend.py::OpenAIOCRBackend` mirrors
+  `claude_backend.py` exactly - same prompt, same JSON response shape, same
+  "raise `RuntimeError` on missing API key, never raise on a nothing-found
+  extraction" contract - so `api/views.py`'s OCR endpoint and the
+  create/edit item form's "Scan with AI" button work identically
+  regardless of which backend is selected. Uses the Chat Completions
+  vision format (`image_url` with a base64 `data:` URL) rather than the
+  Responses API, since it's the more stable, widely-documented path for
+  this kind of single-turn image-in/JSON-out call.
+- Registered in `ocr/backends/__init__.py`'s `BACKENDS` dict as `'openai'`.
+- New `OPENAI_API_KEY` / `OPENAI_OCR_MODEL` (default `gpt-4o-mini`)
+  settings, following the exact `ANTHROPIC_API_KEY`/`ANTHROPIC_OCR_MODEL`
+  pattern from Phase 13.4's centralization.
+- New tests: `OpenAIBackendTests` (missing key, successful extraction,
+  malformed response, model override), plus a
+  `test_get_backend_returns_openai` case in the existing
+  `BackendSelectionTests`.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
@@ -574,6 +598,8 @@ On top of everything documented in the README, this fork adds:
 | `OCR_BACKEND` | Set to `claude` or `tesseract` to enable the "Scan with AI" button. | `none` |
 | `ANTHROPIC_API_KEY` | Required if `OCR_BACKEND=claude`. | `None` |
 | `ANTHROPIC_OCR_MODEL` | Overrides the Claude model used for OCR extraction. | `claude-sonnet-5` |
+| `OPENAI_API_KEY` | Required if `OCR_BACKEND=openai`. | `None` |
+| `OPENAI_OCR_MODEL` | Overrides the OpenAI model used for OCR extraction. | `gpt-4o-mini` |
 | `PKPASS_CERT_PATH` | Path to your Apple Pass Type ID certificate (`.p12`). Enables Apple Wallet export when set. | `None` |
 | `PKPASS_CERT_PASSWORD` | Password for `PKPASS_CERT_PATH`, if any. | `None` |
 | `PKPASS_WWDR_CERT_PATH` | Path to Apple's WWDR intermediate certificate. Required if `PKPASS_CERT_PATH` is set. | `None` |

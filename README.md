@@ -153,9 +153,11 @@ The docker container takes various environment variables:
 | `DEBUG`                           | Enable HTTP debug logging.                                                                                     | `False`                    | Optional            |
 | `NTFY_DEFAULT_SERVER`             | Default ntfy server pre-filled when a user creates a new ntfy notification rule.                               | `https://ntfy.sh`          | Optional            |
 | `MERCHANT_LOGOS_ENABLED`          | Set to `False` to disable auto-fetching merchant logos on item cards.                                          | `True`                     | Optional            |
-| `OCR_BACKEND`                     | Set to `claude` or `tesseract` to enable the "Scan with AI" button on the item form.                           | `none`                     | Optional            |
+| `OCR_BACKEND`                     | Set to `claude`, `openai`, or `tesseract` to enable the "Scan with AI" button on the item form.                | `none`                     | Optional            |
 | `ANTHROPIC_API_KEY`               | Required if `OCR_BACKEND=claude`. Get one at [console.anthropic.com](https://console.anthropic.com/).          | `None`                     | Optional            |
 | `ANTHROPIC_OCR_MODEL`             | Overrides the Claude model used for OCR extraction.                                                            | `claude-sonnet-5`          | Optional            |
+| `OPENAI_API_KEY`                  | Required if `OCR_BACKEND=openai`. Get one at [platform.openai.com](https://platform.openai.com/api-keys).      | `None`                     | Optional            |
+| `OPENAI_OCR_MODEL`                | Overrides the OpenAI model used for OCR extraction.                                                            | `gpt-4o-mini`              | Optional            |
 | `PKPASS_CERT_PATH`                | Path to your Apple Pass Type ID certificate (`.p12`). Enables Apple Wallet export when set.                    | `None`                     | Optional            |
 | `PKPASS_CERT_PASSWORD`            | Password for `PKPASS_CERT_PATH`, if any.                                                                       | `None`                     | Optional            |
 | `PKPASS_WWDR_CERT_PATH`           | Path to Apple's WWDR intermediate certificate. Required if `PKPASS_CERT_PATH` is set.                          | `None`                     | Optional            |
