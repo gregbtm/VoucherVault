@@ -32,7 +32,7 @@ from .tasks import fetch_merchant_logo_task
 from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
 from imports.exporters.pkpass import pkpass_enabled
 from ocr.backends import ocr_enabled
-from django.db.models import Count, Sum, Q, F, ExpressionWrapper, DecimalField
+from django.db.models import Count, Sum, Q
 from django.db.models.functions import Coalesce
 from django.db.models import Value
 from django.utils.text import get_valid_filename
@@ -107,7 +107,9 @@ def dashboard(request):
     soon_expiry_date = now() + timedelta(days=threshold_days)
 
     # Calculate the current total value of available money-type items
-    items = Item.objects.filter(user=user, is_used=False, value_type='money', expiry_date__gte=timezone.now())
+    items = Item.objects.with_current_balance().filter(
+        user=user, is_used=False, value_type='money', expiry_date__gte=timezone.now()
+    )
     items = items.exclude(type='loyaltycard')
 
     currencies_used = set(items.values_list('currency', flat=True).distinct())
@@ -125,8 +127,7 @@ def dashboard(request):
             total_value = 0
             at_risk_value = 0
             for item in items:
-                transactions_sum = Transaction.objects.filter(item=item).aggregate(Sum('value'))['value__sum'] or 0
-                item_value = float(item.value) + float(transactions_sum)
+                item_value = float(item.current_balance)
                 total_value += item_value
                 if item.expiry_date < soon_expiry_date.date():
                     at_risk_value += item_value
@@ -140,8 +141,7 @@ def dashboard(request):
                 total_value = 0
                 at_risk_value = 0
                 for item in items:
-                    transactions_sum = Transaction.objects.filter(item=item).aggregate(Sum('value'))['value__sum'] or 0
-                    item_value = float(item.value) + float(transactions_sum)
+                    item_value = float(item.current_balance)
                     converted = convert_currency(item_value, item.currency, default_currency, rates)
                     if converted is None:
                         currency_conversion_failed = True
@@ -296,20 +296,17 @@ def show_items(request):
     order_prefix = '-' if sort_order == 'desc' else ''
     
     # Apply sorting - pinned items first, then by user preference
-    items = items.select_related('wallet').prefetch_related('tags').order_by('-is_pinned', f'{order_prefix}{sort_by}')
+    items = items.with_current_balance().select_related('wallet').prefetch_related('tags') \
+        .order_by('-is_pinned', f'{order_prefix}{sort_by}')
 
     items_with_qr = []
     merchant_logos = get_cached_logos_for_issuers(i.issuer for i in items)
 
     for item in items:
-        # Calculate current value
-        transactions_sum = Transaction.objects.filter(item=item).aggregate(Sum('value'))['value__sum'] or 0
-        current_value = item.value + transactions_sum
-
         items_with_qr.append({
             'item': item,
             'qr_code_base64': item.qr_code_base64,
-            'current_value': current_value,
+            'current_value': item.current_balance,
             'merchant_logo_url': merchant_logos.get(item.issuer.strip().lower()),
         })
 
@@ -369,7 +366,7 @@ def view_item(request, item_uuid):
     is_shared = item.shared_with.exists()
 
     transactions = item.transactions.all()
-    total_value = item.value + sum(t.value for t in transactions)
+    total_value = item.get_current_balance(transactions)
 
     if request.method == 'POST':
         if not can_edit:
@@ -735,8 +732,7 @@ def toggle_item_status(request, item_id):
     else:
         # If item is available, mark as used and create a transaction
         item.is_used = True
-        transactions = item.transactions.all()
-        value_to_remove = item.value + sum(t.value for t in transactions)
+        value_to_remove = item.get_current_balance()
 
         transaction = Transaction(
             item=item,
@@ -844,8 +840,7 @@ def sharing_center(request):
     for share in shares:
         item = share.item
         if item.id not in unique_items:
-            transactions_sum = Transaction.objects.filter(item=item).aggregate(Sum('value'))['value__sum'] or 0
-            current_value = item.value + transactions_sum            
+            current_value = item.get_current_balance()
             if share.shared_with_user == current_user and not item.is_used and item.expiry_date >= today:
                 # You are the receiver
                 unique_items[item.id] = {
@@ -963,16 +958,12 @@ def get_stats(request):
             users_filtered = False
 
         # Only valid, unused, and non-expired items are used for transaction-based value calc
-        items_with_transaction_values = (
-            items_query.filter(is_used=False, expiry_date__gte=now())
-            .annotate(
-                transaction_total=Sum('transactions__value', default=0)
-            )
-            .annotate(net_value=ExpressionWrapper(F('value') + F('transaction_total'), output_field=models.DecimalField()))
-        )
+        items_with_transaction_values = items_query.filter(
+            is_used=False, expiry_date__gte=now()
+        ).with_current_balance()
 
         total_value = round((items_with_transaction_values.aggregate(
-            total_value=Sum('net_value'))['total_value'] or 0), 2)
+            total_value=Sum('current_balance'))['total_value'] or 0), 2)
 
         # Item stats
         item_stats = {

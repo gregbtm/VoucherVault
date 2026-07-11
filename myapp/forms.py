@@ -150,7 +150,7 @@ class TransactionForm(forms.ModelForm):
         
         if self.item:
             # Calculate the total value after applying this transaction
-            total_value = self.item.value + sum(t.value for t in self.item.transactions.all()) + value
+            total_value = self.item.get_current_balance() + value
             if total_value < 0:
                 error_msg_value_calc = _('Transaction would result in negative item value.')
                 raise forms.ValidationError(error_msg_value_calc)

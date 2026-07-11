@@ -1,4 +1,7 @@
+from decimal import Decimal
+
 from django.db import models
+from django.db.models import ExpressionWrapper, F, Sum
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -154,6 +157,24 @@ class MerchantProfile(models.Model):
         return self.name
 
 
+class ItemQuerySet(models.QuerySet):
+    def with_current_balance(self):
+        """
+        Annotates each item with `current_balance` — its starting `value`
+        plus every transaction against it (transactions are negative
+        spends). Centralizes the balance calculation for list/bulk views
+        as a single annotated query instead of one query per item.
+        """
+        return self.annotate(
+            transaction_total=Sum('transactions__value', default=Decimal('0'))
+        ).annotate(
+            current_balance=ExpressionWrapper(
+                F('value') + F('transaction_total'),
+                output_field=models.DecimalField(max_digits=10, decimal_places=2),
+            )
+        )
+
+
 class Item(models.Model):
     ITEM_TYPES = (
         ('voucher', 'Voucher'),
@@ -217,6 +238,20 @@ class Item(models.Model):
         default=False, help_text="Hide from the default inventory view without marking it used or deleting it."
     )
     last_used_at = models.DateTimeField(null=True, blank=True)
+
+    objects = ItemQuerySet.as_manager()
+
+    def get_current_balance(self, transactions=None):
+        """
+        Starting value plus every transaction against it (transactions are
+        negative spends). Pass an already-fetched `transactions` iterable
+        to reuse it instead of triggering another query; for bulk/list
+        views, prefer `Item.objects.with_current_balance()` instead, which
+        computes this in a single annotated query.
+        """
+        if transactions is None:
+            transactions = self.transactions.all()
+        return self.value + sum(t.value for t in transactions)
 
     def __str__(self):
         return self.name
