@@ -20,7 +20,8 @@ from .merchant_logos import (
     guess_domain,
     remember_balance_check_url,
 )
-from .models import Document, Item, MerchantProfile, Tag, Transaction, UpdateCheckStatus, UserPreference, Wallet
+from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
+from .models import Document, Item, MerchantProfile, Tag, Transaction, UpdateCheckStatus, UserPreference, UserProfile, Wallet
 from .tasks import check_for_update_task, fetch_merchant_logo_task
 from .update_check import _is_newer, _parse_version, check_for_update
 
@@ -1267,3 +1268,95 @@ class OfflineCacheTogglePreferenceTests(TestCase):
             # still leaving offline_cache_enabled off - no transition, no purge needed
         })
         self.assertRedirects(response, reverse('show_items') + '?prefs_saved=1')
+
+
+class IcsCalendarBuilderTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_includes_active_item_with_expiry(self):
+        make_item(self.user, name='Coffee Voucher', expiry_date=date(2026, 12, 31))
+        calendar = build_ics_calendar(self.user).decode('utf-8')
+
+        self.assertIn('BEGIN:VCALENDAR', calendar)
+        self.assertIn('BEGIN:VEVENT', calendar)
+        self.assertIn('SUMMARY:Coffee Voucher expires', calendar)
+        self.assertIn('DTSTART;VALUE=DATE:20261231', calendar)
+        self.assertIn('END:VCALENDAR', calendar)
+
+    def test_excludes_used_items(self):
+        make_item(self.user, name='Used Voucher', is_used=True)
+        calendar = build_ics_calendar(self.user).decode('utf-8')
+        self.assertNotIn('BEGIN:VEVENT', calendar)
+
+    def test_excludes_archived_items(self):
+        make_item(self.user, name='Archived Voucher', is_archived=True)
+        calendar = build_ics_calendar(self.user).decode('utf-8')
+        self.assertNotIn('BEGIN:VEVENT', calendar)
+
+    def test_only_includes_own_users_items(self):
+        other = User.objects.create_user(username='bob', password='pw12345!')
+        make_item(other, name='Someone Elses Voucher')
+        calendar = build_ics_calendar(self.user).decode('utf-8')
+        self.assertNotIn('BEGIN:VEVENT', calendar)
+
+    def test_escape_text_handles_special_characters(self):
+        self.assertEqual(_escape_text('A, B; C\\D\nE'), 'A\\, B\; C\\\\D\\nE')
+
+    def test_fold_line_wraps_long_lines(self):
+        long_line = 'DESCRIPTION:' + ('x' * 100)
+        folded = _fold_line(long_line)
+        physical_lines = folded.split('\r\n')
+        self.assertGreater(len(physical_lines), 1)
+        for line in physical_lines[1:]:
+            self.assertTrue(line.startswith(' '))
+
+    def test_fold_line_leaves_short_lines_untouched(self):
+        self.assertEqual(_fold_line('SUMMARY:short'), 'SUMMARY:short')
+
+
+class IcsFeedViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.profile = self.user.userprofile
+
+    def test_new_user_gets_an_ics_token_automatically(self):
+        self.assertTrue(self.profile.ics_token)
+
+    def test_feed_accessible_without_login(self):
+        make_item(self.user, name='Feed Item')
+        response = self.client.get(reverse('ics_feed', kwargs={'token': self.profile.ics_token}))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/calendar; charset=utf-8')
+        self.assertIn(b'BEGIN:VEVENT', response.content)
+
+    def test_feed_404s_for_unknown_token(self):
+        response = self.client.get(reverse('ics_feed', kwargs={'token': '00000000-0000-0000-0000-000000000000'}))
+        self.assertEqual(response.status_code, 404)
+
+    def test_download_requires_login(self):
+        response = self.client.get(reverse('download_ics'))
+        self.assertEqual(response.status_code, 302)
+
+    def test_download_returns_attachment(self):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.get(reverse('download_ics'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('attachment', response['Content-Disposition'])
+
+    def test_regenerate_token_changes_it_and_invalidates_old_feed_url(self):
+        old_token = self.profile.ics_token
+        self.client.login(username='alice', password='pw12345!')
+
+        response = self.client.post(reverse('regenerate_ics_token'))
+
+        self.assertRedirects(response, reverse('upload_import'))
+        self.profile.refresh_from_db()
+        self.assertNotEqual(self.profile.ics_token, old_token)
+
+        old_feed_response = self.client.get(reverse('ics_feed', kwargs={'token': old_token}))
+        self.assertEqual(old_feed_response.status_code, 404)
+
+    def test_regenerate_token_requires_login(self):
+        response = self.client.post(reverse('regenerate_ics_token'))
+        self.assertEqual(response.status_code, 302)
