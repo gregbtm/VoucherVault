@@ -55,7 +55,7 @@ def parse(file_obj):
             'expiry_date': parse_date(raw_row.get('expiry_date')),
             'value': value,
             'value_type': (raw_row.get('value_type') or 'money').strip() or 'money',
-            'currency': (raw_row.get('currency') or 'EUR').strip() or 'EUR',
+            'currency': (raw_row.get('currency') or 'GBP').strip() or 'GBP',
             'description': (raw_row.get('description') or '').strip(),
             'notes': (raw_row.get('notes') or '').strip(),
             'wallet_name': (raw_row.get('wallet') or '').strip() or None,
