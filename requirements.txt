@@ -34,6 +34,7 @@ django-celery-beat==2.9.0
 
 # OCR
 anthropic==0.116.0
+openai==2.9.0
 pytesseract==0.3.13
 Pillow==12.3.0
 

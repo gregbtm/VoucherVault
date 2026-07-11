@@ -361,6 +361,8 @@ MERCHANT_LOGOS_ENABLED = os.environ.get('MERCHANT_LOGOS_ENABLED', 'true').lower(
 OCR_BACKEND = os.environ.get('OCR_BACKEND', 'none').lower()
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY') or None
 ANTHROPIC_OCR_MODEL = os.environ.get('ANTHROPIC_OCR_MODEL', 'claude-sonnet-5')
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY') or None
+OPENAI_OCR_MODEL = os.environ.get('OPENAI_OCR_MODEL', 'gpt-4o-mini')
 
 # ---- Apple Wallet (.pkpass) export ----
 PKPASS_CERT_PATH = os.environ.get('PKPASS_CERT_PATH') or None
