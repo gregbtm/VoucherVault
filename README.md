@@ -31,9 +31,11 @@
 > See [`FORK_CHANGES.md`](FORK_CHANGES.md) for the full changelog, the
 > [Wiki](https://github.com/gregbtm/VoucherVault/wiki) for feature-by-feature guides,
 > [`docs/UPGRADE.md`](docs/UPGRADE.md) if you're already running the
-> upstream Docker image and want to switch to this fork, and
+> upstream Docker image and want to switch to this fork,
 > [`docs/GOOGLE_WALLET_SETUP.md`](docs/GOOGLE_WALLET_SETUP.md) for a
-> step-by-step Google Wallet setup guide.
+> step-by-step Google Wallet setup guide, and
+> [`docs/BACKUP_RESTORE.md`](docs/BACKUP_RESTORE.md) for how the nightly
+> scheduled backups work and how to restore one.
 
 ## ⭐ Features
 
@@ -158,6 +160,8 @@ The docker container takes various environment variables:
 | `ANTHROPIC_OCR_MODEL`             | Overrides the Claude model used for OCR extraction.                                                            | `claude-sonnet-5`          | Optional            |
 | `OPENAI_API_KEY`                  | Required if `OCR_BACKEND=openai`. Get one at [platform.openai.com](https://platform.openai.com/api-keys).      | `None`                     | Optional            |
 | `OPENAI_OCR_MODEL`                | Overrides the OpenAI model used for OCR extraction.                                                            | `gpt-4o-mini`              | Optional            |
+| `SCHEDULED_BACKUP_ENABLED`        | Set to `False` to disable the nightly local backup task. See [`docs/BACKUP_RESTORE.md`](docs/BACKUP_RESTORE.md). | `True`                     | Optional            |
+| `BACKUP_RETENTION_COUNT`          | How many backups to keep per user before rotating out the oldest.                                              | `7`                        | Optional            |
 | `PKPASS_CERT_PATH`                | Path to your Apple Pass Type ID certificate (`.p12`). Enables Apple Wallet export when set.                    | `None`                     | Optional            |
 | `PKPASS_CERT_PASSWORD`            | Password for `PKPASS_CERT_PATH`, if any.                                                                       | `None`                     | Optional            |
 | `PKPASS_WWDR_CERT_PATH`           | Path to Apple's WWDR intermediate certificate. Required if `PKPASS_CERT_PATH` is set.                          | `None`                     | Optional            |

@@ -52,6 +52,10 @@ services:
       - GOOGLE_WALLET_CLASS_ID=${GOOGLE_WALLET_CLASS_ID:-}
       # set to False to disable the periodic GitHub Releases update check
       - UPDATE_CHECK_ENABLED=${UPDATE_CHECK_ENABLED:-True}
+      # set to False to disable the nightly local backup task; see docs/BACKUP_RESTORE.md
+      - SCHEDULED_BACKUP_ENABLED=${SCHEDULED_BACKUP_ENABLED:-True}
+      # how many backups to keep per user before rotating out the oldest
+      - BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-7}
     expose:
       - 8000
     ports:

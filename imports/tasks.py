@@ -1,14 +1,23 @@
+import logging
+import os
 from datetime import timedelta
 from decimal import Decimal
 
 from celery import shared_task
+from django.conf import settings
+from django.contrib.auth.models import User
 from django.utils import timezone
 
 from myapp.models import Item, Tag, Wallet
 from myapp.utils import generate_code_image_base64
 
+from .exporters.full_backup import export_full_backup
 from .models import ImportJob
 from .parsers import get_parser
+
+logger = logging.getLogger(__name__)
+
+BACKUP_ROOT = os.path.join('database', 'backups')
 
 
 def _validate_value(item_type, value_type, value):
@@ -121,3 +130,56 @@ def process_import_job(job_id):
     job.errors = errors
     job.completed_at = timezone.now()
     job.save(update_fields=['status', 'imported_count', 'error_count', 'errors', 'completed_at'])
+
+
+def _user_backup_dir(user) -> str:
+    return os.path.join(BACKUP_ROOT, user.username)
+
+
+def _rotate_backups(backup_dir: str) -> None:
+    """Keeps the newest settings.BACKUP_RETENTION_COUNT .zip files in backup_dir, deletes the rest."""
+    entries = sorted((f for f in os.listdir(backup_dir) if f.endswith('.zip')), reverse=True)
+    for stale in entries[settings.BACKUP_RETENTION_COUNT:]:
+        try:
+            os.remove(os.path.join(backup_dir, stale))
+        except OSError as exc:
+            logger.warning('Failed to remove stale backup %s: %s', stale, exc)
+
+
+def backup_user(user) -> str | None:
+    """
+    Writes one Full Backup zip (same format as the manual Import/Export
+    page download - see imports/exporters/full_backup.py) for `user` to
+    database/backups/<username>/ and rotates old ones. Returns the path
+    written, or None if the user has no items to back up.
+    """
+    items = Item.objects.filter(user=user).select_related('wallet').prefetch_related('tags', 'documents')
+    if not items.exists():
+        return None
+
+    backup_dir = _user_backup_dir(user)
+    os.makedirs(backup_dir, exist_ok=True)
+
+    filename = f'backup-{timezone.now().strftime("%Y%m%d-%H%M%S-%f")}.zip'
+    path = os.path.join(backup_dir, filename)
+    with open(path, 'wb') as f:
+        f.write(export_full_backup(items))
+
+    _rotate_backups(backup_dir)
+    return path
+
+
+@shared_task
+def run_scheduled_backups():
+    """
+    Periodic task (see create_default_periodic_tasks) that backs up every
+    user with at least one item. A no-op if SCHEDULED_BACKUP_ENABLED=False.
+    One user's failure (e.g. a disk error) doesn't stop the others.
+    """
+    if not settings.SCHEDULED_BACKUP_ENABLED:
+        return
+    for user in User.objects.filter(item__isnull=False).distinct():
+        try:
+            backup_user(user)
+        except Exception as exc:
+            logger.error('Scheduled backup failed for user %s: %s', user.username, exc)
