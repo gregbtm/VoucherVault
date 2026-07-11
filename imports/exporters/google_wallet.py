@@ -93,7 +93,7 @@ def _build_generic_object(item, issuer_id: str, class_id: str) -> dict:
         'genericType': GENERIC_TYPE_MAP.get(item.type, DEFAULT_GENERIC_TYPE),
         'state': 'ACTIVE',
         'header': _localized(item.name),
-        'cardTitle': _localized(item.issuer or 'VoucherVault'),
+        'cardTitle': _localized(item.issuer or 'VoucherVault Plus+'),
         'subheader': _localized(item.get_type_display()),
         'hexBackgroundColor': tile_color,
         'barcode': {

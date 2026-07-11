@@ -805,7 +805,7 @@ def verify_apprise_urls(request):
     # Send a test notification if all URLs are valid
     try:
         msg_body = _('This is an Apprise test notification.')
-        msg_title = _('Test Notification by VoucherVault')
+        msg_title = _('Test Notification by VoucherVault Plus+')
         msg_success = _('Test notification to at least one Apprise URL sent successfully.')
         msg_failure = _('Failed to send test notification for every Apprise URL given.')
 

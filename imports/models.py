@@ -13,8 +13,8 @@ class ImportJob(models.Model):
     ]
     SOURCE_CHOICES = [
         ('catima_csv', 'Catima CSV'),
-        ('native_csv', 'VoucherVault CSV Backup'),
-        ('native_json', 'VoucherVault JSON Backup'),
+        ('native_csv', 'VoucherVault Plus+ CSV Backup'),
+        ('native_json', 'VoucherVault Plus+ JSON Backup'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

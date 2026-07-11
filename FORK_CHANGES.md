@@ -356,6 +356,38 @@ word` / `word-break: break-word` to all three rules
 (`inventory.html`, `sharing_center.html`, `view-item.html`). CSS-only, no
 behavior change otherwise.
 
+## Phase 13.2 — "VoucherVault Plus+" branding pass
+
+Every remaining plain "VoucherVault" mention updated to "VoucherVault
+Plus+", found by grepping the full app (templates, settings, admin
+config) for the string:
+
+- Browser tab titles and sidebar logo alt text (`base.html`, `login.html`,
+  `post-logout.html`, `offline.html`)
+- The installed-PWA name and description (`PWA_APP_NAME`,
+  `PWA_APP_DESCRIPTION`) — this is what shows on a phone's home screen
+  once installed, arguably the most visible spot of all of these
+- Swagger/API docs title, Django admin `site_header`/`site_title`/
+  `index_title`
+- Notification titles (the test-notification sender name, both the
+  Phase 3 rules engine's and the legacy Apprise one)
+- The organization name/card title baked into generated Apple Wallet and
+  Google Wallet passes (`PKPASS_ORGANIZATION_NAME`'s default, and the
+  Google Wallet `cardTitle` fallback when an item has no issuer set) —
+  these render on the actual pass, not just in the app
+- The Full Backup CSV/JSON format labels (`ImportJob.SOURCE_CHOICES`,
+  needs a migration since it's a model field's `choices`, though it's a
+  no-op at the database level) and the matching dropdown option text on
+  the Import/Export upload form
+- Trimmed the sidebar logo's font size (26px → 22px) since "VoucherVault
+  Plus+" is meaningfully wider than "VoucherVault" in the sidebar's fixed
+  280px width — avoids trading the description-overflow bug fixed in
+  13.1 for a new brand-name overflow in the sidebar
+
+Deliberately left alone: every link/mention of the actual GitHub repo
+(`gregbtm/VoucherVault`), since that's the real project name, not display
+branding.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

@@ -129,7 +129,7 @@ def send_test_notification(rule) -> tuple[bool, str]:
     """Fires an immediate test notification for a rule and logs the attempt."""
     success, detail = send_via_rule(
         rule,
-        title='VoucherVault test notification',
+        title='VoucherVault Plus+ test notification',
         message=f"This is a test notification for the rule '{rule.name}'.",
     )
     NotificationLog.objects.create(
