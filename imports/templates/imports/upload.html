@@ -60,7 +60,7 @@
       <div class="card mt-3">
         <div class="card-body">
           <h5 class="card-title">{% trans "Full Backup (with files)" %}</h5>
-          <p class="text-muted small">{% trans "A .zip bundle that includes every item's attached file and documents, not just text fields. Restoring one always creates new items — it never overwrites what's already in your vault." %}</p>
+          <p class="text-muted small">{% trans "A .zip bundle with every item, its attached file/documents, transaction history, and your display/notification settings. Restoring always creates new items — it never overwrites what's already in your vault — but settings and notification rules are updated in place." %}</p>
           <a href="{% url 'export_full_backup' %}" class="btn btn-outline-secondary mb-3">
             <i class="bi bi-file-earmark-zip me-1"></i>{% trans "Download Full Backup" %}
           </a>

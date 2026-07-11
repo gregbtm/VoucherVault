@@ -85,8 +85,8 @@ def export_json(request):
 @require_GET
 @login_required
 def export_full_backup_view(request):
-    items = Item.objects.filter(user=request.user).select_related('wallet').prefetch_related('tags', 'documents')
-    response = HttpResponse(export_full_backup(items), content_type='application/zip')
+    items = Item.objects.filter(user=request.user).select_related('wallet').prefetch_related('tags', 'documents', 'transactions')
+    response = HttpResponse(export_full_backup(items, user=request.user), content_type='application/zip')
     response['Content-Disposition'] = 'attachment; filename="vouchervault-full-backup.zip"'
     return response
 
@@ -105,13 +105,20 @@ def import_full_backup_view(request):
             except FullBackupImportError as exc:
                 messages.error(request, str(exc))
             else:
+                settings_suffix = _(' and your saved settings') if result.get('settings_restored') else ''
                 if result['error_count']:
                     messages.warning(
                         request,
-                        _('Restored %(imported)d item(s) with %(errors)d error(s).') % {
+                        _('Restored %(imported)d item(s)%(settings)s with %(errors)d error(s).') % {
                             'imported': result['imported_count'], 'errors': result['error_count'],
+                            'settings': settings_suffix,
                         },
                     )
                 else:
-                    messages.success(request, _('Restored %(imported)d item(s) from backup.') % {'imported': result['imported_count']})
+                    messages.success(
+                        request,
+                        _('Restored %(imported)d item(s)%(settings)s from backup.') % {
+                            'imported': result['imported_count'], 'settings': settings_suffix,
+                        },
+                    )
     return redirect('upload_import')
