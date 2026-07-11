@@ -9,6 +9,7 @@ import unicodedata
 import mimetypes
 import datetime as dt
 from django.db.models import Q
+from django.utils.safestring import mark_safe
 from .forms import *
 from .models import *
 from .utils import get_fixer_rates, convert_currency
@@ -97,7 +98,7 @@ def dashboard(request):
     # Get user preferences for currency settings
     preferences, _ = UserPreference.objects.get_or_create(user=user)
     fixer_api_key = preferences.fixer_api_key
-    default_currency = preferences.default_currency or 'EUR'
+    default_currency = preferences.default_currency or 'GBP'
 
     # Get threshold days from environment variable or default to 30
     threshold_days = int(os.getenv('EXPIRY_THRESHOLD_DAYS', 30))
@@ -214,6 +215,7 @@ def show_items(request):
     filter_value = request.GET.get('status', 'available')  # Get the combined filter value
     search_query = request.GET.get('query', '')
     wallet_id = request.GET.get('wallet')
+    tag_ids = [t for t in request.GET.getlist('tag') if t.isdigit()]
 
     # Retrieve or create user preferences (only once)
     preferences, _ = UserPreference.objects.get_or_create(user=user)
@@ -273,6 +275,11 @@ def show_items(request):
     if wallet_id:
         items = items.filter(wallet_id=wallet_id)
 
+    # Apply the tag filter if provided — an item matching ANY selected tag
+    # is included (OR), which is what users expect from clickable tag chips
+    if tag_ids:
+        items = items.filter(tags__id__in=tag_ids).distinct()
+
     # Apply search query filter if provided
     if search_query:
         items = items.filter(
@@ -327,6 +334,16 @@ def show_items(request):
         # Wallet filter
         'wallets': Wallet.objects.filter(Q(user=user) | Q(shared_with=user)).distinct().annotate(item_count=Count('items')),
         'selected_wallet_id': int(wallet_id) if wallet_id and wallet_id.isdigit() else None,
+        # Tag filter — counts reflect the user's own non-archived accessible
+        # items, same base set "All Items" browses by default
+        'all_tags': Tag.objects.filter(user=user).annotate(
+            item_count=Count('items', filter=Q(items__in=user_items), distinct=True)
+        ).order_by('name'),
+        'selected_tag_ids': [int(t) for t in tag_ids],
+        # Appended to the static status/type filter chip hrefs so switching
+        # status or type doesn't silently drop the active tag filter.
+        # tag_ids is already validated as digit-only strings, safe to mark.
+        'tag_query_params': mark_safe(''.join(f'&tag={t}' for t in tag_ids)),
     }
     return render(request, 'inventory.html', context)
 
@@ -460,7 +477,7 @@ def create_item(request):
     else:
         # If not a POST request, initialize form with user's preferred currency
         preferences, _ = UserPreference.objects.get_or_create(user=request.user)
-        form = ItemForm(initial={'currency': preferences.default_currency or 'EUR'}, user=request.user)
+        form = ItemForm(initial={'currency': preferences.default_currency or 'GBP'}, user=request.user)
 
     return render(request, 'create-item.html', {'form': form, 'ocr_enabled': ocr_enabled()})
 

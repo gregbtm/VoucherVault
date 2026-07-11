@@ -70,7 +70,7 @@ def parse(file_obj):
             value = Decimal('0')
 
         balance_type = (raw_row.get('Balance Type') or '').strip().upper()
-        currency = balance_type if len(balance_type) == 3 and balance_type.isalpha() else 'EUR'
+        currency = balance_type if len(balance_type) == 3 and balance_type.isalpha() else 'GBP'
 
         rows.append({
             'type': item_type,

@@ -66,7 +66,7 @@ def parse(file_obj):
             'expiry_date': parse_date(entry.get('expiry_date')) if isinstance(entry.get('expiry_date'), str) else None,
             'value': value,
             'value_type': entry.get('value_type') or 'money',
-            'currency': entry.get('currency') or 'EUR',
+            'currency': entry.get('currency') or 'GBP',
             'description': entry.get('description') or '',
             'notes': entry.get('notes') or '',
             'wallet_name': entry.get('wallet') or None,

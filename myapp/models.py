@@ -68,7 +68,7 @@ class UserPreference(models.Model):
     sort_order = models.CharField(max_length=4, choices=SORT_ORDER_CHOICES, default='asc')
     view_mode = models.CharField(max_length=10, choices=VIEW_MODE_CHOICES, default='compact')
     fixer_api_key = models.CharField(max_length=64, blank=True, null=True, default=None)
-    default_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='EUR')
+    default_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='GBP')
     keep_screen_awake = models.BooleanField(
         default=True, help_text="Keep the screen on while viewing an item's barcode."
     )
@@ -193,7 +193,7 @@ class Item(models.Model):
         help_text="Hex code like #FF5733"
     )
     is_pinned = models.BooleanField(default=False)
-    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='EUR')
+    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='GBP')
     wallet = models.ForeignKey(
         Wallet, on_delete=models.SET_NULL, null=True, blank=True, related_name='items'
     )

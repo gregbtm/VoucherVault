@@ -148,6 +148,22 @@
   margin: 0 0.25rem;
 }
 
+.tag-filter-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted, #6c757d);
+  margin: 0.75rem 0 0.4rem;
+}
+
+.tag-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 /* Items Count Badge */
 .items-count {
   font-size: 0.85rem;
@@ -684,56 +700,56 @@ body.dark-mode .mobile-filter-select {
       <!-- Desktop Filter Chips -->
       <div class="filter-chips">
         <!-- Status Filters -->
-        <a href="?{% if item_type %}type={{ item_type }}&{% endif %}status=available{% if search_query %}&query={{ search_query }}{% endif %}" 
+        <a href="?{% if item_type %}type={{ item_type }}&{% endif %}status=available{% if search_query %}&query={{ search_query }}{% endif %}{{ tag_query_params }}"
            class="filter-chip {% if item_status == 'available' or not item_status %}active{% endif %}">
           <i class="bi bi-check-circle"></i> {% trans "Available" %}
           <span class="count">{{ available_count }}</span>
         </a>
-        <a href="?{% if item_type %}type={{ item_type }}&{% endif %}status=soon_expiring{% if search_query %}&query={{ search_query }}{% endif %}" 
+        <a href="?{% if item_type %}type={{ item_type }}&{% endif %}status=soon_expiring{% if search_query %}&query={{ search_query }}{% endif %}{{ tag_query_params }}"
            class="filter-chip {% if item_status == 'soon_expiring' %}active{% endif %}">
           <i class="bi bi-clock-history"></i> {% trans "Expiring Soon" %}
           <span class="count">{{ soon_expiring_count }}</span>
         </a>
-        <a href="?{% if item_type %}type={{ item_type }}&{% endif %}status=used{% if search_query %}&query={{ search_query }}{% endif %}" 
+        <a href="?{% if item_type %}type={{ item_type }}&{% endif %}status=used{% if search_query %}&query={{ search_query }}{% endif %}{{ tag_query_params }}"
            class="filter-chip {% if item_status == 'used' %}active{% endif %}">
           <i class="bi bi-check2-all"></i> {% trans "Used" %}
           <span class="count">{{ used_count }}</span>
         </a>
-        <a href="?{% if item_type %}type={{ item_type }}&{% endif %}status=expired{% if search_query %}&query={{ search_query }}{% endif %}"
+        <a href="?{% if item_type %}type={{ item_type }}&{% endif %}status=expired{% if search_query %}&query={{ search_query }}{% endif %}{{ tag_query_params }}"
            class="filter-chip {% if item_status == 'expired' %}active{% endif %}">
           <i class="bi bi-x-circle"></i> {% trans "Expired" %}
           <span class="count">{{ expired_count }}</span>
         </a>
-        <a href="?{% if item_type %}type={{ item_type }}&{% endif %}status=archived{% if search_query %}&query={{ search_query }}{% endif %}"
+        <a href="?{% if item_type %}type={{ item_type }}&{% endif %}status=archived{% if search_query %}&query={{ search_query }}{% endif %}{{ tag_query_params }}"
            class="filter-chip {% if item_status == 'archived' %}active{% endif %}">
           <i class="bi bi-archive"></i> {% trans "Archived" %}
           <span class="count">{{ archived_count }}</span>
         </a>
 
         <span class="filter-divider"></span>
-        
+
         <!-- Type Filters -->
-        <a href="?status={{ item_status }}{% if search_query %}&query={{ search_query }}{% endif %}" 
+        <a href="?status={{ item_status }}{% if search_query %}&query={{ search_query }}{% endif %}{{ tag_query_params }}"
            class="filter-chip {% if not item_type %}active{% endif %}">
           {% trans "All Types" %}
           <span class="count">{{ all_types_count }}</span>
         </a>
-        <a href="?type=voucher&status={{ item_status }}{% if search_query %}&query={{ search_query }}{% endif %}" 
+        <a href="?type=voucher&status={{ item_status }}{% if search_query %}&query={{ search_query }}{% endif %}{{ tag_query_params }}"
            class="filter-chip {% if item_type == 'voucher' %}active{% endif %}">
           <i class="bi bi-ticket-perforated"></i> {% trans "Vouchers" %}
           <span class="count">{{ voucher_count }}</span>
         </a>
-        <a href="?type=giftcard&status={{ item_status }}{% if search_query %}&query={{ search_query }}{% endif %}" 
+        <a href="?type=giftcard&status={{ item_status }}{% if search_query %}&query={{ search_query }}{% endif %}{{ tag_query_params }}"
            class="filter-chip {% if item_type == 'giftcard' %}active{% endif %}">
           <i class="bi bi-gift"></i> {% trans "Gift Cards" %}
           <span class="count">{{ giftcard_count }}</span>
         </a>
-        <a href="?type=coupon&status={{ item_status }}{% if search_query %}&query={{ search_query }}{% endif %}" 
+        <a href="?type=coupon&status={{ item_status }}{% if search_query %}&query={{ search_query }}{% endif %}{{ tag_query_params }}"
            class="filter-chip {% if item_type == 'coupon' %}active{% endif %}">
           <i class="bi bi-percent"></i> {% trans "Coupons" %}
           <span class="count">{{ coupon_count }}</span>
         </a>
-        <a href="?type=loyaltycard&status={{ item_status }}{% if search_query %}&query={{ search_query }}{% endif %}"
+        <a href="?type=loyaltycard&status={{ item_status }}{% if search_query %}&query={{ search_query }}{% endif %}{{ tag_query_params }}"
            class="filter-chip {% if item_type == 'loyaltycard' %}active{% endif %}">
           <i class="bi bi-star"></i> {% trans "Loyalty" %}
           <span class="count">{{ loyaltycard_count }}</span>
@@ -754,9 +770,34 @@ body.dark-mode .mobile-filter-select {
       </div>
       {% endif %}
 
+      {% if all_tags %}
+      <!-- Tag Filter -->
+      <div class="tag-filter-label">{% trans "Filter by Tag" %}</div>
+      <div class="filter-chips" id="tagFilterChips">
+        {% for tag in all_tags %}
+        <a href="#"
+           class="filter-chip tag-chip {% if tag.id in selected_tag_ids %}active{% endif %}"
+           style="{% if tag.id in selected_tag_ids %}background-color: {{ tag.color }}; border-color: {{ tag.color }}; color: #fff;{% endif %}"
+           onclick="toggleTagFilter({{ tag.id }}); return false;">
+          <span class="tag-dot" style="background-color: {{ tag.color }};"></span>
+          {{ tag.name }}
+          <span class="count">{{ tag.item_count }}</span>
+        </a>
+        {% endfor %}
+        {% if selected_tag_ids %}
+        <a href="#" class="filter-chip" onclick="clearTagFilters(); return false;">
+          <i class="bi bi-x-circle"></i> {% trans "Clear tags" %}
+        </a>
+        {% endif %}
+      </div>
+      {% endif %}
+
       <!-- Hidden inputs for form submission -->
       <input type="hidden" name="type" id="hiddenType" value="{{ item_type }}">
       <input type="hidden" name="status" id="hiddenStatus" value="{{ item_status }}">
+      {% for tag_id in selected_tag_ids %}
+      <input type="hidden" name="tag" value="{{ tag_id }}">
+      {% endfor %}
     </form>
   </div>
 
@@ -943,6 +984,35 @@ function applyMobileFilters() {
     url.searchParams.set('query', searchInput.value.trim());
   }
   
+  window.location.href = url.toString();
+}
+
+// Toggle a tag in/out of the active tag filter set, preserving every
+// other current filter (status, type, wallet, search, other tags).
+function toggleTagFilter(tagId) {
+  const url = new URL(window.location.href);
+  const tagIdStr = String(tagId);
+  const current = url.searchParams.getAll('tag');
+  url.searchParams.delete('tag');
+
+  let found = false;
+  current.forEach(t => {
+    if (t === tagIdStr) {
+      found = true;
+      return;
+    }
+    url.searchParams.append('tag', t);
+  });
+  if (!found) {
+    url.searchParams.append('tag', tagIdStr);
+  }
+
+  window.location.href = url.toString();
+}
+
+function clearTagFilters() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('tag');
   window.location.href = url.toString();
 }
 

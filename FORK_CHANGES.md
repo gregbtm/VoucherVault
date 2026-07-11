@@ -193,6 +193,21 @@ scoping notes in the project history for what was deliberately left out).
   with what's already in your vault, so it's safe to run against a vault
   that already has data in it.
 
+## Two follow-up fixes
+
+- **Default currency is GBP** — `Item.currency` and
+  `UserPreference.default_currency` now default to GBP instead of EUR,
+  and a one-time data migration relabels every existing item and saved
+  preference to GBP. This is a relabel only — numeric values are
+  untouched, so a "5.00 EUR" item becomes a "5.00 GBP" item, not a
+  converted amount.
+- **Tag filter on the Inventory page** — every tag you've created now
+  appears as a clickable chip above the item grid, with a live count of
+  how many of your items carry it. Clicking a tag toggles it on/off;
+  multiple tags can be active at once (an item matching *any* selected
+  tag is shown), and the selection is preserved when you switch status/
+  type filters alongside it.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

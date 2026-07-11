@@ -30,6 +30,27 @@ def make_item(user, **kwargs):
     return Item.objects.create(**defaults)
 
 
+class DefaultCurrencyTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_new_item_defaults_to_gbp(self):
+        item = Item.objects.create(
+            type='voucher', name='Test', redeem_code='ABC', issuer='Acme',
+            expiry_date=date.today() + timedelta(days=30), value='10.00', user=self.user,
+        )
+        self.assertEqual(item.currency, 'GBP')
+
+    def test_new_user_preference_defaults_to_gbp(self):
+        preferences, _ = UserPreference.objects.get_or_create(user=self.user)
+        self.assertEqual(preferences.default_currency, 'GBP')
+
+    def test_create_item_view_prefills_gbp_when_no_preference_set(self):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.get(reverse('create_item'))
+        self.assertEqual(response.context['form'].initial['currency'], 'GBP')
+
+
 class WalletModelTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')
@@ -193,6 +214,53 @@ class ShowItemsWalletFilterTests(TestCase):
         response = self.client.get(reverse('show_items'), {'wallet': self.wallet.id, 'status': 'all'})
         names = [entry['item'].name for entry in response.context['items_with_qr']]
         self.assertEqual(names, ['In Wallet'])
+
+
+class ShowItemsTagFilterTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+        self.groceries = Tag.objects.create(user=self.user, name='Groceries')
+        self.travel = Tag.objects.create(user=self.user, name='Travel')
+        self.tagged_groceries = make_item(self.user, name='Tagged Groceries')
+        self.tagged_groceries.tags.add(self.groceries)
+        self.tagged_travel = make_item(self.user, name='Tagged Travel', redeem_code='OTHER1')
+        self.tagged_travel.tags.add(self.travel)
+        self.tagged_both = make_item(self.user, name='Tagged Both', redeem_code='OTHER2')
+        self.tagged_both.tags.add(self.groceries, self.travel)
+        self.untagged = make_item(self.user, name='Untagged', redeem_code='OTHER3')
+
+    def test_filter_by_single_tag(self):
+        response = self.client.get(reverse('show_items'), {'tag': self.groceries.id, 'status': 'all'})
+        names = {entry['item'].name for entry in response.context['items_with_qr']}
+        self.assertEqual(names, {'Tagged Groceries', 'Tagged Both'})
+
+    def test_filter_by_multiple_tags_is_or(self):
+        response = self.client.get(reverse('show_items'), {'tag': [self.groceries.id, self.travel.id], 'status': 'all'})
+        names = {entry['item'].name for entry in response.context['items_with_qr']}
+        self.assertEqual(names, {'Tagged Groceries', 'Tagged Travel', 'Tagged Both'})
+
+    def test_no_tag_filter_shows_everything(self):
+        response = self.client.get(reverse('show_items'), {'status': 'all'})
+        names = {entry['item'].name for entry in response.context['items_with_qr']}
+        self.assertIn('Untagged', names)
+
+    def test_all_tags_context_includes_item_counts(self):
+        response = self.client.get(reverse('show_items'), {'status': 'all'})
+        tags_by_name = {tag.name: tag for tag in response.context['all_tags']}
+        self.assertEqual(tags_by_name['Groceries'].item_count, 2)
+        self.assertEqual(tags_by_name['Travel'].item_count, 2)
+
+    def test_selected_tag_ids_reflected_in_context(self):
+        response = self.client.get(reverse('show_items'), {'tag': self.groceries.id, 'status': 'all'})
+        self.assertEqual(response.context['selected_tag_ids'], [self.groceries.id])
+
+    def test_other_users_tags_not_shown(self):
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        Tag.objects.create(user=bob, name='Bob Tag')
+        response = self.client.get(reverse('show_items'), {'status': 'all'})
+        tag_names = {tag.name for tag in response.context['all_tags']}
+        self.assertNotIn('Bob Tag', tag_names)
 
 
 class AnalyticsHelperTests(TestCase):
@@ -755,3 +823,49 @@ class WakeLockPreferenceTests(TestCase):
         item = make_item(self.user)
         response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
         self.assertNotContains(response, 'navigator.wakeLock')
+
+
+class GbpMigrationDataTests(TestCase):
+    """
+    Exercises the 0038_convert_existing_items_to_gbp RunPython function
+    directly (Django's test DB already has all migrations applied before
+    any test data exists, so the migration itself can't be re-triggered
+    against pre-existing rows through the normal test runner).
+    """
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def _run_migration(self):
+        import importlib
+        module = importlib.import_module('myapp.migrations.0038_convert_existing_items_to_gbp')
+        from django.apps import apps as real_apps
+        module.relabel_currency_to_gbp(real_apps, None)
+
+    def test_relabels_eur_item_to_gbp_keeping_value(self):
+        item = make_item(self.user, currency='EUR', value='5.00')
+        self._run_migration()
+        item.refresh_from_db()
+        self.assertEqual(item.currency, 'GBP')
+        self.assertEqual(str(item.value), '5.00')
+
+    def test_relabels_any_currency_to_gbp(self):
+        item = make_item(self.user, currency='USD', value='12.34')
+        self._run_migration()
+        item.refresh_from_db()
+        self.assertEqual(item.currency, 'GBP')
+        self.assertEqual(str(item.value), '12.34')
+
+    def test_relabels_user_preference_default_currency(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        prefs.default_currency = 'EUR'
+        prefs.save()
+        self._run_migration()
+        prefs.refresh_from_db()
+        self.assertEqual(prefs.default_currency, 'GBP')
+
+    def test_already_gbp_items_untouched(self):
+        item = make_item(self.user, currency='GBP', value='7.50')
+        self._run_migration()
+        item.refresh_from_db()
+        self.assertEqual(item.currency, 'GBP')
+        self.assertEqual(str(item.value), '7.50')

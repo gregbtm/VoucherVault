@@ -63,7 +63,7 @@ def create_item_from_row(user, row):
         expiry_date=expiry_date,
         value=value,
         value_type=row.get('value_type', 'money'),
-        currency=row.get('currency', 'EUR'),
+        currency=row.get('currency', 'GBP'),
         description=row.get('description', ''),
         notes=row.get('notes', ''),
         wallet=wallet,
