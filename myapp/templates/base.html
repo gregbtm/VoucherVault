@@ -402,6 +402,17 @@
 
   <main id="main" class="main">
 
+  {% if update_check.update_available %}
+    <div class="container mt-3">
+      <div class="alert alert-info alert-dismissible shadow-sm rounded-3 p-3 mb-3" role="alert">
+        <strong class="me-2">ℹ️</strong>
+        {% blocktrans with version=update_check.latest_version %}A newer version ({{ version }}) is available.{% endblocktrans %}
+        <a href="{{ update_check.latest_release_url }}" target="_blank" rel="noopener">{% trans "View release" %}</a>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    </div>
+  {% endif %}
+
   {% if messages %}
     <div class="container mt-3">
       {% for message in messages %}

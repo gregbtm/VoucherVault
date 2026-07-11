@@ -1,7 +1,10 @@
 FROM python:3.12.13-slim
 
-# define environment
-ARG VERSION=0
+# define environment; CI (.github/workflows/conventional-commits.yml) passes
+# --build-arg VERSION=X.Y.Z on every push to main. Left unset (not "0") when
+# built without that build-arg - e.g. a Portainer git-based build - so
+# settings.py falls back to the VERSION file below instead of a bogus "0".
+ARG VERSION
 ENV VERSION=$VERSION
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -30,6 +33,7 @@ COPY notify /opt/app/notify
 COPY imports /opt/app/imports
 COPY ocr /opt/app/ocr
 COPY manage.py /opt/app/manage.py
+COPY VERSION /opt/app/VERSION
 COPY requirements.txt /opt/app/requirements.txt
 COPY /docker/entrypoint.sh /opt/app/docker/entrypoint.sh
 COPY /docker/docker_uwsgi.ini /opt/app/docker/docker_uwsgi.ini

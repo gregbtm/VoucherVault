@@ -483,6 +483,46 @@ hunting down every call site, and it was easy to miss one.
   it lived in comments/YAML, not template/Python source) — now
   `VoucherVault Plus+` everywhere.
 
+## Phase 13.5 — Version file + update-available check
+
+The footer already rendered `{{ "VERSION"|env }}`, but `settings.VERSION`
+came from a single env var that the Dockerfile only ever set via
+`ARG VERSION=0` — meaning any build that didn't pass a matching
+`--build-arg` (every Portainer git-based build, per `docs/UPGRADE.md`)
+shipped with a literal "0" in the footer.
+
+- New repo-root `VERSION` file (currently `1.0.0`) is the fallback source
+  of truth. `docker/Dockerfile` now `COPY VERSION /opt/app/VERSION`.
+  `settings.py`'s `VERSION` resolves as: an explicit `VERSION` env var
+  first, else the file, else `'unknown'`. The Dockerfile's
+  `ARG VERSION`/`ENV VERSION=$VERSION` are kept (with the useless `0`
+  default removed) since `.github/workflows/conventional-commits.yml` —
+  inherited from upstream — already passes
+  `--build-arg VERSION=<conventional-commits-computed version>` on every
+  push to `main`; the file is specifically the fallback for builds that
+  don't go through that pipeline.
+- New `UPDATE_CHECK_ENABLED` (on by default) and `UPDATE_CHECK_REPO`
+  (`gregbtm/VoucherVault`) settings. A new periodic Celery task
+  (`myapp.tasks.check_for_update_task`, registered in
+  `create_default_periodic_tasks`, same daily schedule as the existing
+  expiry checks) hits the public GitHub Releases API
+  (`myapp/update_check.py`) and persists the result to a new
+  `UpdateCheckStatus` singleton row — a DB row rather than Django's cache
+  framework, since the check runs in a Celery worker process and the
+  result needs to reach the separate web process(es) serving requests.
+- A dismissible banner appears above the page content when a newer
+  release exists, visible to superusers only (an operational/deployment
+  concern, not something other users act on) via a new
+  `update_check_status` context processor.
+- Drive-by fix: `templatetags/extras.py`'s `EXPIRY_THRESHOLD` filter still
+  read `os.getenv('EXPIRY_THRESHOLD_DAYS', 30)` directly — missed by
+  Phase 13.4's sweep since it's a template filter, not one of the modules
+  audited. Now reads `settings.EXPIRY_THRESHOLD_DAYS` like everywhere
+  else.
+- New tests: `VersionCompareTests` (the version-ordering helpers),
+  `UpdateCheckServiceTests` (the GitHub Releases check, mocked),
+  `UpdateCheckContextProcessorTests` (banner visibility by user type).
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
@@ -507,6 +547,9 @@ On top of everything documented in the README, this fork adds:
 | `WEBPUSH_VAPID_PUBLIC_KEY` | VAPID public key. Enables the Web Push backend when set along with the private key below. | `None` |
 | `WEBPUSH_VAPID_PRIVATE_KEY` | VAPID private key. Generate a pair with `python manage.py generate_vapid_keys`. | `None` |
 | `WEBPUSH_VAPID_CLAIMS_EMAIL` | Contact email sent to push services as the VAPID claim. | `mailto:admin@example.com` |
+| `UPDATE_CHECK_ENABLED` | Set to `False` to disable the periodic GitHub Releases check. | `True` |
+| `UPDATE_CHECK_REPO` | `owner/repo` to check for releases. | `gregbtm/VoucherVault` |
+| `VERSION` | Overrides the version shown in the footer. Normally unset - the `VERSION` file baked into the image is the source of truth. | `<VERSION file>` |
 
 See `docker/env.example` for the full, commented list.
 

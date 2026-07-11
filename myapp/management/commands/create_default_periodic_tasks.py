@@ -22,6 +22,8 @@ class Command(BaseCommand):
             # A no-op until a user creates a NotificationRule, so it's safe to enable by default
             # alongside the legacy Apprise-only task above.
             {'name': 'Notification Rules Expiry Check', 'task': 'notify.tasks.check_and_notify_expiry', 'crontab': crontab_schedule, 'enabled': True},
+            # Checks GitHub Releases for a newer version; a no-op if UPDATE_CHECK_ENABLED=False
+            {'name': 'Update Check', 'task': 'myapp.tasks.check_for_update_task', 'crontab': crontab_schedule, 'enabled': True},
             # Add more tasks as needed
         ]
 

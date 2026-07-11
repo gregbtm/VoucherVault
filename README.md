@@ -168,6 +168,9 @@ The docker container takes various environment variables:
 | `WEBPUSH_VAPID_PUBLIC_KEY`        | VAPID public key. Enables the "Web Push" notification backend when set along with the private key below. Generate a pair with `python manage.py generate_vapid_keys`. | `None` | Optional |
 | `WEBPUSH_VAPID_PRIVATE_KEY`       | VAPID private key. See above.                                                                                  | `None`                     | Optional            |
 | `WEBPUSH_VAPID_CLAIMS_EMAIL`      | Contact email sent to push services as the VAPID claim.                                                        | `mailto:admin@example.com` | Optional            |
+| `UPDATE_CHECK_ENABLED`            | Set to `False` to disable the periodic GitHub Releases check (footer version + update banner for superusers).  | `True`                     | Optional            |
+| `UPDATE_CHECK_REPO`               | `owner/repo` to check for releases. Only change this if you're running a fork of this fork.                    | `gregbtm/VoucherVault`     | Optional            |
+| `VERSION`                         | Overrides the version shown in the footer. Normally unset - the `VERSION` file baked into the image is the source of truth. | `<VERSION file>` | Optional |
 
 You can find detailed instructions on how to setup OIDC SSO in the [wiki](https://github.com/l4rm4nd/VoucherVault/wiki/02-%E2%80%90-Authentication#oidc-authentication).
 

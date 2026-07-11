@@ -20,8 +20,9 @@ from .merchant_logos import (
     guess_domain,
     remember_balance_check_url,
 )
-from .models import Document, Item, MerchantProfile, Tag, Transaction, UserPreference, Wallet
-from .tasks import fetch_merchant_logo_task
+from .models import Document, Item, MerchantProfile, Tag, Transaction, UpdateCheckStatus, UserPreference, Wallet
+from .tasks import check_for_update_task, fetch_merchant_logo_task
+from .update_check import _is_newer, _parse_version, check_for_update
 
 
 def make_item(user, **kwargs):
@@ -1110,3 +1111,95 @@ class GbpMigrationDataTests(TestCase):
         item.refresh_from_db()
         self.assertEqual(item.currency, 'GBP')
         self.assertEqual(str(item.value), '7.50')
+
+
+class VersionCompareTests(TestCase):
+    def test_parse_version_strips_v_prefix(self):
+        self.assertEqual(_parse_version('v1.2.3'), (1, 2, 3))
+        self.assertEqual(_parse_version('1.2.3'), (1, 2, 3))
+
+    def test_parse_version_non_numeric_segments_become_zero(self):
+        self.assertEqual(_parse_version('1.2.3-beta'), (1, 2, 3))
+
+    def test_is_newer_true_when_latest_greater(self):
+        self.assertTrue(_is_newer('v1.1.0', '1.0.0'))
+
+    def test_is_newer_false_when_equal_or_older(self):
+        self.assertFalse(_is_newer('v1.0.0', '1.0.0'))
+        self.assertFalse(_is_newer('v0.9.0', '1.0.0'))
+
+    def test_is_newer_false_when_current_unknown(self):
+        self.assertFalse(_is_newer('v1.0.0', 'unknown'))
+
+    def test_is_newer_false_when_either_empty(self):
+        self.assertFalse(_is_newer('', '1.0.0'))
+        self.assertFalse(_is_newer('v1.0.0', ''))
+
+
+class UpdateCheckServiceTests(TestCase):
+    @override_settings(UPDATE_CHECK_ENABLED=False)
+    @patch('myapp.update_check.requests.get')
+    def test_disabled_makes_no_request(self, mock_get):
+        check_for_update()
+        mock_get.assert_not_called()
+
+    @override_settings(UPDATE_CHECK_ENABLED=True, VERSION='1.0.0')
+    @patch('myapp.update_check.requests.get')
+    def test_records_update_available_when_newer_release_exists(self, mock_get):
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'tag_name': 'v1.1.0', 'html_url': 'https://github.com/gregbtm/VoucherVault/releases/tag/v1.1.0'},
+        )
+        check_for_update()
+        status = UpdateCheckStatus.load()
+        self.assertTrue(status.update_available)
+        self.assertEqual(status.latest_version, 'v1.1.0')
+        self.assertIsNotNone(status.checked_at)
+
+    @override_settings(UPDATE_CHECK_ENABLED=True, VERSION='1.0.0')
+    @patch('myapp.update_check.requests.get')
+    def test_records_up_to_date_when_no_newer_release(self, mock_get):
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'tag_name': 'v1.0.0', 'html_url': 'https://example.com'},
+        )
+        check_for_update()
+        self.assertFalse(UpdateCheckStatus.load().update_available)
+
+    @override_settings(UPDATE_CHECK_ENABLED=True, VERSION='1.0.0')
+    @patch('myapp.update_check.requests.get')
+    def test_request_failure_leaves_previous_result_untouched(self, mock_get):
+        import requests
+        UpdateCheckStatus.objects.create(pk=1, latest_version='v1.1.0', update_available=True)
+        mock_get.side_effect = requests.RequestException('boom')
+        check_for_update()
+        self.assertTrue(UpdateCheckStatus.load().update_available)
+
+    @override_settings(UPDATE_CHECK_ENABLED=True)
+    @patch('myapp.tasks.check_for_update')
+    def test_task_delegates_to_service(self, mock_check):
+        check_for_update_task()
+        mock_check.assert_called_once()
+
+
+class UpdateCheckContextProcessorTests(TestCase):
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(username='admin', password='pw12345!', email='a@example.com')
+        self.regular_user = User.objects.create_user(username='alice', password='pw12345!')
+        UpdateCheckStatus.objects.create(pk=1, latest_version='v1.1.0', update_available=True)
+
+    def test_banner_shown_to_superuser(self):
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, 'A newer version')
+
+    def test_banner_hidden_from_regular_user(self):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.get(reverse('dashboard'))
+        self.assertNotContains(response, 'A newer version')
+
+    def test_banner_hidden_when_no_update_available(self):
+        UpdateCheckStatus.objects.filter(pk=1).update(update_available=False)
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('dashboard'))
+        self.assertNotContains(response, 'A newer version')

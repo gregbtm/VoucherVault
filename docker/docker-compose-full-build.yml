@@ -88,6 +88,8 @@ services:
       - GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH=${GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH:-}
       - GOOGLE_WALLET_ISSUER_ID=${GOOGLE_WALLET_ISSUER_ID:-}
       - GOOGLE_WALLET_CLASS_ID=${GOOGLE_WALLET_CLASS_ID:-}
+      # set to False to disable the periodic GitHub Releases update check
+      - UPDATE_CHECK_ENABLED=${UPDATE_CHECK_ENABLED:-True}
     expose:
       - 8000
     ports:
