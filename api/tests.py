@@ -139,6 +139,35 @@ class ItemCrudTests(APITestCase):
         self.assertEqual(searched.data['results'][0]['name'], 'Beta Voucher')
 
 
+class Phase11FieldsApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.force_authenticate(user=self.user)
+
+    def test_card_number_round_trips(self):
+        response = self.client.post('/api/v1/items/', {
+            'type': 'loyaltycard', 'name': 'Card', 'issuer': 'Shop', 'redeem_code': 'ABC',
+            'card_number': 'MEMBER-42', 'value': '0', 'currency': 'EUR', 'code_type': 'qrcode', 'value_type': 'money',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['card_number'], 'MEMBER-42')
+
+    def test_is_archived_filter(self):
+        make_item(self.user, name='Archived', is_archived=True)
+        make_item(self.user, name='Visible', redeem_code='OTHER')
+
+        response = self.client.get('/api/v1/items/?is_archived=true')
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['name'], 'Archived')
+
+    def test_last_used_at_is_read_only(self):
+        item = make_item(self.user)
+        response = self.client.patch(f'/api/v1/items/{item.id}/', {'last_used_at': '2020-01-01T00:00:00Z'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        item.refresh_from_db()
+        self.assertIsNone(item.last_used_at)
+
+
 class CrossUserIsolationTests(APITestCase):
     def setUp(self):
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
@@ -559,6 +588,18 @@ class ExportApiTests(APITestCase):
         self.client.force_authenticate(user=None)
         self.assertEqual(self.client.get('/api/v1/exports/csv/').status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(self.client.get('/api/v1/exports/json/').status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_full_backup_export_and_restore_round_trip(self):
+        download = self.client.get('/api/v1/exports/full-backup/')
+        self.assertEqual(download.status_code, status.HTTP_200_OK)
+        self.assertEqual(download['Content-Type'], 'application/zip')
+
+        self.client.force_authenticate(user=self.bob)
+        upload = SimpleUploadedFile('backup.zip', download.content, content_type='application/zip')
+        response = self.client.post('/api/v1/imports/full-backup/', {'file': upload}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['imported_count'], 1)
+        self.assertTrue(Item.objects.filter(user=self.bob, name='Alice Item').exists())
 
 
 class AnalyticsApiTests(APITestCase):

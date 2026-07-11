@@ -18,6 +18,7 @@ urlpatterns = (
     path('items/delete/<uuid:item_uuid>', views.delete_item, name='delete_item'),
     path('items/toggle_status/<uuid:item_id>', views.toggle_item_status, name='toggle_item_status'),
     path('items/toggle_pin/<uuid:item_uuid>', views.toggle_pin_item, name='toggle_pin_item'),
+    path('items/toggle_archive/<uuid:item_uuid>', views.toggle_archive_item, name='toggle_archive_item'),
     path('items/share/<uuid:item_id>', views.share_item_view, name='share_item'),
     path('items/unshare/<uuid:item_id>/<int:user_id>', views.unshare_item, name='unshare_item'),
     path('items/view-image/<uuid:item_id>/', views.serve_image_file, name='serve_image_file'),

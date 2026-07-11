@@ -122,6 +122,28 @@
               </div>
             </div>
 
+            <!-- Barcode & Screen Section -->
+            <div class="mb-4">
+              <h6 class="text-muted mb-3"><i class="bi bi-phone me-2"></i>{% trans "Barcode & Screen" %}</h6>
+              {% for field in form %}
+                {% if field.name == "keep_screen_awake" or field.name == "oled_dark_mode" %}
+                  <div class="mb-2 form-check">
+                    {{ field }}
+                    <label class="form-check-label" for="{{ field.id_for_label }}">
+                      {% if field.name == "keep_screen_awake" %}
+                        {% trans "Keep screen on while viewing an item" %}
+                      {% else %}
+                        {% trans "True-black dark mode (OLED)" %}
+                      {% endif %}
+                    </label>
+                    {% if field.errors %}
+                      <div class="text-danger small">{{ field.errors }}</div>
+                    {% endif %}
+                  </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+
             <div class="mt-4">
               <button type="submit" class="btn btn-primary">
                 <i class="bi bi-check-circle me-1"></i>{% trans "Update Preferences" %}

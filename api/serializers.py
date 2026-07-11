@@ -136,16 +136,17 @@ class ItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = Item
         fields = [
-            'id', 'type', 'name', 'redeem_code', 'code_type', 'pin', 'issuer',
+            'id', 'type', 'name', 'redeem_code', 'card_number', 'code_type', 'pin', 'issuer',
             'issue_date', 'expiry_date', 'description', 'logo_slug', 'value',
-            'value_type', 'currency', 'is_used', 'is_pinned', 'tile_color',
+            'value_type', 'currency', 'is_used', 'is_pinned', 'is_archived', 'tile_color',
             'file', 'qr_code_base64', 'default_expiry_notification_sent',
             'final_expiry_notification_sent', 'days_until_expiry', 'transaction_total',
             'wallet', 'wallet_name', 'tags', 'tag_ids', 'notes', 'notify_days_before', 'source',
+            'last_used_at',
         ]
         read_only_fields = [
             'id', 'qr_code_base64', 'default_expiry_notification_sent',
-            'final_expiry_notification_sent', 'source',
+            'final_expiry_notification_sent', 'source', 'last_used_at',
         ]
         extra_kwargs = {
             'wallet': {'required': False, 'allow_null': True, 'queryset': Wallet.objects.none()},

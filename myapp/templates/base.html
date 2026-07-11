@@ -13,12 +13,14 @@
       document.getElementById('darkModeToggle').addEventListener('click', () => {
         const isDark = document.body.classList.toggle('dark-mode');
         localStorage.setItem('darkMode', isDark ? 'enabled' : 'disabled');
+        document.body.classList.toggle('oled-dark', isDark && document.body.dataset.oledPreferred === '1');
       });
 
       // React to OS-level theme changes only when the user has no saved override
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
         if (localStorage.getItem('darkMode') === null) {
           document.body.classList.toggle('dark-mode', e.matches);
+          document.body.classList.toggle('oled-dark', e.matches && document.body.dataset.oledPreferred === '1');
         }
       });
     });
@@ -177,7 +179,7 @@
   ======================================================== -->
 </head>
 
-<body>
+<body data-oled-preferred="{% if global_preferences.oled_dark_mode %}1{% else %}0{% endif %}">
   <!-- Apply theme synchronously before any content renders to prevent flash.
        Priority: 1) user override in localStorage, 2) OS prefers-color-scheme, 3) light default -->
   <script>
@@ -186,6 +188,9 @@
       var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       if (stored === 'enabled' || (stored === null && prefersDark)) {
         document.body.classList.add('dark-mode');
+        if (document.body.dataset.oledPreferred === '1') {
+          document.body.classList.add('oled-dark');
+        }
       }
     })();
   </script>
@@ -422,11 +427,13 @@
   <!-- ======= Footer ======= -->
   <footer id="footer" class="footer">
     <div class="copyright">
-      <h5>VoucherVault {{ "VERSION"|env }}</h5>
+      <h5>VoucherVault Plus+ {{ "VERSION"|env }}</h5>
       &copy; Copyright <strong><span>NiceAdmin</span></strong>. All Rights Reserved
     </div>
     <div class="credits">
       Developed by <a href="https://github.com/l4rm4nd">LRVT</a> | Designed by <a href="https://bootstrapmade.com/">BootstrapMade</a>
+      <br>
+      Forked by <a href="https://github.com/gregbtm/VoucherVault" target="_blank">Greg</a> &hearts;
     </div>
 
   </footer><!-- End Footer -->

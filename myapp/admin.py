@@ -16,13 +16,13 @@ class DocumentInline(admin.TabularInline):
 
 class ItemAdmin(admin.ModelAdmin):
     # Specify the fields to display in the list view
-    list_display = ('name', 'type', 'issuer', 'issue_date', 'expiry_date', 'value', 'is_used', 'user')
+    list_display = ('name', 'type', 'issuer', 'issue_date', 'expiry_date', 'value', 'is_used', 'is_archived', 'user')
 
     # Specify the fields to search by
-    search_fields = ('name', 'type', 'issuer', 'user__username')
+    search_fields = ('name', 'type', 'issuer', 'user__username', 'card_number')
 
     # Specify the filters to use in the list view
-    list_filter = ('type', 'is_used', 'issue_date', 'expiry_date', 'user')
+    list_filter = ('type', 'is_used', 'is_archived', 'issue_date', 'expiry_date', 'user')
 
     inlines = [DocumentInline]
 

@@ -218,16 +218,20 @@ def show_items(request):
     # Retrieve or create user preferences (only once)
     preferences, _ = UserPreference.objects.get_or_create(user=user)
     
-    # Calculate counts for filters (owned items plus items in wallets shared with the user)
-    user_items = Item.objects.filter(Q(user=user) | Q(wallet__shared_with=user)).distinct()
+    # Calculate counts for filters (owned items plus items in wallets shared with the
+    # user; archived items are hidden from every default view/count, only reachable
+    # via the dedicated "Archived" filter)
+    all_accessible_items = Item.objects.filter(Q(user=user) | Q(wallet__shared_with=user)).distinct()
+    user_items = all_accessible_items.exclude(is_archived=True)
     threshold_days = int(os.getenv('EXPIRY_THRESHOLD_DAYS', 30))
     soon_expiry_date = now() + timedelta(days=threshold_days)
-    
+
     available_count = user_items.filter(is_used=False, expiry_date__gte=timezone.now()).count()
     soon_expiring_count = user_items.filter(is_used=False, expiry_date__gte=now(), expiry_date__lt=soon_expiry_date).count()
     used_count = user_items.filter(is_used=True).count()
     expired_count = user_items.filter(expiry_date__lt=timezone.now(), is_used=False).count()
-    
+    archived_count = all_accessible_items.filter(is_archived=True).count()
+
     # Type counts (from available items only)
     available_items_qs = user_items.filter(is_used=False, expiry_date__gte=timezone.now())
     voucher_count = available_items_qs.filter(type='voucher').count()
@@ -237,13 +241,15 @@ def show_items(request):
 
     # Base query
     if filter_value == 'shared_by_me':
-        items = Item.objects.filter(shared_with__shared_by=user).distinct()
+        items = Item.objects.filter(shared_with__shared_by=user).exclude(is_archived=True).distinct()
     elif filter_value == 'shared_with_me':
         items = Item.objects.filter(
             shared_with__shared_with_user=user,
             is_used=False,
             expiry_date__gte=now().date()  # Only not expired
-        ).exclude(user=user).distinct()
+        ).exclude(user=user).exclude(is_archived=True).distinct()
+    elif filter_value == 'archived':
+        items = all_accessible_items.filter(is_archived=True)
     elif filter_value == 'soon_expiring':
         threshold_days = int(os.getenv('EXPIRY_THRESHOLD_DAYS', 30))
         soon_expiry_date = now() + timedelta(days=threshold_days)
@@ -311,6 +317,7 @@ def show_items(request):
         'soon_expiring_count': soon_expiring_count,
         'used_count': used_count,
         'expired_count': expired_count,
+        'archived_count': archived_count,
         # Type counts
         'voucher_count': voucher_count,
         'giftcard_count': giftcard_count,
@@ -335,6 +342,10 @@ def view_item(request, item_uuid):
     # True for the creator and for wallet collaborators: gates edit/delete/
     # add-transaction actions, which a shared wallet grants read/write for.
     can_edit = is_owner or has_wallet_access(item.wallet, request.user)
+
+    if request.method == 'GET':
+        Item.objects.filter(pk=item.pk).update(last_used_at=timezone.now())
+        item.last_used_at = timezone.now()
 
     # Check if the item has been shared
     is_shared = item.shared_with.exists()
@@ -362,6 +373,7 @@ def view_item(request, item_uuid):
         form = TransactionForm(item=item)
 
     cached_merchant = get_cached_logo(item.issuer)
+    preferences, _ = UserPreference.objects.get_or_create(user=request.user)
 
     context = {
         'item': item,
@@ -376,6 +388,7 @@ def view_item(request, item_uuid):
         'merchant_logo_url': cached_merchant.logo_url if cached_merchant else None,
         'pkpass_enabled': pkpass_enabled(),
         'document_form': DocumentForm(),
+        'preferences': preferences,
     }
     return render(request, 'view-item.html', context)
 
@@ -539,6 +552,7 @@ def duplicate_item(request, item_uuid):
         'name': original_item.name,
         'issuer': original_item.issuer,
         'redeem_code': original_item.redeem_code,
+        'card_number': original_item.card_number,
         'pin': original_item.pin,
         'issue_date': original_item.issue_date,
         'expiry_date': original_item.expiry_date,
@@ -1050,15 +1064,35 @@ def toggle_pin_item(request, item_uuid):
     item = get_object_or_404(Item, id=item_uuid, user=request.user)
     item.is_pinned = not item.is_pinned
     item.save()
-    
+
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({'success': True, 'is_pinned': item.is_pinned})
-    
+
     # Support redirect back to previous page
     next_url = request.POST.get('next') or request.GET.get('next')
     if next_url:
         return redirect(next_url)
     return redirect('show_items')
+
+@require_POST
+@login_required
+def toggle_archive_item(request, item_uuid):
+    """Toggle the archived status of an item: hides it from the default
+    inventory views without marking it used or deleting it."""
+    item = get_object_or_404(Item, id=item_uuid)
+    if not has_item_access(item, request.user):
+        return HttpResponse("Unauthorized", status=403)
+
+    item.is_archived = not item.is_archived
+    item.save(update_fields=['is_archived'])
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({'success': True, 'is_archived': item.is_archived})
+
+    next_url = request.POST.get('next') or request.GET.get('next')
+    if next_url:
+        return redirect(next_url)
+    return redirect('view_item', item_uuid=item.id)
 
 
 @require_POST

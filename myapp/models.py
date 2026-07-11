@@ -48,6 +48,7 @@ class UserPreference(models.Model):
         ('name', 'Name'),
         ('issue_date', 'Creation Date'),
         ('value', 'Value'),
+        ('last_used_at', 'Last Used'),
     )
     SORT_ORDER_CHOICES = (
         ('asc', 'Ascending'),
@@ -57,7 +58,7 @@ class UserPreference(models.Model):
         ('compact', 'Compact'),
         ('standard', 'Standard'),
     )
-    
+
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     show_issue_date = models.BooleanField(default=False)
     show_expiry_date = models.BooleanField(default=True)
@@ -68,6 +69,12 @@ class UserPreference(models.Model):
     view_mode = models.CharField(max_length=10, choices=VIEW_MODE_CHOICES, default='compact')
     fixer_api_key = models.CharField(max_length=64, blank=True, null=True, default=None)
     default_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='EUR')
+    keep_screen_awake = models.BooleanField(
+        default=True, help_text="Keep the screen on while viewing an item's barcode."
+    )
+    oled_dark_mode = models.BooleanField(
+        default=False, help_text="Use true-black surfaces in dark mode (OLED screens)."
+    )
 
 class Wallet(models.Model):
     """
@@ -202,6 +209,14 @@ class Item(models.Model):
         ('api', 'API'),
     )
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='manual')
+    card_number = models.CharField(
+        max_length=255, blank=True,
+        help_text="Printed member/account number, if different from the barcode's encoded value. Falls back to the redeem code when blank."
+    )
+    is_archived = models.BooleanField(
+        default=False, help_text="Hide from the default inventory view without marking it used or deleting it."
+    )
+    last_used_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return self.name

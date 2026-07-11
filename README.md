@@ -18,13 +18,15 @@
 > [!NOTE]
 > This is [gregbtm](https://github.com/gregbtm)'s fork of the upstream
 > [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault) project.
-> Ten phases of additive features have been layered on top without
+> Eleven phases of additive features have been layered on top without
 > touching upstream's own code: a full **REST API**, **Wallets/Tags/Notes**,
 > a rules-based **notification engine** (ntfy, webhook, Apprise, and native
 > **Web Push**), bulk **Import/Export**, an **Analytics dashboard**,
 > **auto-fetched merchant logos**, an AI-assisted **"Scan with AI"** photo
-> capture, **Apple Wallet export**, **document attachments**, **shared
-> (multi-user) wallets**, and **native OS/browser sharing**.
+> capture, **Apple Wallet import/export**, **document attachments**,
+> **shared (multi-user) wallets**, **native OS/browser sharing**, and a
+> handful of Catima-parity touches (card numbers, archiving, screen wake
+> lock, and a full-fidelity backup format).
 > See [`FORK_CHANGES.md`](FORK_CHANGES.md) for the full changelog, the
 > [Wiki](https://github.com/gregbtm/VoucherVault/wiki) for feature-by-feature guides, and
 > [`docs/UPGRADE.md`](docs/UPGRADE.md) if you're already running the
@@ -58,10 +60,12 @@
 - 📊 **Analytics dashboard** — KPI tiles, an expiry calendar heatmap, and a live "value at risk" figure so nothing quietly expires unnoticed.
 - 🏷️ **Auto-fetched merchant logos** — item cards get real brand logos automatically (fetched and cached in the background), so page loads never wait on a network call.
 - 🤖 **AI-assisted "Scan with AI"** — snap a photo of a physical voucher, coupon, or gift card and let Claude's vision model (or a fully local, free Tesseract OCR backend) pre-fill the redeem code, merchant, and expiry date for you.
-- 🍏 **Apple Wallet export** — download a signed `.pkpass` for any item and add it straight to Apple Wallet, built entirely in-process with no external signing service (opt-in, requires your own Apple Developer certificate).
+- 🍏 **Apple Wallet import & export** — download a signed `.pkpass` for any item and add it straight to Apple Wallet (opt-in, requires your own Apple Developer certificate), or go the other way and pre-fill a new item by uploading an existing `.pkpass`.
 - 📎 **Document attachments** — attach receipts and proof-of-purchase files to any item, upload/view/delete right from the item detail page.
 - 🤝 **Shared (multi-user) wallets** — invite another user by username to collaborate on a wallet; they get full read/write on every item inside it, no admin access required.
 - 📤 **Native OS/browser sharing** — a "Share via..." button on every item hands it off to your device's native share sheet (Messages, Mail, AirDrop, etc.), with a clipboard-copy fallback on desktop.
+- 🏷️ **Card numbers, archiving & screen wake lock** — a printed member number can differ from the barcode's encoded value, items can be archived out of the default view without deleting them, and the screen stays on while a barcode is shown to a cashier.
+- 🗜️ **Full Backup (with files)** — a `.zip` export/import that bundles every item's attached files and documents alongside the data, for a true full-fidelity backup/restore.
 
 ## 📷 Screenshots
 

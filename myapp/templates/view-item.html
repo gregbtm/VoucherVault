@@ -418,6 +418,33 @@ a.action-btn-info:hover {
   background: #fff;
 }
 
+.barcode-zoom-controls {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.zoom-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #dee2e6);
+  background: var(--card-bg, #fff);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-color, #495057);
+  transition: all 0.2s ease;
+}
+
+.zoom-btn:hover {
+  background: var(--hover-bg, #f8f9fa);
+  border-color: var(--primary-color, #4154f1);
+  color: var(--primary-color, #4154f1);
+}
+
 .redeem-code-wrapper {
   position: relative;
   display: flex;
@@ -1170,6 +1197,13 @@ body.dark-mode .action-btn-secondary:hover {
               </button>
             </form>
             {% endif %}
+            <form action="{% url 'toggle_archive_item' item.id %}" method="post" style="display:contents;">
+              {% csrf_token %}
+              <button type="submit" class="action-btn action-btn-secondary">
+                <i class="bi bi-archive"></i>
+                {% if item.is_archived %}{% trans "Unarchive" %}{% else %}{% trans "Archive" %}{% endif %}
+              </button>
+            </form>
             <form action="{% url 'delete_item' item.id %}" method="post" style="display:contents;">
               {% csrf_token %}
               <button type="submit" class="action-btn action-btn-danger" onclick="return confirm('{% trans "Are you sure to delete?" %}');">
@@ -1370,10 +1404,20 @@ body.dark-mode .action-btn-secondary:hover {
           {% endif %}
         </div>
         
+        {% if item.card_number %}
+        <div class="redeem-code-wrapper mb-2">
+          <div class="redeem-code" id="card-number">{{ item.card_number }}</div>
+          <button type="button" class="copy-code-btn visible" id="copy-card-number-btn" title="{% trans 'Copy card number' %}">
+            <i class="bi bi-clipboard"></i>
+          </button>
+        </div>
+        <p class="text-muted small mb-2">{% trans "Card number shown above; barcode below encodes the redeem code." %}</p>
+        {% endif %}
+
         <div class="qr-image-wrapper">
-          <img src="data:image/png;base64,{{ qr_code_base64 }}" 
-               alt="QR Code" 
-               class="qr-image opaque" 
+          <img src="data:image/png;base64,{{ qr_code_base64 }}"
+               alt="QR Code"
+               class="qr-image opaque"
                id="qr-code">
           <div class="tap-hint" id="qr-tap-hint">
             <i class="bi bi-hand-index"></i> {% trans "Tap to reveal" %}
@@ -1382,7 +1426,19 @@ body.dark-mode .action-btn-secondary:hover {
             <i class="bi bi-arrows-fullscreen"></i>
           </button>
         </div>
-        
+
+        <div class="barcode-zoom-controls">
+          <button type="button" id="zoom-out-btn" class="zoom-btn" title="{% trans 'Zoom out' %}">
+            <i class="bi bi-zoom-out"></i>
+          </button>
+          <button type="button" id="zoom-reset-btn" class="zoom-btn" title="{% trans 'Reset zoom' %}">
+            <i class="bi bi-arrow-counterclockwise"></i>
+          </button>
+          <button type="button" id="zoom-in-btn" class="zoom-btn" title="{% trans 'Zoom in' %}">
+            <i class="bi bi-zoom-in"></i>
+          </button>
+        </div>
+
         <div class="redeem-code-wrapper">
           <div class="redeem-code opaque" id="redeem-code">{{ item.redeem_code }}</div>
           <button type="button" class="copy-code-btn" id="copy-code-btn" title="{% trans 'Copy code' %}">
@@ -1506,6 +1562,32 @@ document.addEventListener("DOMContentLoaded", function() {
   const overlayImg = document.getElementById('qr-overlay-img');
   const closeBtn = document.getElementById('qr-close-btn');
 
+  // Barcode zoom (client-side only, persisted per item in localStorage)
+  const zoomStorageKey = 'vv_barcode_zoom_{{ item.id }}';
+  const zoomOutBtn = document.getElementById('zoom-out-btn');
+  const zoomInBtn = document.getElementById('zoom-in-btn');
+  const zoomResetBtn = document.getElementById('zoom-reset-btn');
+  const MIN_ZOOM = 50, MAX_ZOOM = 200, ZOOM_STEP = 10;
+
+  function applyZoom(percent) {
+    if (qrCode) qrCode.style.transform = `scale(${percent / 100})`;
+  }
+
+  function getZoom() {
+    return parseInt(localStorage.getItem(zoomStorageKey), 10) || 100;
+  }
+
+  function setZoom(percent) {
+    percent = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, percent));
+    localStorage.setItem(zoomStorageKey, percent);
+    applyZoom(percent);
+  }
+
+  applyZoom(getZoom());
+  zoomOutBtn?.addEventListener('click', () => setZoom(getZoom() - ZOOM_STEP));
+  zoomInBtn?.addEventListener('click', () => setZoom(getZoom() + ZOOM_STEP));
+  zoomResetBtn?.addEventListener('click', () => setZoom(100));
+
   // Toggle blur on QR click - reveals both QR and redeem code
   qrCode?.addEventListener('click', (e) => {
     qrCode.classList.toggle('opaque');
@@ -1537,6 +1619,27 @@ document.addEventListener("DOMContentLoaded", function() {
         setTimeout(() => {
           copyBtn.classList.remove('copied');
           copyBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
+        }, 2000);
+      }
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  });
+
+  // Copy card number button
+  const cardNumber = document.getElementById('card-number');
+  const copyCardNumberBtn = document.getElementById('copy-card-number-btn');
+  copyCardNumberBtn?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    try {
+      const value = cardNumber?.textContent?.trim();
+      if (value) {
+        await navigator.clipboard.writeText(value);
+        copyCardNumberBtn.classList.add('copied');
+        copyCardNumberBtn.innerHTML = '<i class="bi bi-check"></i>';
+        setTimeout(() => {
+          copyCardNumberBtn.classList.remove('copied');
+          copyCardNumberBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
         }, 2000);
       }
     } catch (err) {
@@ -1621,5 +1724,33 @@ document.querySelectorAll('.editable-date').forEach(span => {
   });
 });
 </script>
+
+{% if preferences.keep_screen_awake %}
+<script>
+// Keep the screen on while this item's barcode is being shown to a cashier.
+// The lock auto-releases when the tab is backgrounded, so it's re-acquired
+// on visibilitychange per the Screen Wake Lock spec.
+(function() {
+  let wakeLock = null;
+
+  async function requestWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+    } catch (err) {
+      console.warn('Wake Lock request failed:', err);
+    }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (wakeLock !== null && document.visibilityState === 'visible') {
+      requestWakeLock();
+    }
+  });
+
+  requestWakeLock();
+})();
+</script>
+{% endif %}
 
 {% endblock content %}

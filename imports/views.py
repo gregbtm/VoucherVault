@@ -10,7 +10,9 @@ from django.views.decorators.http import require_GET
 from myapp.models import Item
 
 from .exporters.csv_export import export_items_csv
+from .exporters.full_backup import export_full_backup
 from .exporters.json_export import export_items_json
+from .full_backup_import import FullBackupImportError, import_full_backup
 from .models import ImportJob
 from .tasks import process_import_job
 
@@ -78,3 +80,38 @@ def export_json(request):
     response = HttpResponse(payload, content_type='application/json')
     response['Content-Disposition'] = 'attachment; filename="vouchervault-export.json"'
     return response
+
+
+@require_GET
+@login_required
+def export_full_backup_view(request):
+    items = Item.objects.filter(user=request.user).select_related('wallet').prefetch_related('tags', 'documents')
+    response = HttpResponse(export_full_backup(items), content_type='application/zip')
+    response['Content-Disposition'] = 'attachment; filename="vouchervault-full-backup.zip"'
+    return response
+
+
+@login_required
+def import_full_backup_view(request):
+    if request.method == 'POST':
+        upload = request.FILES.get('file')
+        if not upload:
+            messages.error(request, _('Please choose a backup file to upload.'))
+        elif not upload.name.lower().endswith('.zip'):
+            messages.error(request, _('Full Backup restores expect a .zip file.'))
+        else:
+            try:
+                result = import_full_backup(request.user, upload.read())
+            except FullBackupImportError as exc:
+                messages.error(request, str(exc))
+            else:
+                if result['error_count']:
+                    messages.warning(
+                        request,
+                        _('Restored %(imported)d item(s) with %(errors)d error(s).') % {
+                            'imported': result['imported_count'], 'errors': result['error_count'],
+                        },
+                    )
+                else:
+                    messages.success(request, _('Restored %(imported)d item(s) from backup.') % {'imported': result['imported_count']})
+    return redirect('upload_import')
