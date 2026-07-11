@@ -1288,11 +1288,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
   document.getElementById('bulkCancelBtn').addEventListener('click', () => setSelectMode(false));
 
-  function toggleCardSelection(card, checkbox) {
-    checkbox.checked = !checkbox.checked;
-    card.classList.toggle('selected', checkbox.checked);
+  function applySelection(card, checkbox, checked) {
+    checkbox.checked = checked;
+    card.classList.toggle('selected', checked);
     const id = card.getAttribute('data-item-id');
-    if (checkbox.checked) {
+    if (checked) {
       selectedIds.add(id);
     } else {
       selectedIds.delete(id);
@@ -1304,15 +1304,18 @@ document.addEventListener("DOMContentLoaded", function () {
     const checkbox = card.querySelector('.select-checkbox');
     if (!checkbox) return;
 
+    // The checkbox already toggled its own `checked` natively by the time this
+    // fires, so apply that state as-is - don't invert it again (that would
+    // cancel the browser's own toggle and leave the box stuck unchecked).
     checkbox.addEventListener('click', (e) => {
       e.stopPropagation();
-      toggleCardSelection(card, checkbox);
+      applySelection(card, checkbox, checkbox.checked);
     });
 
     card.addEventListener('click', (e) => {
       if (!document.body.classList.contains('bulk-select-mode')) return;
       e.preventDefault();
-      toggleCardSelection(card, checkbox);
+      applySelection(card, checkbox, !checkbox.checked);
     });
   });
 
