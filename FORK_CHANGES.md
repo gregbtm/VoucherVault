@@ -418,6 +418,71 @@ gets smarter the more cards you add.
 - New tests: `BalanceCheckUrlServiceTests` (the remember/lookup helpers),
   `BalanceCheckUrlWiringTests` (web UI), `BalanceCheckUrlApiTests` (API).
 
+## Phase 13.4 — Centralize env vars in `settings.py`
+
+By Phase 13, this fork had grown 18 of its own optional env vars, each
+originally read with its own `os.environ.get(NAME, default)` call scattered
+across whichever module needed it — and in a couple of cases the same
+variable was re-read with a re-typed (and drifted) default in multiple
+files. `EXPIRY_THRESHOLD_DAYS` alone was read with the literal default `30`
+re-typed in six different places (`views.py` ×4, `analytics.py`,
+`check_expiration.py`), plus its "final reminder" fallback chain
+(`EXPIRY_THRESHOLD_DAYS_FINAL` → `EXPIRY_LAST_NOTIFICATION_DAYS` → `7`)
+duplicated again in `notify/tasks.py`. Any future change to a default meant
+hunting down every call site, and it was easy to miss one.
+
+- Every fork-added env var now has exactly one read site: a block of
+  module-level constants at the bottom of `myproject/settings.py`
+  (`EXPIRY_THRESHOLD_DAYS`, `WEBPUSH_VAPID_*`, `MERCHANT_LOGOS_ENABLED`,
+  `OCR_BACKEND`, `ANTHROPIC_*`, `PKPASS_*`, `GOOGLE_WALLET_*`,
+  `NTFY_DEFAULT_SERVER`). Every other module (`analytics.py`,
+  `check_expiration.py`, `merchant_logos.py`, `notify/backends/webpush.py`,
+  `notify/forms.py`, `notify/tasks.py`, `ocr/backends/__init__.py`,
+  `ocr/backends/claude_backend.py`, `imports/exporters/pkpass.py`,
+  `imports/exporters/google_wallet.py`, `myapp/views.py`) now reads
+  `django.conf.settings.X` instead of touching `os.environ` directly.
+- `imports/exporters/{pkpass,google_wallet}.py`'s existing
+  `_require_env(name)` helper (used for their dynamic multi-field
+  validation) is renamed `_require_setting(name)` and now reads off
+  `settings` via `getattr` instead of `os.environ`.
+- Converting to static settings surfaced a real gotcha: Django computes
+  `settings.X` once at process/module import time, so the 44 existing
+  tests that used `unittest.mock.patch.dict(os.environ, {...})` to toggle
+  a feature flag mid-test silently stopped working — the patched env var
+  was never re-read. All 44 call sites (across `imports/tests.py`,
+  `myapp/tests.py`, `api/tests.py`, `notify/tests.py`, `ocr/tests.py`) are
+  converted to `django.test.override_settings(...)`, the idiomatic
+  mechanism for exactly this.
+- `check_expiration.py` (the legacy Apprise-only expiry command) loses its
+  try/except around a non-numeric `EXPIRY_THRESHOLD_DAYS`/
+  `EXPIRY_LAST_NOTIFICATION_DAYS` — since `settings.py` now does the
+  `int(...)` cast once at Django startup, a bad value fails fast at
+  container boot instead of silently inside this one command. Every other
+  call site already crashed ungracefully on a bad value, so this makes
+  behavior consistent app-wide rather than removing a safety net that
+  existed everywhere else.
+- `docker/docker-compose-sqlite-build.yml` and
+  `docker/docker-compose-full-build.yml` now list every fork-added
+  optional var in their `environment:` block (previously several — the
+  Web Push, PKPASS, and Google Wallet groups — were commented out
+  entirely, meaning a Portainer user could not turn them on without
+  editing the compose YAML in the git repo, since Portainer's git-based
+  stacks don't support inline compose edits). Each is wired as
+  `${VAR:-<default matching settings.py>}` (or `${VAR:-}` for pure
+  secrets/paths, which `settings.py`'s `or None` pattern already treats as
+  unset). Adding a new value is now purely a Portainer "Environment
+  variables" panel edit, never a YAML edit — the compose file only needs
+  another line the next time a phase adds a genuinely new integration.
+  `EXPIRY_THRESHOLD_DAYS_FINAL` is deliberately left out of the compose
+  files so `settings.py`'s own two-tier fallback
+  (`EXPIRY_THRESHOLD_DAYS_FINAL` → `EXPIRY_LAST_NOTIFICATION_DAYS` → `7`)
+  still applies.
+- Also fixed while touching these files: `docker/env.example`, `README.md`,
+  and both `-build` compose files still said `PKPASS_ORGANIZATION_NAME`
+  defaulted to `VoucherVault` (missed by the Phase 13.2 branding pass since
+  it lived in comments/YAML, not template/Python source) — now
+  `VoucherVault Plus+` everywhere.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
@@ -435,7 +500,7 @@ On top of everything documented in the README, this fork adds:
 | `PKPASS_WWDR_CERT_PATH` | Path to Apple's WWDR intermediate certificate. Required if `PKPASS_CERT_PATH` is set. | `None` |
 | `PKPASS_TEAM_ID` | Your Apple Developer Team ID. Required if `PKPASS_CERT_PATH` is set. | `None` |
 | `PKPASS_PASS_TYPE_ID` | Your registered Pass Type ID. Required if `PKPASS_CERT_PATH` is set. | `None` |
-| `PKPASS_ORGANIZATION_NAME` | Organization name shown on the generated pass. | `VoucherVault` |
+| `PKPASS_ORGANIZATION_NAME` | Organization name shown on the generated pass. | `VoucherVault Plus+` |
 | `GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH` | Path to your Google Wallet API service account JSON key. Enables Google Wallet export when set along with the issuer ID below. | `None` |
 | `GOOGLE_WALLET_ISSUER_ID` | Your Google Wallet API issuer ID. Required if `GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH` is set. | `None` |
 | `GOOGLE_WALLET_CLASS_ID` | Optional override for the generic pass class ID. | `<issuer id>.vouchervault_generic` |

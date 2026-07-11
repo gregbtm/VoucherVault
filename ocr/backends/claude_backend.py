@@ -1,9 +1,9 @@
 import base64
 import json
 import logging
-import os
 
 import anthropic
+from django.conf import settings
 
 from .base import OCRBackend
 
@@ -34,14 +34,14 @@ class ClaudeOCRBackend(OCRBackend):
     """
 
     def __init__(self):
-        api_key = os.environ.get('ANTHROPIC_API_KEY')
+        api_key = settings.ANTHROPIC_API_KEY
         if not api_key:
             raise RuntimeError(
                 'ANTHROPIC_API_KEY is not set. Required when '
                 'OCR_BACKEND=claude.'
             )
         self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = os.environ.get('ANTHROPIC_OCR_MODEL', DEFAULT_MODEL)
+        self.model = settings.ANTHROPIC_OCR_MODEL or DEFAULT_MODEL
 
     def extract(self, image_bytes: bytes, media_type: str) -> dict:
         empty = {'code': None, 'name': None, 'issuer': None, 'expiry_date': None, 'confidence': 0.0}

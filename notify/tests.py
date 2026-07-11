@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.db import IntegrityError, transaction
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from py_vapid import Vapid02
 from pywebpush import webpush as real_webpush
@@ -163,16 +163,16 @@ class WebPushBackendTests(TestCase):
         self.user = User.objects.create_user(username='alice', password='pw12345!')
 
     def test_send_fails_without_vapid_key(self):
-        with patch.dict(os.environ, {'WEBPUSH_VAPID_PRIVATE_KEY': ''}):
+        with override_settings(WEBPUSH_VAPID_PRIVATE_KEY=''):
             backend = WebPushBackend({'user_id': self.user.id})
             self.assertFalse(backend.send('title', 'message'))
 
-    @patch.dict(os.environ, {'WEBPUSH_VAPID_PRIVATE_KEY': 'fake-key'})
+    @override_settings(WEBPUSH_VAPID_PRIVATE_KEY='fake-key')
     def test_send_fails_with_no_subscriptions(self):
         backend = WebPushBackend({'user_id': self.user.id})
         self.assertFalse(backend.send('title', 'message'))
 
-    @patch.dict(os.environ, {'WEBPUSH_VAPID_PRIVATE_KEY': 'fake-key'})
+    @override_settings(WEBPUSH_VAPID_PRIVATE_KEY='fake-key')
     @patch('notify.backends.webpush.webpush')
     def test_send_delivers_to_every_subscription(self, mock_webpush):
         WebPushSubscription.objects.create(user=self.user, endpoint='https://push.example.com/1', p256dh='a', auth='b')
@@ -182,7 +182,7 @@ class WebPushBackendTests(TestCase):
         self.assertTrue(result)
         self.assertEqual(mock_webpush.call_count, 2)
 
-    @patch.dict(os.environ, {'WEBPUSH_VAPID_PRIVATE_KEY': 'fake-key'})
+    @override_settings(WEBPUSH_VAPID_PRIVATE_KEY='fake-key')
     @patch('notify.backends.webpush.webpush')
     def test_send_ignores_other_users_subscriptions(self, mock_webpush):
         other = User.objects.create_user(username='bob', password='pw12345!')
@@ -191,7 +191,7 @@ class WebPushBackendTests(TestCase):
         self.assertFalse(backend.send('title', 'message'))
         mock_webpush.assert_not_called()
 
-    @patch.dict(os.environ, {'WEBPUSH_VAPID_PRIVATE_KEY': 'fake-key'})
+    @override_settings(WEBPUSH_VAPID_PRIVATE_KEY='fake-key')
     @patch('notify.backends.webpush.webpush')
     def test_expired_subscription_is_deleted_on_410(self, mock_webpush):
         from pywebpush import WebPushException
@@ -205,7 +205,7 @@ class WebPushBackendTests(TestCase):
         self.assertFalse(result)
         self.assertFalse(WebPushSubscription.objects.filter(pk=sub.pk).exists())
 
-    @patch.dict(os.environ, {'WEBPUSH_VAPID_PRIVATE_KEY': 'fake-key'})
+    @override_settings(WEBPUSH_VAPID_PRIVATE_KEY='fake-key')
     @patch('notify.backends.webpush.webpush')
     def test_network_error_on_one_subscription_does_not_abort_others(self, mock_webpush):
         # pywebpush lets connection errors propagate as raw requests
@@ -223,9 +223,9 @@ class WebPushBackendTests(TestCase):
         self.assertEqual(mock_webpush.call_count, 2)
 
     def test_webpush_enabled_requires_both_keys(self):
-        with patch.dict(os.environ, {'WEBPUSH_VAPID_PUBLIC_KEY': '', 'WEBPUSH_VAPID_PRIVATE_KEY': ''}):
+        with override_settings(WEBPUSH_VAPID_PUBLIC_KEY='', WEBPUSH_VAPID_PRIVATE_KEY=''):
             self.assertFalse(webpush_enabled())
-        with patch.dict(os.environ, {'WEBPUSH_VAPID_PUBLIC_KEY': 'pub', 'WEBPUSH_VAPID_PRIVATE_KEY': 'priv'}):
+        with override_settings(WEBPUSH_VAPID_PUBLIC_KEY='pub', WEBPUSH_VAPID_PRIVATE_KEY='priv'):
             self.assertTrue(webpush_enabled())
             self.assertEqual(get_vapid_public_key(), 'pub')
 
@@ -339,19 +339,19 @@ class NotificationRuleFormWebPushGatingTests(TestCase):
         self.user = User.objects.create_user(username='alice', password='pw12345!')
 
     def test_webpush_choice_hidden_when_disabled(self):
-        with patch.dict(os.environ, {'WEBPUSH_VAPID_PUBLIC_KEY': '', 'WEBPUSH_VAPID_PRIVATE_KEY': ''}):
+        with override_settings(WEBPUSH_VAPID_PUBLIC_KEY='', WEBPUSH_VAPID_PRIVATE_KEY=''):
             form = NotificationRuleForm(user=self.user)
         choices = [c[0] for c in form.fields['backend'].choices]
         self.assertNotIn('webpush', choices)
 
     def test_webpush_choice_shown_when_enabled(self):
-        with patch.dict(os.environ, {'WEBPUSH_VAPID_PUBLIC_KEY': 'pub', 'WEBPUSH_VAPID_PRIVATE_KEY': 'priv'}):
+        with override_settings(WEBPUSH_VAPID_PUBLIC_KEY='pub', WEBPUSH_VAPID_PRIVATE_KEY='priv'):
             form = NotificationRuleForm(user=self.user)
         choices = [c[0] for c in form.fields['backend'].choices]
         self.assertIn('webpush', choices)
 
     def test_valid_webpush_rule_has_empty_config(self):
-        with patch.dict(os.environ, {'WEBPUSH_VAPID_PUBLIC_KEY': 'pub', 'WEBPUSH_VAPID_PRIVATE_KEY': 'priv'}):
+        with override_settings(WEBPUSH_VAPID_PUBLIC_KEY='pub', WEBPUSH_VAPID_PRIVATE_KEY='priv'):
             form = NotificationRuleForm(data={
                 'name': 'push me', 'backend': 'webpush', 'enabled': 'on', 'event_types': ['expiry_warning'],
             }, user=self.user)
@@ -488,7 +488,7 @@ class CheckAndNotifyExpiryTaskTests(TestCase):
     @patch('notify.tasks.send_via_rule', return_value=(True, ''))
     def test_respects_global_threshold(self, mock_send):
         make_rule(self.user, event_types=['expiry_warning'])
-        with patch.dict('os.environ', {'EXPIRY_THRESHOLD_DAYS': '10', 'EXPIRY_THRESHOLD_DAYS_FINAL': '3'}):
+        with override_settings(EXPIRY_THRESHOLD_DAYS=10, EXPIRY_THRESHOLD_DAYS_FINAL=3):
             within = make_item(self.user, name='Within', redeem_code='W1', expiry_date=date.today() + timedelta(days=5))
             outside = make_item(self.user, name='Outside', redeem_code='O1', expiry_date=date.today() + timedelta(days=20))
             check_and_notify_expiry()
@@ -500,7 +500,7 @@ class CheckAndNotifyExpiryTaskTests(TestCase):
     @patch('notify.tasks.send_via_rule', return_value=(True, ''))
     def test_per_item_override_takes_precedence(self, mock_send):
         make_rule(self.user, event_types=['expiry_warning'])
-        with patch.dict('os.environ', {'EXPIRY_THRESHOLD_DAYS': '5', 'EXPIRY_THRESHOLD_DAYS_FINAL': '1'}):
+        with override_settings(EXPIRY_THRESHOLD_DAYS=5, EXPIRY_THRESHOLD_DAYS_FINAL=1):
             item = make_item(
                 self.user, name='Overridden', redeem_code='OV1',
                 expiry_date=date.today() + timedelta(days=20), notify_days_before=25,

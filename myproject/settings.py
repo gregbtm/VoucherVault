@@ -323,6 +323,49 @@ SPECTACULAR_SETTINGS = {
     'SWAGGER_UI_FAVICON_HREF': 'SIDECAR',
 }
 
+# --------------------------------------------------------------------------
+# Fork-added feature toggles & integrations. Every optional env var this
+# fork reads lives here, in one place, instead of scattered `os.environ.get()`
+# calls through the codebase (the previous approach meant EXPIRY_THRESHOLD_DAYS
+# alone was read with its default re-typed in six different files). Other
+# modules read these via `django.conf.settings`, never `os.environ` directly,
+# so `docker/env.example` and this block are the only two places a new env
+# var needs documenting — the docker-compose files pass everything through
+# via `env_file` and never need editing for a new var.
+# --------------------------------------------------------------------------
+
+# ---- Expiry notifications ----
+EXPIRY_THRESHOLD_DAYS = int(os.environ.get('EXPIRY_THRESHOLD_DAYS', 30))
+EXPIRY_LAST_NOTIFICATION_DAYS = int(os.environ.get('EXPIRY_LAST_NOTIFICATION_DAYS', 7))
+EXPIRY_THRESHOLD_DAYS_FINAL = int(os.environ.get('EXPIRY_THRESHOLD_DAYS_FINAL', EXPIRY_LAST_NOTIFICATION_DAYS))
+NTFY_DEFAULT_SERVER = os.environ.get('NTFY_DEFAULT_SERVER', 'https://ntfy.sh')
+
+# ---- Web Push notification backend ----
+WEBPUSH_VAPID_PUBLIC_KEY = os.environ.get('WEBPUSH_VAPID_PUBLIC_KEY') or None
+WEBPUSH_VAPID_PRIVATE_KEY = os.environ.get('WEBPUSH_VAPID_PRIVATE_KEY') or None
+WEBPUSH_VAPID_CLAIMS_EMAIL = os.environ.get('WEBPUSH_VAPID_CLAIMS_EMAIL', 'mailto:admin@example.com')
+
+# ---- Merchant logos ----
+MERCHANT_LOGOS_ENABLED = os.environ.get('MERCHANT_LOGOS_ENABLED', 'true').lower() in ('true', '1', 'yes')
+
+# ---- OCR ("Scan with AI") ----
+OCR_BACKEND = os.environ.get('OCR_BACKEND', 'none').lower()
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY') or None
+ANTHROPIC_OCR_MODEL = os.environ.get('ANTHROPIC_OCR_MODEL', 'claude-sonnet-5')
+
+# ---- Apple Wallet (.pkpass) export ----
+PKPASS_CERT_PATH = os.environ.get('PKPASS_CERT_PATH') or None
+PKPASS_CERT_PASSWORD = os.environ.get('PKPASS_CERT_PASSWORD') or None
+PKPASS_WWDR_CERT_PATH = os.environ.get('PKPASS_WWDR_CERT_PATH') or None
+PKPASS_TEAM_ID = os.environ.get('PKPASS_TEAM_ID') or None
+PKPASS_PASS_TYPE_ID = os.environ.get('PKPASS_PASS_TYPE_ID') or None
+PKPASS_ORGANIZATION_NAME = os.environ.get('PKPASS_ORGANIZATION_NAME', 'VoucherVault Plus+')
+
+# ---- Google Wallet export ----
+GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH = os.environ.get('GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH') or None
+GOOGLE_WALLET_ISSUER_ID = os.environ.get('GOOGLE_WALLET_ISSUER_ID') or None
+GOOGLE_WALLET_CLASS_ID = os.environ.get('GOOGLE_WALLET_CLASS_ID') or None
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 LOGIN_URL = '/accounts/login/'

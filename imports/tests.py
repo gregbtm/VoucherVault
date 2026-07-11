@@ -19,7 +19,7 @@ from cryptography.hazmat.primitives.serialization import BestAvailableEncryption
 from cryptography.x509.oid import NameOID
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from myapp.models import Item, Tag, Wallet
@@ -364,25 +364,25 @@ class PkpassExporterTests(TestCase):
 
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')
-        self.env_patch = patch.dict(os.environ, {
-            'PKPASS_CERT_PATH': self.cert_path,
-            'PKPASS_CERT_PASSWORD': 'testpass',
-            'PKPASS_WWDR_CERT_PATH': self.wwdr_path,
-            'PKPASS_TEAM_ID': 'TEAM1234',
-            'PKPASS_PASS_TYPE_ID': 'pass.test.vouchervault',
-        })
-        self.env_patch.start()
-        self.addCleanup(self.env_patch.stop)
+        self.settings_override = override_settings(
+            PKPASS_CERT_PATH=self.cert_path,
+            PKPASS_CERT_PASSWORD='testpass',
+            PKPASS_WWDR_CERT_PATH=self.wwdr_path,
+            PKPASS_TEAM_ID='TEAM1234',
+            PKPASS_PASS_TYPE_ID='pass.test.vouchervault',
+        )
+        self.settings_override.enable()
+        self.addCleanup(self.settings_override.disable)
 
     def test_pkpass_enabled_true_when_cert_path_exists(self):
         self.assertTrue(pkpass_enabled())
 
     def test_pkpass_disabled_when_cert_path_unset(self):
-        with patch.dict(os.environ, {'PKPASS_CERT_PATH': ''}):
+        with override_settings(PKPASS_CERT_PATH=None):
             self.assertFalse(pkpass_enabled())
 
     def test_pkpass_disabled_when_cert_path_missing_file(self):
-        with patch.dict(os.environ, {'PKPASS_CERT_PATH': '/nonexistent/path.p12'}):
+        with override_settings(PKPASS_CERT_PATH='/nonexistent/path.p12'):
             self.assertFalse(pkpass_enabled())
 
     def test_generate_pkpass_produces_valid_signed_bundle(self):
@@ -440,13 +440,13 @@ class PkpassExporterTests(TestCase):
         self.assertNotIn('storeCard', pass_dict)
 
     def test_generate_pkpass_raises_when_disabled(self):
-        with patch.dict(os.environ, {'PKPASS_CERT_PATH': ''}):
+        with override_settings(PKPASS_CERT_PATH=None):
             item = make_item(self.user)
             with self.assertRaises(RuntimeError):
                 generate_pkpass(item)
 
     def test_generate_pkpass_raises_when_team_id_missing(self):
-        with patch.dict(os.environ, {'PKPASS_TEAM_ID': ''}):
+        with override_settings(PKPASS_TEAM_ID=None):
             item = make_item(self.user)
             with self.assertRaises(RuntimeError):
                 generate_pkpass(item)
@@ -489,22 +489,22 @@ class GoogleWalletExporterTests(TestCase):
 
     def setUp(self):
         self.user = User.objects.create_user(username='bob', password='pw12345!')
-        self.env_patch = patch.dict(os.environ, {
-            'GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH': self.key_path,
-            'GOOGLE_WALLET_ISSUER_ID': '3388000000012345678',
-        })
-        self.env_patch.start()
-        self.addCleanup(self.env_patch.stop)
+        self.settings_override = override_settings(
+            GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH=self.key_path,
+            GOOGLE_WALLET_ISSUER_ID='3388000000012345678',
+        )
+        self.settings_override.enable()
+        self.addCleanup(self.settings_override.disable)
 
     def test_google_wallet_enabled_true_when_configured(self):
         self.assertTrue(google_wallet_enabled())
 
     def test_google_wallet_disabled_when_issuer_id_unset(self):
-        with patch.dict(os.environ, {'GOOGLE_WALLET_ISSUER_ID': ''}):
+        with override_settings(GOOGLE_WALLET_ISSUER_ID=None):
             self.assertFalse(google_wallet_enabled())
 
     def test_google_wallet_disabled_when_key_path_missing_file(self):
-        with patch.dict(os.environ, {'GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH': '/nonexistent/key.json'}):
+        with override_settings(GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH='/nonexistent/key.json'):
             self.assertFalse(google_wallet_enabled())
 
     def test_generate_save_url_produces_valid_signed_jwt(self):
@@ -552,7 +552,7 @@ class GoogleWalletExporterTests(TestCase):
         self.assertEqual(obj['genericType'], 'GENERIC_LOYALTY_CARD')
 
     def test_generate_save_url_raises_when_disabled(self):
-        with patch.dict(os.environ, {'GOOGLE_WALLET_ISSUER_ID': ''}):
+        with override_settings(GOOGLE_WALLET_ISSUER_ID=None):
             item = make_item(self.user)
             with self.assertRaises(RuntimeError):
                 generate_google_wallet_save_url(item)
@@ -561,7 +561,7 @@ class GoogleWalletExporterTests(TestCase):
         bad_key_path = os.path.join(self.tmpdir.name, 'bad-key.json')
         with open(bad_key_path, 'w') as f:
             json.dump({'client_email': 'x@y.com'}, f)  # missing private_key
-        with patch.dict(os.environ, {'GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH': bad_key_path}):
+        with override_settings(GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH=bad_key_path):
             item = make_item(self.user)
             with self.assertRaises(RuntimeError):
                 generate_google_wallet_save_url(item)

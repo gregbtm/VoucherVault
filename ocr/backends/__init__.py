@@ -1,4 +1,4 @@
-import os
+from django.conf import settings
 
 from .base import OCRBackend
 from .claude_backend import ClaudeOCRBackend
@@ -11,7 +11,7 @@ BACKENDS = {
 
 
 def ocr_backend_name() -> str:
-    return os.environ.get('OCR_BACKEND', 'none').lower()
+    return settings.OCR_BACKEND
 
 
 def ocr_enabled() -> bool:

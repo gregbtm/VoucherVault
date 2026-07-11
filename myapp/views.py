@@ -103,7 +103,7 @@ def dashboard(request):
     default_currency = preferences.default_currency or 'GBP'
 
     # Get threshold days from environment variable or default to 30
-    threshold_days = int(os.getenv('EXPIRY_THRESHOLD_DAYS', 30))
+    threshold_days = settings.EXPIRY_THRESHOLD_DAYS
     # Calculate soon-to-expire date (used for both "soon expiring" count and at-risk value)
     soon_expiry_date = now() + timedelta(days=threshold_days)
 
@@ -227,7 +227,7 @@ def show_items(request):
     # via the dedicated "Archived" filter)
     all_accessible_items = Item.objects.filter(Q(user=user) | Q(wallet__shared_with=user)).distinct()
     user_items = all_accessible_items.exclude(is_archived=True)
-    threshold_days = int(os.getenv('EXPIRY_THRESHOLD_DAYS', 30))
+    threshold_days = settings.EXPIRY_THRESHOLD_DAYS
     soon_expiry_date = now() + timedelta(days=threshold_days)
 
     available_count = user_items.filter(is_used=False, expiry_date__gte=timezone.now()).count()
@@ -255,7 +255,7 @@ def show_items(request):
     elif filter_value == 'archived':
         items = all_accessible_items.filter(is_archived=True)
     elif filter_value == 'soon_expiring':
-        threshold_days = int(os.getenv('EXPIRY_THRESHOLD_DAYS', 30))
+        threshold_days = settings.EXPIRY_THRESHOLD_DAYS
         soon_expiry_date = now() + timedelta(days=threshold_days)
         items = user_items.filter(is_used=False, expiry_date__gte=now(), expiry_date__lt=soon_expiry_date)
     else:
@@ -966,7 +966,7 @@ def get_items_by_type(request, item_type):
 def get_stats(request):
     try:
         username = request.GET.get('user', None)
-        threshold_days = int(os.getenv('EXPIRY_THRESHOLD_DAYS', 30))
+        threshold_days = settings.EXPIRY_THRESHOLD_DAYS
         soon_expiry_date = now() + timedelta(days=threshold_days)
 
         if username:

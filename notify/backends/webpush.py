@@ -1,8 +1,8 @@
 import json
 import logging
-import os
 
 import requests
+from django.conf import settings
 from pywebpush import WebPushException, webpush
 
 from ..models import WebPushSubscription
@@ -12,11 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 def webpush_enabled() -> bool:
-    return bool(os.environ.get('WEBPUSH_VAPID_PUBLIC_KEY')) and bool(os.environ.get('WEBPUSH_VAPID_PRIVATE_KEY'))
+    return bool(settings.WEBPUSH_VAPID_PUBLIC_KEY) and bool(settings.WEBPUSH_VAPID_PRIVATE_KEY)
 
 
 def get_vapid_public_key() -> str | None:
-    return os.environ.get('WEBPUSH_VAPID_PUBLIC_KEY') or None
+    return settings.WEBPUSH_VAPID_PUBLIC_KEY
 
 
 class WebPushBackend(NotificationBackend):
@@ -27,7 +27,7 @@ class WebPushBackend(NotificationBackend):
     """
 
     def send(self, title: str, message: str, item=None) -> bool:
-        vapid_private_key = os.environ.get('WEBPUSH_VAPID_PRIVATE_KEY')
+        vapid_private_key = settings.WEBPUSH_VAPID_PRIVATE_KEY
         if not vapid_private_key:
             logger.warning('WEBPUSH_VAPID_PRIVATE_KEY is not set; cannot send web push.')
             return False
@@ -37,7 +37,7 @@ class WebPushBackend(NotificationBackend):
         if not subscriptions:
             return False
 
-        claims_email = os.environ.get('WEBPUSH_VAPID_CLAIMS_EMAIL', 'mailto:admin@example.com')
+        claims_email = settings.WEBPUSH_VAPID_CLAIMS_EMAIL
         payload = json.dumps({'title': title, 'body': message})
 
         any_success = False

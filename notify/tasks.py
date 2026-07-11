@@ -1,7 +1,7 @@
-import os
 from datetime import date
 
 from celery import shared_task
+from django.conf import settings
 
 from myapp.models import Item
 
@@ -10,11 +10,11 @@ from .models import NotificationLog, NotificationRule
 
 
 def default_threshold_days() -> int:
-    return int(os.getenv('EXPIRY_THRESHOLD_DAYS', 30))
+    return settings.EXPIRY_THRESHOLD_DAYS
 
 
 def final_threshold_days() -> int:
-    return int(os.getenv('EXPIRY_THRESHOLD_DAYS_FINAL', os.getenv('EXPIRY_LAST_NOTIFICATION_DAYS', 7)))
+    return settings.EXPIRY_THRESHOLD_DAYS_FINAL
 
 
 def _already_notified(item, event_type, rule) -> bool:

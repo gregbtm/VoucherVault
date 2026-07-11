@@ -1,10 +1,10 @@
 import json
-import os
 from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.authtoken.models import Token
@@ -762,24 +762,24 @@ class OCRExtractApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_disabled_by_default(self):
-        with patch.dict(os.environ, {'OCR_BACKEND': 'none'}):
+        with override_settings(OCR_BACKEND='none'):
             response = self.client.post('/api/v1/ocr/extract/', {'image': _tiny_image_upload()}, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_501_NOT_IMPLEMENTED)
 
     def test_no_image_provided(self):
-        with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
+        with override_settings(OCR_BACKEND='tesseract'):
             response = self.client.post('/api/v1/ocr/extract/', {}, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_oversized_image_rejected(self):
         upload = _tiny_image_upload(size=8 * 1024 * 1024 + 1)
-        with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
+        with override_settings(OCR_BACKEND='tesseract'):
             response = self.client.post('/api/v1/ocr/extract/', {'image': upload}, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_unsupported_content_type_rejected(self):
         upload = _tiny_image_upload(name='voucher.txt', content_type='text/plain')
-        with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
+        with override_settings(OCR_BACKEND='tesseract'):
             response = self.client.post('/api/v1/ocr/extract/', {'image': upload}, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -791,7 +791,7 @@ class OCRExtractApiTests(APITestCase):
         }
         mock_get_backend.return_value = mock_backend
 
-        with patch.dict(os.environ, {'OCR_BACKEND': 'claude'}):
+        with override_settings(OCR_BACKEND='claude'):
             response = self.client.post('/api/v1/ocr/extract/', {'image': _tiny_image_upload()}, format='multipart')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -801,7 +801,7 @@ class OCRExtractApiTests(APITestCase):
 
     @patch('api.views.get_backend', side_effect=RuntimeError('tesseract binary missing'))
     def test_backend_unavailable_returns_503(self, mock_get_backend):
-        with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
+        with override_settings(OCR_BACKEND='tesseract'):
             response = self.client.post('/api/v1/ocr/extract/', {'image': _tiny_image_upload()}, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
 

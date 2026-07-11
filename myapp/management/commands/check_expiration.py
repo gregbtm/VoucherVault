@@ -1,40 +1,22 @@
 # myapp/management/commands/check_expiration.py
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from myapp.models import Item, UserProfile
 import apprise
-import os
-from dotenv import load_dotenv
 from datetime import timedelta
-
-# Load environment variables from .env file
-load_dotenv()
 
 class Command(BaseCommand):
     help = 'Send notifications for items that are about to expire'
 
     def handle(self, *args, **kwargs):
-        # Get the threshold value from environment variable or use default (30 days)
-        threshold_days = os.getenv('EXPIRY_THRESHOLD_DAYS', 30)
-        try:
-            threshold_days = int(threshold_days)
-        except ValueError:
-            self.stdout.write(self.style.ERROR('EXPIRY_THRESHOLD_DAYS environment variable is not a valid integer. Aborting.'))
-            return
-
         # Define the time threshold for regular notifications (e.g., items expiring within the next threshold_days)
-        threshold_date = timezone.now() + timezone.timedelta(days=threshold_days)
+        threshold_date = timezone.now() + timezone.timedelta(days=settings.EXPIRY_THRESHOLD_DAYS)
         current_date = timezone.now()
 
         # Define the last chance notification threshold
-        last_chance_threshold_days = os.getenv('EXPIRY_LAST_NOTIFICATION_DAYS', 7)
-        try:
-            last_chance_threshold_days = int(last_chance_threshold_days)
-            last_chance_threshold_date = timezone.now() + timezone.timedelta(days=last_chance_threshold_days)
-        except ValueError:
-            self.stdout.write(self.style.ERROR('EXPIRY_LAST_NOTIFICATION_DAYS environment variable is not a valid integer. Aborting.'))
-            return
+        last_chance_threshold_date = timezone.now() + timezone.timedelta(days=settings.EXPIRY_LAST_NOTIFICATION_DAYS)
 
         # Get all user profiles with Apprise URLs
         user_profiles = UserProfile.objects.exclude(apprise_urls__isnull=True).exclude(apprise_urls__exact='')
