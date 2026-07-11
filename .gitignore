@@ -24,6 +24,7 @@ venv/
 database/uploads/
 database/imports/
 database/documents/
+database/backups/
 
 # ignore signed licenses
 **license.txt

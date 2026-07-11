@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import zipfile
@@ -37,7 +38,7 @@ from .parsers.catima import parse as parse_catima
 from .parsers.native_csv import parse as parse_native_csv
 from .parsers.native_json import parse as parse_native_json
 from .pkpass_import import PkpassImportError, extract_pkpass_fields
-from .tasks import create_item_from_row, process_import_job
+from .tasks import backup_user, create_item_from_row, process_import_job, run_scheduled_backups
 
 CATIMA_SAMPLE = (
     'Group,Description,Note,Card Number,EAN Barcode ID,Card Type,Expiry,Balance,Balance Type,Colour,Star\n'
@@ -698,3 +699,68 @@ class FullBackupTests(TestCase):
         response = self.client.post(reverse('import_full_backup'), {'file': upload})
         self.assertRedirects(response, reverse('upload_import'))
         self.assertEqual(Item.objects.filter(user=self.user).count(), 2)
+
+
+class ScheduledBackupTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp_dir, ignore_errors=True)
+        patcher = patch('imports.tasks.BACKUP_ROOT', self.tmp_dir)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_backup_user_returns_none_without_items(self):
+        self.assertIsNone(backup_user(self.user))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp_dir, 'alice')))
+
+    def test_backup_user_writes_zip(self):
+        make_item(self.user, name='Backed Up Item')
+
+        path = backup_user(self.user)
+
+        self.assertIsNotNone(path)
+        self.assertTrue(os.path.exists(path))
+        self.assertEqual(os.path.dirname(path), os.path.join(self.tmp_dir, 'alice'))
+        with zipfile.ZipFile(path) as zf:
+            entries = json.loads(zf.read('items.json'))
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]['name'], 'Backed Up Item')
+
+    @override_settings(BACKUP_RETENTION_COUNT=3)
+    def test_rotation_keeps_only_retention_count(self):
+        make_item(self.user)
+        for _ in range(5):
+            backup_user(self.user)
+
+        backup_dir = os.path.join(self.tmp_dir, 'alice')
+        remaining = [f for f in os.listdir(backup_dir) if f.endswith('.zip')]
+        self.assertEqual(len(remaining), 3)
+
+    @override_settings(SCHEDULED_BACKUP_ENABLED=False)
+    @patch('imports.tasks.backup_user')
+    def test_run_scheduled_backups_noop_when_disabled(self, mock_backup_user):
+        run_scheduled_backups()
+        mock_backup_user.assert_not_called()
+
+    @override_settings(SCHEDULED_BACKUP_ENABLED=True)
+    def test_run_scheduled_backups_only_backs_up_users_with_items(self):
+        make_item(self.user)
+        User.objects.create_user(username='bob', password='pw12345!')  # no items
+
+        run_scheduled_backups()
+
+        self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'alice')))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp_dir, 'bob')))
+
+    @override_settings(SCHEDULED_BACKUP_ENABLED=True)
+    @patch('imports.tasks.backup_user')
+    def test_one_users_failure_does_not_stop_others(self, mock_backup_user):
+        make_item(self.user)
+        other = User.objects.create_user(username='bob', password='pw12345!')
+        make_item(other)
+        mock_backup_user.side_effect = [RuntimeError('disk full'), 'some/path.zip']
+
+        run_scheduled_backups()  # must not raise
+
+        self.assertEqual(mock_backup_user.call_count, 2)

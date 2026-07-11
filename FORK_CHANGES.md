@@ -586,6 +586,45 @@ provider's billing relationship just for card scanning.
   `test_get_backend_returns_openai` case in the existing
   `BackendSelectionTests`.
 
+## Phase 14.3 — Scheduled local backup + restore doc
+
+A nightly, local-only safety net on top of the existing manual Full
+Backup download (Phase 11.8) — no new backup format, just automating the
+existing one and keeping a rotating history of it on disk.
+
+- New `imports.tasks.run_scheduled_backups` Celery task, registered in
+  `create_default_periodic_tasks` on its own crontab (03:00 daily, kept
+  separate from the 09:00 notification-check schedule so the two don't
+  compete). For every user with at least one item, it calls
+  `imports.tasks.backup_user(user)`, which reuses
+  `imports/exporters/full_backup.py::export_full_backup()` (the exact
+  same zip format as the manual **Import / Export → Full Backup (with
+  files) → Download Full Backup** button) and writes it to
+  `database/backups/<username>/` — the same bind-mounted volume as
+  uploads/documents/imports, so backups survive container
+  restarts/redeploys without any extra volume configuration.
+- Rotation keeps the newest `BACKUP_RETENTION_COUNT` (default 7) zips per
+  user, deleting older ones. One user's backup failing (e.g. a disk
+  error) is logged and doesn't stop the others from running.
+- Fixed a real bug found while writing the rotation test: the initial
+  filename format (`backup-YYYYMMDD-HHMMSS.zip`, second precision) meant
+  two backups triggered within the same second silently overwrote each
+  other instead of both being kept. Filenames now include microseconds
+  (`backup-YYYYMMDD-HHMMSS-ffffff.zip`).
+- New `SCHEDULED_BACKUP_ENABLED` (default `True`) toggle, following the
+  same on-by-default-with-an-env-toggle pattern as Phase 13.5's update
+  check.
+- New [`docs/BACKUP_RESTORE.md`](docs/BACKUP_RESTORE.md) covering where
+  backups live, how to restore one (both the "app still running" and
+  "rebuilding the instance from scratch" cases), the important caveat
+  that restoring always **adds** items rather than overwriting (inherited
+  from the existing Phase 11.8 restore behavior — restoring the same
+  backup twice duplicates everything), and a note that this is local-only
+  and worth periodically copying off-box for real disaster recovery.
+- New tests: `ScheduledBackupTests` (no-items no-op, zip contents, backup
+  rotation, the `SCHEDULED_BACKUP_ENABLED` toggle, per-user isolation on
+  the periodic task, and one user's failure not blocking others).
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
@@ -600,6 +639,8 @@ On top of everything documented in the README, this fork adds:
 | `ANTHROPIC_OCR_MODEL` | Overrides the Claude model used for OCR extraction. | `claude-sonnet-5` |
 | `OPENAI_API_KEY` | Required if `OCR_BACKEND=openai`. | `None` |
 | `OPENAI_OCR_MODEL` | Overrides the OpenAI model used for OCR extraction. | `gpt-4o-mini` |
+| `SCHEDULED_BACKUP_ENABLED` | Set to `False` to disable the nightly local backup task. | `True` |
+| `BACKUP_RETENTION_COUNT` | How many backups to keep per user before rotating out the oldest. | `7` |
 | `PKPASS_CERT_PATH` | Path to your Apple Pass Type ID certificate (`.p12`). Enables Apple Wallet export when set. | `None` |
 | `PKPASS_CERT_PASSWORD` | Password for `PKPASS_CERT_PATH`, if any. | `None` |
 | `PKPASS_WWDR_CERT_PATH` | Path to Apple's WWDR intermediate certificate. Required if `PKPASS_CERT_PATH` is set. | `None` |

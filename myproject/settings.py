@@ -384,6 +384,13 @@ GOOGLE_WALLET_CLASS_ID = os.environ.get('GOOGLE_WALLET_CLASS_ID') or None
 UPDATE_CHECK_ENABLED = os.environ.get('UPDATE_CHECK_ENABLED', 'true').lower() in ('true', '1', 'yes')
 UPDATE_CHECK_REPO = os.environ.get('UPDATE_CHECK_REPO', 'gregbtm/VoucherVault')
 
+# ---- Scheduled local backups ----
+# On by default. A periodic Celery task writes a Full Backup zip (same
+# format as the manual export) per user to database/backups/<username>/ -
+# the same bind-mounted volume as uploads/documents - and rotates old ones.
+SCHEDULED_BACKUP_ENABLED = os.environ.get('SCHEDULED_BACKUP_ENABLED', 'true').lower() in ('true', '1', 'yes')
+BACKUP_RETENTION_COUNT = int(os.environ.get('BACKUP_RETENTION_COUNT', 7))
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 LOGIN_URL = '/accounts/login/'
