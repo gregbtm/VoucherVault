@@ -23,13 +23,18 @@ from django.urls import reverse
 
 from myapp.models import Item, Tag, Wallet
 
+from myapp.models import Document
+
 from .exporters.csv_export import export_items_csv
+from .exporters.full_backup import export_full_backup
 from .exporters.json_export import export_items_json
 from .exporters.pkpass import generate_pkpass, pkpass_enabled
+from .full_backup_import import FullBackupImportError, import_full_backup
 from .models import ImportJob
 from .parsers.catima import parse as parse_catima
 from .parsers.native_csv import parse as parse_native_csv
 from .parsers.native_json import parse as parse_native_json
+from .pkpass_import import PkpassImportError, extract_pkpass_fields
 from .tasks import create_item_from_row, process_import_job
 
 CATIMA_SAMPLE = (
@@ -443,3 +448,136 @@ class PkpassExporterTests(TestCase):
             item = make_item(self.user)
             with self.assertRaises(RuntimeError):
                 generate_pkpass(item)
+
+
+def _build_pkpass_bytes(pass_dict):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as zf:
+        zf.writestr('pass.json', json.dumps(pass_dict))
+    return buffer.getvalue()
+
+
+class PkpassImportTests(TestCase):
+    def test_extracts_standard_fields(self):
+        pass_bytes = _build_pkpass_bytes({
+            'organizationName': 'Acme Co',
+            'description': 'Loyalty Card',
+            'expirationDate': '2030-01-01T00:00:00Z',
+            'barcodes': [{'format': 'PKBarcodeFormatQR', 'message': 'ABC123'}],
+            'storeCard': {
+                'primaryFields': [{'key': 'member', 'label': 'Member', 'value': 'John Doe'}],
+                'backFields': [{'key': 'pin', 'label': 'PIN', 'value': '1234'}],
+            },
+        })
+        result = extract_pkpass_fields(pass_bytes)
+        self.assertEqual(result['issuer'], 'Acme Co')
+        self.assertEqual(result['name'], 'Loyalty Card')
+        self.assertEqual(result['redeem_code'], 'ABC123')
+        self.assertEqual(result['code_type'], 'qrcode')
+        self.assertEqual(result['expiry_date'], '2030-01-01')
+        self.assertEqual(result['pin'], '1234')
+
+    def test_falls_back_to_field_based_expiry(self):
+        pass_bytes = _build_pkpass_bytes({
+            'organizationName': 'Acme Co',
+            'description': 'Voucher',
+            'barcodes': [{'format': 'PKBarcodeFormatCode128', 'message': 'XYZ'}],
+            'coupon': {'auxiliaryFields': [{'key': 'expiry', 'label': 'Expires', 'value': '2031-06-15'}]},
+        })
+        result = extract_pkpass_fields(pass_bytes)
+        self.assertEqual(result['expiry_date'], '2031-06-15')
+        self.assertEqual(result['code_type'], 'code128')
+
+    def test_rejects_non_zip_file(self):
+        with self.assertRaises(PkpassImportError):
+            extract_pkpass_fields(b'not a zip file')
+
+    def test_rejects_zip_without_pass_json(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w') as zf:
+            zf.writestr('other.txt', 'nothing here')
+        with self.assertRaises(PkpassImportError):
+            extract_pkpass_fields(buffer.getvalue())
+
+    def test_rejects_invalid_json(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w') as zf:
+            zf.writestr('pass.json', 'not valid json')
+        with self.assertRaises(PkpassImportError):
+            extract_pkpass_fields(buffer.getvalue())
+
+    def test_import_pkpass_view_prefills_form(self):
+        user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+        pass_bytes = _build_pkpass_bytes({
+            'organizationName': 'Acme Co',
+            'description': 'Loyalty Card',
+            'barcodes': [{'format': 'PKBarcodeFormatQR', 'message': 'ABC123'}],
+        })
+        upload = SimpleUploadedFile('pass.pkpass', pass_bytes, content_type='application/vnd.apple.pkpass')
+        response = self.client.post(reverse('api-pkpass-import'), {'file': upload})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['redeem_code'], 'ABC123')
+
+
+class FullBackupTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_export_import_round_trip_preserves_items_and_files(self):
+        wallet = Wallet.objects.create(user=self.user, name='Travel')
+        item = make_item(self.user, name='Flight Voucher', wallet=wallet)
+        item.file.save('receipt.pdf', SimpleUploadedFile('receipt.pdf', b'%PDF-1.4 fake', content_type='application/pdf'))
+        Document.objects.create(item=item, file=SimpleUploadedFile('extra.pdf', b'%PDF-1.4 extra', content_type='application/pdf'))
+
+        zip_bytes = export_full_backup(Item.objects.filter(user=self.user).prefetch_related('documents'))
+
+        other_user = User.objects.create_user(username='bob', password='pw12345!')
+        result = import_full_backup(other_user, zip_bytes)
+
+        self.assertEqual(result['imported_count'], 1)
+        self.assertEqual(result['error_count'], 0)
+
+        restored = Item.objects.get(user=other_user, name='Flight Voucher')
+        self.assertNotEqual(restored.id, item.id)  # always a new id, never overwrites
+        self.assertEqual(restored.wallet.name, 'Travel')
+        self.assertTrue(restored.file.name)
+        self.assertEqual(restored.documents.count(), 1)
+
+    def test_restoring_does_not_touch_existing_items(self):
+        make_item(self.user, name='Existing Item')
+        zip_bytes = export_full_backup(Item.objects.filter(user=self.user))
+        import_full_backup(self.user, zip_bytes)
+        self.assertEqual(Item.objects.filter(user=self.user).count(), 2)
+
+    def test_rejects_non_zip_file(self):
+        with self.assertRaises(FullBackupImportError):
+            import_full_backup(self.user, b'not a zip file')
+
+    def test_rejects_zip_without_items_json(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w') as zf:
+            zf.writestr('other.txt', 'nothing here')
+        with self.assertRaises(FullBackupImportError):
+            import_full_backup(self.user, buffer.getvalue())
+
+    def test_reports_errors_for_invalid_entries(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w') as zf:
+            zf.writestr('items.json', json.dumps([{'type': 'voucher', 'name': 'Missing Code'}]))
+        result = import_full_backup(self.user, buffer.getvalue())
+        self.assertEqual(result['imported_count'], 0)
+        self.assertEqual(result['error_count'], 1)
+
+    def test_full_backup_web_ui_download_and_restore(self):
+        self.client.login(username='alice', password='pw12345!')
+        make_item(self.user, name='Downloadable')
+
+        download = self.client.get(reverse('export_full_backup'))
+        self.assertEqual(download.status_code, 200)
+        self.assertEqual(download['Content-Type'], 'application/zip')
+
+        upload = SimpleUploadedFile('backup.zip', download.content, content_type='application/zip')
+        response = self.client.post(reverse('import_full_backup'), {'file': upload})
+        self.assertRedirects(response, reverse('upload_import'))
+        self.assertEqual(Item.objects.filter(user=self.user).count(), 2)

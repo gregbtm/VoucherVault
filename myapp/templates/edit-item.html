@@ -664,7 +664,14 @@ body.dark-mode .error-alert {
                 <input type="file" id="fileInput" accept="image/*" style="display: none;">
               </div>
             </div>
-            
+
+            <div class="form-group">
+              <label class="form-label" for="card_number">{% trans "Card / Member Number" %}</label>
+              <input type="text" class="modern-input" id="card_number" name="card_number"
+                     placeholder="{% trans 'Leave blank to display the redeem code instead' %}"
+                     value="{{ item.card_number|default_if_none:'' }}">
+            </div>
+
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label" for="code_type">{% trans "Code Type" %} <span class="required">*</span></label>

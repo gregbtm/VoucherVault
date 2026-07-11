@@ -19,10 +19,13 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 
 from imports.exporters.csv_export import export_items_csv
+from imports.exporters.full_backup import export_full_backup
 from imports.exporters.json_export import export_items_json
 from imports.exporters.pkpass import generate_pkpass, pkpass_enabled
+from imports.full_backup_import import FullBackupImportError, import_full_backup
 from imports.models import ImportJob
 from imports.parsers import get_parser
+from imports.pkpass_import import PkpassImportError, extract_pkpass_fields
 from imports.tasks import process_import_job
 from myapp.analytics import get_expiry_timeline, get_summary_stats
 from myapp.models import Item, ItemShare, MerchantProfile, Tag, Transaction, UserPreference, UserProfile, Wallet
@@ -448,6 +451,47 @@ class OCRExtractView(APIView):
         return Response(result)
 
 
+class PkpassImportView(APIView):
+    """
+    POST an existing Apple Wallet .pkpass file, get back the fields it
+    contains (name, issuer, redeem code, code type, expiry, pin) to
+    pre-fill the item form with. Informational extraction only — the
+    pass's PKCS7 signature is never verified, since nothing here relies on
+    it for a trust/authorization decision.
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        request={'multipart/form-data': inline_serializer(name='PkpassImportRequest', fields={'file': serializers.FileField()})},
+        responses=inline_serializer(
+            name='PkpassImportResponse',
+            fields={
+                'name': serializers.CharField(allow_null=True),
+                'issuer': serializers.CharField(allow_null=True),
+                'redeem_code': serializers.CharField(allow_null=True),
+                'code_type': serializers.CharField(allow_null=True),
+                'expiry_date': serializers.CharField(allow_null=True),
+                'pin': serializers.CharField(allow_null=True),
+                'confidence': serializers.FloatField(),
+            },
+        ),
+    )
+    def post(self, request):
+        upload = request.FILES.get('file')
+        if not upload:
+            return Response({'file': _('No file uploaded.')}, status=status.HTTP_400_BAD_REQUEST)
+        if upload.size > MAX_UPLOAD_SIZE:
+            return Response({'file': _('File is too large.')}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            result = extract_pkpass_fields(upload.read())
+        except PkpassImportError as exc:
+            return Response({'file': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(result)
+
+
 class ExportCsvView(APIView):
     """Download all of the authenticated user's items as a VoucherVault CSV backup."""
     permission_classes = [IsAuthenticated]
@@ -458,6 +502,51 @@ class ExportCsvView(APIView):
         response = HttpResponse(export_items_csv(items), content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="vouchervault-export.csv"'
         return response
+
+
+class ExportFullBackupView(APIView):
+    """Download all of the authenticated user's items, plus their attached
+    files and documents, as a single .zip backup bundle."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    def get(self, request):
+        items = Item.objects.filter(user=request.user).select_related('wallet').prefetch_related('tags', 'documents')
+        response = HttpResponse(export_full_backup(items), content_type='application/zip')
+        response['Content-Disposition'] = 'attachment; filename="vouchervault-full-backup.zip"'
+        return response
+
+
+class ImportFullBackupView(APIView):
+    """
+    Restore a Full Backup .zip bundle. Every item is created fresh with a
+    new ID — this never overwrites or merges with existing items.
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        request={'multipart/form-data': inline_serializer(name='FullBackupImportRequest', fields={'file': serializers.FileField()})},
+        responses=inline_serializer(
+            name='FullBackupImportResponse',
+            fields={
+                'imported_count': serializers.IntegerField(),
+                'error_count': serializers.IntegerField(),
+                'errors': serializers.ListField(child=serializers.DictField()),
+            },
+        ),
+    )
+    def post(self, request):
+        upload = request.FILES.get('file')
+        if not upload:
+            return Response({'file': _('No file uploaded.')}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            result = import_full_backup(request.user, upload.read())
+        except FullBackupImportError as exc:
+            return Response({'file': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(result)
 
 
 class ExportJsonView(APIView):

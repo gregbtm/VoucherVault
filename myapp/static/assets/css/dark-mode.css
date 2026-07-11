@@ -515,3 +515,29 @@ body.dark-mode #qr-close-btn {
 body.dark-mode #qr-close-btn:hover {
   background: rgba(0, 0, 0, 0.95);
 }
+
+/*--------------------------------------------------------------
+# OLED true-black variant (layers on top of body.dark-mode)
+--------------------------------------------------------------*/
+body.oled-dark {
+  background: #000;
+}
+
+body.oled-dark .header,
+body.oled-dark .sidebar {
+  background-color: #000;
+}
+
+body.oled-dark .card,
+body.oled-dark .item-detail-card,
+body.oled-dark .qr-card,
+body.oled-dark .shared-users-card,
+body.oled-dark .documents-card,
+body.oled-dark .dropdown-menu {
+  background-color: #000;
+}
+
+body.oled-dark .sidebar-nav .nav-link,
+body.oled-dark .sidebar-nav .nav-link.collapsed {
+  background: #000;
+}

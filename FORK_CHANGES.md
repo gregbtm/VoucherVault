@@ -148,6 +148,51 @@ collaboration, and native OS/browser sharing.
   (in-app sharing to another VoucherVault account) — it's for sharing
   *out* of the app entirely.
 
+## Phase 11 — Catima parity: card identity, lifecycle & backup fidelity
+
+Scoped by diffing this fork's feature set against
+[Catima](https://github.com/mvanhorn/catima-android), the loyalty-card app
+this fork already imports from — eight small, additive features closing
+the gaps that were actually portable to a self-hosted web app (a few,
+like OS-level screen brightness or home-screen widgets, aren't — see the
+scoping notes in the project history for what was deliberately left out).
+
+- **Card number vs. barcode payload** — new `Item.card_number` field for
+  when the printed member/account number differs from what's actually
+  encoded in the barcode. Shown prominently above the barcode when set,
+  with its own copy button; falls back to the existing redeem-code display
+  when blank, so nothing changes for items that don't need it.
+- **Keep screen awake** — a "Keep screen on while viewing an item" toggle
+  (on by default) uses the Web Screen Wake Lock API so the barcode doesn't
+  dim out mid-scan at a register. Re-acquires the lock on tab
+  foreground/background transitions per the spec.
+- **Archived state** — a third status alongside used/expired: `is_archived`
+  hides an item from every default inventory view without marking it used
+  or deleting it, with its own "Archived" filter tab and count badge.
+- **Last-used tracking** — `Item.last_used_at` updates every time the item
+  detail page is opened; `last_used_at` is now a sort option in Display
+  Preferences.
+- **OLED true-black dark mode** — an opt-in preference that swaps dark
+  mode's surface colours to pure black for OLED screens, layered on top of
+  the existing dark theme rather than replacing it.
+- **Barcode zoom** — +/− controls under the barcode/QR image on the item
+  detail page. Client-side only (CSS scale, persisted per item in
+  `localStorage`), so it doesn't need a migration or sync across devices.
+- **Apple Wallet (`.pkpass`) import** — the reverse of Phase 8's export: a
+  new "Import from Apple Wallet" uploader on the create-item form reads an
+  existing pass's `pass.json` (organization, description, barcode message/
+  format, expiry, PIN) and pre-fills the form, the same UX pattern as the
+  "Scan with AI" flow. Informational extraction only — the pass's PKCS7
+  signature is never verified, since nothing here relies on it for a trust
+  decision.
+- **Full Backup (with files)** — a new export/import format alongside the
+  existing CSV/JSON: a `.zip` bundling `items.json` plus every item's
+  attached file and Document attachments, so a backup/restore round trip
+  doesn't lose anything the text-only formats can't carry. Restoring
+  always creates new items with new IDs — it never overwrites or merges
+  with what's already in your vault, so it's safe to run against a vault
+  that already has data in it.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

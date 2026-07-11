@@ -12,7 +12,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 
 from .forms import ItemForm, TagForm, WalletForm
 from .merchant_logos import fetch_merchant_logo, get_cached_logo, get_cached_logos_for_issuers, guess_domain
-from .models import Document, Item, MerchantProfile, Tag, Wallet
+from .models import Document, Item, MerchantProfile, Tag, UserPreference, Wallet
 from .tasks import fetch_merchant_logo_task
 
 
@@ -650,3 +650,108 @@ class WebShareButtonWiringTests(TestCase):
         make_item(self.user)
         response = self.client.get(reverse('show_items'), {'status': 'all'})
         self.assertContains(response, 'share-voucher-btn')
+
+
+class CardNumberDisplayTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_card_number_shown_when_set(self):
+        item = make_item(self.user, card_number='MEMBER-123')
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertContains(response, 'MEMBER-123')
+        self.assertContains(response, 'id="card-number"')
+
+    def test_card_number_block_hidden_when_blank(self):
+        item = make_item(self.user)
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertNotContains(response, 'id="card-number"')
+
+    def test_duplicate_item_carries_card_number(self):
+        item = make_item(self.user, card_number='MEMBER-123')
+        response = self.client.get(reverse('duplicate_item', args=[item.id]))
+        self.assertEqual(response.context['form'].initial['card_number'], 'MEMBER-123')
+
+
+class ArchivedItemTests(TestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_toggle_archive(self):
+        item = make_item(self.alice)
+        response = self.client.post(reverse('toggle_archive_item', args=[item.id]))
+        self.assertRedirects(response, reverse('view_item', kwargs={'item_uuid': item.id}))
+        item.refresh_from_db()
+        self.assertTrue(item.is_archived)
+
+        self.client.post(reverse('toggle_archive_item', args=[item.id]))
+        item.refresh_from_db()
+        self.assertFalse(item.is_archived)
+
+    def test_non_collaborator_cannot_archive(self):
+        item = make_item(self.alice)
+        self.client.logout()
+        self.client.login(username='bob', password='pw12345!')
+        response = self.client.post(reverse('toggle_archive_item', args=[item.id]))
+        self.assertEqual(response.status_code, 403)
+
+    def test_archived_items_excluded_from_default_and_available_views(self):
+        archived = make_item(self.alice, name='Archived One', is_archived=True)
+        visible = make_item(self.alice, name='Visible One', redeem_code='OTHER')
+
+        response = self.client.get(reverse('show_items'), {'status': 'all'})
+        names = [entry['item'].name for entry in response.context['items_with_qr']]
+        self.assertIn(visible.name, names)
+        self.assertNotIn(archived.name, names)
+
+        response = self.client.get(reverse('show_items'), {'status': 'available'})
+        names = [entry['item'].name for entry in response.context['items_with_qr']]
+        self.assertNotIn(archived.name, names)
+
+    def test_archived_filter_shows_only_archived_items(self):
+        archived = make_item(self.alice, name='Archived One', is_archived=True)
+        visible = make_item(self.alice, name='Visible One', redeem_code='OTHER')
+
+        response = self.client.get(reverse('show_items'), {'status': 'archived'})
+        names = [entry['item'].name for entry in response.context['items_with_qr']]
+        self.assertIn(archived.name, names)
+        self.assertNotIn(visible.name, names)
+        self.assertEqual(response.context['archived_count'], 1)
+
+
+class LastUsedTrackingTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_viewing_item_updates_last_used_at(self):
+        item = make_item(self.user)
+        self.assertIsNone(item.last_used_at)
+        self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        item.refresh_from_db()
+        self.assertIsNotNone(item.last_used_at)
+
+    def test_last_used_at_is_a_valid_sort_option(self):
+        self.assertIn('last_used_at', dict(UserPreference.SORT_CHOICES))
+
+
+class WakeLockPreferenceTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_wake_lock_script_present_by_default(self):
+        item = make_item(self.user)
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertContains(response, 'navigator.wakeLock')
+
+    def test_wake_lock_script_absent_when_disabled(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        prefs.keep_screen_awake = False
+        prefs.save()
+        item = make_item(self.user)
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertNotContains(response, 'navigator.wakeLock')

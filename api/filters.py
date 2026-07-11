@@ -10,4 +10,4 @@ class ItemFilter(django_filters.FilterSet):
 
     class Meta:
         model = Item
-        fields = ['type', 'is_used', 'is_pinned', 'currency', 'code_type', 'value_type', 'wallet']
+        fields = ['type', 'is_used', 'is_pinned', 'is_archived', 'currency', 'code_type', 'value_type', 'wallet']

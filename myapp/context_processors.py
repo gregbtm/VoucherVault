@@ -1,6 +1,6 @@
 from django.db.models import Count, Q
 
-from .models import Wallet
+from .models import UserPreference, Wallet
 
 
 def sidebar_wallets(request):
@@ -12,3 +12,11 @@ def sidebar_wallets(request):
             Q(user=request.user) | Q(shared_with=request.user)
         ).distinct().annotate(item_count=Count('items')),
     }
+
+
+def user_preferences(request):
+    """Expose the current user's display preferences to every template (e.g. OLED dark mode)."""
+    if not request.user.is_authenticated:
+        return {}
+    preferences, _ = UserPreference.objects.get_or_create(user=request.user)
+    return {'global_preferences': preferences}

@@ -669,6 +669,7 @@ body.dark-mode .mobile-filter-select {
             <option value="soon_expiring" {% if item_status == 'soon_expiring' %}selected{% endif %}>{% trans "Expiring Soon" %} ({{ soon_expiring_count }})</option>
             <option value="used" {% if item_status == 'used' %}selected{% endif %}>{% trans "Used" %} ({{ used_count }})</option>
             <option value="expired" {% if item_status == 'expired' %}selected{% endif %}>{% trans "Expired" %} ({{ expired_count }})</option>
+            <option value="archived" {% if item_status == 'archived' %}selected{% endif %}>{% trans "Archived" %} ({{ archived_count }})</option>
           </select>
           <select class="mobile-filter-select" id="mobileTypeFilter" onchange="applyMobileFilters()">
             <option value="" {% if not item_type %}selected{% endif %}>{% trans "All Types" %} ({{ all_types_count }})</option>
@@ -698,12 +699,17 @@ body.dark-mode .mobile-filter-select {
           <i class="bi bi-check2-all"></i> {% trans "Used" %}
           <span class="count">{{ used_count }}</span>
         </a>
-        <a href="?{% if item_type %}type={{ item_type }}&{% endif %}status=expired{% if search_query %}&query={{ search_query }}{% endif %}" 
+        <a href="?{% if item_type %}type={{ item_type }}&{% endif %}status=expired{% if search_query %}&query={{ search_query }}{% endif %}"
            class="filter-chip {% if item_status == 'expired' %}active{% endif %}">
           <i class="bi bi-x-circle"></i> {% trans "Expired" %}
           <span class="count">{{ expired_count }}</span>
         </a>
-        
+        <a href="?{% if item_type %}type={{ item_type }}&{% endif %}status=archived{% if search_query %}&query={{ search_query }}{% endif %}"
+           class="filter-chip {% if item_status == 'archived' %}active{% endif %}">
+          <i class="bi bi-archive"></i> {% trans "Archived" %}
+          <span class="count">{{ archived_count }}</span>
+        </a>
+
         <span class="filter-divider"></span>
         
         <!-- Type Filters -->
@@ -814,6 +820,9 @@ body.dark-mode .mobile-filter-select {
               <h3 class="item-name">{{ entry.item.name }}</h3>
               
               <div class="status-badges">
+                {% if entry.item.is_archived %}
+                <span class="status-badge used"><i class="bi bi-archive"></i> {% trans "Archived" %}</span>
+                {% endif %}
                 {% if entry.item.is_used %}
                 <span class="status-badge used">{% trans "Used" %}</span>
                 {% elif entry.item.expiry_date|date:"Y-m-d" < current_date|date:"Y-m-d" %}

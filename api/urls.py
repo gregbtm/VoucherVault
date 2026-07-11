@@ -25,8 +25,11 @@ urlpatterns = [
     path('imports/preview/', views.ImportPreviewView.as_view(), name='api-import-preview'),
     path('exports/csv/', views.ExportCsvView.as_view(), name='api-export-csv'),
     path('exports/json/', views.ExportJsonView.as_view(), name='api-export-json'),
+    path('exports/full-backup/', views.ExportFullBackupView.as_view(), name='api-export-full-backup'),
+    path('imports/full-backup/', views.ImportFullBackupView.as_view(), name='api-import-full-backup'),
     path('analytics/summary/', views.AnalyticsSummaryView.as_view(), name='api-analytics-summary'),
     path('analytics/expiry-timeline/', views.AnalyticsExpiryTimelineView.as_view(), name='api-analytics-expiry-timeline'),
     path('ocr/extract/', views.OCRExtractView.as_view(), name='api-ocr-extract'),
+    path('imports/pkpass/', views.PkpassImportView.as_view(), name='api-pkpass-import'),
     path('', include(router.urls)),
 ]
