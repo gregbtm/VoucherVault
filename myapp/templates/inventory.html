@@ -473,6 +473,67 @@ body.dark-mode .item-description {
   transform: scale(1.1);
 }
 
+/* Bulk Select Mode */
+.select-checkbox {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.5rem;
+  width: 22px;
+  height: 22px;
+  z-index: 11;
+  display: none;
+  cursor: pointer;
+  accent-color: var(--primary-color, #4154f1);
+}
+
+body.bulk-select-mode .select-checkbox {
+  display: block;
+}
+
+body.bulk-select-mode .pin-btn,
+body.bulk-select-mode .share-btn {
+  display: none !important;
+}
+
+.item-card.selected {
+  outline: 2px solid var(--primary-color, #4154f1);
+  outline-offset: -2px;
+}
+
+.bulk-action-bar {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: var(--card-bg, #fff);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  padding: 0.65rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 40px);
+  justify-content: center;
+}
+
+.bulk-action-bar.visible {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.bulk-action-bar .bulk-count {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--text-color, #495057);
+  padding-right: 0.25rem;
+}
+
 /* Empty State */
 .empty-state {
   text-align: center;
@@ -657,6 +718,10 @@ body.dark-mode .mobile-filter-select {
         <span class="d-none d-sm-inline">{% trans "Compact" %}</span>
       </button>
     </form>
+    <button type="button" id="bulkSelectToggle" class="view-toggle-btn" title="{% trans 'Select items' %}">
+      <i class="bi bi-check2-square"></i>
+      <span class="d-none d-sm-inline">{% trans "Select" %}</span>
+    </button>
     <a href="{% url 'create_item' %}" class="btn btn-primary" style="border-radius: 8px;">
       <i class="bi bi-plus-lg"></i>
       <span class="d-none d-sm-inline ms-1">{% trans "New" %}</span>
@@ -836,6 +901,9 @@ body.dark-mode .mobile-filter-select {
         <i class="bi bi-send"></i>
       </button>
 
+      <!-- Bulk Select Checkbox -->
+      <input type="checkbox" class="select-checkbox" title="{% trans 'Select' %}">
+
       <!-- Card Link -->
       <a href="{% url 'view_item' item_uuid=entry.item.id %}" class="item-card-link">
         <div class="item-card-content">
@@ -957,6 +1025,69 @@ body.dark-mode .mobile-filter-select {
   </div>
   {% endif %}
 </section>
+
+<!-- Bulk Action Bar -->
+<div class="bulk-action-bar" id="bulkActionBar">
+  <span class="bulk-count" id="bulkSelectedCount">0 {% trans "selected" %}</span>
+  <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkArchiveBtn">
+    <i class="bi bi-archive"></i> {% trans "Archive" %}
+  </button>
+  <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkTagModal">
+    <i class="bi bi-tag"></i> {% trans "Tag" %}
+  </button>
+  <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkMoveModal">
+    <i class="bi bi-folder-symlink"></i> {% trans "Move to Wallet" %}
+  </button>
+  <button type="button" class="btn btn-sm btn-outline-danger" id="bulkDeleteBtn">
+    <i class="bi bi-trash"></i> {% trans "Delete" %}
+  </button>
+  <button type="button" class="btn btn-sm btn-link" id="bulkCancelBtn">{% trans "Cancel" %}</button>
+</div>
+
+<!-- Bulk Tag Modal -->
+<div class="modal fade" id="bulkTagModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">{% trans "Add Tags" %}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label for="bulkTagInput" class="form-label">{% trans "Tag names (comma-separated)" %}</label>
+        <input type="text" class="form-control" id="bulkTagInput" placeholder="{% trans 'e.g. discount, groceries' %}">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+        <button type="button" class="btn btn-primary" id="bulkTagConfirmBtn">{% trans "Apply" %}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Move to Wallet Modal -->
+<div class="modal fade" id="bulkMoveModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">{% trans "Move to Wallet" %}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label for="bulkWalletSelect" class="form-label">{% trans "Wallet" %}</label>
+        <select class="form-select" id="bulkWalletSelect">
+          <option value="">{% trans "No Wallet" %}</option>
+          {% for wallet in sidebar_wallets %}
+          <option value="{{ wallet.id }}">{{ wallet.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+        <button type="button" class="btn btn-primary" id="bulkMoveConfirmBtn">{% trans "Move" %}</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 // Mobile filter function
@@ -1121,6 +1252,118 @@ document.addEventListener("DOMContentLoaded", function () {
   const observer = new MutationObserver(() => applyTileColors());
   observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 });
+</script>
+
+<script>
+// Bulk actions: select mode, sticky action bar, archive/delete/tag/move
+(function() {
+  const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+  if (!csrfInput) return;
+  const csrfToken = csrfInput.value;
+
+  const selectedIds = new Set();
+  const toggleBtn = document.getElementById('bulkSelectToggle');
+  const actionBar = document.getElementById('bulkActionBar');
+  const countLabel = document.getElementById('bulkSelectedCount');
+
+  function updateBar() {
+    countLabel.textContent = selectedIds.size + ' {% trans "selected" %}';
+    actionBar.classList.toggle('visible', selectedIds.size > 0);
+  }
+
+  function setSelectMode(on) {
+    document.body.classList.toggle('bulk-select-mode', on);
+    toggleBtn.classList.toggle('active', on);
+    if (!on) {
+      selectedIds.clear();
+      document.querySelectorAll('.item-card.selected').forEach(card => card.classList.remove('selected'));
+      document.querySelectorAll('.select-checkbox').forEach(cb => { cb.checked = false; });
+      updateBar();
+    }
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    setSelectMode(!document.body.classList.contains('bulk-select-mode'));
+  });
+
+  document.getElementById('bulkCancelBtn').addEventListener('click', () => setSelectMode(false));
+
+  function toggleCardSelection(card, checkbox) {
+    checkbox.checked = !checkbox.checked;
+    card.classList.toggle('selected', checkbox.checked);
+    const id = card.getAttribute('data-item-id');
+    if (checkbox.checked) {
+      selectedIds.add(id);
+    } else {
+      selectedIds.delete(id);
+    }
+    updateBar();
+  }
+
+  document.querySelectorAll('.item-card').forEach(card => {
+    const checkbox = card.querySelector('.select-checkbox');
+    if (!checkbox) return;
+
+    checkbox.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleCardSelection(card, checkbox);
+    });
+
+    card.addEventListener('click', (e) => {
+      if (!document.body.classList.contains('bulk-select-mode')) return;
+      e.preventDefault();
+      toggleCardSelection(card, checkbox);
+    });
+  });
+
+  function postBulkAction(url, extraBody) {
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken,
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: JSON.stringify(Object.assign({ item_ids: Array.from(selectedIds) }, extraBody || {})),
+    }).then(response => response.json());
+  }
+
+  document.getElementById('bulkArchiveBtn').addEventListener('click', () => {
+    if (selectedIds.size === 0) return;
+    postBulkAction('{% url "bulk_archive_items" %}').then(data => {
+      if (data.success) window.location.reload();
+    });
+  });
+
+  document.getElementById('bulkDeleteBtn').addEventListener('click', () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm('{% trans "Delete the selected items? This cannot be undone." %}')) return;
+    postBulkAction('{% url "bulk_delete_items" %}').then(data => {
+      if (data.success) window.location.reload();
+    });
+  });
+
+  document.getElementById('bulkTagConfirmBtn').addEventListener('click', () => {
+    if (selectedIds.size === 0) return;
+    const tags = document.getElementById('bulkTagInput').value;
+    if (!tags.trim()) return;
+    postBulkAction('{% url "bulk_tag_items" %}', { tags: tags }).then(data => {
+      const modalEl = document.getElementById('bulkTagModal');
+      bootstrap.Modal.getInstance(modalEl).hide();
+      if (data.success) window.location.reload();
+    });
+  });
+
+  document.getElementById('bulkMoveConfirmBtn').addEventListener('click', () => {
+    if (selectedIds.size === 0) return;
+    const walletId = document.getElementById('bulkWalletSelect').value;
+    postBulkAction('{% url "bulk_move_items" %}', { wallet_id: walletId || null }).then(data => {
+      const modalEl = document.getElementById('bulkMoveModal');
+      bootstrap.Modal.getInstance(modalEl).hide();
+      if (data.success) window.location.reload();
+    });
+  });
+})();
 </script>
 
 {% endblock content %}
