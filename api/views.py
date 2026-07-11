@@ -31,7 +31,7 @@ from imports.tasks import process_import_job
 from myapp.analytics import get_expiry_timeline, get_summary_stats
 from myapp.models import Item, ItemShare, MerchantProfile, Tag, Transaction, UserPreference, UserProfile, Wallet
 from notify.models import NotificationLog, NotificationRule
-from notify.tasks import send_test_notification
+from notify.tasks import notify_balance_changed, notify_item_created, notify_item_shared, notify_item_used, send_test_notification
 from ocr.backends import get_backend, ocr_enabled
 
 from .filters import ItemFilter
@@ -82,13 +82,15 @@ class ItemViewSet(viewsets.ModelViewSet):
         ).distinct().select_related('wallet').prefetch_related('transactions', 'tags')
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user, source='api')
+        item = serializer.save(user=self.request.user, source='api')
+        notify_item_created(item)
 
     @action(detail=True, methods=['post'])
     def redeem(self, request, pk=None):
         item = self.get_object()
         item.is_used = True
         item.save(update_fields=['is_used'])
+        notify_item_used(item)
         return Response(self.get_serializer(item).data)
 
     @action(detail=True, methods=['get', 'post'], url_path='transactions')
@@ -97,7 +99,8 @@ class ItemViewSet(viewsets.ModelViewSet):
         if request.method == 'POST':
             serializer = TransactionSerializer(data=request.data, context={'item': item, 'request': request})
             serializer.is_valid(raise_exception=True)
-            serializer.save(item=item)
+            transaction = serializer.save(item=item)
+            notify_balance_changed(item, transaction)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         serializer = TransactionSerializer(item.transactions.all(), many=True)
@@ -109,7 +112,8 @@ class ItemViewSet(viewsets.ModelViewSet):
         if request.method == 'POST':
             serializer = ItemShareSerializer(data=request.data, context={'item': item, 'request': request})
             serializer.is_valid(raise_exception=True)
-            serializer.save()
+            share = serializer.save()
+            notify_item_shared(item, share.shared_with_user.username)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         serializer = ItemShareSerializer(item.shared_with.all(), many=True)

@@ -268,6 +268,41 @@ opportunity for.
 - New `LedgerBalanceTests` in `myapp/tests.py` locks in the instance
   method, the queryset annotation, and that they agree with each other.
 
+## Phase 12.2 — Webhook lifecycle events
+
+Widens the existing per-item notification rules (ntfy/webhook/Apprise/Web
+Push, built in Phase 3) beyond expiry warnings to cover the rest of an
+item's lifecycle — no new model, no new backend, entirely additive to
+`NotificationRule`/`NotificationLog`/the webhook backend already in place.
+
+- Five new event types on `NotificationRule`: `item_created`, `item_used`,
+  `item_archived`, `balance_changed`, `item_shared`. They show up as new
+  checkboxes on the existing Rules page automatically (the form already
+  derives its checkbox list from `NotificationRule.EVENT_CHOICES`, no
+  template change needed) and are valid values for the API's `event_types`
+  field the same way.
+- Fired directly from the action that causes them — item creation, marking
+  an item used, archiving, recording a transaction, and sharing — in both
+  the web UI (`myapp/views.py`) and the equivalent DRF API actions
+  (`api/views.py`'s `perform_create`, `redeem`, `transactions`, `shares`),
+  so an automation (n8n, Home Assistant, etc.) sees the same events
+  regardless of which surface triggered them.
+- `item_used`/`item_archived` fire only on the transition *into* that
+  state, not the reverse toggle (un-marking used, unarchiving) — and
+  re-sharing an item that's already shared with someone doesn't refire
+  `item_shared`.
+- `fire_notifications()` (the shared primitive since Phase 3) gained a
+  `dedupe` parameter. Its existing "skip if this exact (item, event_type,
+  rule) already succeeded" behavior only makes sense for the periodic
+  expiry re-scan, which re-evaluates every item on every run — a repeatable
+  event like a second gift card transaction needs to notify every time, so
+  all five new events pass `dedupe=False`. `expiry_warning`/`expiry_final`
+  keep the old default (`dedupe=True`) unchanged.
+- New `LifecycleEventNotificationTests` (notify), `WebhookEventWiringTests`
+  (myapp — web UI), and `WebhookEventApiWiringTests` (api) confirm both
+  surfaces fire the right event at the right transition and that repeatable
+  events aren't swallowed by the dedupe check.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

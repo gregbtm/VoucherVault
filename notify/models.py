@@ -20,6 +20,11 @@ class NotificationRule(models.Model):
     EVENT_CHOICES = [
         ('expiry_warning', 'Expiry Warning'),
         ('expiry_final', 'Final Expiry Warning'),
+        ('item_created', 'Item Created'),
+        ('item_used', 'Item Marked Used'),
+        ('item_archived', 'Item Archived'),
+        ('balance_changed', 'Balance Changed'),
+        ('item_shared', 'Item Shared'),
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notification_rules')

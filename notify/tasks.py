@@ -21,12 +21,21 @@ def _already_notified(item, event_type, rule) -> bool:
     return NotificationLog.objects.filter(item=item, event_type=event_type, rule=rule, success=True).exists()
 
 
-def fire_notifications(item, event_type: str, days_left: int):
+def fire_notifications(item, event_type: str, title: str, message: str, dedupe: bool = True):
     """
-    Sends `event_type` for `item` through every enabled rule the item's
-    owner has subscribed to that event, logging each attempt. A rule that
-    already succeeded for this exact (item, event_type) is skipped, so
-    re-running the periodic task is always safe.
+    Sends `title`/`message` for `item` as `event_type` through every enabled
+    rule the item's owner has subscribed to that event, logging each
+    attempt.
+
+    `dedupe=True` (the default) skips a rule that already has a successful
+    log entry for this exact (item, event_type) — this is what makes
+    re-running the periodic expiry-check task safe, since it re-evaluates
+    every item on every run. Events fired directly from the action that
+    caused them (an item created/used/archived/shared, a transaction
+    added) should pass `dedupe=False`: each occurrence is a distinct,
+    meaningful event rather than a periodic re-scan repeat, and the item
+    may legitimately pass through the same event_type more than once
+    (e.g. several transactions, or being marked used/available/used again).
     """
     rules = NotificationRule.objects.filter(user=item.user, enabled=True)
     matching_rules = [r for r in rules if event_type in (r.event_types or [])]
@@ -34,20 +43,76 @@ def fire_notifications(item, event_type: str, days_left: int):
     if not matching_rules:
         return
 
-    if days_left >= 0:
-        title = f"⏰ {item.name} expires in {days_left} day(s)"
-    else:
-        title = f"⏰ {item.name} has expired"
-    message = f"Code: {item.redeem_code}\nValue: {item.value} {item.currency}\nExpiry: {item.expiry_date}"
-
     for rule in matching_rules:
-        if _already_notified(item, event_type, rule):
+        if dedupe and _already_notified(item, event_type, rule):
             continue
         success, detail = send_via_rule(rule, title, message, item=item)
         NotificationLog.objects.create(
             user=item.user, rule=rule, item=item, event_type=event_type,
             success=success, detail=detail,
         )
+
+
+def _expiry_message(item, days_left: int) -> tuple[str, str]:
+    if days_left >= 0:
+        title = f"⏰ {item.name} expires in {days_left} day(s)"
+    else:
+        title = f"⏰ {item.name} has expired"
+    message = f"Code: {item.redeem_code}\nValue: {item.value} {item.currency}\nExpiry: {item.expiry_date}"
+    return title, message
+
+
+def notify_item_created(item):
+    """Fired once, right when an item is created (web UI or API)."""
+    fire_notifications(
+        item, 'item_created',
+        title=f"➕ {item.name} added",
+        message=f"Type: {item.get_type_display()}\nValue: {item.value} {item.currency}\nExpiry: {item.expiry_date}",
+        dedupe=False,
+    )
+
+
+def notify_item_used(item):
+    """Fired when an item transitions to is_used=True (not on the reverse toggle)."""
+    fire_notifications(
+        item, 'item_used',
+        title=f"✅ {item.name} marked used",
+        message=f"Code: {item.redeem_code}",
+        dedupe=False,
+    )
+
+
+def notify_item_archived(item):
+    """Fired when an item transitions to is_archived=True (not on unarchive)."""
+    fire_notifications(
+        item, 'item_archived',
+        title=f"🗄️ {item.name} archived",
+        message=f"Code: {item.redeem_code}",
+        dedupe=False,
+    )
+
+
+def notify_balance_changed(item, transaction):
+    """Fired every time a Transaction is recorded against an item."""
+    fire_notifications(
+        item, 'balance_changed',
+        title=f"💷 {item.name} balance changed",
+        message=(
+            f"{transaction.description}: {transaction.value} {item.currency}\n"
+            f"New balance: {item.get_current_balance()} {item.currency}"
+        ),
+        dedupe=False,
+    )
+
+
+def notify_item_shared(item, shared_with_username: str):
+    """Fired every time an item is shared with another user."""
+    fire_notifications(
+        item, 'item_shared',
+        title=f"🤝 {item.name} shared",
+        message=f"Shared with {shared_with_username}",
+        dedupe=False,
+    )
 
 
 def send_via_rule(rule, title: str, message: str, item=None) -> tuple[bool, str]:
@@ -95,9 +160,10 @@ def check_and_notify_expiry():
     for item in items:
         days_left = (item.expiry_date - today).days
         threshold = item.notify_days_before if item.notify_days_before is not None else default_threshold
+        title, message = _expiry_message(item, days_left)
 
         if 0 <= days_left <= threshold:
-            fire_notifications(item, 'expiry_warning', days_left)
+            fire_notifications(item, 'expiry_warning', title, message)
 
         if 0 <= days_left <= final_threshold:
-            fire_notifications(item, 'expiry_final', days_left)
+            fire_notifications(item, 'expiry_final', title, message)

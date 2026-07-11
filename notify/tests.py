@@ -16,7 +16,7 @@ from django.urls import reverse
 from py_vapid import Vapid02
 from pywebpush import webpush as real_webpush
 
-from myapp.models import Item
+from myapp.models import Item, Transaction
 
 from .backends import get_backend
 from .backends.apprise_backend import AppriseBackend
@@ -25,7 +25,16 @@ from .backends.webhook import WebhookBackend
 from .backends.webpush import WebPushBackend, get_vapid_public_key, webpush_enabled
 from .forms import NotificationRuleForm
 from .models import NotificationLog, NotificationRule, WebPushSubscription
-from .tasks import check_and_notify_expiry, fire_notifications, send_test_notification
+from .tasks import (
+    check_and_notify_expiry,
+    fire_notifications,
+    notify_balance_changed,
+    notify_item_archived,
+    notify_item_created,
+    notify_item_shared,
+    notify_item_used,
+    send_test_notification,
+)
 
 
 def make_item(user, **kwargs):
@@ -361,14 +370,14 @@ class FireNotificationsTests(TestCase):
     @patch('notify.tasks.send_via_rule', return_value=(True, ''))
     def test_fires_only_for_matching_event_type(self, mock_send):
         make_rule(self.user, event_types=['expiry_final'])
-        fire_notifications(self.item, 'expiry_warning', 5)
+        fire_notifications(self.item, 'expiry_warning', 'title', 'message')
         mock_send.assert_not_called()
         self.assertEqual(NotificationLog.objects.count(), 0)
 
     @patch('notify.tasks.send_via_rule', return_value=(True, ''))
     def test_fires_and_logs_for_matching_rule(self, mock_send):
         rule = make_rule(self.user, event_types=['expiry_warning'])
-        fire_notifications(self.item, 'expiry_warning', 5)
+        fire_notifications(self.item, 'expiry_warning', 'title', 'message')
         mock_send.assert_called_once()
         log = NotificationLog.objects.get()
         self.assertEqual(log.rule, rule)
@@ -378,16 +387,16 @@ class FireNotificationsTests(TestCase):
     @patch('notify.tasks.send_via_rule', return_value=(True, ''))
     def test_does_not_refire_after_success(self, mock_send):
         make_rule(self.user, event_types=['expiry_warning'])
-        fire_notifications(self.item, 'expiry_warning', 5)
-        fire_notifications(self.item, 'expiry_warning', 4)
+        fire_notifications(self.item, 'expiry_warning', 'title', 'message')
+        fire_notifications(self.item, 'expiry_warning', 'title', 'message')
         self.assertEqual(mock_send.call_count, 1)
         self.assertEqual(NotificationLog.objects.count(), 1)
 
     @patch('notify.tasks.send_via_rule', return_value=(False, 'timed out'))
     def test_refires_after_failure(self, mock_send):
         make_rule(self.user, event_types=['expiry_warning'])
-        fire_notifications(self.item, 'expiry_warning', 5)
-        fire_notifications(self.item, 'expiry_warning', 4)
+        fire_notifications(self.item, 'expiry_warning', 'title', 'message')
+        fire_notifications(self.item, 'expiry_warning', 'title', 'message')
         self.assertEqual(mock_send.call_count, 2)
         self.assertEqual(NotificationLog.objects.filter(success=False).count(), 2)
 
@@ -396,7 +405,79 @@ class FireNotificationsTests(TestCase):
         rule = make_rule(self.user, event_types=['expiry_warning'])
         rule.enabled = False
         rule.save()
-        fire_notifications(self.item, 'expiry_warning', 5)
+        fire_notifications(self.item, 'expiry_warning', 'title', 'message')
+        mock_send.assert_not_called()
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_dedupe_false_refires_every_time(self, mock_send):
+        """Repeatable events (balance_changed, item_used, ...) pass dedupe=False
+        so a second real occurrence isn't silently swallowed by the "already
+        succeeded once" check that protects the periodic expiry re-scan."""
+        make_rule(self.user, event_types=['balance_changed'])
+        fire_notifications(self.item, 'balance_changed', 'title', 'message', dedupe=False)
+        fire_notifications(self.item, 'balance_changed', 'title', 'message', dedupe=False)
+        self.assertEqual(mock_send.call_count, 2)
+        self.assertEqual(NotificationLog.objects.count(), 2)
+
+
+class LifecycleEventNotificationTests(TestCase):
+    """
+    The five webhook-friendly lifecycle events (item_created, item_used,
+    item_archived, balance_changed, item_shared) all reuse fire_notifications
+    with dedupe=False, since each occurrence is a distinct real event rather
+    than a periodic re-scan repeat.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.item = make_item(self.user)
+        self.item.refresh_from_db()
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_notify_item_created(self, mock_send):
+        make_rule(self.user, event_types=['item_created'])
+        notify_item_created(self.item)
+        mock_send.assert_called_once()
+        log = NotificationLog.objects.get()
+        self.assertEqual(log.event_type, 'item_created')
+        self.assertTrue(log.success)
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_notify_item_used(self, mock_send):
+        make_rule(self.user, event_types=['item_used'])
+        notify_item_used(self.item)
+        mock_send.assert_called_once()
+        self.assertEqual(NotificationLog.objects.get().event_type, 'item_used')
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_notify_item_archived(self, mock_send):
+        make_rule(self.user, event_types=['item_archived'])
+        notify_item_archived(self.item)
+        mock_send.assert_called_once()
+        self.assertEqual(NotificationLog.objects.get().event_type, 'item_archived')
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_notify_balance_changed_fires_every_transaction(self, mock_send):
+        make_rule(self.user, event_types=['balance_changed'])
+        t1 = Transaction.objects.create(item=self.item, description='Spend 1', value='-2.00')
+        t2 = Transaction.objects.create(item=self.item, description='Spend 2', value='-3.00')
+        notify_balance_changed(self.item, t1)
+        notify_balance_changed(self.item, t2)
+        self.assertEqual(mock_send.call_count, 2)
+        self.assertEqual(NotificationLog.objects.filter(event_type='balance_changed').count(), 2)
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_notify_item_shared(self, mock_send):
+        make_rule(self.user, event_types=['item_shared'])
+        notify_item_shared(self.item, 'bob')
+        mock_send.assert_called_once()
+        title, message = mock_send.call_args[0][1], mock_send.call_args[0][2]
+        self.assertIn('bob', message)
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_no_matching_rule_is_a_noop(self, mock_send):
+        make_rule(self.user, event_types=['expiry_warning'])
+        notify_item_created(self.item)
         mock_send.assert_not_called()
 
 

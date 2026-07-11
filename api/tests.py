@@ -269,6 +269,48 @@ class ItemShareTests(APITestCase):
         self.assertFalse(ItemShare.objects.filter(pk=share.id).exists())
 
 
+class WebhookEventApiWiringTests(APITestCase):
+    """Confirms the DRF API fires the same Phase 12.2 lifecycle events as the web UI."""
+
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+
+    @patch('api.views.notify_item_created')
+    def test_create_item_fires_item_created(self, mock_notify):
+        response = self.client.post('/api/v1/items/', {
+            'type': 'voucher', 'name': 'API Voucher', 'issuer': 'Shop', 'redeem_code': 'API100',
+            'value': '10.00', 'currency': 'GBP', 'code_type': 'qrcode', 'value_type': 'money',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        mock_notify.assert_called_once()
+
+    @patch('api.views.notify_item_used')
+    def test_redeem_fires_item_used(self, mock_notify):
+        item = make_item(self.alice)
+        response = self.client.post(f'/api/v1/items/{item.id}/redeem/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mock_notify.assert_called_once()
+
+    @patch('api.views.notify_balance_changed')
+    def test_add_transaction_fires_balance_changed(self, mock_notify):
+        item = make_item(self.alice, value='10.00')
+        response = self.client.post(
+            f'/api/v1/items/{item.id}/transactions/', {'description': 'Spend', 'value': '-4.00'}
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        mock_notify.assert_called_once()
+        self.assertEqual(mock_notify.call_args[0][0], item)
+
+    @patch('api.views.notify_item_shared')
+    def test_share_fires_item_shared(self, mock_notify):
+        item = make_item(self.alice)
+        response = self.client.post(f'/api/v1/items/{item.id}/shares/', {'username': 'bob'})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        mock_notify.assert_called_once_with(item, 'bob')
+
+
 class WalletApiTests(APITestCase):
     def setUp(self):
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
