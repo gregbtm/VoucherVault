@@ -65,6 +65,30 @@ def get_cached_logos_for_issuers(issuers) -> dict:
     return {p.name_lower: p.logo_url for p in profiles}
 
 
+def remember_balance_check_url(issuer: str, url: str) -> None:
+    """
+    Upserts a merchant's gift-card balance-check link so future items from
+    the same issuer can suggest it (see get_cached_balance_check_url).
+    Deliberately last-write-wins: if a user enters a different link for
+    the same merchant later, that becomes the new suggestion.
+    """
+    if not issuer or not url:
+        return
+    issuer = issuer.strip()
+    profile = MerchantProfile.objects.filter(name__iexact=issuer).first()
+    if profile is None:
+        profile = MerchantProfile.objects.create(name=issuer, balance_check_url=url)
+    elif profile.balance_check_url != url:
+        profile.balance_check_url = url
+        profile.save(update_fields=['balance_check_url'])
+
+
+def get_cached_balance_check_url(name: str):
+    """Read-only lookup, mirrors get_cached_logo. Returns '' if none is known."""
+    profile = get_cached_logo(name)
+    return profile.balance_check_url if profile else ''
+
+
 def fetch_merchant_logo(name: str) -> MerchantProfile:
     """
     Looks up (or creates) the MerchantProfile for `name` and, on a cache

@@ -73,6 +73,7 @@
 - 🔍 **Clickable tag filter on Inventory** — every tag you've created shows as a chip above the item grid with a live item count; click one or more to filter (items matching *any* selected tag show), combinable with the existing status/type/wallet filters.
 - 💷 **GBP as the default currency** — new items and user preferences default to GBP instead of EUR; a one-time migration relabelled every pre-existing item and saved preference from EUR to GBP as well (a relabel only, not a currency conversion — amounts are untouched).
 - 🤖 **MCP server** — an optional standalone service exposing VoucherVault as tools for Claude Desktop, Claude Code, and other MCP clients (search items, check what's expiring, log a gift-card spend, create an item — all through your existing API token). Runs as its own container, off by default; see the [setup guide](docs/MCP_SERVER_SETUP.md).
+- 🔗 **Gift card balance-check link** — no gift card provider exposes a public API for balance/validity checks, so this is a bookmarked link you (or a teammate) provide once per merchant; it's remembered and auto-suggested on future gift cards from the same issuer, with a one-tap "Check Balance" button on the item page.
 
 ## 📷 Screenshots
 

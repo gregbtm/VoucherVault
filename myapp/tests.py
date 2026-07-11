@@ -12,7 +12,14 @@ from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from .forms import ItemForm, TagForm, WalletForm
-from .merchant_logos import fetch_merchant_logo, get_cached_logo, get_cached_logos_for_issuers, guess_domain
+from .merchant_logos import (
+    fetch_merchant_logo,
+    get_cached_balance_check_url,
+    get_cached_logo,
+    get_cached_logos_for_issuers,
+    guess_domain,
+    remember_balance_check_url,
+)
 from .models import Document, Item, MerchantProfile, Tag, Transaction, UserPreference, Wallet
 from .tasks import fetch_merchant_logo_task
 
@@ -498,6 +505,33 @@ class MerchantLogoServiceTests(TestCase):
         mock_get.assert_not_called()
 
 
+class BalanceCheckUrlServiceTests(TestCase):
+    def test_get_cached_balance_check_url_when_unknown(self):
+        self.assertEqual(get_cached_balance_check_url('Never Seen Co'), '')
+
+    def test_remember_creates_new_merchant_profile(self):
+        remember_balance_check_url('Tesco', 'https://www.tesco.com/gift-cards/balance')
+        self.assertEqual(get_cached_balance_check_url('tesco'), 'https://www.tesco.com/gift-cards/balance')
+
+    def test_remember_updates_existing_profile_without_overwriting_logo(self):
+        MerchantProfile.objects.create(name='Tesco', logo_url='https://logo.clearbit.com/tesco.com')
+        remember_balance_check_url('Tesco', 'https://www.tesco.com/gift-cards/balance')
+        profile = MerchantProfile.objects.get(name='Tesco')
+        self.assertEqual(profile.balance_check_url, 'https://www.tesco.com/gift-cards/balance')
+        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/tesco.com')
+
+    def test_remember_last_write_wins(self):
+        remember_balance_check_url('Tesco', 'https://old.example.com/balance')
+        remember_balance_check_url('Tesco', 'https://new.example.com/balance')
+        self.assertEqual(get_cached_balance_check_url('Tesco'), 'https://new.example.com/balance')
+        self.assertEqual(MerchantProfile.objects.filter(name__iexact='tesco').count(), 1)
+
+    def test_remember_noop_when_issuer_or_url_blank(self):
+        remember_balance_check_url('', 'https://example.com')
+        remember_balance_check_url('Tesco', '')
+        self.assertFalse(MerchantProfile.objects.exists())
+
+
 class MerchantLogoTaskTests(TestCase):
     @patch('myapp.tasks.fetch_merchant_logo')
     def test_task_calls_service_when_enabled(self, mock_fetch):
@@ -928,6 +962,73 @@ class WebhookEventWiringTests(TestCase):
         mock_notify.reset_mock()
         self.client.post(reverse('share_item', args=[item.id]), {'shared_users': [self.bob.id]})
         mock_notify.assert_not_called()
+
+
+class BalanceCheckUrlWiringTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def _giftcard_payload(self, **overrides):
+        payload = {
+            'type': 'giftcard', 'name': 'Tesco Gift Card', 'issuer': 'Tesco', 'redeem_code': 'GC100',
+            'value': '25.00', 'currency': 'GBP', 'code_type': 'qrcode', 'value_type': 'money',
+            'issue_date': date.today().isoformat(),
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_create_item_remembers_balance_check_url(self):
+        self.client.post(reverse('create_item'), self._giftcard_payload(
+            balance_check_url='https://www.tesco.com/gift-cards/balance'
+        ))
+        item = Item.objects.get(name='Tesco Gift Card')
+        self.assertEqual(item.balance_check_url, 'https://www.tesco.com/gift-cards/balance')
+        self.assertEqual(
+            MerchantProfile.objects.get(name__iexact='Tesco').balance_check_url,
+            'https://www.tesco.com/gift-cards/balance',
+        )
+
+    def test_create_item_without_balance_check_url_does_not_touch_merchant_profile(self):
+        self.client.post(reverse('create_item'), self._giftcard_payload(redeem_code='GC200'))
+        self.assertFalse(MerchantProfile.objects.filter(name__iexact='Tesco').exists())
+
+    def test_lookup_merchant_balance_url_returns_remembered_link(self):
+        MerchantProfile.objects.create(name='Tesco', balance_check_url='https://www.tesco.com/gift-cards/balance')
+        response = self.client.get(reverse('lookup_merchant_balance_url'), {'issuer': 'tesco'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'balance_check_url': 'https://www.tesco.com/gift-cards/balance'})
+
+    def test_lookup_merchant_balance_url_unknown_issuer(self):
+        response = self.client.get(reverse('lookup_merchant_balance_url'), {'issuer': 'Never Seen Co'})
+        self.assertEqual(response.json(), {'balance_check_url': ''})
+
+    def test_edit_item_updates_remembered_balance_check_url(self):
+        item = make_item(self.user, type='giftcard', name='Amazon Card')
+        response = self.client.post(reverse('edit_item', kwargs={'item_uuid': item.id}), {
+            'type': 'giftcard', 'name': 'Amazon Card', 'issuer': 'Amazon', 'redeem_code': item.redeem_code,
+            'value': '10.00', 'currency': 'GBP', 'code_type': 'qrcode', 'value_type': 'money',
+            'issue_date': date.today().isoformat(),
+            'balance_check_url': 'https://www.amazon.co.uk/gc/balance',
+        })
+        self.assertRedirects(response, reverse('view_item', kwargs={'item_uuid': item.id}))
+        item.refresh_from_db()
+        self.assertEqual(item.balance_check_url, 'https://www.amazon.co.uk/gc/balance')
+        self.assertEqual(
+            MerchantProfile.objects.get(name__iexact='Amazon').balance_check_url,
+            'https://www.amazon.co.uk/gc/balance',
+        )
+
+    def test_view_item_shows_check_balance_button_only_when_set(self):
+        with_link = make_item(self.user, type='giftcard', name='Has Link', redeem_code='L1', balance_check_url='https://example.com/balance')
+        without_link = make_item(self.user, type='giftcard', name='No Link', redeem_code='L2')
+
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': with_link.id}))
+        self.assertContains(response, 'Check Balance')
+        self.assertContains(response, 'https://example.com/balance')
+
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': without_link.id}))
+        self.assertNotContains(response, 'Check Balance')
 
 
 class LastUsedTrackingTests(TestCase):

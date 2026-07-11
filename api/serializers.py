@@ -142,7 +142,7 @@ class ItemSerializer(serializers.ModelSerializer):
             'file', 'qr_code_base64', 'default_expiry_notification_sent',
             'final_expiry_notification_sent', 'days_until_expiry', 'transaction_total',
             'wallet', 'wallet_name', 'tags', 'tag_ids', 'notes', 'notify_days_before', 'source',
-            'last_used_at',
+            'last_used_at', 'balance_check_url',
         ]
         read_only_fields = [
             'id', 'qr_code_base64', 'default_expiry_notification_sent',
@@ -329,5 +329,5 @@ class ImportJobSerializer(serializers.ModelSerializer):
 class MerchantProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = MerchantProfile
-        fields = ['id', 'name', 'domain', 'logo_url', 'brand_color', 'fetched_at']
+        fields = ['id', 'name', 'domain', 'logo_url', 'brand_color', 'fetched_at', 'balance_check_url']
         read_only_fields = fields

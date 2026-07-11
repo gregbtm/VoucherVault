@@ -47,7 +47,7 @@ class ItemForm(forms.ModelForm):
 
     class Meta:
         model = Item
-        fields = ['name', 'issuer', 'redeem_code', 'card_number', 'pin', 'issue_date', 'expiry_date', 'description', 'logo_slug', 'type', 'value', 'value_type', 'currency', 'file', 'code_type', 'tile_color', 'wallet', 'tags', 'notes', 'notify_days_before']
+        fields = ['name', 'issuer', 'redeem_code', 'card_number', 'pin', 'issue_date', 'expiry_date', 'description', 'logo_slug', 'type', 'value', 'value_type', 'currency', 'file', 'code_type', 'tile_color', 'wallet', 'tags', 'notes', 'notify_days_before', 'balance_check_url']
         widgets = {
             'issue_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
             'expiry_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
@@ -57,6 +57,10 @@ class ItemForm(forms.ModelForm):
             'card_number': forms.TextInput(attrs={
                 'class': 'form-control',
                 'placeholder': _('Leave blank to display the redeem code instead'),
+            }),
+            'balance_check_url': forms.URLInput(attrs={
+                'class': 'form-control',
+                'placeholder': _("The merchant's balance/validity check page"),
             }),
         }
 

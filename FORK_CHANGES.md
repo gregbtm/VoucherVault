@@ -388,6 +388,36 @@ Deliberately left alone: every link/mention of the actual GitHub repo
 (`gregbtm/VoucherVault`), since that's the real project name, not display
 branding.
 
+## Phase 13.3 — Gift card balance-check link
+
+No API exists to check a gift card's balance or validity anywhere (see
+the wallet-sync deep dive), so this is a bookmarked deep-link the user
+provides, not a live check — but it's remembered per merchant, so it
+gets smarter the more cards you add.
+
+- New `Item.balance_check_url` and `MerchantProfile.balance_check_url`
+  fields. `MerchantProfile` (Phase 6) is already a global, issuer-name-
+  keyed cache used for logos — the natural place to remember a
+  balance-check link per merchant too.
+- The create/edit item form shows a "Balance / Validity Check Link" field
+  for gift cards only. When you leave the Issuer field and a link is
+  already known for that merchant (from a previous card, entered by you
+  or another user), it's suggested automatically — editable, same UX as
+  the existing merchant-logo auto-fetch. When you save an item with a
+  link the merchant doesn't have cached yet (or a different one than
+  before), it's remembered for next time; last write wins.
+- A "Check Balance" button appears on the item detail page when a link is
+  set, opening it in a new tab.
+- New `myapp.views.lookup_merchant_balance_url` endpoint powers the
+  auto-suggest (read-only, session-authenticated); `remember_balance_check_url`/
+  `get_cached_balance_check_url` in `myapp/merchant_logos.py` mirror the
+  existing logo-cache helpers. Wired into both the web UI (`create_item`/
+  `edit_item`) and the equivalent DRF API actions (`ItemViewSet.perform_create`/
+  `perform_update`), so it works the same regardless of which surface
+  creates or edits the item.
+- New tests: `BalanceCheckUrlServiceTests` (the remember/lookup helpers),
+  `BalanceCheckUrlWiringTests` (web UI), `BalanceCheckUrlApiTests` (API).
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

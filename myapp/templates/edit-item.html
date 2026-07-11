@@ -759,8 +759,18 @@ body.dark-mode .error-alert {
                 {% endfor %}
               </select>
             </div>
+
+            <div class="form-group" id="balance-check-field">
+              <label class="form-label" for="balance_check_url">{% trans "Balance / Validity Check Link" %}</label>
+              <input type="url" class="modern-input" id="balance_check_url" name="balance_check_url"
+                     placeholder="{% trans 'Balance/validity check page for this merchant' %}"
+                     value='{{ form.balance_check_url.value|default_if_none:"" }}'>
+              <small class="form-text" id="balance-check-suggestion" style="display:none;">
+                {% trans "Suggested from a previous card with this issuer." %}
+              </small>
+            </div>
           </div>
-          
+
           <!-- Organization Section -->
           <div class="form-section">
             <div class="form-section-title">
@@ -940,6 +950,7 @@ document.addEventListener("DOMContentLoaded", function () {
       redeemCodeLabel.innerHTML = "{% trans 'Loyalty ID' %} <span class='required'>*</span>";
       redeemCodeField.placeholder = "{% trans 'Loyalty card number or customer ID' %}";
       document.getElementById('currency-field').style.display = 'none';
+      document.getElementById('balance-check-field').style.display = 'none';
     } else {
       pinField.readOnly = false;
       valueField.readOnly = false;
@@ -953,6 +964,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (valueTypeField.value === 'money') {
         currencyField.style.display = '';
       }
+      document.getElementById('balance-check-field').style.display = (typeField.value === 'giftcard') ? '' : 'none';
     }
 
     if (typeField.value === 'coupon') {
@@ -1003,6 +1015,28 @@ document.addEventListener("DOMContentLoaded", function () {
 
   setInitialValueType();
   toggleFields();
+
+  // Suggest a remembered balance-check link once the issuer is entered,
+  // if this is a gift card and the field hasn't already been filled in.
+  const balanceCheckField = document.getElementById('balance_check_url');
+  const balanceCheckSuggestion = document.getElementById('balance-check-suggestion');
+  issuerCodeField.addEventListener('blur', function () {
+    if (typeField.value !== 'giftcard' || balanceCheckField.value.trim() !== '' || issuerCodeField.value.trim() === '') {
+      return;
+    }
+    fetch('{% url "lookup_merchant_balance_url" %}?issuer=' + encodeURIComponent(issuerCodeField.value.trim()))
+      .then(response => response.ok ? response.json() : null)
+      .then(data => {
+        if (data && data.balance_check_url && balanceCheckField.value.trim() === '') {
+          balanceCheckField.value = data.balance_check_url;
+          balanceCheckSuggestion.style.display = '';
+        }
+      })
+      .catch(() => {});
+  });
+  balanceCheckField.addEventListener('input', function () {
+    balanceCheckSuggestion.style.display = 'none';
+  });
 
   {% if ocr_enabled %}
   // AI Scan: upload a photo, pre-fill fields from the extracted result
