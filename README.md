@@ -35,7 +35,9 @@
 > [`docs/GOOGLE_WALLET_SETUP.md`](docs/GOOGLE_WALLET_SETUP.md) for a
 > step-by-step Google Wallet setup guide, and
 > [`docs/BACKUP_RESTORE.md`](docs/BACKUP_RESTORE.md) for how the nightly
-> scheduled backups work and how to restore one.
+> scheduled backups work and how to restore one, and
+> [`docs/N8N_SETUP.md`](docs/N8N_SETUP.md) for connecting n8n to the
+> existing REST API with zero custom code.
 
 ## ⭐ Features
 
