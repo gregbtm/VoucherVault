@@ -8,9 +8,11 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from django.core.files.uploadedfile import SimpleUploadedFile
+
 from .forms import ItemForm, TagForm, WalletForm
 from .merchant_logos import fetch_merchant_logo, get_cached_logo, get_cached_logos_for_issuers, guess_domain
-from .models import Item, MerchantProfile, Tag, Wallet
+from .models import Document, Item, MerchantProfile, Tag, Wallet
 from .tasks import fetch_merchant_logo_task
 
 
@@ -504,3 +506,147 @@ class PkpassUIWiringTests(TestCase):
         response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
         self.assertTrue(response.context['pkpass_enabled'])
         self.assertContains(response, 'Add to Apple Wallet')
+
+
+def make_upload(name='receipt.pdf', content=b'%PDF-1.4 test', content_type='application/pdf'):
+    return SimpleUploadedFile(name, content, content_type=content_type)
+
+
+class DocumentUploadTests(TestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.item = make_item(self.alice)
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_owner_can_upload_document(self):
+        response = self.client.post(
+            reverse('upload_document', args=[self.item.id]),
+            {'file': make_upload()},
+        )
+        self.assertRedirects(response, reverse('view_item', kwargs={'item_uuid': self.item.id}))
+        self.assertEqual(self.item.documents.count(), 1)
+
+    def test_rejects_unsupported_file_type(self):
+        bad_file = SimpleUploadedFile('malware.exe', b'MZ', content_type='application/octet-stream')
+        self.client.post(reverse('upload_document', args=[self.item.id]), {'file': bad_file})
+        self.assertEqual(self.item.documents.count(), 0)
+
+    def test_owner_can_delete_document(self):
+        document = Document.objects.create(item=self.item, file=make_upload())
+        response = self.client.post(reverse('delete_document', args=[document.id]))
+        self.assertRedirects(response, reverse('view_item', kwargs={'item_uuid': self.item.id}))
+        self.assertFalse(Document.objects.filter(pk=document.pk).exists())
+
+    def test_owner_can_download_document(self):
+        document = Document.objects.create(item=self.item, file=make_upload())
+        response = self.client.get(reverse('download_document', args=[document.id]))
+        self.assertEqual(response.status_code, 200)
+
+    def test_non_collaborator_cannot_upload_view_or_delete(self):
+        document = Document.objects.create(item=self.item, file=make_upload())
+        self.client.logout()
+        self.client.login(username='bob', password='pw12345!')
+
+        upload_response = self.client.post(reverse('upload_document', args=[self.item.id]), {'file': make_upload()})
+        self.assertEqual(upload_response.status_code, 403)
+
+        download_response = self.client.get(reverse('download_document', args=[document.id]))
+        self.assertEqual(download_response.status_code, 403)
+
+        delete_response = self.client.post(reverse('delete_document', args=[document.id]))
+        self.assertEqual(delete_response.status_code, 403)
+        self.assertTrue(Document.objects.filter(pk=document.pk).exists())
+
+
+class SharedWalletTests(TestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.carol = User.objects.create_user(username='carol', password='pw12345!')
+        self.wallet = Wallet.objects.create(user=self.alice, name='Family')
+        self.wallet.shared_with.add(self.bob)
+        self.item = make_item(self.alice, wallet=self.wallet)
+
+    def test_owner_can_share_wallet(self):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.post(reverse('share_wallet', args=[self.wallet.id]), {'username': 'carol'})
+        self.assertRedirects(response, reverse('edit_wallet', kwargs={'wallet_id': self.wallet.id}))
+        self.assertIn(self.carol, self.wallet.shared_with.all())
+
+    def test_non_owner_cannot_share_wallet(self):
+        self.client.login(username='bob', password='pw12345!')
+        response = self.client.post(reverse('share_wallet', args=[self.wallet.id]), {'username': 'carol'})
+        self.assertEqual(response.status_code, 404)
+        self.assertNotIn(self.carol, self.wallet.shared_with.all())
+
+    def test_owner_can_unshare_wallet(self):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.post(reverse('unshare_wallet', args=[self.wallet.id, self.bob.id]))
+        self.assertRedirects(response, reverse('edit_wallet', kwargs={'wallet_id': self.wallet.id}))
+        self.assertNotIn(self.bob, self.wallet.shared_with.all())
+
+    def test_collaborator_can_leave_shared_wallet(self):
+        self.client.login(username='bob', password='pw12345!')
+        response = self.client.post(reverse('leave_shared_wallet', args=[self.wallet.id]))
+        self.assertRedirects(response, reverse('manage_wallets'))
+        self.assertNotIn(self.bob, self.wallet.shared_with.all())
+
+    def test_collaborator_sees_shared_wallet_items_in_inventory(self):
+        self.client.login(username='bob', password='pw12345!')
+        response = self.client.get(reverse('show_items'), {'status': 'all'})
+        names = [entry['item'].name for entry in response.context['items_with_qr']]
+        self.assertIn(self.item.name, names)
+
+    def test_outsider_does_not_see_shared_wallet_items(self):
+        self.client.login(username='carol', password='pw12345!')
+        response = self.client.get(reverse('show_items'), {'status': 'all'})
+        names = [entry['item'].name for entry in response.context['items_with_qr']]
+        self.assertNotIn(self.item.name, names)
+
+    def test_collaborator_can_view_and_edit_item_in_shared_wallet(self):
+        self.client.login(username='bob', password='pw12345!')
+        view_response = self.client.get(reverse('view_item', kwargs={'item_uuid': self.item.id}))
+        self.assertEqual(view_response.status_code, 200)
+        self.assertTrue(view_response.context['can_edit'])
+        self.assertFalse(view_response.context['is_owner'])
+
+        edit_response = self.client.post(reverse('edit_item', args=[self.item.id]), {
+            'type': 'voucher', 'name': 'Renamed', 'issuer': 'Acme', 'redeem_code': 'ABC123',
+            'value': '10.00', 'currency': 'EUR', 'code_type': 'qrcode', 'value_type': 'money',
+            'issue_date': date.today().isoformat(), 'wallet': self.wallet.id,
+        })
+        self.assertRedirects(edit_response, reverse('view_item', kwargs={'item_uuid': self.item.id}))
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.name, 'Renamed')
+
+    def test_collaborator_can_delete_item_in_shared_wallet(self):
+        self.client.login(username='bob', password='pw12345!')
+        response = self.client.post(reverse('delete_item', args=[self.item.id]))
+        self.assertRedirects(response, reverse('show_items'))
+        self.assertFalse(Item.objects.filter(pk=self.item.pk).exists())
+
+    def test_outsider_cannot_view_item_in_shared_wallet(self):
+        self.client.login(username='carol', password='pw12345!')
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': self.item.id}))
+        self.assertEqual(response.status_code, 403)
+
+    def test_wallet_dropdown_offers_shared_wallets_to_collaborator(self):
+        form = ItemForm(user=self.bob)
+        self.assertIn(self.wallet, form.fields['wallet'].queryset)
+
+
+class WebShareButtonWiringTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_view_item_renders_share_button(self):
+        item = make_item(self.user)
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertContains(response, 'share-voucher-btn')
+
+    def test_inventory_cards_render_share_button(self):
+        make_item(self.user)
+        response = self.client.get(reverse('show_items'), {'status': 'all'})
+        self.assertContains(response, 'share-voucher-btn')

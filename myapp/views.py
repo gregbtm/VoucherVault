@@ -39,8 +39,22 @@ logger = logging.getLogger(__name__)
 
 apprise_txt = _('Apprise URLs were already configured. Will not display them again here to protect secrets. You can freely re-configure the URLs now and hit update though.')
 
+def has_wallet_access(wallet, user):
+    """True if `user` owns `wallet` or is a collaborator it's been shared with."""
+    if wallet is None:
+        return False
+    return wallet.user_id == user.id or wallet.shared_with.filter(pk=user.id).exists()
+
 def has_item_access(item, user):
-    return item.user == user or item.shared_with.filter(shared_with_user=user).exists()
+    """
+    True if `user` can view/edit this item: they own it, it was individually
+    shared with them (ItemShare), or it lives in a wallet they collaborate on.
+    """
+    return (
+        item.user == user
+        or item.shared_with.filter(shared_with_user=user).exists()
+        or has_wallet_access(item.wallet, user)
+    )
 
 def calculate_ean13_check_digit(code):
     # Calculate the EAN-13 check digit
@@ -204,8 +218,8 @@ def show_items(request):
     # Retrieve or create user preferences (only once)
     preferences, _ = UserPreference.objects.get_or_create(user=user)
     
-    # Calculate counts for filters (always for current user's items)
-    user_items = Item.objects.filter(user=user)
+    # Calculate counts for filters (owned items plus items in wallets shared with the user)
+    user_items = Item.objects.filter(Q(user=user) | Q(wallet__shared_with=user)).distinct()
     threshold_days = int(os.getenv('EXPIRY_THRESHOLD_DAYS', 30))
     soon_expiry_date = now() + timedelta(days=threshold_days)
     
@@ -233,18 +247,13 @@ def show_items(request):
     elif filter_value == 'soon_expiring':
         threshold_days = int(os.getenv('EXPIRY_THRESHOLD_DAYS', 30))
         soon_expiry_date = now() + timedelta(days=threshold_days)
-        items = Item.objects.filter(user=user, is_used=False, expiry_date__gte=now(), expiry_date__lt=soon_expiry_date)
+        items = user_items.filter(is_used=False, expiry_date__gte=now(), expiry_date__lt=soon_expiry_date)
     else:
-        items = Item.objects.filter(user=user)
-        
-        # Apply additional status filters only to items owned by the user
+        items = user_items
+
+        # Apply additional status filters to owned + shared-wallet items
         if filter_value == 'available':
-            own_items = Item.objects.filter(
-                user=user,
-                is_used=False,
-                expiry_date__gte=timezone.now()
-            )
-            items = (own_items).distinct()
+            items = user_items.filter(is_used=False, expiry_date__gte=timezone.now()).distinct()
         elif filter_value == 'used':
             items = items.filter(is_used=True)
         elif filter_value == 'expired':
@@ -309,51 +318,49 @@ def show_items(request):
         'loyaltycard_count': loyaltycard_count,
         'all_types_count': available_count,
         # Wallet filter
-        'wallets': Wallet.objects.filter(user=user).annotate(item_count=Count('items')),
+        'wallets': Wallet.objects.filter(Q(user=user) | Q(shared_with=user)).distinct().annotate(item_count=Count('items')),
         'selected_wallet_id': int(wallet_id) if wallet_id and wallet_id.isdigit() else None,
     }
     return render(request, 'inventory.html', context)
 
 @login_required
 def view_item(request, item_uuid):
-    # Initialize owner flag
-    is_owner = False
-    
-    try:
-        # Try to get the item owned by the user
-        item = Item.objects.get(id=item_uuid, user=request.user)
-        is_owner = True  # Set flag to true if the user is the owner
-    except Item.DoesNotExist:
-        # If not found, try to get the item shared with the user
-        item_share = get_object_or_404(ItemShare, item__id=item_uuid, shared_with_user=request.user)
-        item = item_share.item
+    item = get_object_or_404(Item, id=item_uuid)
+    if not has_item_access(item, request.user):
+        return HttpResponse("Unauthorized", status=403)
 
+    # True only for the item's creator: gates owner-only actions like
+    # individually sharing (ItemShare) or duplicating the item.
+    is_owner = item.user == request.user
+    # True for the creator and for wallet collaborators: gates edit/delete/
+    # add-transaction actions, which a shared wallet grants read/write for.
+    can_edit = is_owner or has_wallet_access(item.wallet, request.user)
 
     # Check if the item has been shared
     is_shared = item.shared_with.exists()
 
     transactions = item.transactions.all()
     total_value = item.value + sum(t.value for t in transactions)
-    
+
     if request.method == 'POST':
-        if not is_owner:
-            # Non-owners should not be able to make POST requests (e.g., add transactions)
+        if not can_edit:
+            # Read-only viewers should not be able to make POST requests (e.g., add transactions)
             return redirect('view_item', item_uuid=item.id)
-        
+
         form = TransactionForm(request.POST, item=item)
         if form.is_valid():
             transaction = form.save(commit=False)
             transaction.item = item
             transaction.save()
             total_value += transaction.value
-            
+
             if total_value <= 0:
                 item.is_used = True
                 item.save()
             return redirect('view_item', item_uuid=item.id)
     else:
         form = TransactionForm(item=item)
-    
+
     cached_merchant = get_cached_logo(item.issuer)
 
     context = {
@@ -364,9 +371,11 @@ def view_item(request, item_uuid):
         'form': form,
         'current_date': timezone.now(),
         'is_owner': is_owner,  # Pass the owner flag to the template
+        'can_edit': can_edit,  # Owner or shared-wallet collaborator
         'is_shared': is_shared,  # Pass the shared status to the template
         'merchant_logo_url': cached_merchant.logo_url if cached_merchant else None,
         'pkpass_enabled': pkpass_enabled(),
+        'document_form': DocumentForm(),
     }
     return render(request, 'view-item.html', context)
 
@@ -444,7 +453,9 @@ def create_item(request):
 
 @login_required
 def edit_item(request, item_uuid):
-    item = get_object_or_404(Item, id=item_uuid, user=request.user)
+    item = get_object_or_404(Item, id=item_uuid)
+    if not has_item_access(item, request.user):
+        return HttpResponse("Unauthorized", status=403)
     original_redeem_code = item.redeem_code # Store the original redeem code
     original_code_type = item.code_type  # Store the original code type
     old_file_path = item.file.path if item.file else None  # Store the old file path
@@ -549,7 +560,9 @@ def duplicate_item(request, item_uuid):
 @require_POST
 @login_required
 def delete_item(request, item_uuid):
-    item = get_object_or_404(Item, id=item_uuid, user=request.user)
+    item = get_object_or_404(Item, id=item_uuid)
+    if not has_item_access(item, request.user):
+        return HttpResponse("Unauthorized", status=403)
 
     # Delete the associated file if it exists
     if item.file:
@@ -617,7 +630,53 @@ def serve_image_file(request, item_id):
     if not mime_type or not mime_type.startswith('image/'):
         return HttpResponse("File is not an image", status=400)
 
-    return HttpResponse(item.file, content_type=mime_type)      
+    return HttpResponse(item.file, content_type=mime_type)
+
+@require_POST
+@login_required
+def upload_document(request, item_uuid):
+    item = get_object_or_404(Item, id=item_uuid)
+    if not has_item_access(item, request.user):
+        return HttpResponse("Unauthorized", status=403)
+
+    form = DocumentForm(request.POST, request.FILES)
+    if form.is_valid():
+        document = form.save(commit=False)
+        document.item = item
+        document.save()
+        messages.success(request, _('Document uploaded successfully!'))
+    else:
+        for error in form.errors.get('file', []):
+            messages.error(request, error)
+
+    return redirect('view_item', item_uuid=item.id)
+
+@require_GET
+@login_required
+def download_document(request, document_id):
+    document = get_object_or_404(Document, id=document_id)
+    if not has_item_access(document.item, request.user):
+        return HttpResponse("Unauthorized", status=403)
+
+    file_name = os.path.basename(document.file.name)
+    response = HttpResponse(document.file, content_type='application/octet-stream')
+    response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+    return response
+
+@require_POST
+@login_required
+def delete_document(request, document_id):
+    document = get_object_or_404(Document, id=document_id)
+    item = document.item
+    if not has_item_access(item, request.user):
+        return HttpResponse("Unauthorized", status=403)
+
+    if document.file and os.path.isfile(document.file.path):
+        os.remove(document.file.path)
+    document.delete()
+
+    messages.success(request, _('Document deleted.'))
+    return redirect('view_item', item_uuid=item.id)
 
 @require_POST
 @login_required
@@ -1032,7 +1091,12 @@ def manage_wallets(request):
         form = WalletForm(user=request.user)
 
     wallets = Wallet.objects.filter(user=request.user).annotate(item_count=Count('items'))
-    return render(request, 'manage-wallets.html', {'form': form, 'wallets': wallets})
+    shared_wallets = Wallet.objects.filter(shared_with=request.user).annotate(item_count=Count('items'))
+    return render(request, 'manage-wallets.html', {
+        'form': form,
+        'wallets': wallets,
+        'shared_wallets': shared_wallets,
+    })
 
 @login_required
 def edit_wallet(request, wallet_id):
@@ -1047,7 +1111,14 @@ def edit_wallet(request, wallet_id):
         form = WalletForm(instance=wallet, user=request.user)
 
     wallets = Wallet.objects.filter(user=request.user).annotate(item_count=Count('items'))
-    return render(request, 'manage-wallets.html', {'form': form, 'wallets': wallets, 'editing_wallet': wallet})
+    shared_wallets = Wallet.objects.filter(shared_with=request.user).annotate(item_count=Count('items'))
+    return render(request, 'manage-wallets.html', {
+        'form': form,
+        'wallets': wallets,
+        'shared_wallets': shared_wallets,
+        'editing_wallet': wallet,
+        'share_form': WalletShareForm(wallet=wallet),
+    })
 
 @require_POST
 @login_required
@@ -1055,6 +1126,39 @@ def delete_wallet(request, wallet_id):
     wallet = get_object_or_404(Wallet, id=wallet_id, user=request.user)
     wallet.delete()  # Items in this wallet are kept; their `wallet` FK is set to NULL.
     messages.success(request, _('Wallet deleted. Its items were kept and unassigned from any wallet.'))
+    return redirect('manage_wallets')
+
+@require_POST
+@login_required
+def share_wallet(request, wallet_id):
+    """Owner invites another user to collaborate on this wallet."""
+    wallet = get_object_or_404(Wallet, id=wallet_id, user=request.user)
+    form = WalletShareForm(request.POST, wallet=wallet)
+    if form.is_valid():
+        wallet.shared_with.add(form.cleaned_data['user'])
+        messages.success(request, _('Wallet shared with %(username)s.') % {'username': form.cleaned_data['username']})
+    else:
+        for error in form.errors.get('username', []):
+            messages.error(request, error)
+    return redirect('edit_wallet', wallet_id=wallet.id)
+
+@require_POST
+@login_required
+def unshare_wallet(request, wallet_id, user_id):
+    """Owner revokes a collaborator's access to this wallet."""
+    wallet = get_object_or_404(Wallet, id=wallet_id, user=request.user)
+    collaborator = get_object_or_404(User, id=user_id)
+    wallet.shared_with.remove(collaborator)
+    messages.success(request, _('Removed %(username)s from this wallet.') % {'username': collaborator.username})
+    return redirect('edit_wallet', wallet_id=wallet.id)
+
+@require_POST
+@login_required
+def leave_shared_wallet(request, wallet_id):
+    """A collaborator removes themselves from a wallet shared with them."""
+    wallet = get_object_or_404(Wallet, id=wallet_id, shared_with=request.user)
+    wallet.shared_with.remove(request.user)
+    messages.success(request, _('You have left the wallet "%(name)s".') % {'name': wallet.name})
     return redirect('manage_wallets')
 
 # --- Tags ---

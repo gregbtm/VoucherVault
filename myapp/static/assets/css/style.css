@@ -641,6 +641,34 @@ h6 {
   .toggle-sidebar .sidebar {
     left: 0;
   }
+
+  /* Lock the page behind the sidebar so it can't scroll independently
+     underneath the overlay while the menu is open. */
+  .toggle-sidebar {
+    overflow: hidden;
+  }
+}
+
+/* Backdrop shown behind the mobile off-canvas sidebar. Sits above the main
+   content but below the sidebar itself so a tap outside the menu closes it. */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 60px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 995;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+@media (max-width: 1199px) {
+  .toggle-sidebar .sidebar-overlay {
+    display: block;
+    opacity: 1;
+  }
 }
 
 @media (min-width: 1200px) {
@@ -755,6 +783,16 @@ h6 {
 
 .sidebar-nav .nav-content a.active i {
   background-color: #4154f1;
+}
+
+.sidebar-nav .nav-item.sidebar-footer-item {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid #ecedf1;
+}
+
+#languageForm {
+  margin-top: 5px;
 }
 
 /*--------------------------------------------------------------

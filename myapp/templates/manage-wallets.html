@@ -47,6 +47,35 @@
           </form>
         </div>
       </div>
+
+      {% if editing_wallet %}
+      <div class="card mt-4">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-people me-1"></i> {% trans "Collaborators" %}</h5>
+          <p class="small text-muted">{% trans "Collaborators can view and manage every item in this wallet." %}</p>
+
+          <form method="POST" action="{% url 'share_wallet' wallet_id=editing_wallet.id %}" class="d-flex gap-2 mb-3">
+            {% csrf_token %}
+            {{ share_form.username }}
+            <button type="submit" class="btn btn-outline-primary text-nowrap">
+              <i class="bi bi-person-plus"></i> {% trans "Invite" %}
+            </button>
+          </form>
+
+          {% for collaborator in editing_wallet.shared_with.all %}
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span><i class="bi bi-person"></i> {{ collaborator.username }}</span>
+            <form method="POST" action="{% url 'unshare_wallet' wallet_id=editing_wallet.id user_id=collaborator.id %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-danger">{% trans "Remove" %}</button>
+            </form>
+          </div>
+          {% empty %}
+          <p class="text-muted mb-0">{% trans "Not shared with anyone yet." %}</p>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
     </div>
 
     <div class="col-lg-7">
@@ -69,6 +98,9 @@
                 <td>
                   <i class="bi {{ wallet.icon|default:'bi-wallet2' }} me-2" style="color: {{ wallet.color }};"></i>
                   <a href="{% url 'show_items' %}?wallet={{ wallet.id }}&status=all">{{ wallet.name }}</a>
+                  {% if wallet.shared_with.exists %}
+                  <span class="badge bg-info text-dark ms-1"><i class="bi bi-people"></i> {% trans "Shared" %}</span>
+                  {% endif %}
                   {% if wallet.description %}
                   <div class="small text-muted">{{ wallet.description }}</div>
                   {% endif %}
@@ -95,6 +127,43 @@
           {% endif %}
         </div>
       </div>
+
+      {% if shared_wallets %}
+      <div class="card mt-4">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-people me-1"></i> {% trans "Shared With You" %}</h5>
+          <table class="table table-hover align-middle">
+            <thead>
+              <tr>
+                <th>{% trans "Name" %}</th>
+                <th>{% trans "Owner" %}</th>
+                <th>{% trans "Items" %}</th>
+                <th class="text-end">{% trans "Actions" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for wallet in shared_wallets %}
+              <tr>
+                <td>
+                  <i class="bi {{ wallet.icon|default:'bi-wallet2' }} me-2" style="color: {{ wallet.color }};"></i>
+                  <a href="{% url 'show_items' %}?wallet={{ wallet.id }}&status=all">{{ wallet.name }}</a>
+                </td>
+                <td>{{ wallet.user.username }}</td>
+                <td>{{ wallet.item_count }}</td>
+                <td class="text-end">
+                  <form method="POST" action="{% url 'leave_shared_wallet' wallet_id=wallet.id %}"
+                        onsubmit="return confirm('{% trans "Leave this shared wallet?" %}');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger">{% trans "Leave" %}</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
     </div>
   </div>
 </section>

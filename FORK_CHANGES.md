@@ -119,6 +119,35 @@ standard Push API).
   unless both `WEBPUSH_VAPID_PUBLIC_KEY` and `WEBPUSH_VAPID_PRIVATE_KEY`
   are set
 
+## Phase 10 — Document attachments, Shared Wallets & native sharing
+
+Three additive features: receipts on any item, multi-user wallet
+collaboration, and native OS/browser sharing.
+
+- **Document attachments** — a new `Document` model (FK to `Item`, one item
+  can have many) lets you upload, view, and delete supporting files
+  (receipts, proof-of-purchase, terms) from the item detail page, reusing
+  the same JPEG/PNG/PDF/5MB validation as the item's own file upload.
+  Registered as an inline in the Django Admin.
+- **Shared Wallets** — `Wallet` gained a `shared_with` (`User`,
+  many-to-many) field. The owner can invite collaborators by username from
+  the wallet's edit page (or via the API's `/wallets/{id}/share/`
+  sub-resource); collaborators get full read/write on every item inside
+  that wallet — view, edit, delete, add transactions, attach documents —
+  everywhere those actions already existed, but they can't rename the
+  wallet or manage its sharing list (owner-only). A "Shared" badge marks
+  shared wallets in the manage-wallets list and the sidebar; a "Shared With
+  You" section lists wallets you've been invited into, with a "Leave"
+  action.
+- **Native OS/browser sharing** — a "Share via..." button on both the item
+  detail page and every inventory card calls the Web Share API
+  (`navigator.share()`) to hand a voucher off to the device's native share
+  sheet (Messages, Mail, WhatsApp, AirDrop, etc.), falling back to copying
+  a summary + link to the clipboard on desktop or unsupported browsers.
+  This is independent of the existing per-item `ItemShare` mechanism
+  (in-app sharing to another VoucherVault account) — it's for sharing
+  *out* of the app entirely.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

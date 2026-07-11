@@ -6,10 +6,29 @@ from io import BytesIO
 from django.http import HttpResponse
 import apprise
 from django import forms
+from django.db.models import Q
 from .models import *
 from django.utils.translation import gettext_lazy as _
 from datetime import timedelta
 from django.utils import timezone
+
+def validate_uploaded_file(file):
+    allowed_content_types = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
+    allowed_extensions = ['.jpeg', '.jpg', '.png', '.pdf']
+
+    if hasattr(file, 'content_type'):
+        if file.content_type not in allowed_content_types:
+            raise forms.ValidationError(_('File type is not supported.'))
+
+    ext = os.path.splitext(file.name)[1].lower()
+    if ext not in allowed_extensions:
+        raise forms.ValidationError(_('File extension is not supported.'))
+
+    if file.size > 5 * 1024 * 1024:  # 5MB
+        raise forms.ValidationError(_('File size is too large.'))
+
+    return file
+
 
 class ItemForm(forms.ModelForm):
     file = forms.FileField(required=False)
@@ -53,7 +72,9 @@ class ItemForm(forms.ModelForm):
         # organised into another user's wallet or tags.
         self.fields['wallet'].required = False
         if user is not None:
-            self.fields['wallet'].queryset = Wallet.objects.filter(user=user)
+            self.fields['wallet'].queryset = Wallet.objects.filter(
+                Q(user=user) | Q(shared_with=user)
+            ).distinct()
             self.fields['tags'].queryset = Tag.objects.filter(user=user)
         else:
             self.fields['wallet'].queryset = Wallet.objects.none()
@@ -74,25 +95,8 @@ class ItemForm(forms.ModelForm):
 
     def clean_file(self):
         file = self.cleaned_data.get('file')
-        
         if file:
-            allowed_content_types = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
-            allowed_extensions = ['.jpeg', '.jpg', '.png', '.pdf']
-
-            # Check content type
-            if hasattr(file, 'content_type'):
-                if file.content_type not in allowed_content_types:
-                    raise forms.ValidationError(_('File type is not supported.'))
-
-            # Check file extension
-            ext = os.path.splitext(file.name)[1].lower()
-            if ext not in allowed_extensions:
-                raise forms.ValidationError(_('File extension is not supported.'))
-
-            # Check file size
-            if file.size > 5 * 1024 * 1024:  # 5MB
-                raise forms.ValidationError(_('File size is too large.'))
-
+            validate_uploaded_file(file)
         return file
 
     def clean(self):
@@ -177,6 +181,43 @@ class UserPreferenceForm(forms.ModelForm):
             'fixer_api_key': forms.TextInput(attrs={'class': 'form-control', 'placeholder': _('Enter your Fixer.io API key')}),
             'default_currency': forms.Select(attrs={'class': 'form-select'}),
         }
+
+class DocumentForm(forms.ModelForm):
+    class Meta:
+        model = Document
+        fields = ['file']
+
+    def clean_file(self):
+        file = self.cleaned_data.get('file')
+        if file:
+            validate_uploaded_file(file)
+        return file
+
+
+class WalletShareForm(forms.Form):
+    username = forms.CharField(
+        label=_('Username'),
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': _('Username to invite')}),
+    )
+
+    def __init__(self, *args, wallet=None, **kwargs):
+        self.wallet = wallet
+        super().__init__(*args, **kwargs)
+
+    def clean_username(self):
+        username = self.cleaned_data['username'].strip()
+        try:
+            user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            raise forms.ValidationError(_('No user with that username exists.'))
+        if self.wallet is not None:
+            if user == self.wallet.user:
+                raise forms.ValidationError(_('You already own this wallet.'))
+            if self.wallet.shared_with.filter(pk=user.pk).exists():
+                raise forms.ValidationError(_('This wallet is already shared with that user.'))
+        self.cleaned_data['user'] = user
+        return username
+
 
 class WalletForm(forms.ModelForm):
     class Meta:

@@ -421,6 +421,40 @@ body.dark-mode .item-description {
   color: #cc9a06;
 }
 
+/* Share Button */
+.share-btn {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.5rem;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(255,255,255,0.9);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.2s ease;
+  z-index: 10;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+.share-btn i {
+  font-size: 1rem;
+  color: #6c757d;
+}
+
+.item-card:hover .share-btn {
+  opacity: 1;
+}
+
+.share-btn:hover {
+  background: #fff;
+  transform: scale(1.1);
+}
+
 /* Empty State */
 .empty-state {
   text-align: center;
@@ -745,7 +779,14 @@ body.dark-mode .mobile-filter-select {
           <i class="bi {% if entry.item.is_pinned %}bi-pin-fill{% else %}bi-pin{% endif %}"></i>
         </button>
       </form>
-      
+
+      <!-- Share Button -->
+      <button type="button" class="share-btn share-voucher-btn" title="{% trans 'Share' %}"
+              data-title="{{ entry.item.name }}" data-merchant="{{ entry.item.issuer }}"
+              data-url="{{ request.scheme }}://{{ request.get_host }}{% url 'view_item' item_uuid=entry.item.id %}">
+        <i class="bi bi-send"></i>
+      </button>
+
       <!-- Card Link -->
       <a href="{% url 'view_item' item_uuid=entry.item.id %}" class="item-card-link">
         <div class="item-card-content">
