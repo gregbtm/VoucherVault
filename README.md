@@ -18,7 +18,7 @@
 > [!NOTE]
 > This is [gregbtm](https://github.com/gregbtm)'s fork of the upstream
 > [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault) project.
-> Fifteen rounds of additive features have been layered on top without
+> Sixteen rounds of additive features have been layered on top without
 > touching upstream's own code: a full **REST API**, **Wallets/Tags/Notes**,
 > a rules-based **notification engine** (ntfy, webhook, Apprise, and native
 > **Web Push**) covering the full item lifecycle, bulk **Import/Export**
@@ -41,8 +41,10 @@
 > [`docs/BACKUP_RESTORE.md`](docs/BACKUP_RESTORE.md) for how the nightly
 > scheduled backups work, how to restore one, and how to copy them off-box,
 > [`docs/MCP_SERVER_SETUP.md`](docs/MCP_SERVER_SETUP.md) for wiring up an
-> AI assistant, and [`docs/N8N_SETUP.md`](docs/N8N_SETUP.md) for connecting
-> n8n to the existing REST API with zero custom code.
+> AI assistant, [`docs/N8N_SETUP.md`](docs/N8N_SETUP.md) for connecting
+> n8n to the existing REST API with zero custom code, and
+> [`docs/AUTO_DEPLOY.md`](docs/AUTO_DEPLOY.md) for redeploying without
+> manually clicking through Portainer on every update.
 
 ## 📑 Table of Contents
 
@@ -99,7 +101,7 @@
 - ☑️ **Bulk actions on Inventory** — a checkbox select mode with a sticky action bar for archiving, tagging, moving to a wallet, or deleting several items at once, instead of opening each one individually.
 - 🔧 **n8n integration, zero extra code** — the existing OpenAPI schema (`/api/v1/schema/`) plugs straight into n8n's HTTP Request Tool or AI Agent node as a full set of callable tools; see the [setup guide](docs/N8N_SETUP.md) for both directions (n8n calling VoucherVault, and VoucherVault's webhooks triggering n8n).
 - 📴 **Configurable offline cache** — the manual "Cache for Offline" PWA mode can be turned off entirely per user (hides the button, purges any existing cache), and saving a preference now invalidates just the cached dashboard immediately instead of waiting out the cache's TTL.
-- 🆙 **Update-available banner** — a periodic, opt-out check against this repo's GitHub Releases surfaces a "new version available" banner to admins and the current version in the footer, so you know when to pull a new image.
+- 🆙 **Update-available banner + one-click redeploy** — a periodic, opt-out check against this repo's GitHub Releases surfaces a "new version available" banner to admins and the current version in the footer. If you're running this as a git-based Portainer stack, an optional `PORTAINER_WEBHOOK_URL` adds a "Redeploy now" button right on that banner — plus a companion GitHub Action that can trigger the same webhook automatically on every push to `main`. See [`docs/AUTO_DEPLOY.md`](docs/AUTO_DEPLOY.md).
 - 🔍 **Clickable tag filter on Inventory** — every tag you've created shows as a chip above the item grid with a live item count; click one or more to filter (items matching *any* selected tag show), combinable with the existing status/type/wallet filters.
 - 💷 **GBP as the default currency** — new items and user preferences default to GBP instead of EUR; a one-time migration relabelled every pre-existing item and saved preference from EUR to GBP as well (a relabel only, not a currency conversion — amounts are untouched).
 - 🤖 **MCP server** — an optional standalone service exposing VoucherVault as tools for Claude Desktop, Claude Code, and other MCP clients (search items, check what's expiring, log a gift-card spend, create an item — all through your existing API token). Runs as its own container, off by default; see the [setup guide](docs/MCP_SERVER_SETUP.md).
@@ -244,6 +246,7 @@ The docker container takes various environment variables:
 | `UPDATE_CHECK_ENABLED`            | Set to `False` to disable the periodic GitHub Releases check (footer version + update banner for superusers).  | `True`                     | Optional            |
 | `UPDATE_CHECK_REPO`               | `owner/repo` to check for releases. Only change this if you're running a fork of this fork.                    | `gregbtm/VoucherVault`     | Optional            |
 | `VERSION`                         | Overrides the version shown in the footer. Normally unset - the `VERSION` file baked into the image is the source of truth. | `<VERSION file>` | Optional |
+| `PORTAINER_WEBHOOK_URL`           | Your Portainer stack's redeploy webhook URL. Adds a "Redeploy now" button to the update banner for superusers, and enables the companion GitHub Action to auto-redeploy on every push to `main`. See [`docs/AUTO_DEPLOY.md`](docs/AUTO_DEPLOY.md). | `None` | Optional |
 
 You can find detailed instructions on how to setup OIDC SSO in the [wiki](https://github.com/l4rm4nd/VoucherVault/wiki/02-%E2%80%90-Authentication#oidc-authentication).
 
@@ -295,7 +298,7 @@ its backups otherwise sit on the same volume.
 
 ## 💛 About This Fork & Support
 
-All fifteen feature phases (plus several smaller standalone additions) in
+All sixteen feature phases (plus several smaller standalone additions) in
 this fork ([`FORK_CHANGES.md`](FORK_CHANGES.md)) were implemented with
 [Claude](https://claude.com/claude-code) — but every plan, feature scope,
 and priority behind them was mine, worked out phase by phase before a line

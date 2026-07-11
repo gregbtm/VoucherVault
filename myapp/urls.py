@@ -53,6 +53,7 @@ urlpatterns = (
     path('calendar/download/', views.download_ics, name='download_ics'),
     path('calendar/regenerate-token/', views.regenerate_ics_token, name='regenerate_ics_token'),
     path('calendar/<uuid:token>.ics', views.ics_feed, name='ics_feed'),
+    path('admin-tools/redeploy/', views.trigger_portainer_redeploy, name='trigger_portainer_redeploy'),
 )
 
 admin.site.site_header = "VoucherVault Plus+"

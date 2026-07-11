@@ -410,6 +410,12 @@
         <strong class="me-2">ℹ️</strong>
         {% blocktrans with version=update_check.latest_version %}A newer version ({{ version }}) is available.{% endblocktrans %}
         <a href="{{ update_check.latest_release_url }}" target="_blank" rel="noopener">{% trans "View release" %}</a>
+        {% if portainer_redeploy_configured %}
+          <form method="POST" action="{% url 'trigger_portainer_redeploy' %}" class="d-inline ms-2" onsubmit="return confirm('{% trans "This rebuilds and restarts the app container now. Continue?" %}');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-primary">{% trans "Redeploy now" %}</button>
+          </form>
+        {% endif %}
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
       </div>
     </div>

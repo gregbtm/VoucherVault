@@ -23,6 +23,7 @@ from .merchant_logos import (
 )
 from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
 from .models import Document, Item, MerchantProfile, Tag, Transaction, UpdateCheckStatus, UserPreference, UserProfile, Wallet
+from .portainer import PortainerRedeployError, trigger_redeploy
 from .tasks import check_for_update_task, fetch_merchant_logo_task
 from .update_check import _is_newer, _parse_version, check_for_update
 
@@ -1205,6 +1206,99 @@ class UpdateCheckContextProcessorTests(TestCase):
         self.client.login(username='admin', password='pw12345!')
         response = self.client.get(reverse('dashboard'))
         self.assertNotContains(response, 'A newer version')
+
+
+class PortainerRedeployServiceTests(TestCase):
+    @override_settings(PORTAINER_WEBHOOK_URL=None)
+    def test_raises_when_not_configured(self):
+        with self.assertRaises(PortainerRedeployError):
+            trigger_redeploy()
+
+    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
+    @patch('myapp.portainer.requests.post')
+    def test_posts_to_configured_url(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=204, raise_for_status=lambda: None)
+        trigger_redeploy()
+        mock_post.assert_called_once_with('https://portainer.example.com/api/webhooks/abc123', timeout=10)
+
+    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
+    @patch('myapp.portainer.requests.post')
+    def test_request_failure_raises(self, mock_post):
+        import requests
+        mock_post.side_effect = requests.RequestException('boom')
+        with self.assertRaises(PortainerRedeployError):
+            trigger_redeploy()
+
+
+class PortainerRedeployViewTests(TestCase):
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(username='admin', password='pw12345!', email='a@example.com')
+        self.regular_user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_requires_login(self):
+        response = self.client.post(reverse('trigger_portainer_redeploy'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/accounts/login/', response.url)
+
+    def test_requires_post(self):
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('trigger_portainer_redeploy'))
+        self.assertEqual(response.status_code, 405)
+
+    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
+    @patch('myapp.views.trigger_redeploy')
+    def test_regular_user_forbidden_and_webhook_not_called(self, mock_trigger):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.post(reverse('trigger_portainer_redeploy'), follow=True)
+        mock_trigger.assert_not_called()
+        self.assertContains(response, 'Only administrators')
+
+    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
+    @patch('myapp.views.trigger_redeploy')
+    def test_superuser_success_message(self, mock_trigger):
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.post(reverse('trigger_portainer_redeploy'), follow=True)
+        mock_trigger.assert_called_once()
+        self.assertContains(response, 'Redeploy triggered')
+
+    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
+    @patch('myapp.views.trigger_redeploy')
+    def test_superuser_failure_message(self, mock_trigger):
+        mock_trigger.side_effect = PortainerRedeployError('boom')
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.post(reverse('trigger_portainer_redeploy'), follow=True)
+        self.assertContains(response, 'Redeploy request failed')
+
+    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
+    @patch('myapp.views.trigger_redeploy')
+    def test_redirects_to_safe_referer(self, mock_trigger):
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.post(reverse('trigger_portainer_redeploy'), HTTP_REFERER='http://testserver/dashboard')
+        self.assertRedirects(response, 'http://testserver/dashboard', fetch_redirect_response=False)
+
+    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
+    @patch('myapp.views.trigger_redeploy')
+    def test_ignores_external_referer(self, mock_trigger):
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.post(reverse('trigger_portainer_redeploy'), HTTP_REFERER='https://evil.example.com/phish')
+        self.assertRedirects(response, reverse('show_items'), fetch_redirect_response=False)
+
+
+class PortainerRedeployBannerTests(TestCase):
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(username='admin', password='pw12345!', email='a@example.com')
+        UpdateCheckStatus.objects.create(pk=1, latest_version='v1.1.0', update_available=True)
+        self.client.login(username='admin', password='pw12345!')
+
+    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
+    def test_button_shown_when_configured(self):
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, 'Redeploy now')
+
+    @override_settings(PORTAINER_WEBHOOK_URL=None)
+    def test_button_hidden_when_not_configured(self):
+        response = self.client.get(reverse('dashboard'))
+        self.assertNotContains(response, 'Redeploy now')
 
 
 class OfflineCacheTogglePreferenceTests(TestCase):

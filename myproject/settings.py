@@ -384,6 +384,14 @@ GOOGLE_WALLET_CLASS_ID = os.environ.get('GOOGLE_WALLET_CLASS_ID') or None
 UPDATE_CHECK_ENABLED = os.environ.get('UPDATE_CHECK_ENABLED', 'true').lower() in ('true', '1', 'yes')
 UPDATE_CHECK_REPO = os.environ.get('UPDATE_CHECK_REPO', 'gregbtm/VoucherVault')
 
+# Optional: Portainer's per-stack redeploy webhook URL. When set, superusers
+# get a "Redeploy now" button on the update-available banner above, which
+# POSTs to this URL server-side (see myapp/portainer.py) - i.e. over the
+# Docker network Portainer and this container already share, so nothing
+# needs to be exposed to the internet for this button to work. Unset by
+# default; the button is hidden entirely if this isn't configured.
+PORTAINER_WEBHOOK_URL = os.environ.get('PORTAINER_WEBHOOK_URL') or None
+
 # ---- Scheduled local backups ----
 # On by default. A periodic Celery task writes a Full Backup zip (same
 # format as the manual export) per user to database/backups/<username>/ -
