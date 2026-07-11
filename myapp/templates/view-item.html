@@ -1195,6 +1195,11 @@ body.dark-mode .action-btn-secondary:hover {
               <i class="bi bi-wallet2"></i> {% trans "Add to Google Wallet" %}
             </a>
             {% endif %}
+            {% if item.balance_check_url %}
+            <a href="{{ item.balance_check_url }}" class="action-btn action-btn-secondary" target="_blank" rel="noopener">
+              <i class="bi bi-search"></i> {% trans "Check Balance" %}
+            </a>
+            {% endif %}
             {% if item.type != "loyaltycard" %}
             <form action="{% url 'toggle_item_status' item.id %}" method="post" style="display:contents;">
               {% csrf_token %}

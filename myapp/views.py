@@ -27,7 +27,7 @@ from django.contrib import messages
 from django.utils.timezone import now
 from .decorators import require_authorization_header_with_api_token
 from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items_by_wallet
-from .merchant_logos import get_cached_logo, get_cached_logos_for_issuers
+from .merchant_logos import get_cached_balance_check_url, get_cached_logo, get_cached_logos_for_issuers, remember_balance_check_url
 from .tasks import fetch_merchant_logo_task
 from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
 from imports.exporters.pkpass import pkpass_enabled
@@ -479,6 +479,7 @@ def create_item(request):
                     # Best-effort: a broker outage shouldn't block saving the item.
                     logger.warning('Could not queue merchant logo fetch for %r', item.issuer, exc_info=True)
 
+            remember_balance_check_url(item.issuer, item.balance_check_url)
             notify_item_created(item)
 
             return redirect('show_items')
@@ -564,11 +565,25 @@ def edit_item(request, item_uuid):
                     # Best-effort: a broker outage shouldn't block saving the item.
                     logger.warning('Could not queue merchant logo fetch for %r', item.issuer, exc_info=True)
 
+            remember_balance_check_url(item.issuer, item.balance_check_url)
+
             return redirect('view_item', item_uuid=item.id)
     else:
         form = ItemForm(instance=item, user=request.user)
 
     return render(request, 'edit-item.html', {'form': form, 'item': item, 'ocr_enabled': ocr_enabled()})
+
+@require_GET
+@login_required
+def lookup_merchant_balance_url(request):
+    """
+    Read-only AJAX helper for the create/edit item forms: given an issuer
+    name, returns any balance-check URL already remembered for that
+    merchant (see remember_balance_check_url), so a gift card from a
+    merchant you've entered one for before can suggest it automatically.
+    """
+    issuer = request.GET.get('issuer', '')
+    return JsonResponse({'balance_check_url': get_cached_balance_check_url(issuer)})
 
 @require_GET
 @login_required

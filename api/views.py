@@ -29,6 +29,7 @@ from imports.parsers import get_parser
 from imports.pkpass_import import PkpassImportError, extract_pkpass_fields
 from imports.tasks import process_import_job
 from myapp.analytics import get_expiry_timeline, get_summary_stats
+from myapp.merchant_logos import remember_balance_check_url
 from myapp.models import Item, ItemShare, MerchantProfile, Tag, Transaction, UserPreference, UserProfile, Wallet
 from notify.models import NotificationLog, NotificationRule
 from notify.tasks import notify_balance_changed, notify_item_created, notify_item_shared, notify_item_used, send_test_notification
@@ -83,7 +84,12 @@ class ItemViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         item = serializer.save(user=self.request.user, source='api')
+        remember_balance_check_url(item.issuer, item.balance_check_url)
         notify_item_created(item)
+
+    def perform_update(self, serializer):
+        item = serializer.save()
+        remember_balance_check_url(item.issuer, item.balance_check_url)
 
     @action(detail=True, methods=['post'])
     def redeem(self, request, pk=None):

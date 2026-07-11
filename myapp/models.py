@@ -149,6 +149,11 @@ class MerchantProfile(models.Model):
         validators=[RegexValidator(regex=r'^#(?:[0-9a-fA-F]{3}){1,2}$', message='Enter a valid hex color.')],
     )
     fetched_at = models.DateTimeField(null=True, blank=True)
+    balance_check_url = models.URLField(
+        blank=True,
+        help_text="Remembered gift-card balance/validity check link for this merchant, "
+                   "suggested on future gift cards from the same issuer.",
+    )
 
     class Meta:
         ordering = ['name']
@@ -238,6 +243,11 @@ class Item(models.Model):
         default=False, help_text="Hide from the default inventory view without marking it used or deleting it."
     )
     last_used_at = models.DateTimeField(null=True, blank=True)
+    balance_check_url = models.URLField(
+        blank=True,
+        help_text="Link to the merchant's balance/validity check page for this gift card. "
+                   "Not a live check — VoucherVault has no way to query balances itself.",
+    )
 
     objects = ItemQuerySet.as_manager()
 

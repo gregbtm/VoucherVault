@@ -168,6 +168,41 @@ class Phase11FieldsApiTests(APITestCase):
         self.assertIsNone(item.last_used_at)
 
 
+class BalanceCheckUrlApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.force_authenticate(user=self.user)
+
+    def test_create_item_remembers_balance_check_url(self):
+        response = self.client.post('/api/v1/items/', {
+            'type': 'giftcard', 'name': 'Tesco Card', 'issuer': 'Tesco', 'redeem_code': 'GC1',
+            'value': '25.00', 'currency': 'GBP', 'code_type': 'qrcode', 'value_type': 'money',
+            'balance_check_url': 'https://www.tesco.com/gift-cards/balance',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['balance_check_url'], 'https://www.tesco.com/gift-cards/balance')
+        self.assertEqual(
+            MerchantProfile.objects.get(name__iexact='Tesco').balance_check_url,
+            'https://www.tesco.com/gift-cards/balance',
+        )
+
+    def test_update_item_remembers_balance_check_url(self):
+        item = make_item(self.user, type='giftcard', issuer='Amazon')
+        response = self.client.patch(f'/api/v1/items/{item.id}/', {
+            'balance_check_url': 'https://www.amazon.co.uk/gc/balance',
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(
+            MerchantProfile.objects.get(name__iexact='Amazon').balance_check_url,
+            'https://www.amazon.co.uk/gc/balance',
+        )
+
+    def test_merchant_profile_serializer_exposes_balance_check_url(self):
+        MerchantProfile.objects.create(name='Tesco', balance_check_url='https://www.tesco.com/gift-cards/balance')
+        response = self.client.get('/api/v1/merchants/')
+        self.assertEqual(response.data['results'][0]['balance_check_url'], 'https://www.tesco.com/gift-cards/balance')
+
+
 class CrossUserIsolationTests(APITestCase):
     def setUp(self):
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
