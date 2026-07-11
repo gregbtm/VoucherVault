@@ -28,14 +28,17 @@ services:
       - NTFY_DEFAULT_SERVER=${NTFY_DEFAULT_SERVER:-https://ntfy.sh}
       # set both to enable the Web Push notification backend; generate with:
       #   docker compose exec app python manage.py generate_vapid_keys
-      #- WEBPUSH_VAPID_PUBLIC_KEY=${WEBPUSH_VAPID_PUBLIC_KEY}
-      #- WEBPUSH_VAPID_PRIVATE_KEY=${WEBPUSH_VAPID_PRIVATE_KEY}
+      - WEBPUSH_VAPID_PUBLIC_KEY=${WEBPUSH_VAPID_PUBLIC_KEY:-}
+      - WEBPUSH_VAPID_PRIVATE_KEY=${WEBPUSH_VAPID_PRIVATE_KEY:-}
+      - WEBPUSH_VAPID_CLAIMS_EMAIL=${WEBPUSH_VAPID_CLAIMS_EMAIL:-mailto:admin@example.com}
       # set to False to disable auto-fetching merchant logos
       - MERCHANT_LOGOS_ENABLED=${MERCHANT_LOGOS_ENABLED:-True}
       # set to "claude" or "tesseract" to enable the "Scan with AI" button
       - OCR_BACKEND=${OCR_BACKEND:-none}
       # required if OCR_BACKEND=claude
-      #- ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:?Set ANTHROPIC_API_KEY in .env}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # optional; overrides the Claude model used for OCR extraction
+      - ANTHROPIC_OCR_MODEL=${ANTHROPIC_OCR_MODEL:-claude-sonnet-5}
       # define custom frame-ancestor csp directive
       #- CSP_FRAME_ANCESTORS=${CSP_FRAME_ANCESTORS:?Set CSP_FRAME_ANCESTORS in .env}
       #- SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env}
@@ -74,17 +77,17 @@ services:
       #- CELERY_WORKER_PREFETCH_MULTIPLIER=${CELERY_WORKER_PREFETCH_MULTIPLIER:-2}
       # ------- OPTIONAL APPLE WALLET EXPORT --------
       # set all of these (and mount the cert files below) to enable .pkpass export
-      #- PKPASS_CERT_PATH=/opt/app/pkpass/pass-cert.p12
-      #- PKPASS_CERT_PASSWORD=${PKPASS_CERT_PASSWORD}
-      #- PKPASS_WWDR_CERT_PATH=/opt/app/pkpass/AppleWWDRCAG4.pem
-      #- PKPASS_TEAM_ID=${PKPASS_TEAM_ID}
-      #- PKPASS_PASS_TYPE_ID=${PKPASS_PASS_TYPE_ID}
-      #- PKPASS_ORGANIZATION_NAME=${PKPASS_ORGANIZATION_NAME:-VoucherVault}
+      - PKPASS_CERT_PATH=${PKPASS_CERT_PATH:-}
+      - PKPASS_CERT_PASSWORD=${PKPASS_CERT_PASSWORD:-}
+      - PKPASS_WWDR_CERT_PATH=${PKPASS_WWDR_CERT_PATH:-}
+      - PKPASS_TEAM_ID=${PKPASS_TEAM_ID:-}
+      - PKPASS_PASS_TYPE_ID=${PKPASS_PASS_TYPE_ID:-}
+      - PKPASS_ORGANIZATION_NAME=${PKPASS_ORGANIZATION_NAME:-VoucherVault Plus+}
       # ------- OPTIONAL GOOGLE WALLET EXPORT --------
       # set both of these (and mount the service account key below) to enable Google Wallet export
-      #- GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH=/opt/app/google-wallet/key.json
-      #- GOOGLE_WALLET_ISSUER_ID=${GOOGLE_WALLET_ISSUER_ID}
-      #- GOOGLE_WALLET_CLASS_ID=${GOOGLE_WALLET_CLASS_ID}
+      - GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH=${GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH:-}
+      - GOOGLE_WALLET_ISSUER_ID=${GOOGLE_WALLET_ISSUER_ID:-}
+      - GOOGLE_WALLET_CLASS_ID=${GOOGLE_WALLET_CLASS_ID:-}
     expose:
       - 8000
     ports:

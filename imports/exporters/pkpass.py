@@ -7,6 +7,7 @@ import zipfile
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.serialization import Encoding, pkcs7, pkcs12
+from django.conf import settings
 from PIL import Image
 
 # Only formats PassKit actually supports; everything else falls back to QR
@@ -26,21 +27,21 @@ STORE_CARD_TYPES = {'loyaltycard', 'giftcard'}
 
 
 def pkpass_enabled() -> bool:
-    path = os.environ.get('PKPASS_CERT_PATH')
+    path = settings.PKPASS_CERT_PATH
     return bool(path) and os.path.isfile(path)
 
 
-def _require_env(name: str) -> str:
-    value = os.environ.get(name)
+def _require_setting(name: str) -> str:
+    value = getattr(settings, name, None)
     if not value:
         raise RuntimeError(f'{name} is not set. Required for Apple Wallet export.')
     return value
 
 
 def _load_signing_materials():
-    cert_path = _require_env('PKPASS_CERT_PATH')
-    wwdr_path = _require_env('PKPASS_WWDR_CERT_PATH')
-    password = os.environ.get('PKPASS_CERT_PASSWORD') or None
+    cert_path = _require_setting('PKPASS_CERT_PATH')
+    wwdr_path = _require_setting('PKPASS_WWDR_CERT_PATH')
+    password = settings.PKPASS_CERT_PASSWORD
 
     with open(cert_path, 'rb') as f:
         private_key, certificate, _extra_certs = pkcs12.load_key_and_certificates(
@@ -87,9 +88,9 @@ def _build_pass_json(item) -> dict:
 
     pass_dict = {
         'formatVersion': 1,
-        'passTypeIdentifier': _require_env('PKPASS_PASS_TYPE_ID'),
-        'teamIdentifier': _require_env('PKPASS_TEAM_ID'),
-        'organizationName': os.environ.get('PKPASS_ORGANIZATION_NAME', 'VoucherVault Plus+'),
+        'passTypeIdentifier': _require_setting('PKPASS_PASS_TYPE_ID'),
+        'teamIdentifier': _require_setting('PKPASS_TEAM_ID'),
+        'organizationName': settings.PKPASS_ORGANIZATION_NAME,
         'serialNumber': str(item.id),
         'description': item.name,
         'barcodes': [{

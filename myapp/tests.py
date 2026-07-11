@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
 from django.db import IntegrityError, transaction
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -535,13 +535,13 @@ class BalanceCheckUrlServiceTests(TestCase):
 class MerchantLogoTaskTests(TestCase):
     @patch('myapp.tasks.fetch_merchant_logo')
     def test_task_calls_service_when_enabled(self, mock_fetch):
-        with patch.dict(os.environ, {'MERCHANT_LOGOS_ENABLED': 'true'}):
+        with override_settings(MERCHANT_LOGOS_ENABLED=True):
             fetch_merchant_logo_task('Amazon')
         mock_fetch.assert_called_once_with('Amazon')
 
     @patch('myapp.tasks.fetch_merchant_logo')
     def test_task_noop_when_disabled(self, mock_fetch):
-        with patch.dict(os.environ, {'MERCHANT_LOGOS_ENABLED': 'false'}):
+        with override_settings(MERCHANT_LOGOS_ENABLED=False):
             fetch_merchant_logo_task('Amazon')
         mock_fetch.assert_not_called()
 
@@ -615,27 +615,27 @@ class OCRScanUIWiringTests(TestCase):
         self.client.login(username='alice', password='pw12345!')
 
     def test_create_item_ocr_disabled_by_default(self):
-        with patch.dict(os.environ, {'OCR_BACKEND': 'none'}):
+        with override_settings(OCR_BACKEND='none'):
             response = self.client.get(reverse('create_item'))
         self.assertFalse(response.context['ocr_enabled'])
         self.assertNotContains(response, 'aiScanSection')
 
     def test_create_item_ocr_enabled_shows_scan_section(self):
-        with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
+        with override_settings(OCR_BACKEND='tesseract'):
             response = self.client.get(reverse('create_item'))
         self.assertTrue(response.context['ocr_enabled'])
         self.assertContains(response, 'aiScanSection')
 
     def test_edit_item_reflects_ocr_setting(self):
         item = make_item(self.user)
-        with patch.dict(os.environ, {'OCR_BACKEND': 'claude'}):
+        with override_settings(OCR_BACKEND='claude'):
             response = self.client.get(reverse('edit_item', args=[item.id]))
         self.assertTrue(response.context['ocr_enabled'])
         self.assertContains(response, 'aiScanSection')
 
     def test_duplicate_item_reflects_ocr_setting(self):
         item = make_item(self.user)
-        with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
+        with override_settings(OCR_BACKEND='tesseract'):
             response = self.client.get(reverse('duplicate_item', args=[item.id]))
         self.assertTrue(response.context['ocr_enabled'])
 
@@ -647,7 +647,7 @@ class PkpassUIWiringTests(TestCase):
 
     def test_view_item_pkpass_disabled_by_default(self):
         item = make_item(self.user)
-        with patch.dict(os.environ, {'PKPASS_CERT_PATH': ''}):
+        with override_settings(PKPASS_CERT_PATH=''):
             response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
         self.assertFalse(response.context['pkpass_enabled'])
         self.assertNotContains(response, 'Add to Apple Wallet')

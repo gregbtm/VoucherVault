@@ -161,7 +161,7 @@ The docker container takes various environment variables:
 | `PKPASS_WWDR_CERT_PATH`           | Path to Apple's WWDR intermediate certificate. Required if `PKPASS_CERT_PATH` is set.                          | `None`                     | Optional            |
 | `PKPASS_TEAM_ID`                  | Your Apple Developer Team ID. Required if `PKPASS_CERT_PATH` is set.                                           | `None`                     | Optional            |
 | `PKPASS_PASS_TYPE_ID`             | Your registered Pass Type ID, e.g. `pass.com.example.vouchervault`. Required if `PKPASS_CERT_PATH` is set.     | `None`                     | Optional            |
-| `PKPASS_ORGANIZATION_NAME`        | Organization name shown on the generated pass.                                                                 | `VoucherVault`             | Optional            |
+| `PKPASS_ORGANIZATION_NAME`        | Organization name shown on the generated pass.                                                                 | `VoucherVault Plus+`       | Optional            |
 | `GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH` | Path to your Google Wallet API service account JSON key. Enables Google Wallet export when set along with the issuer ID below. | `None` | Optional |
 | `GOOGLE_WALLET_ISSUER_ID`         | Your Google Wallet API issuer ID, from the [Google Wallet Business Console](https://pay.google.com/business/console). Required if `GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH` is set. | `None` | Optional |
 | `GOOGLE_WALLET_CLASS_ID`          | Optional override for the generic pass class ID.                                                               | `<issuer id>.vouchervault_generic` | Optional    |

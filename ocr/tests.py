@@ -4,7 +4,7 @@ import shutil
 import unittest
 from unittest.mock import MagicMock, patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from PIL import Image, ImageDraw, ImageFont
 
 import pytesseract
@@ -25,28 +25,28 @@ def _tiny_png_bytes() -> bytes:
 
 class BackendSelectionTests(TestCase):
     def test_disabled_by_default(self):
-        with patch.dict(os.environ, {'OCR_BACKEND': 'none'}):
+        with override_settings(OCR_BACKEND='none'):
             self.assertFalse(ocr_enabled())
 
     def test_enabled_for_known_backend(self):
-        with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
+        with override_settings(OCR_BACKEND='tesseract'):
             self.assertTrue(ocr_enabled())
 
     def test_disabled_for_unknown_backend(self):
-        with patch.dict(os.environ, {'OCR_BACKEND': 'bogus'}):
+        with override_settings(OCR_BACKEND='bogus'):
             self.assertFalse(ocr_enabled())
 
     def test_get_backend_raises_when_disabled(self):
-        with patch.dict(os.environ, {'OCR_BACKEND': 'none'}):
+        with override_settings(OCR_BACKEND='none'):
             with self.assertRaises(ValueError):
                 get_backend()
 
     def test_get_backend_returns_tesseract(self):
-        with patch.dict(os.environ, {'OCR_BACKEND': 'tesseract'}):
+        with override_settings(OCR_BACKEND='tesseract'):
             self.assertIsInstance(get_backend(), TesseractOCRBackend)
 
     def test_get_backend_returns_claude(self):
-        with patch.dict(os.environ, {'OCR_BACKEND': 'claude', 'ANTHROPIC_API_KEY': 'test-key'}):
+        with override_settings(OCR_BACKEND='claude', ANTHROPIC_API_KEY='test-key'):
             self.assertIsInstance(get_backend(), ClaudeOCRBackend)
 
 
@@ -111,12 +111,11 @@ class TesseractLiveIntegrationTests(TestCase):
 
 class ClaudeBackendTests(TestCase):
     def test_raises_without_api_key(self):
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop('ANTHROPIC_API_KEY', None)
+        with override_settings(ANTHROPIC_API_KEY=None):
             with self.assertRaises(RuntimeError):
                 ClaudeOCRBackend()
 
-    @patch.dict(os.environ, {'ANTHROPIC_API_KEY': 'test-key'})
+    @override_settings(ANTHROPIC_API_KEY='test-key')
     @patch('ocr.backends.claude_backend.anthropic.Anthropic')
     def test_extract_parses_json_response(self, mock_anthropic_cls):
         mock_client = MagicMock()
@@ -137,7 +136,7 @@ class ClaudeBackendTests(TestCase):
         self.assertEqual(result['confidence'], 0.9)
         mock_client.messages.create.assert_called_once()
 
-    @patch.dict(os.environ, {'ANTHROPIC_API_KEY': 'test-key'})
+    @override_settings(ANTHROPIC_API_KEY='test-key')
     @patch('ocr.backends.claude_backend.anthropic.Anthropic')
     def test_extract_handles_malformed_response_gracefully(self, mock_anthropic_cls):
         mock_client = MagicMock()
@@ -151,7 +150,7 @@ class ClaudeBackendTests(TestCase):
         self.assertIsNone(result['code'])
         self.assertEqual(result['confidence'], 0.0)
 
-    @patch.dict(os.environ, {'ANTHROPIC_API_KEY': 'test-key', 'ANTHROPIC_OCR_MODEL': 'claude-haiku-4-5-20251001'})
+    @override_settings(ANTHROPIC_API_KEY='test-key', ANTHROPIC_OCR_MODEL='claude-haiku-4-5-20251001')
     @patch('ocr.backends.claude_backend.anthropic.Anthropic')
     def test_model_env_override(self, mock_anthropic_cls):
         backend = ClaudeOCRBackend()

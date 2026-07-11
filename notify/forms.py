@@ -1,6 +1,5 @@
-import os
-
 from django import forms
+from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 
 from .backends.webpush import webpush_enabled
@@ -78,7 +77,7 @@ class NotificationRuleForm(forms.ModelForm):
         if not webpush_enabled() and (not self.instance.pk or self.instance.backend != 'webpush'):
             self.fields['backend'].choices = [c for c in self.fields['backend'].choices if c[0] != 'webpush']
         if not self.instance.pk:
-            self.fields['ntfy_server'].initial = os.environ.get('NTFY_DEFAULT_SERVER', 'https://ntfy.sh')
+            self.fields['ntfy_server'].initial = settings.NTFY_DEFAULT_SERVER
         if self.instance.pk:
             self.fields['event_types'].initial = self.instance.event_types
             config = self.instance.config or {}

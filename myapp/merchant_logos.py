@@ -1,9 +1,9 @@
 import logging
-import os
 import re
 from datetime import timedelta
 
 import requests
+from django.conf import settings
 from django.db.models.functions import Lower
 from django.utils import timezone
 
@@ -26,7 +26,7 @@ _NON_ALNUM_RE = re.compile(r'[^a-z0-9]')
 
 
 def merchant_logos_enabled() -> bool:
-    return os.environ.get('MERCHANT_LOGOS_ENABLED', 'true').lower() in ('true', '1', 'yes')
+    return settings.MERCHANT_LOGOS_ENABLED
 
 
 def guess_domain(name: str) -> str:

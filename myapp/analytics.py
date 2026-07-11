@@ -1,9 +1,9 @@
 import calendar as calendar_module
-import os
 from datetime import date as date_cls
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.db.models import Count, Sum
 from django.utils import timezone
 
@@ -28,7 +28,7 @@ def get_summary_stats(user):
     """
     now = timezone.now()
     today = now.date()
-    threshold_days = int(os.getenv('EXPIRY_THRESHOLD_DAYS', 30))
+    threshold_days = settings.EXPIRY_THRESHOLD_DAYS
     soon_cutoff = today + timedelta(days=threshold_days)
     week_cutoff = today + timedelta(days=EXPIRING_SOON_DAYS)
 
