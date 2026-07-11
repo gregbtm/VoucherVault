@@ -18,26 +18,43 @@
 > [!NOTE]
 > This is [gregbtm](https://github.com/gregbtm)'s fork of the upstream
 > [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault) project.
-> A dozen-plus rounds of additive features have been layered on top without
+> Fifteen rounds of additive features have been layered on top without
 > touching upstream's own code: a full **REST API**, **Wallets/Tags/Notes**,
 > a rules-based **notification engine** (ntfy, webhook, Apprise, and native
-> **Web Push**), bulk **Import/Export**, an **Analytics dashboard**,
-> **auto-fetched merchant logos**, an AI-assisted **"Scan with AI"** photo
-> capture, **Apple Wallet and Google Wallet import/export**, **document
+> **Web Push**) covering the full item lifecycle, bulk **Import/Export**
+> plus a full-fidelity **zip backup/restore** format, an **Analytics
+> dashboard**, **auto-fetched merchant logos**, an AI-assisted **"Scan with
+> AI"** photo capture (Claude, OpenAI, or fully local/free Tesseract),
+> **Apple Wallet and Google Wallet import/export**, **document
 > attachments**, **shared (multi-user) wallets**, **native OS/browser
-> sharing**, a **clickable tag filter** on the Inventory page, GBP as the
-> default currency, and a handful of Catima-parity touches (card numbers,
-> archiving, screen wake lock, and a full-fidelity backup format).
-> See [`FORK_CHANGES.md`](FORK_CHANGES.md) for the full changelog, the
-> [Wiki](https://github.com/gregbtm/VoucherVault/wiki) for feature-by-feature guides,
-> [`docs/UPGRADE.md`](docs/UPGRADE.md) if you're already running the
-> upstream Docker image and want to switch to this fork,
-> [`docs/GOOGLE_WALLET_SETUP.md`](docs/GOOGLE_WALLET_SETUP.md) for a
-> step-by-step Google Wallet setup guide, and
+> sharing**, an **MCP server** for AI assistants, a **nightly scheduled
+> backup** with rotation, an **.ics calendar feed**, **bulk actions** on
+> the Inventory page, a **zero-build n8n integration**, and a handful of
+> Catima-parity touches (card numbers, archiving, last-used sort, an
+> OLED true-black theme, and screen wake lock).
+> See [`FORK_CHANGES.md`](FORK_CHANGES.md) for the full phase-by-phase
+> changelog, the [Wiki](https://github.com/gregbtm/VoucherVault/wiki) for
+> feature-by-feature guides, [`docs/UPGRADE.md`](docs/UPGRADE.md) if
+> you're already running the upstream Docker image and want to switch to
+> this fork, [`docs/GOOGLE_WALLET_SETUP.md`](docs/GOOGLE_WALLET_SETUP.md)
+> for a step-by-step Google Wallet setup guide,
 > [`docs/BACKUP_RESTORE.md`](docs/BACKUP_RESTORE.md) for how the nightly
-> scheduled backups work and how to restore one, and
-> [`docs/N8N_SETUP.md`](docs/N8N_SETUP.md) for connecting n8n to the
-> existing REST API with zero custom code.
+> scheduled backups work, how to restore one, and how to copy them off-box,
+> [`docs/MCP_SERVER_SETUP.md`](docs/MCP_SERVER_SETUP.md) for wiring up an
+> AI assistant, and [`docs/N8N_SETUP.md`](docs/N8N_SETUP.md) for connecting
+> n8n to the existing REST API with zero custom code.
+
+## 📑 Table of Contents
+
+- [Features](#-features)
+  - [New in this fork](#-new-in-this-fork)
+- [Screenshots](#-screenshots)
+- [Usage](#-usage)
+- [Environment Variables](#-environment-variables)
+- [Notifications](#-notifications)
+- [Multi-User Setup](#-multi-user-setup)
+- [Backups](#-backups)
+- [About This Fork & Support](#-about-this-fork--support)
 
 ## ⭐ Features
 
@@ -66,14 +83,23 @@
 - 📥 **Import & Export** — bulk-import your existing vault from a Catima CSV export or this app's own CSV/JSON, and export everything back out for backups or migration, processed in the background with per-row error reporting.
 - 📊 **Analytics dashboard** — KPI tiles, an expiry calendar heatmap, and a live "value at risk" figure so nothing quietly expires unnoticed.
 - 🏷️ **Auto-fetched merchant logos** — item cards get real brand logos automatically (fetched and cached in the background), so page loads never wait on a network call.
-- 🤖 **AI-assisted "Scan with AI"** — snap a photo of a physical voucher, coupon, or gift card and let Claude's vision model (or a fully local, free Tesseract OCR backend) pre-fill the redeem code, merchant, and expiry date for you.
+- 🤖 **AI-assisted "Scan with AI"** — snap a photo of a physical voucher, coupon, or gift card and let an OCR backend pre-fill the redeem code, merchant, and expiry date for you. Three interchangeable backends: Claude's vision model, OpenAI's vision model, or a fully local, free Tesseract backend with no API key at all.
 - 🍏 **Apple Wallet import & export** — download a signed `.pkpass` for any item and add it straight to Apple Wallet (opt-in, requires your own Apple Developer certificate), or go the other way and pre-fill a new item by uploading an existing `.pkpass`.
 - 🟢 **Google Wallet export** — a one-tap "Add to Google Wallet" link, set up once by whoever runs the container (opt-in, requires your own free Google Wallet API issuer account — see the [step-by-step setup guide](docs/GOOGLE_WALLET_SETUP.md)). The item detail page shows the Apple or Google Wallet button automatically depending on whether you're on an Apple device, Android, or a Chromium desktop browser — never both, never neither if either is configured.
 - 📎 **Document attachments** — attach receipts and proof-of-purchase files to any item, upload/view/delete right from the item detail page.
 - 🤝 **Shared (multi-user) wallets** — invite another user by username to collaborate on a wallet; they get full read/write on every item inside it, no admin access required.
 - 📤 **Native OS/browser sharing** — a "Share via..." button on every item hands it off to your device's native share sheet (Messages, Mail, AirDrop, etc.), with a clipboard-copy fallback on desktop.
 - 🏷️ **Card numbers, archiving & screen wake lock** — a printed member number can differ from the barcode's encoded value, items can be archived out of the default view without deleting them, and the screen stays on while a barcode is shown to a cashier.
-- 🗜️ **Full Backup (with files)** — a `.zip` export/import that bundles every item's attached files and documents alongside the data, for a true full-fidelity backup/restore.
+- 🕐 **Last-used tracking & sort** — marking a gift card or voucher used stamps it with a timestamp, so "most recently used" is a real sort option instead of guesswork.
+- 🌓 **True-black OLED dark theme** — an extra toggle on top of the regular light/dark theme that drops dark mode's background all the way to `#000`, for phones with an OLED/AMOLED screen where that also saves battery.
+- 🔎 **Barcode zoom control** — pinch or use on-screen +/− buttons to zoom a shown barcode/QR code client-side, for codes that scan poorly at the card's default on-screen size.
+- 🗜️ **Full Backup (with files)** — a `.zip` export/import that bundles every item's attached files and documents, transaction history, and account-level settings (display preferences, notification rules, legacy Apprise URLs) alongside the data, for a true full-fidelity backup/restore. Restoring always adds items rather than overwriting, but settings and rules are updated in place so re-restoring the same backup doesn't create duplicates.
+- 🗓️ **Scheduled local backups** — a nightly background job writes a Full Backup zip per user to a rotating local history (last 7 kept by default), with a companion doc covering restoring one and copying backups off-box for real disaster recovery (`rsync`/`rclone` examples).
+- 📅 **Calendar feed (.ics)** — a read-only, subscribe-able calendar of your active items' expiry dates for Google Calendar, Apple Calendar, etc., plus a one-off `.ics` download. For anything beyond expiry-date sync, the webhook system is the integration path.
+- ☑️ **Bulk actions on Inventory** — a checkbox select mode with a sticky action bar for archiving, tagging, moving to a wallet, or deleting several items at once, instead of opening each one individually.
+- 🔧 **n8n integration, zero extra code** — the existing OpenAPI schema (`/api/v1/schema/`) plugs straight into n8n's HTTP Request Tool or AI Agent node as a full set of callable tools; see the [setup guide](docs/N8N_SETUP.md) for both directions (n8n calling VoucherVault, and VoucherVault's webhooks triggering n8n).
+- 📴 **Configurable offline cache** — the manual "Cache for Offline" PWA mode can be turned off entirely per user (hides the button, purges any existing cache), and saving a preference now invalidates just the cached dashboard immediately instead of waiting out the cache's TTL.
+- 🆙 **Update-available banner** — a periodic, opt-out check against this repo's GitHub Releases surfaces a "new version available" banner to admins and the current version in the footer, so you know when to pull a new image.
 - 🔍 **Clickable tag filter on Inventory** — every tag you've created shows as a chip above the item grid with a live item count; click one or more to filter (items matching *any* selected tag show), combinable with the existing status/type/wallet filters.
 - 💷 **GBP as the default currency** — new items and user preferences default to GBP instead of EUR; a one-time migration relabelled every pre-existing item and saved preference from EUR to GBP as well (a relabel only, not a currency conversion — amounts are untouched).
 - 🤖 **MCP server** — an optional standalone service exposing VoucherVault as tools for Claude Desktop, Claude Code, and other MCP clients (search items, check what's expiring, log a gift-card spend, create an item — all through your existing API token). Runs as its own container, off by default; see the [setup guide](docs/MCP_SERVER_SETUP.md).
@@ -81,10 +107,49 @@
 
 ## 📷 Screenshots
 
-<details>
+<details open>
+<summary><strong>Analytics dashboard</strong> — KPI tiles, at-risk value, item distribution, expiry calendar heatmap</summary>
 <img src="screenshots/dashboard.png">
-<img src="screenshots/items.png">
+</details>
+
+<details>
+<summary><strong>Inventory</strong> — status/type filters, the clickable tag filter, wallet badges</summary>
+<img src="screenshots/inventory-tags.png">
+</details>
+
+<details>
+<summary><strong>Bulk actions</strong> — checkbox select mode with the sticky action bar</summary>
+<img src="screenshots/inventory-bulk-actions.png">
+</details>
+
+<details>
+<summary><strong>Item Details</strong> — tags/notes/wallet, document attachments, transaction ledger</summary>
 <img src="screenshots/item-details.png">
+</details>
+
+<details>
+<summary><strong>True-black OLED dark theme</strong></summary>
+<img src="screenshots/oled-dark-theme.png">
+</details>
+
+<details>
+<summary><strong>Notification Rules</strong> — ntfy/webhook/Apprise/Web Push, per-item event types</summary>
+<img src="screenshots/notification-rules.png">
+</details>
+
+<details>
+<summary><strong>Import / Export</strong> — CSV/JSON, Full Backup, and the .ics calendar feed</summary>
+<img src="screenshots/import-export.png">
+</details>
+
+<details>
+<summary><strong>Wallets</strong> — grouping items, sharing a wallet with another user</summary>
+<img src="screenshots/wallets.png">
+</details>
+
+<details>
+<summary><strong>Sharing Center</strong> — items shared with you and by you</summary>
+<img src="screenshots/sharing-center.png">
 </details>
 
 ## 🐳 Usage
@@ -218,14 +283,25 @@ Therefore, by backing up this bind mount volume, all your application data is sa
 > [!WARNING]
 > Read the official [SQLite3 documentation](https://sqlite.org/backup.html) or [PostgreSQL documentation](https://www.postgresql.org/docs/current/backup.html) regarding backups.
 
+On top of a volume-level backup, this fork also runs a **nightly, per-user
+application-level backup** (a Full Backup zip — every item, its files,
+transaction history, and settings) with automatic rotation, independent of
+whichever database engine you run. See
+[`docs/BACKUP_RESTORE.md`](docs/BACKUP_RESTORE.md) for where those live,
+how to restore one, how to disable the schedule
+(`SCHEDULED_BACKUP_ENABLED=False`), and — importantly — how to copy them
+off the box for real disaster recovery, since both the live database and
+its backups otherwise sit on the same volume.
+
 ## 💛 About This Fork & Support
 
-All nine feature phases in this fork ([`FORK_CHANGES.md`](FORK_CHANGES.md)) were
-implemented with [Claude](https://claude.com/claude-code) — but every plan,
-feature scope, and priority behind them was mine, worked out phase by phase
-before a line of code was written. If there's something you'd like to see
-added — an integration, an export format, another notification backend —
-open an issue and I'm happy to help scope and build it out.
+All fifteen feature phases (plus several smaller standalone additions) in
+this fork ([`FORK_CHANGES.md`](FORK_CHANGES.md)) were implemented with
+[Claude](https://claude.com/claude-code) — but every plan, feature scope,
+and priority behind them was mine, worked out phase by phase before a line
+of code was written. If there's something you'd like to see added — an
+integration, an export format, another notification backend — open an
+issue and I'm happy to help scope and build it out.
 
 If this fork has been useful to you, tips are always appreciated:
 
