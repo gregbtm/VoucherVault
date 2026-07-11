@@ -1,0 +1,43 @@
+name: Trigger Portainer redeploy
+
+# Companion to the in-app "Redeploy now" button (myapp/portainer.py): this
+# workflow calls the same Portainer stack webhook automatically after every
+# push to main, so a merge alone is enough to redeploy - no need to notice
+# the banner and click the button. See docs/AUTO_DEPLOY.md.
+#
+# Requires the PORTAINER_WEBHOOK_URL repository secret to be set (Settings
+# -> Secrets and variables -> Actions). If it isn't set, this workflow
+# no-ops rather than failing, since not every deployment wants this wired
+# up.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  redeploy:
+    name: Call Portainer webhook
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger redeploy
+        env:
+          WEBHOOK_URL: ${{ secrets.PORTAINER_WEBHOOK_URL }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "PORTAINER_WEBHOOK_URL secret is not set - skipping. See docs/AUTO_DEPLOY.md to enable this."
+            exit 0
+          fi
+
+          status=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$WEBHOOK_URL")
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "Portainer webhook call failed with HTTP $status"
+            exit 1
+          fi
+
+          echo "Portainer webhook call succeeded (HTTP $status)"

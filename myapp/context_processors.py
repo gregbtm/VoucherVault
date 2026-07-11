@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db.models import Count, Q
 
 from .models import UpdateCheckStatus, UserPreference, Wallet
@@ -29,4 +30,7 @@ def update_check_status(request):
     """
     if not request.user.is_authenticated or not request.user.is_superuser:
         return {}
-    return {'update_check': UpdateCheckStatus.load()}
+    return {
+        'update_check': UpdateCheckStatus.load(),
+        'portainer_redeploy_configured': bool(settings.PORTAINER_WEBHOOK_URL),
+    }

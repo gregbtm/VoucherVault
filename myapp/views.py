@@ -28,9 +28,11 @@ from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from django.contrib import messages
 from django.utils.timezone import now
+from django.utils.http import url_has_allowed_host_and_scheme
 from .decorators import require_authorization_header_with_api_token
 from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items_by_wallet
 from .merchant_logos import get_cached_balance_check_url, get_cached_logo, get_cached_logos_for_issuers, remember_balance_check_url
+from .portainer import PortainerRedeployError, trigger_redeploy
 from .tasks import fetch_merchant_logo_task
 from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
 from imports.exporters.pkpass import pkpass_enabled
@@ -870,6 +872,33 @@ def regenerate_ics_token(request):
     profile.save(update_fields=['ics_token'])
     messages.success(request, _('Your calendar feed link has been regenerated. Update it in any calendar apps you use.'))
     return redirect('upload_import')
+
+@require_POST
+@login_required
+def trigger_portainer_redeploy(request):
+    """
+    Superuser-only "Redeploy now" button on the update-available banner
+    (see myapp/portainer.py). Deliberately not gated behind an API
+    token/permission class since it's a same-session web UI action, but
+    is_superuser is checked explicitly here rather than relying on the
+    button simply being hidden - the banner's visibility is a template
+    concern, this is the actual authorization check.
+    """
+    if not request.user.is_superuser:
+        messages.error(request, _('Only administrators can trigger a redeploy.'))
+        return redirect('show_items')
+
+    try:
+        trigger_redeploy()
+    except PortainerRedeployError as exc:
+        messages.error(request, _('Redeploy request failed: %(error)s') % {'error': exc})
+    else:
+        messages.success(request, _('Redeploy triggered. The app will restart once Portainer finishes rebuilding.'))
+
+    referer = request.META.get('HTTP_REFERER')
+    if referer and url_has_allowed_host_and_scheme(referer, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return redirect(referer)
+    return redirect('show_items')
 
 @require_GET
 @login_required

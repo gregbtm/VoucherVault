@@ -94,6 +94,9 @@ services:
       - GOOGLE_WALLET_CLASS_ID=${GOOGLE_WALLET_CLASS_ID:-}
       # set to False to disable the periodic GitHub Releases update check
       - UPDATE_CHECK_ENABLED=${UPDATE_CHECK_ENABLED:-True}
+      # set to your Portainer stack's webhook URL to enable the "Redeploy now"
+      # button on the update banner above; see docs/AUTO_DEPLOY.md
+      - PORTAINER_WEBHOOK_URL=${PORTAINER_WEBHOOK_URL:-}
       # set to False to disable the nightly local backup task; see docs/BACKUP_RESTORE.md
       - SCHEDULED_BACKUP_ENABLED=${SCHEDULED_BACKUP_ENABLED:-True}
       # how many backups to keep per user before rotating out the oldest
