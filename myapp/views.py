@@ -31,6 +31,7 @@ from .merchant_logos import get_cached_logo, get_cached_logos_for_issuers
 from .tasks import fetch_merchant_logo_task
 from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
 from imports.exporters.pkpass import pkpass_enabled
+from notify.tasks import notify_balance_changed, notify_item_archived, notify_item_created, notify_item_shared, notify_item_used
 from ocr.backends import ocr_enabled
 from django.db.models import Count, Sum, Q
 from django.db.models.functions import Coalesce
@@ -379,10 +380,12 @@ def view_item(request, item_uuid):
             transaction.item = item
             transaction.save()
             total_value += transaction.value
+            notify_balance_changed(item, transaction)
 
             if total_value <= 0:
                 item.is_used = True
                 item.save()
+                notify_item_used(item)
             return redirect('view_item', item_uuid=item.id)
     else:
         form = TransactionForm(item=item)
@@ -475,6 +478,8 @@ def create_item(request):
                 except Exception:
                     # Best-effort: a broker outage shouldn't block saving the item.
                     logger.warning('Could not queue merchant logo fetch for %r', item.issuer, exc_info=True)
+
+            notify_item_created(item)
 
             return redirect('show_items')
         else:
@@ -740,7 +745,8 @@ def toggle_item_status(request, item_id):
             value=-value_to_remove  # This will be a negative value to reduce the item value
         )
         transaction.save()
-    
+        notify_item_used(item)
+
     item.save()
     return redirect('view_item', item_uuid=item.id)
 
@@ -902,7 +908,9 @@ def share_item_view(request, item_id):
         if selected_users:
             for user_id in selected_users:
                 recipient = User.objects.get(id=user_id)
-                ItemShare.objects.get_or_create(item=item, shared_with_user=recipient, shared_by=request.user)
+                _share, created = ItemShare.objects.get_or_create(item=item, shared_with_user=recipient, shared_by=request.user)
+                if created:
+                    notify_item_shared(item, recipient.username)
             messages.success(request, _('Item shared successfully!'))
         else:
             messages.error(request, _('Please select at least one user to share with.'))
@@ -1102,6 +1110,8 @@ def toggle_archive_item(request, item_uuid):
 
     item.is_archived = not item.is_archived
     item.save(update_fields=['is_archived'])
+    if item.is_archived:
+        notify_item_archived(item)
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({'success': True, 'is_archived': item.is_archived})

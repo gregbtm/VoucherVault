@@ -863,6 +863,73 @@ class ArchivedItemTests(TestCase):
         self.assertEqual(response.context['archived_count'], 1)
 
 
+class WebhookEventWiringTests(TestCase):
+    """
+    Confirms the web UI actually fires the Phase 12.2 lifecycle events at
+    the right transitions — the events themselves are unit-tested in
+    notify/tests.py, this just checks each view calls the right one.
+    """
+
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    @patch('myapp.views.notify_item_created')
+    def test_create_item_fires_item_created(self, mock_notify):
+        response = self.client.post(reverse('create_item'), {
+            'type': 'voucher', 'name': 'New Voucher', 'issuer': 'Shop', 'redeem_code': 'NEW100',
+            'value': '10.00', 'currency': 'GBP', 'code_type': 'qrcode', 'value_type': 'money',
+            'issue_date': date.today().isoformat(),
+        })
+        self.assertRedirects(response, reverse('show_items'))
+        mock_notify.assert_called_once()
+        self.assertEqual(mock_notify.call_args[0][0].name, 'New Voucher')
+
+    @patch('myapp.views.notify_item_used')
+    def test_toggle_item_status_fires_item_used_only_when_marking_used(self, mock_notify):
+        item = make_item(self.alice)
+        self.client.post(reverse('toggle_item_status', args=[item.id]))
+        mock_notify.assert_called_once()
+
+        mock_notify.reset_mock()
+        self.client.post(reverse('toggle_item_status', args=[item.id]))  # toggle back to available
+        mock_notify.assert_not_called()
+
+    @patch('myapp.views.notify_item_archived')
+    def test_toggle_archive_fires_only_when_archiving(self, mock_notify):
+        item = make_item(self.alice)
+        self.client.post(reverse('toggle_archive_item', args=[item.id]))  # archive
+        mock_notify.assert_called_once()
+
+        mock_notify.reset_mock()
+        self.client.post(reverse('toggle_archive_item', args=[item.id]))  # unarchive
+        mock_notify.assert_not_called()
+
+    @patch('myapp.views.notify_balance_changed')
+    def test_adding_transaction_fires_balance_changed(self, mock_notify):
+        item = make_item(self.alice, type='giftcard', value='20.00')
+        self.client.post(reverse('view_item', kwargs={'item_uuid': item.id}), {
+            'description': 'Coffee', 'value': '-5.00',
+        })
+        mock_notify.assert_called_once()
+        self.assertEqual(mock_notify.call_args[0][0], item)
+
+    @patch('myapp.views.notify_item_shared')
+    def test_sharing_item_fires_item_shared(self, mock_notify):
+        item = make_item(self.alice)
+        self.client.post(reverse('share_item', args=[item.id]), {'shared_users': [self.bob.id]})
+        mock_notify.assert_called_once_with(item, 'bob')
+
+    @patch('myapp.views.notify_item_shared')
+    def test_resharing_already_shared_item_does_not_refire(self, mock_notify):
+        item = make_item(self.alice)
+        self.client.post(reverse('share_item', args=[item.id]), {'shared_users': [self.bob.id]})
+        mock_notify.reset_mock()
+        self.client.post(reverse('share_item', args=[item.id]), {'shared_users': [self.bob.id]})
+        mock_notify.assert_not_called()
+
+
 class LastUsedTrackingTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')

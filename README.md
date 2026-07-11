@@ -57,7 +57,7 @@
 
 - 🔌 **Full REST API** — token-authenticated CRUD for every item, wallet, tag and transaction, plus interactive Swagger/OpenAPI docs at `/api/v1/docs/`. Build your own Home Assistant dashboards, scripts, or integrations against it.
 - 🗂️ **Wallets, Tags & Notes** — group items into named wallets ("Travel", "Groceries"), label them with colour-coded tags, and jot a free-text note on any item.
-- 🔔 **Rules-based notification engine** — ntfy, generic webhooks, Apprise, and native browser **Web Push**, each configurable per item with its own expiry threshold and a full delivery log so you can see exactly what fired and when.
+- 🔔 **Rules-based notification engine** — ntfy, generic webhooks, Apprise, and native browser **Web Push**, each configurable per item with its own expiry threshold and a full delivery log so you can see exactly what fired and when. Beyond expiry warnings, rules can also fire on an item being created, marked used, archived, shared, or having a transaction recorded against it — handy for wiring VoucherVault into n8n, Home Assistant, or any other webhook-driven automation.
 - 📲 **Web Push notifications** — real browser/OS push alerts for expiring items straight from the installed PWA, no third-party relay required beyond the browser vendor's own push service (opt-in, requires VAPID keys — generate a pair with one command).
 - 📥 **Import & Export** — bulk-import your existing vault from a Catima CSV export or this app's own CSV/JSON, and export everything back out for backups or migration, processed in the background with per-row error reporting.
 - 📊 **Analytics dashboard** — KPI tiles, an expiry calendar heatmap, and a live "value at risk" figure so nothing quietly expires unnoticed.
