@@ -726,3 +726,68 @@ class PkpassApiTests(APITestCase):
         bob_item = make_item(self.bob, redeem_code='BOBCODE')
         response = self.client.get(f'/api/v1/items/{bob_item.id}/pkpass/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class SharedWalletApiTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.carol = User.objects.create_user(username='carol', password='pw12345!')
+        self.wallet = Wallet.objects.create(user=self.alice, name='Family')
+        self.wallet.shared_with.add(self.bob)
+        self.item = make_item(self.alice, wallet=self.wallet)
+
+    def test_collaborator_sees_shared_wallet_and_its_items(self):
+        self.client.force_authenticate(user=self.bob)
+        wallet_response = self.client.get(f'/api/v1/wallets/{self.wallet.id}/')
+        self.assertEqual(wallet_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(wallet_response.data['is_owner'])
+
+        item_response = self.client.get(f'/api/v1/items/{self.item.id}/')
+        self.assertEqual(item_response.status_code, status.HTTP_200_OK)
+
+    def test_outsider_cannot_see_shared_wallet_or_its_items(self):
+        self.client.force_authenticate(user=self.carol)
+        self.assertEqual(
+            self.client.get(f'/api/v1/wallets/{self.wallet.id}/').status_code, status.HTTP_404_NOT_FOUND
+        )
+        self.assertEqual(
+            self.client.get(f'/api/v1/items/{self.item.id}/').status_code, status.HTTP_404_NOT_FOUND
+        )
+
+    def test_collaborator_can_edit_and_delete_item_in_shared_wallet(self):
+        self.client.force_authenticate(user=self.bob)
+        patch_response = self.client.patch(f'/api/v1/items/{self.item.id}/', {'name': 'Renamed'})
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK, patch_response.data)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.name, 'Renamed')
+
+        delete_response = self.client.delete(f'/api/v1/items/{self.item.id}/')
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_collaborator_cannot_modify_wallet_itself(self):
+        self.client.force_authenticate(user=self.bob)
+        response = self.client.patch(f'/api/v1/wallets/{self.wallet.id}/', {'name': 'Renamed'})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_owner_can_invite_and_revoke_via_share_action(self):
+        self.client.force_authenticate(user=self.alice)
+        invite_response = self.client.post(f'/api/v1/wallets/{self.wallet.id}/share/', {'username': 'carol'})
+        self.assertEqual(invite_response.status_code, status.HTTP_201_CREATED, invite_response.data)
+        self.assertIn(self.carol, self.wallet.shared_with.all())
+
+        revoke_response = self.client.delete(f'/api/v1/wallets/{self.wallet.id}/share/{self.carol.id}/')
+        self.assertEqual(revoke_response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertNotIn(self.carol, self.wallet.shared_with.all())
+
+    def test_collaborator_cannot_invite_others(self):
+        self.client.force_authenticate(user=self.bob)
+        response = self.client.post(f'/api/v1/wallets/{self.wallet.id}/share/', {'username': 'carol'})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn(self.carol, self.wallet.shared_with.all())
+
+    def test_wallet_items_action_lists_all_collaborators_items(self):
+        self.client.force_authenticate(user=self.bob)
+        response = self.client.get(f'/api/v1/wallets/{self.wallet.id}/items/')
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['id'], str(self.item.id))

@@ -8,15 +8,23 @@ from django.utils.translation import gettext_lazy as _
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'apprise_urls')
 
+class DocumentInline(admin.TabularInline):
+    model = Document
+    extra = 0
+    readonly_fields = ('uploaded_at',)
+
+
 class ItemAdmin(admin.ModelAdmin):
     # Specify the fields to display in the list view
     list_display = ('name', 'type', 'issuer', 'issue_date', 'expiry_date', 'value', 'is_used', 'user')
-    
+
     # Specify the fields to search by
     search_fields = ('name', 'type', 'issuer', 'user__username')
-    
+
     # Specify the filters to use in the list view
     list_filter = ('type', 'is_used', 'issue_date', 'expiry_date', 'user')
+
+    inlines = [DocumentInline]
 
 
 class AppSettingsAdmin(admin.ModelAdmin):
@@ -70,6 +78,13 @@ class WalletAdmin(admin.ModelAdmin):
     list_display = ('name', 'user', 'created_at')
     search_fields = ('name', 'user__username')
     list_filter = ('user',)
+    filter_horizontal = ('shared_with',)
+
+
+class DocumentAdmin(admin.ModelAdmin):
+    list_display = ('__str__', 'item', 'uploaded_at')
+    search_fields = ('item__name', 'item__user__username')
+    list_filter = ('uploaded_at',)
 
 class TagAdmin(admin.ModelAdmin):
     list_display = ('name', 'user', 'color')
@@ -82,3 +97,4 @@ admin.site.register(AppSettings, AppSettingsAdmin)
 admin.site.register(UserPreference, UserPreferenceAdmin)
 admin.site.register(Wallet, WalletAdmin)
 admin.site.register(Tag, TagAdmin)
+admin.site.register(Document, DocumentAdmin)

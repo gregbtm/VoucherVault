@@ -18,12 +18,13 @@
 > [!NOTE]
 > This is [gregbtm](https://github.com/gregbtm)'s fork of the upstream
 > [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault) project.
-> Nine phases of additive features have been layered on top without
+> Ten phases of additive features have been layered on top without
 > touching upstream's own code: a full **REST API**, **Wallets/Tags/Notes**,
 > a rules-based **notification engine** (ntfy, webhook, Apprise, and native
 > **Web Push**), bulk **Import/Export**, an **Analytics dashboard**,
 > **auto-fetched merchant logos**, an AI-assisted **"Scan with AI"** photo
-> capture, and **Apple Wallet export**.
+> capture, **Apple Wallet export**, **document attachments**, **shared
+> (multi-user) wallets**, and **native OS/browser sharing**.
 > See [`FORK_CHANGES.md`](FORK_CHANGES.md) for the full changelog, the
 > [Wiki](https://github.com/gregbtm/VoucherVault/wiki) for feature-by-feature guides, and
 > [`docs/UPGRADE.md`](docs/UPGRADE.md) if you're already running the
@@ -58,6 +59,9 @@
 - 🏷️ **Auto-fetched merchant logos** — item cards get real brand logos automatically (fetched and cached in the background), so page loads never wait on a network call.
 - 🤖 **AI-assisted "Scan with AI"** — snap a photo of a physical voucher, coupon, or gift card and let Claude's vision model (or a fully local, free Tesseract OCR backend) pre-fill the redeem code, merchant, and expiry date for you.
 - 🍏 **Apple Wallet export** — download a signed `.pkpass` for any item and add it straight to Apple Wallet, built entirely in-process with no external signing service (opt-in, requires your own Apple Developer certificate).
+- 📎 **Document attachments** — attach receipts and proof-of-purchase files to any item, upload/view/delete right from the item detail page.
+- 🤝 **Shared (multi-user) wallets** — invite another user by username to collaborate on a wallet; they get full read/write on every item inside it, no admin access required.
+- 📤 **Native OS/browser sharing** — a "Share via..." button on every item hands it off to your device's native share sheet (Messages, Mail, AirDrop, etc.), with a clipboard-copy fallback on desktop.
 
 ## 📷 Screenshots
 

@@ -120,6 +120,10 @@ body.dark-mode .sidebar-nav .nav-link.collapsed {
   color: #8b949e;
 }
 
+body.dark-mode .sidebar-nav .nav-item.sidebar-footer-item {
+  border-top-color: #30363d;
+}
+
 body.dark-mode .sidebar-nav .nav-link:hover,
 body.dark-mode .sidebar-nav .nav-link:not(.collapsed):hover {
   background: #21262d;

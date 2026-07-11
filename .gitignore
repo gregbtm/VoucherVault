@@ -23,6 +23,7 @@ venv/
 # ignore file uploads
 database/uploads/
 database/imports/
+database/documents/
 
 # ignore signed licenses
 **license.txt

@@ -49,6 +49,15 @@
   }
 
   /**
+   * Close the mobile sidebar when the backdrop behind it is tapped
+   */
+  if (select('#sidebar-overlay')) {
+    on('click', '#sidebar-overlay', function(e) {
+      select('body').classList.remove('toggle-sidebar')
+    })
+  }
+
+  /**
    * Search bar toggle
    */
   if (select('.search-bar-toggle')) {

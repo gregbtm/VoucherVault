@@ -17,17 +17,28 @@ _UNSET = object()
 
 class WalletSerializer(serializers.ModelSerializer):
     item_count = serializers.SerializerMethodField(read_only=True)
+    is_owner = serializers.SerializerMethodField(read_only=True)
+    shared_with_usernames = serializers.SlugRelatedField(
+        source='shared_with', slug_field='username', many=True, read_only=True
+    )
 
     class Meta:
         model = Wallet
-        fields = ['id', 'name', 'description', 'icon', 'color', 'item_count', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'item_count', 'created_at', 'updated_at']
+        fields = [
+            'id', 'name', 'description', 'icon', 'color', 'item_count',
+            'is_owner', 'shared_with_usernames', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'item_count', 'is_owner', 'shared_with_usernames', 'created_at', 'updated_at']
 
     def get_item_count(self, wallet) -> int:
         # Uses the queryset's annotation when present (list/retrieve); falls
         # back to a live count otherwise (e.g. right after create/update).
         count = getattr(wallet, 'item_count', None)
         return count if count is not None else wallet.items.count()
+
+    def get_is_owner(self, wallet) -> bool:
+        request = self.context.get('request')
+        return bool(request) and wallet.user_id == request.user.id
 
     def validate_name(self, name):
         request = self.context['request']

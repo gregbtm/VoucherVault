@@ -2,6 +2,7 @@ from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+import os
 import uuid
 from django.core.validators import RegexValidator
 
@@ -73,6 +74,12 @@ class Wallet(models.Model):
     User-defined folder for grouping items (e.g. "Supermarkets", "Travel").
     """
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='wallets')
+    shared_with = models.ManyToManyField(
+        User,
+        blank=True,
+        related_name='shared_wallets',
+        help_text="Other users who can view and manage items in this wallet.",
+    )
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     icon = models.CharField(max_length=50, blank=True, default='bi-wallet2')
@@ -198,6 +205,29 @@ class Item(models.Model):
 
     def __str__(self):
         return self.name
+
+def document_upload_path(instance, filename):
+    safe_name = os.path.basename(filename)
+    username = str(instance.item.user)
+    return f"database/documents/{username}/{instance.item.id}_{uuid.uuid4().hex}_{safe_name}"
+
+
+class Document(models.Model):
+    """
+    A receipt or proof-of-purchase attached to an item. Distinct from
+    Item.file (the voucher's own scanned image/PDF): an item can have any
+    number of supporting documents.
+    """
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='documents')
+    file = models.FileField(upload_to=document_upload_path)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return os.path.basename(self.file.name)
+
 
 class ItemShare(models.Model):
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='shared_with')

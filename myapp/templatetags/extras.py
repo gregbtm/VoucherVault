@@ -50,6 +50,12 @@ def is_image_file(filename):
         return False
     return bool(re.search(r'\.(jpg|jpeg|png)$', filename.lower()))
 
+@register.filter
+def basename(path):
+    if not path:
+        return ''
+    return os.path.basename(str(path))
+
 
 def clamp(value, min_value=0, max_value=255):
     return max(min_value, min(value, max_value))

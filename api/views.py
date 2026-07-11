@@ -1,7 +1,8 @@
 import json
 import logging
 
-from django.db.models import Count
+from django.contrib.auth.models import User
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils.translation import gettext_lazy as _
@@ -30,7 +31,7 @@ from notify.tasks import send_test_notification
 from ocr.backends import get_backend, ocr_enabled
 
 from .filters import ItemFilter
-from .permissions import IsOwner
+from .permissions import IsItemOwnerOrWalletCollaborator, IsOwner, IsWalletOwnerOrReadOnlyCollaborator
 from .serializers import (
     ImportJobSerializer,
     ItemSerializer,
@@ -56,12 +57,13 @@ OCR_ALLOWED_CONTENT_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
 class ItemViewSet(viewsets.ModelViewSet):
     """
     Full CRUD for the authenticated user's items, plus /redeem/, /transactions/
-    and /shares/ sub-resources. Every queryset below is scoped to
-    `user=request.user` — no item belonging to another user is ever
-    reachable through this API, even by UUID guessing.
+    and /shares/ sub-resources. Every queryset below is scoped to items
+    `user=request.user` owns, plus items in wallets shared with them — no
+    item outside either of those is ever reachable through this API, even
+    by UUID guessing.
     """
     serializer_class = ItemSerializer
-    permission_classes = [IsAuthenticated, IsOwner]
+    permission_classes = [IsAuthenticated, IsItemOwnerOrWalletCollaborator]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = ItemFilter
     search_fields = ['name', 'redeem_code', 'issuer', 'description']
@@ -71,7 +73,9 @@ class ItemViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return Item.objects.none()
-        return Item.objects.filter(user=self.request.user).select_related('wallet').prefetch_related('transactions', 'tags')
+        return Item.objects.filter(
+            Q(user=self.request.user) | Q(wallet__shared_with=self.request.user)
+        ).distinct().select_related('wallet').prefetch_related('transactions', 'tags')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user, source='api')
@@ -138,14 +142,22 @@ class ItemViewSet(viewsets.ModelViewSet):
 
 
 class WalletViewSet(viewsets.ModelViewSet):
-    """Full CRUD for the authenticated user's wallets, plus /items/ sub-resource."""
+    """
+    Full CRUD for the authenticated user's wallets, plus /items/ and
+    /share/ sub-resources. The queryset includes wallets shared with the
+    user; IsWalletOwnerOrReadOnlyCollaborator restricts collaborators to
+    read-only access on the wallet object itself (they get full read/write
+    on the items inside it via ItemViewSet).
+    """
     serializer_class = WalletSerializer
-    permission_classes = [IsAuthenticated, IsOwner]
+    permission_classes = [IsAuthenticated, IsWalletOwnerOrReadOnlyCollaborator]
 
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return Wallet.objects.none()
-        return Wallet.objects.filter(user=self.request.user).annotate(item_count=Count('items')).order_by('name')
+        return Wallet.objects.filter(
+            Q(user=self.request.user) | Q(shared_with=self.request.user)
+        ).distinct().annotate(item_count=Count('items')).order_by('name')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -153,12 +165,42 @@ class WalletViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def items(self, request, pk=None):
         wallet = self.get_object()
-        items = Item.objects.filter(user=request.user, wallet=wallet).select_related('wallet').prefetch_related('tags').order_by('expiry_date')
+        items = Item.objects.filter(wallet=wallet).select_related('wallet').prefetch_related('tags').order_by('expiry_date')
         page = self.paginate_queryset(items)
         serializer = ItemSerializer(page if page is not None else items, many=True, context={'request': request})
         if page is not None:
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['get', 'post'], url_path='share')
+    def share(self, request, pk=None):
+        """Owner-only: list collaborators (GET) or invite one by username (POST)."""
+        wallet = self.get_object()
+        if wallet.user_id != request.user.id:
+            return Response({'detail': _('Only the wallet owner can manage sharing.')}, status=status.HTTP_403_FORBIDDEN)
+
+        if request.method == 'POST':
+            username = request.data.get('username', '').strip()
+            try:
+                collaborator = User.objects.get(username=username)
+            except User.DoesNotExist:
+                return Response({'detail': _('No user with that username exists.')}, status=status.HTTP_400_BAD_REQUEST)
+            if collaborator.id == wallet.user_id:
+                return Response({'detail': _('You already own this wallet.')}, status=status.HTTP_400_BAD_REQUEST)
+            wallet.shared_with.add(collaborator)
+            return Response({'username': collaborator.username}, status=status.HTTP_201_CREATED)
+
+        return Response([u.username for u in wallet.shared_with.all()])
+
+    @action(detail=True, methods=['delete'], url_path=r'share/(?P<user_id>\d+)')
+    def unshare(self, request, pk=None, user_id=None):
+        """Owner-only: revoke a collaborator's access."""
+        wallet = self.get_object()
+        if wallet.user_id != request.user.id:
+            return Response({'detail': _('Only the wallet owner can manage sharing.')}, status=status.HTTP_403_FORBIDDEN)
+        collaborator = get_object_or_404(User, id=user_id)
+        wallet.shared_with.remove(collaborator)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class TagViewSet(viewsets.ModelViewSet):

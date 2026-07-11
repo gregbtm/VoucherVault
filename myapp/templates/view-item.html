@@ -309,6 +309,18 @@ a.action-btn-secondary:hover {
   color: white !important;
 }
 
+.action-btn-info,
+a.action-btn-info {
+  background: #0dcaf0;
+  color: #000 !important;
+}
+
+.action-btn-info:hover,
+a.action-btn-info:hover {
+  background: #31d2f2;
+  color: #000 !important;
+}
+
 /* QR Section */
 .qr-section {
   position: sticky;
@@ -561,8 +573,9 @@ a.action-btn-secondary:hover {
   }
 }
 
-/* Shared Users */
-.shared-users-card {
+/* Shared Users / Documents */
+.shared-users-card,
+.documents-card {
   background: var(--card-bg, #fff);
   border-radius: 12px;
   padding: 1.25rem;
@@ -570,7 +583,8 @@ a.action-btn-secondary:hover {
   margin-top: 1.5rem;
 }
 
-.shared-users-card h5 {
+.shared-users-card h5,
+.documents-card h5 {
   font-size: 0.9rem;
   font-weight: 600;
   margin-bottom: 1rem;
@@ -1123,8 +1137,8 @@ body.dark-mode .action-btn-secondary:hover {
           </div>
           {% endif %}
 
-          <!-- Action Buttons (Owner only) -->
-          {% if is_owner %}
+          <!-- Action Buttons (owner or shared-wallet collaborator) -->
+          {% if can_edit %}
           <div class="action-buttons">
             <a href="{% url 'edit_item' item.id %}" class="action-btn action-btn-primary">
               <i class="bi bi-pencil"></i> {% trans "Edit" %}
@@ -1132,9 +1146,16 @@ body.dark-mode .action-btn-secondary:hover {
             <a href="{% url 'duplicate_item' item.id %}" class="action-btn action-btn-secondary">
               <i class="bi bi-copy"></i> {% trans "Duplicate" %}
             </a>
+            <button type="button" class="action-btn action-btn-info share-voucher-btn"
+                    data-title="{{ item.name }}" data-merchant="{{ item.issuer }}"
+                    data-url="{{ request.build_absolute_uri }}">
+              <i class="bi bi-send"></i> {% trans "Share via..." %}
+            </button>
+            {% if is_owner %}
             <a href="{% url 'share_item' item.id %}" class="action-btn action-btn-success">
               <i class="bi bi-share"></i> {% trans "Share" %}
             </a>
+            {% endif %}
             {% if pkpass_enabled %}
             <a href="{% url 'item-pkpass' item.id %}" class="action-btn action-btn-secondary">
               <i class="bi bi-wallet2"></i> {% trans "Add to Apple Wallet" %}
@@ -1156,8 +1177,48 @@ body.dark-mode .action-btn-secondary:hover {
               </button>
             </form>
           </div>
+          {% else %}
+          <div class="action-buttons">
+            <button type="button" class="action-btn action-btn-info share-voucher-btn"
+                    data-title="{{ item.name }}" data-merchant="{{ item.issuer }}"
+                    data-url="{{ request.build_absolute_uri }}">
+              <i class="bi bi-send"></i> {% trans "Share via..." %}
+            </button>
+          </div>
           {% endif %}
-          
+
+          <!-- Documents / Receipts -->
+          <div class="documents-card">
+            <h5><i class="bi bi-paperclip"></i> {% trans "Receipts & Documents" %}</h5>
+            {% for document in item.documents.all %}
+            <div class="shared-user-item">
+              <a href="{% url 'download_document' document.id %}" class="shared-user-info">
+                <i class="bi bi-file-earmark-text"></i> {{ document.file.name|basename }}
+                <small class="text-muted">({{ document.uploaded_at|date:"Y-m-d H:i" }})</small>
+              </a>
+              {% if can_edit %}
+              <form method="POST" action="{% url 'delete_document' document.id %}" style="display:inline;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger unshare-btn" onclick="return confirm('{% trans "Delete this document?" %}');">
+                  {% trans "Delete" %}
+                </button>
+              </form>
+              {% endif %}
+            </div>
+            {% empty %}
+            <p class="text-muted mb-0">{% trans "No receipts or documents attached yet." %}</p>
+            {% endfor %}
+            {% if can_edit %}
+            <form method="POST" action="{% url 'upload_document' item.id %}" enctype="multipart/form-data" class="mt-3 d-flex gap-2 align-items-center">
+              {% csrf_token %}
+              {{ document_form.file }}
+              <button type="submit" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-upload"></i> {% trans "Upload" %}
+              </button>
+            </form>
+            {% endif %}
+          </div>
+
           <!-- Shared Users Section (Owner only) -->
           {% if is_owner and is_shared %}
           <div class="shared-users-card">
@@ -1210,7 +1271,7 @@ body.dark-mode .action-btn-secondary:hover {
       {% endif %}
       
       <!-- Transaction History (Gift Cards only) -->
-      {% if is_owner and item.type == 'giftcard' %}
+      {% if can_edit and item.type == 'giftcard' %}
       <div class="transaction-card">
         <div class="transaction-header">
           <h5><i class="bi bi-receipt"></i> {% trans "Transaction History" %}</h5>
