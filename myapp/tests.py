@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import date, timedelta
 from decimal import Decimal
@@ -1360,3 +1361,141 @@ class IcsFeedViewTests(TestCase):
     def test_regenerate_token_requires_login(self):
         response = self.client.post(reverse('regenerate_ics_token'))
         self.assertEqual(response.status_code, 302)
+
+
+class BulkActionsTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.other = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+        self.item1 = make_item(self.user, name='Item One')
+        self.item2 = make_item(self.user, name='Item Two')
+        self.item3 = make_item(self.user, name='Item Three')
+
+    def _post(self, url_name, payload):
+        return self.client.post(
+            reverse(url_name), data=json.dumps(payload), content_type='application/json',
+        )
+
+    # ---- archive ----
+
+    def test_bulk_archive_archives_selected_items(self):
+        response = self._post('bulk_archive_items', {'item_ids': [str(self.item1.id), str(self.item2.id)]})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['processed'], 2)
+
+        self.item1.refresh_from_db()
+        self.item2.refresh_from_db()
+        self.item3.refresh_from_db()
+        self.assertTrue(self.item1.is_archived)
+        self.assertTrue(self.item2.is_archived)
+        self.assertFalse(self.item3.is_archived)
+
+    def test_bulk_archive_skips_already_archived_items(self):
+        self.item1.is_archived = True
+        self.item1.save(update_fields=['is_archived'])
+
+        response = self._post('bulk_archive_items', {'item_ids': [str(self.item1.id), str(self.item2.id)]})
+
+        self.assertEqual(response.json()['processed'], 1)
+
+    @patch('myapp.views.notify_item_archived')
+    def test_bulk_archive_notifies_once_per_newly_archived_item(self, mock_notify):
+        self._post('bulk_archive_items', {'item_ids': [str(self.item1.id), str(self.item2.id)]})
+        self.assertEqual(mock_notify.call_count, 2)
+
+    # ---- delete ----
+
+    def test_bulk_delete_removes_items(self):
+        response = self._post('bulk_delete_items', {'item_ids': [str(self.item1.id), str(self.item2.id)]})
+        self.assertEqual(response.json()['processed'], 2)
+        self.assertFalse(Item.objects.filter(pk=self.item1.pk).exists())
+        self.assertFalse(Item.objects.filter(pk=self.item2.pk).exists())
+        self.assertTrue(Item.objects.filter(pk=self.item3.pk).exists())
+
+    # ---- tag ----
+
+    def test_bulk_tag_creates_and_assigns_tags(self):
+        response = self._post('bulk_tag_items', {
+            'item_ids': [str(self.item1.id), str(self.item2.id)], 'tags': 'sale, food',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['processed'], 2)
+
+        self.assertEqual(set(self.item1.tags.values_list('name', flat=True)), {'sale', 'food'})
+        self.assertEqual(set(self.item2.tags.values_list('name', flat=True)), {'sale', 'food'})
+        self.assertEqual(Tag.objects.filter(user=self.user).count(), 2)
+
+    def test_bulk_tag_reuses_existing_tag(self):
+        Tag.objects.create(user=self.user, name='sale')
+        self._post('bulk_tag_items', {'item_ids': [str(self.item1.id)], 'tags': 'sale'})
+        self.assertEqual(Tag.objects.filter(user=self.user, name='sale').count(), 1)
+
+    def test_bulk_tag_requires_tags_param(self):
+        response = self._post('bulk_tag_items', {'item_ids': [str(self.item1.id)], 'tags': ''})
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()['success'])
+
+    # ---- move to wallet ----
+
+    def test_bulk_move_assigns_wallet(self):
+        wallet = Wallet.objects.create(user=self.user, name='Travel')
+        response = self._post('bulk_move_items', {
+            'item_ids': [str(self.item1.id), str(self.item2.id)], 'wallet_id': wallet.id,
+        })
+        self.assertEqual(response.json()['processed'], 2)
+        self.item1.refresh_from_db()
+        self.item2.refresh_from_db()
+        self.assertEqual(self.item1.wallet, wallet)
+        self.assertEqual(self.item2.wallet, wallet)
+
+    def test_bulk_move_to_no_wallet_clears_wallet(self):
+        wallet = Wallet.objects.create(user=self.user, name='Travel')
+        self.item1.wallet = wallet
+        self.item1.save(update_fields=['wallet'])
+
+        self._post('bulk_move_items', {'item_ids': [str(self.item1.id)], 'wallet_id': None})
+
+        self.item1.refresh_from_db()
+        self.assertIsNone(self.item1.wallet)
+
+    def test_bulk_move_rejects_wallet_not_owned_or_shared(self):
+        others_wallet = Wallet.objects.create(user=self.other, name='Bobs Wallet')
+        response = self._post('bulk_move_items', {'item_ids': [str(self.item1.id)], 'wallet_id': others_wallet.id})
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()['success'])
+        self.item1.refresh_from_db()
+        self.assertIsNone(self.item1.wallet)
+
+    def test_bulk_move_allows_wallet_shared_with_user(self):
+        shared_wallet = Wallet.objects.create(user=self.other, name='Shared Wallet')
+        shared_wallet.shared_with.add(self.user)
+
+        response = self._post('bulk_move_items', {'item_ids': [str(self.item1.id)], 'wallet_id': shared_wallet.id})
+
+        self.assertEqual(response.json()['processed'], 1)
+        self.item1.refresh_from_db()
+        self.assertEqual(self.item1.wallet, shared_wallet)
+
+    # ---- permission scoping ----
+
+    def test_bulk_actions_skip_items_user_cannot_access(self):
+        others_item = make_item(self.other, name='Bobs Item')
+
+        response = self._post('bulk_archive_items', {'item_ids': [str(self.item1.id), str(others_item.id)]})
+
+        self.assertEqual(response.json()['processed'], 1)
+        self.assertEqual(response.json()['skipped'], 1)
+        others_item.refresh_from_db()
+        self.assertFalse(others_item.is_archived)
+
+    # ---- auth/method requirements ----
+
+    def test_bulk_actions_require_login(self):
+        self.client.logout()
+        response = self._post('bulk_archive_items', {'item_ids': [str(self.item1.id)]})
+        self.assertEqual(response.status_code, 302)
+
+    def test_bulk_actions_require_post(self):
+        response = self.client.get(reverse('bulk_archive_items'))
+        self.assertEqual(response.status_code, 405)

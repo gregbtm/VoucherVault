@@ -666,6 +666,43 @@ case.
   auth requirement, and that regenerating actually invalidates the old
   URL).
 
+## Phase 14.5 — Bulk actions on Inventory
+
+Checkbox multi-select on the Inventory page with a sticky action bar for
+archive/delete/tag/move-to-wallet, so re-organizing a batch of items
+doesn't mean opening each one individually.
+
+- New **Select** toggle button next to the existing Compact-view toggle.
+  Turning it on adds a checkbox to every item card (swapping out the
+  existing pin/share buttons in that same top-left/top-right corner
+  real estate, which aren't useful mid-selection) and makes clicking
+  anywhere on a card toggle its selection instead of navigating to the
+  item. A sticky bottom action bar (mirroring the existing fixed-position
+  offline banner) appears once at least one item is selected, showing the
+  count and Archive / Tag / Move to Wallet / Delete / Cancel.
+- Four new "thin" endpoints in `myapp/views.py` — `bulk_archive_items`,
+  `bulk_delete_items`, `bulk_tag_items`, `bulk_move_items` — each is a
+  loop over the *exact* same per-item logic the existing single-item
+  views already use (the same `is_archived`/`notify_item_archived` pair
+  from `toggle_archive_item`, the same file-cleanup-then-`delete()` from
+  `delete_item`, the same `Tag.objects.get_or_create` + `item.tags.add`
+  `edit_item` uses for its `new_tags` field, the same
+  `Wallet.objects.filter(Q(user=...) | Q(shared_with=...))` scoping
+  `ItemForm` uses for its wallet field) — no new business logic, just
+  batching. All four take `{"item_ids": [...]}` (plus `tags`/`wallet_id`
+  where relevant) as a JSON POST body and gate every item through the
+  same `has_item_access()` check every other item action already uses -
+  an item the user can't access is silently skipped, not a hard failure
+  for the whole batch, matching how sharing/wallet-collaboration access
+  already works elsewhere.
+- New tests: `BulkActionsTests` — archiving (including the
+  already-archived no-op case and one `notify_item_archived` call per
+  newly-archived item), deletion, tagging (dedup against an existing tag,
+  the empty-input rejection), wallet moves (assign, clear, reject a
+  wallet you don't own/share, accept one shared with you), permission
+  scoping across users, and the login/method requirements on all four
+  endpoints.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

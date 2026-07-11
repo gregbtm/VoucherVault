@@ -1178,8 +1178,81 @@ def toggle_archive_item(request, item_uuid):
     return redirect('view_item', item_uuid=item.id)
 
 
+def _bulk_selected_items(request):
+    """
+    Parses {"item_ids": [...]} from a JSON POST body. Items the user
+    doesn't have access to are silently skipped rather than failing the
+    whole batch - the same has_item_access gate every single-item action
+    already uses. Returns (accessible_items, skipped_count, body_dict).
+    """
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, TypeError):
+        data = {}
+    item_ids = data.get('item_ids') or []
+    items = list(Item.objects.filter(id__in=item_ids))
+    accessible = [item for item in items if has_item_access(item, request.user)]
+    skipped = len(item_ids) - len(accessible)
+    return accessible, skipped, data
+
 @require_POST
-@login_required  
+@login_required
+def bulk_archive_items(request):
+    """Same is_archived + notify_item_archived logic as toggle_archive_item, looped over a selection."""
+    items, skipped, _data = _bulk_selected_items(request)
+    processed = 0
+    for item in items:
+        if not item.is_archived:
+            item.is_archived = True
+            item.save(update_fields=['is_archived'])
+            notify_item_archived(item)
+            processed += 1
+    return JsonResponse({'success': True, 'processed': processed, 'skipped': skipped})
+
+@require_POST
+@login_required
+def bulk_delete_items(request):
+    """Same file-cleanup + delete logic as delete_item, looped over a selection."""
+    items, skipped, _data = _bulk_selected_items(request)
+    for item in items:
+        if item.file and os.path.isfile(item.file.path):
+            os.remove(item.file.path)
+        item.delete()
+    return JsonResponse({'success': True, 'processed': len(items), 'skipped': skipped})
+
+@require_POST
+@login_required
+def bulk_tag_items(request):
+    """Same Tag.get_or_create + item.tags.add logic edit_item uses for its new_tags field."""
+    items, skipped, data = _bulk_selected_items(request)
+    tag_names = [name.strip() for name in (data.get('tags') or '').split(',') if name.strip()]
+    if not tag_names:
+        return JsonResponse({'success': False, 'message': _('No tags provided.')}, status=400)
+
+    tags = [Tag.objects.get_or_create(user=request.user, name=name)[0] for name in tag_names]
+    for item in items:
+        item.tags.add(*tags)
+    return JsonResponse({'success': True, 'processed': len(items), 'skipped': skipped})
+
+@require_POST
+@login_required
+def bulk_move_items(request):
+    """Same wallet assignment + scoping ItemForm already does (own wallets or ones shared with you)."""
+    items, skipped, data = _bulk_selected_items(request)
+    wallet_id = data.get('wallet_id')
+    wallet = None
+    if wallet_id:
+        wallet = Wallet.objects.filter(Q(user=request.user) | Q(shared_with=request.user), pk=wallet_id).distinct().first()
+        if wallet is None:
+            return JsonResponse({'success': False, 'message': _('Wallet not found.')}, status=400)
+
+    for item in items:
+        item.wallet = wallet
+        item.save(update_fields=['wallet'])
+    return JsonResponse({'success': True, 'processed': len(items), 'skipped': skipped})
+
+@require_POST
+@login_required
 def toggle_view_mode(request):
     """Toggle between compact and standard view modes"""
     preferences, _ = UserPreference.objects.get_or_create(user=request.user)
