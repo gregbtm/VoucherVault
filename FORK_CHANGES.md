@@ -208,6 +208,32 @@ scoping notes in the project history for what was deliberately left out).
   tag is shown), and the selection is preserved when you switch status/
   type filters alongside it.
 
+## Google Wallet export
+
+A one-tap "Add to Google Wallet" link alongside the existing Apple Wallet
+export, using the same self-contained pattern: the pass class and object
+are embedded directly in a signed JWT (RS256, via the `cryptography`
+library already used for `.pkpass` signing — no new dependency), so
+Google creates the pass the first time a user follows the link. No live
+API call is needed to provision anything ahead of time.
+
+- Every item type maps onto Google's Generic pass type (`GENERIC_LOYALTY_CARD`
+  for loyalty cards, `GENERIC_VOUCHER` for vouchers/coupons, `GENERIC_OTHER`
+  for gift cards), so only a single pass class needs to be registered
+  regardless of how many kinds of items you have — no per-type provisioning.
+- The item detail page shows **only one** wallet button per visit: the
+  Apple Wallet link on Safari on an Apple device, the Google Wallet link on
+  Android or a Chromium desktop browser, and neither on anything else. This
+  is a client-side check (`navigator.userAgent`/`platform`/`maxTouchPoints`)
+  purely to avoid showing a button the visiting device can't use — both
+  links still work if opened directly regardless of device.
+- New `items/{id}/google-wallet/` API endpoint (mirrors the existing
+  `items/{id}/pkpass/` one) returning `{"save_url": "..."}`; 501 if not
+  configured, 503 if link generation fails.
+- Opt-in and off by default — requires your own Google Cloud service
+  account with access to a Google Wallet API issuer account. See
+  `docker/env.example` for setup.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
@@ -226,6 +252,9 @@ On top of everything documented in the README, this fork adds:
 | `PKPASS_TEAM_ID` | Your Apple Developer Team ID. Required if `PKPASS_CERT_PATH` is set. | `None` |
 | `PKPASS_PASS_TYPE_ID` | Your registered Pass Type ID. Required if `PKPASS_CERT_PATH` is set. | `None` |
 | `PKPASS_ORGANIZATION_NAME` | Organization name shown on the generated pass. | `VoucherVault` |
+| `GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH` | Path to your Google Wallet API service account JSON key. Enables Google Wallet export when set along with the issuer ID below. | `None` |
+| `GOOGLE_WALLET_ISSUER_ID` | Your Google Wallet API issuer ID. Required if `GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH` is set. | `None` |
+| `GOOGLE_WALLET_CLASS_ID` | Optional override for the generic pass class ID. | `<issuer id>.vouchervault_generic` |
 | `WEBPUSH_VAPID_PUBLIC_KEY` | VAPID public key. Enables the Web Push backend when set along with the private key below. | `None` |
 | `WEBPUSH_VAPID_PRIVATE_KEY` | VAPID private key. Generate a pair with `python manage.py generate_vapid_keys`. | `None` |
 | `WEBPUSH_VAPID_CLAIMS_EMAIL` | Contact email sent to push services as the VAPID claim. | `mailto:admin@example.com` |

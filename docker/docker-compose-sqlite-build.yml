@@ -36,6 +36,11 @@ services:
       #- PKPASS_TEAM_ID=${PKPASS_TEAM_ID}
       #- PKPASS_PASS_TYPE_ID=${PKPASS_PASS_TYPE_ID}
       #- PKPASS_ORGANIZATION_NAME=${PKPASS_ORGANIZATION_NAME:-VoucherVault}
+      # ------- OPTIONAL GOOGLE WALLET EXPORT --------
+      # set both of these (and mount the service account key below) to enable Google Wallet export
+      #- GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH=/opt/app/google-wallet/key.json
+      #- GOOGLE_WALLET_ISSUER_ID=${GOOGLE_WALLET_ISSUER_ID}
+      #- GOOGLE_WALLET_CLASS_ID=${GOOGLE_WALLET_CLASS_ID}
     expose:
       - 8000
     ports:
@@ -44,6 +49,8 @@ services:
       - ./volume-data/database:/opt/app/database
       # mount your Apple Wallet certs here if PKPASS_CERT_PATH is set above
       #- ./volume-data/pkpass:/opt/app/pkpass:ro
+      # mount your Google Wallet service account key here if GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH is set above
+      #- ./volume-data/google-wallet:/opt/app/google-wallet:ro
 
   redis:
     image: redis:7-alpine

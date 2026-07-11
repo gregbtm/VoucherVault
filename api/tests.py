@@ -769,6 +769,44 @@ class PkpassApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
+class GoogleWalletApiTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+        self.item = make_item(self.alice)
+
+    def test_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(f'/api/v1/items/{self.item.id}/google-wallet/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    @patch('api.views.google_wallet_enabled', return_value=False)
+    def test_disabled_by_default(self, mock_enabled):
+        response = self.client.get(f'/api/v1/items/{self.item.id}/google-wallet/')
+        self.assertEqual(response.status_code, status.HTTP_501_NOT_IMPLEMENTED)
+
+    @patch('api.views.google_wallet_enabled', return_value=True)
+    @patch('api.views.generate_google_wallet_save_url', return_value='https://pay.google.com/gp/v/save/fake-jwt')
+    def test_success_returns_save_url(self, mock_generate, mock_enabled):
+        response = self.client.get(f'/api/v1/items/{self.item.id}/google-wallet/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['save_url'], 'https://pay.google.com/gp/v/save/fake-jwt')
+        mock_generate.assert_called_once()
+
+    @patch('api.views.google_wallet_enabled', return_value=True)
+    @patch('api.views.generate_google_wallet_save_url', side_effect=RuntimeError('GOOGLE_WALLET_ISSUER_ID is not set.'))
+    def test_generation_failure_returns_503(self, mock_generate, mock_enabled):
+        response = self.client.get(f'/api/v1/items/{self.item.id}/google-wallet/')
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    @patch('api.views.google_wallet_enabled', return_value=True)
+    def test_cannot_fetch_another_users_item_google_wallet_link(self, mock_enabled):
+        bob_item = make_item(self.bob, redeem_code='BOBCODE')
+        response = self.client.get(f'/api/v1/items/{bob_item.id}/google-wallet/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
 class SharedWalletApiTests(APITestCase):
     def setUp(self):
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
