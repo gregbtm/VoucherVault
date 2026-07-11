@@ -303,6 +303,48 @@ item's lifecycle — no new model, no new backend, entirely additive to
   surfaces fire the right event at the right transition and that repeatable
   events aren't swallowed by the dedupe check.
 
+## Phase 12.3 — MCP server
+
+Closes out Phase 12 (Ledger ✅, Webhooks ✅, Geofencing skipped, MCP ✅). A
+new, entirely standalone `mcp_server/` — its own container, its own tiny
+dependency set (`mcp`, `requests`), no Django import at all — that exposes
+VoucherVault to Claude Desktop, Claude Code, and any other
+[MCP](https://modelcontextprotocol.io/) client over Streamable HTTP.
+
+- The server never touches the ORM directly: every tool call becomes one
+  HTTP request against the existing `/api/v1/` REST API, authenticated
+  with a normal DRF token. Every permission check, validation rule, and
+  side effect (QR/barcode generation, the Phase 12.2 webhook events, etc.)
+  that already gates the web UI and API gates MCP tool calls the same way,
+  since it's calling the exact same endpoints — no logic duplicated.
+- Eight tools: `search_items`, `get_item`, `get_expiring_items`,
+  `get_analytics_summary` (read); `create_item`, `add_transaction`,
+  `mark_item_used`, `set_item_archived` (write — this fork's MCP server is
+  read+write by design, so an assistant can log a gift-card spend or add
+  an item, not just answer questions about the vault).
+- Runs as its own optional `docker-compose` service (commented out by
+  default, same pattern as the OIDC/Postgres blocks), talking to the app
+  container over the internal Docker network — nothing routes through the
+  reverse proxy.
+- **Per-person, not per-deployment**: unlike Apple/Google Wallet export,
+  the server acts as whichever single VoucherVault user's API token it's
+  configured with. Multiple people wanting their own AI assistant against
+  their own vault need one container each (own token, own port) — see
+  [`docs/MCP_SERVER_SETUP.md`](docs/MCP_SERVER_SETUP.md) for the full
+  walkthrough, including a security note about not exposing its port to
+  the public internet (the token is the only auth it has).
+- `mcp_server/run_tests.py` — 12 standalone unit tests (mocked HTTP, no
+  Django, no live server needed) covering the API client and every tool
+  function. Run with `cd mcp_server && python -m unittest run_tests -v`.
+  Deliberately not named `tests.py`: `manage.py test` with no arguments
+  walks the whole repo for `test*.py` regardless of `INSTALLED_APPS`, and
+  this package has no Django dependency at all (only `mcp` and `requests`,
+  neither required by the main app), so a matching filename would make
+  Django try and fail to import it wherever `mcp` isn't installed.
+- Verified live end-to-end during development (real MCP client → real MCP
+  server → real running VoucherVault instance) exercising all eight tools
+  before merging, on top of the unit tests.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

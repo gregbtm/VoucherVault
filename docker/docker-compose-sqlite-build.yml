@@ -58,3 +58,22 @@ services:
     restart: unless-stopped
     expose:
       - 6379
+
+  # Optional: MCP server exposing VoucherVault as tools for Claude Desktop/
+  # Claude Code and other MCP clients. Generate a token first with:
+  #   docker compose exec app python manage.py drf_create_token <your-username>
+  # then uncomment below and connect your MCP client to http://<this-host>:8100/mcp
+  # See docs/MCP_SERVER_SETUP.md for the full walkthrough.
+  #mcp:
+  #  build:
+  #    context: ../mcp_server
+  #  image: vouchervault-mcp:latest
+  #  container_name: vouchervault-mcp
+  #  restart: unless-stopped
+  #  environment:
+  #    - VOUCHERVAULT_BASE_URL=http://app:8000
+  #    - VOUCHERVAULT_API_TOKEN=${VOUCHERVAULT_API_TOKEN:?Set VOUCHERVAULT_API_TOKEN in .env}
+  #  ports:
+  #    - 8100:8100
+  #  depends_on:
+  #    - app
