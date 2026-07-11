@@ -28,8 +28,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # get debug modus from env
 DEBUG = os.environ.get('DEBUG', 'False').lower() in ['true']
 
-# get container version from env
-VERSION = escape(os.environ.get("VERSION", ''))
+def _read_version_file() -> str | None:
+    """Reads the VERSION file baked into the image by docker/Dockerfile."""
+    try:
+        return (BASE_DIR / 'VERSION').read_text().strip() or None
+    except OSError:
+        return None
+
+# an explicit env var wins (useful for CI/local overrides), then the
+# VERSION file shipped in the image, then 'unknown' if neither is present
+VERSION = escape(os.environ.get("VERSION") or _read_version_file() or 'unknown')
 
 # auto-generate a secure secret key or use from env variable
 SECRET_KEY = os.environ.get("SECRET_KEY", secrets.token_urlsafe(32))
@@ -151,6 +159,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'myapp.context_processors.sidebar_wallets',
                 'myapp.context_processors.user_preferences',
+                'myapp.context_processors.update_check_status',
             ],
         },
     },
@@ -365,6 +374,13 @@ PKPASS_ORGANIZATION_NAME = os.environ.get('PKPASS_ORGANIZATION_NAME', 'VoucherVa
 GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH = os.environ.get('GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH') or None
 GOOGLE_WALLET_ISSUER_ID = os.environ.get('GOOGLE_WALLET_ISSUER_ID') or None
 GOOGLE_WALLET_CLASS_ID = os.environ.get('GOOGLE_WALLET_CLASS_ID') or None
+
+# ---- Update check (GitHub Releases) ----
+# On by default; makes one outbound request per periodic task run to the
+# public GitHub Releases API for UPDATE_CHECK_REPO. Set to False to
+# disable entirely if you don't want this instance making outbound calls.
+UPDATE_CHECK_ENABLED = os.environ.get('UPDATE_CHECK_ENABLED', 'true').lower() in ('true', '1', 'yes')
+UPDATE_CHECK_REPO = os.environ.get('UPDATE_CHECK_REPO', 'gregbtm/VoucherVault')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

@@ -1,6 +1,6 @@
 from django.db.models import Count, Q
 
-from .models import UserPreference, Wallet
+from .models import UpdateCheckStatus, UserPreference, Wallet
 
 
 def sidebar_wallets(request):
@@ -20,3 +20,13 @@ def user_preferences(request):
         return {}
     preferences, _ = UserPreference.objects.get_or_create(user=request.user)
     return {'global_preferences': preferences}
+
+
+def update_check_status(request):
+    """
+    Expose the last GitHub Releases check result to superusers only - it's
+    an operational/deployment concern, not something other users act on.
+    """
+    if not request.user.is_authenticated or not request.user.is_superuser:
+        return {}
+    return {'update_check': UpdateCheckStatus.load()}

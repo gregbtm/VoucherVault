@@ -374,3 +374,29 @@ class AppSettings(models.Model):
     def __str__(self):
         return f"API Token (Updated: {self.updated_at})"
 
+
+class UpdateCheckStatus(models.Model):
+    """
+    Singleton row (always pk=1) holding the result of the last GitHub
+    Releases check, refreshed by the periodic check_for_update_task
+    (see myapp/update_check.py). A DB row rather than Django's cache
+    framework because the check runs in a Celery worker process and the
+    result needs to reach the separate web process(es) serving requests.
+    """
+    latest_version = models.CharField(max_length=50, blank=True)
+    latest_release_url = models.URLField(blank=True)
+    checked_at = models.DateTimeField(null=True, blank=True)
+    update_available = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "Update Check Status"
+        verbose_name_plural = "Update Check Status"
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return f"Update check (latest: {self.latest_version or 'unknown'})"
+
