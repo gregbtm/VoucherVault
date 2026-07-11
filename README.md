@@ -61,6 +61,7 @@
 - 🏷️ **Auto-fetched merchant logos** — item cards get real brand logos automatically (fetched and cached in the background), so page loads never wait on a network call.
 - 🤖 **AI-assisted "Scan with AI"** — snap a photo of a physical voucher, coupon, or gift card and let Claude's vision model (or a fully local, free Tesseract OCR backend) pre-fill the redeem code, merchant, and expiry date for you.
 - 🍏 **Apple Wallet import & export** — download a signed `.pkpass` for any item and add it straight to Apple Wallet (opt-in, requires your own Apple Developer certificate), or go the other way and pre-fill a new item by uploading an existing `.pkpass`.
+- 🟢 **Google Wallet export** — a one-tap "Add to Google Wallet" link (opt-in, requires your own Google Wallet API issuer account). The item detail page shows the Apple or Google Wallet button automatically depending on whether you're on an Apple device or an Android/Chrome one, never both.
 - 📎 **Document attachments** — attach receipts and proof-of-purchase files to any item, upload/view/delete right from the item detail page.
 - 🤝 **Shared (multi-user) wallets** — invite another user by username to collaborate on a wallet; they get full read/write on every item inside it, no admin access required.
 - 📤 **Native OS/browser sharing** — a "Share via..." button on every item hands it off to your device's native share sheet (Messages, Mail, AirDrop, etc.), with a clipboard-copy fallback on desktop.
@@ -154,6 +155,9 @@ The docker container takes various environment variables:
 | `PKPASS_TEAM_ID`                  | Your Apple Developer Team ID. Required if `PKPASS_CERT_PATH` is set.                                           | `None`                     | Optional            |
 | `PKPASS_PASS_TYPE_ID`             | Your registered Pass Type ID, e.g. `pass.com.example.vouchervault`. Required if `PKPASS_CERT_PATH` is set.     | `None`                     | Optional            |
 | `PKPASS_ORGANIZATION_NAME`        | Organization name shown on the generated pass.                                                                 | `VoucherVault`             | Optional            |
+| `GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH` | Path to your Google Wallet API service account JSON key. Enables Google Wallet export when set along with the issuer ID below. | `None` | Optional |
+| `GOOGLE_WALLET_ISSUER_ID`         | Your Google Wallet API issuer ID, from the [Google Wallet Business Console](https://pay.google.com/business/console). Required if `GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH` is set. | `None` | Optional |
+| `GOOGLE_WALLET_CLASS_ID`          | Optional override for the generic pass class ID.                                                               | `<issuer id>.vouchervault_generic` | Optional    |
 | `WEBPUSH_VAPID_PUBLIC_KEY`        | VAPID public key. Enables the "Web Push" notification backend when set along with the private key below. Generate a pair with `python manage.py generate_vapid_keys`. | `None` | Optional |
 | `WEBPUSH_VAPID_PRIVATE_KEY`       | VAPID private key. See above.                                                                                  | `None`                     | Optional            |
 | `WEBPUSH_VAPID_CLAIMS_EMAIL`      | Contact email sent to push services as the VAPID claim.                                                        | `mailto:admin@example.com` | Optional            |

@@ -21,6 +21,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from imports.exporters.csv_export import export_items_csv
 from imports.exporters.full_backup import export_full_backup
 from imports.exporters.json_export import export_items_json
+from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
 from imports.exporters.pkpass import generate_pkpass, pkpass_enabled
 from imports.full_backup_import import FullBackupImportError, import_full_backup
 from imports.models import ImportJob
@@ -142,6 +143,26 @@ class ItemViewSet(viewsets.ModelViewSet):
         response = HttpResponse(data, content_type='application/vnd.apple.pkpass')
         response['Content-Disposition'] = f'attachment; filename="{item.id}.pkpass"'
         return response
+
+    @action(detail=True, methods=['get'], url_path='google-wallet')
+    @extend_schema(responses=inline_serializer(name='GoogleWalletSaveUrl', fields={'save_url': serializers.URLField()}))
+    def google_wallet(self, request, pk=None):
+        """Return a "Save to Google Wallet" link for this item. 501 if not configured."""
+        item = self.get_object()
+        if not google_wallet_enabled():
+            return Response(
+                {'detail': _('Google Wallet export is not configured on this server.')},
+                status=status.HTTP_501_NOT_IMPLEMENTED,
+            )
+        try:
+            save_url = generate_google_wallet_save_url(item)
+        except Exception as exc:
+            logger.warning('Google Wallet link generation failed for item %s: %s', item.id, exc, exc_info=True)
+            return Response(
+                {'detail': _('Google Wallet export failed: %(error)s') % {'error': str(exc)}},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response({'save_url': save_url})
 
 
 class WalletViewSet(viewsets.ModelViewSet):

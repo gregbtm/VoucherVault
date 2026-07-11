@@ -29,6 +29,7 @@ from .decorators import require_authorization_header_with_api_token
 from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items_by_wallet
 from .merchant_logos import get_cached_logo, get_cached_logos_for_issuers
 from .tasks import fetch_merchant_logo_task
+from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
 from imports.exporters.pkpass import pkpass_enabled
 from ocr.backends import ocr_enabled
 from django.db.models import Count, Sum, Q, F, ExpressionWrapper, DecimalField
@@ -392,6 +393,13 @@ def view_item(request, item_uuid):
     cached_merchant = get_cached_logo(item.issuer)
     preferences, _ = UserPreference.objects.get_or_create(user=request.user)
 
+    google_wallet_save_url = None
+    if google_wallet_enabled():
+        try:
+            google_wallet_save_url = generate_google_wallet_save_url(item)
+        except Exception as exc:
+            logger.warning('Google Wallet link generation failed for item %s: %s', item.id, exc, exc_info=True)
+
     context = {
         'item': item,
         'transactions': transactions,
@@ -404,6 +412,7 @@ def view_item(request, item_uuid):
         'is_shared': is_shared,  # Pass the shared status to the template
         'merchant_logo_url': cached_merchant.logo_url if cached_merchant else None,
         'pkpass_enabled': pkpass_enabled(),
+        'google_wallet_save_url': google_wallet_save_url,
         'document_form': DocumentForm(),
         'preferences': preferences,
     }

@@ -575,6 +575,29 @@ class PkpassUIWiringTests(TestCase):
         self.assertTrue(response.context['pkpass_enabled'])
         self.assertContains(response, 'Add to Apple Wallet')
 
+    def test_view_item_google_wallet_disabled_by_default(self):
+        item = make_item(self.user)
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertIsNone(response.context['google_wallet_save_url'])
+        self.assertNotContains(response, 'Add to Google Wallet')
+
+    @patch('myapp.views.generate_google_wallet_save_url', return_value='https://pay.google.com/gp/v/save/fake-jwt')
+    @patch('myapp.views.google_wallet_enabled', return_value=True)
+    def test_view_item_shows_google_wallet_link_when_enabled(self, mock_enabled, mock_generate):
+        item = make_item(self.user)
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertEqual(response.context['google_wallet_save_url'], 'https://pay.google.com/gp/v/save/fake-jwt')
+        self.assertContains(response, 'Add to Google Wallet')
+        self.assertContains(response, 'https://pay.google.com/gp/v/save/fake-jwt')
+
+    @patch('myapp.views.generate_google_wallet_save_url', side_effect=RuntimeError('boom'))
+    @patch('myapp.views.google_wallet_enabled', return_value=True)
+    def test_view_item_hides_google_wallet_link_on_generation_failure(self, mock_enabled, mock_generate):
+        item = make_item(self.user)
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertIsNone(response.context['google_wallet_save_url'])
+        self.assertNotContains(response, 'Add to Google Wallet')
+
 
 def make_upload(name='receipt.pdf', content=b'%PDF-1.4 test', content_type='application/pdf'):
     return SimpleUploadedFile(name, content, content_type=content_type)

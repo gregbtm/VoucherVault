@@ -1,3 +1,4 @@
+import base64
 import csv
 import datetime
 import hashlib
@@ -12,8 +13,8 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from cryptography import x509
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.serialization import BestAvailableEncryption, Encoding, pkcs12
 from cryptography.x509.oid import NameOID
 from django.contrib.auth.models import User
@@ -27,6 +28,7 @@ from myapp.models import Document
 
 from .exporters.csv_export import export_items_csv
 from .exporters.full_backup import export_full_backup
+from .exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
 from .exporters.json_export import export_items_json
 from .exporters.pkpass import generate_pkpass, pkpass_enabled
 from .full_backup_import import FullBackupImportError, import_full_backup
@@ -448,6 +450,121 @@ class PkpassExporterTests(TestCase):
             item = make_item(self.user)
             with self.assertRaises(RuntimeError):
                 generate_pkpass(item)
+
+
+def _b64url_decode(segment):
+    padding_needed = '=' * (-len(segment) % 4)
+    return base64.urlsafe_b64decode(segment + padding_needed)
+
+
+class GoogleWalletExporterTests(TestCase):
+    """
+    Generates a throwaway RSA key (never touches a real Google service
+    account) and drives generate_google_wallet_save_url() end-to-end,
+    verifying the resulting JWT's structure and signature against the same
+    key — proves the signing pipeline is well-formed, not just that our
+    mocks were called correctly.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.tmpdir = tempfile.TemporaryDirectory()
+        cls.private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        private_key_pem = cls.private_key.private_bytes(
+            encoding=Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        ).decode('utf-8')
+
+        cls.client_email = 'wallet-issuer@test-project.iam.gserviceaccount.com'
+        cls.key_path = os.path.join(cls.tmpdir.name, 'google-wallet-key.json')
+        with open(cls.key_path, 'w') as f:
+            json.dump({'client_email': cls.client_email, 'private_key': private_key_pem}, f)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmpdir.cleanup()
+        super().tearDownClass()
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='bob', password='pw12345!')
+        self.env_patch = patch.dict(os.environ, {
+            'GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH': self.key_path,
+            'GOOGLE_WALLET_ISSUER_ID': '3388000000012345678',
+        })
+        self.env_patch.start()
+        self.addCleanup(self.env_patch.stop)
+
+    def test_google_wallet_enabled_true_when_configured(self):
+        self.assertTrue(google_wallet_enabled())
+
+    def test_google_wallet_disabled_when_issuer_id_unset(self):
+        with patch.dict(os.environ, {'GOOGLE_WALLET_ISSUER_ID': ''}):
+            self.assertFalse(google_wallet_enabled())
+
+    def test_google_wallet_disabled_when_key_path_missing_file(self):
+        with patch.dict(os.environ, {'GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH': '/nonexistent/key.json'}):
+            self.assertFalse(google_wallet_enabled())
+
+    def test_generate_save_url_produces_valid_signed_jwt(self):
+        item = make_item(
+            self.user, type='giftcard', name='Coffee Gift Card', issuer='Bean Co',
+            redeem_code='GC12345', value='25.00', currency='GBP', code_type='qrcode',
+            expiry_date=date(2026, 12, 31), tile_color='#ff5733',
+        )
+        save_url = generate_google_wallet_save_url(item)
+
+        self.assertTrue(save_url.startswith('https://pay.google.com/gp/v/save/'))
+        token = save_url.rsplit('/', 1)[-1]
+        header_seg, payload_seg, signature_seg = token.split('.')
+
+        header = json.loads(_b64url_decode(header_seg))
+        self.assertEqual(header['alg'], 'RS256')
+
+        payload = json.loads(_b64url_decode(payload_seg))
+        self.assertEqual(payload['iss'], self.client_email)
+        self.assertEqual(payload['aud'], 'google')
+        self.assertEqual(payload['typ'], 'savetowallet')
+
+        obj = payload['payload']['genericObjects'][0]
+        self.assertEqual(obj['id'], '3388000000012345678.item-%s' % item.id)
+        self.assertEqual(obj['genericType'], 'GENERIC_OTHER')
+        self.assertEqual(obj['header']['defaultValue']['value'], 'Coffee Gift Card')
+        self.assertEqual(obj['barcode']['type'], 'QR_CODE')
+        self.assertEqual(obj['barcode']['value'], 'GC12345')
+        self.assertEqual(obj['hexBackgroundColor'], '#ff5733')
+        balance_module = next(m for m in obj['textModulesData'] if m['id'] == 'balance')
+        self.assertEqual(balance_module['body'], '25.00 GBP')
+
+        signing_input = f'{header_seg}.{payload_seg}'.encode('ascii')
+        signature = _b64url_decode(signature_seg)
+        # Raises InvalidSignature if the JWT wasn't actually signed by this key.
+        self.private_key.public_key().verify(signature, signing_input, padding.PKCS1v15(), hashes.SHA256())
+
+    def test_generate_save_url_loyaltycard_generic_type(self):
+        item = make_item(self.user, type='loyaltycard', name='Rewards Card', issuer='Shop')
+        save_url = generate_google_wallet_save_url(item)
+        token = save_url.rsplit('/', 1)[-1]
+        _header_seg, payload_seg, _signature_seg = token.split('.')
+        payload = json.loads(_b64url_decode(payload_seg))
+        obj = payload['payload']['genericObjects'][0]
+        self.assertEqual(obj['genericType'], 'GENERIC_LOYALTY_CARD')
+
+    def test_generate_save_url_raises_when_disabled(self):
+        with patch.dict(os.environ, {'GOOGLE_WALLET_ISSUER_ID': ''}):
+            item = make_item(self.user)
+            with self.assertRaises(RuntimeError):
+                generate_google_wallet_save_url(item)
+
+    def test_generate_save_url_raises_when_key_file_invalid(self):
+        bad_key_path = os.path.join(self.tmpdir.name, 'bad-key.json')
+        with open(bad_key_path, 'w') as f:
+            json.dump({'client_email': 'x@y.com'}, f)  # missing private_key
+        with patch.dict(os.environ, {'GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH': bad_key_path}):
+            item = make_item(self.user)
+            with self.assertRaises(RuntimeError):
+                generate_google_wallet_save_url(item)
 
 
 def _build_pkpass_bytes(pass_dict):
