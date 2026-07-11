@@ -198,8 +198,15 @@ open an issue and I'm happy to help scope and build it out.
 
 If this fork has been useful to you, tips are always appreciated:
 
-<!-- TODO(gregbtm): replace with your PayPal.me link -->
-[![Donate via PayPal](https://img.shields.io/badge/Donate-PayPal-00457C.svg?logo=paypal&logoColor=white)]([[https://paypal.me/YOUR_PAYPAL_HERE](https://www.paypal.com/donate/?business=MKWLBLPGMVLY4&no_recurring=1&item_name=If+these+new+additions+or+features+brighten+your+day+-+feel+free+to+donate.+I+love+being+creative%21+Thank+you.+This+is+for+fun%21&currency_code=GBP)](https://www.paypal.com/donate/?business=MKWLBLPGMVLY4&no_recurring=1&item_name=If+these+new+additions+or+features+brighten+your+day+-+feel+free+to+donate.+I+love+being+creative%21+Thank+you.+This+is+for+fun%21&currency_code=GBP))
+<form action="https://www.paypal.com/donate" method="post" target="_top">
+<input type="hidden" name="business" value="MKWLBLPGMVLY4" />
+<input type="hidden" name="no_recurring" value="1" />
+<input type="hidden" name="item_name" value="If these new features or additions have brightened your day - feel free to donate. I do this for fun and anything helps! Thx !!" />
+<input type="hidden" name="currency_code" value="GBP" />
+<input type="image" src="https://www.paypalobjects.com/en_GB/i/btn/btn_donate_LG.gif" border="0" name="submit" title="PayPal - The safer, easier way to pay online!" alt="Donate with PayPal button" />
+<img alt="" border="0" src="https://www.paypal.com/en_GB/i/scr/pixel.gif" width="1" height="1" />
+</form>
+
 
 And don't forget the original upstream maintainer, whose project this fork is built on:
 
