@@ -1203,3 +1203,67 @@ class UpdateCheckContextProcessorTests(TestCase):
         self.client.login(username='admin', password='pw12345!')
         response = self.client.get(reverse('dashboard'))
         self.assertNotContains(response, 'A newer version')
+
+
+class OfflineCacheTogglePreferenceTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_defaults_to_enabled(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        self.assertTrue(prefs.offline_cache_enabled)
+
+    def test_cache_button_shown_by_default(self):
+        response = self.client.get(reverse('show_items'))
+        self.assertContains(response, 'manualCacheManager.cacheData()')
+
+    def test_cache_button_hidden_when_disabled(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        prefs.offline_cache_enabled = False
+        prefs.save()
+        response = self.client.get(reverse('show_items'))
+        self.assertNotContains(response, 'manualCacheManager.cacheData()')
+
+    def test_purge_button_always_shown(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        prefs.offline_cache_enabled = False
+        prefs.save()
+        response = self.client.get(reverse('show_items'))
+        self.assertContains(response, 'manualCacheManager.clearCache()')
+
+    def test_save_redirects_with_prefs_saved_signal(self):
+        response = self.client.post(reverse('update_user_preferences'), data={
+            'show_expiry_date': 'on', 'show_value': 'on', 'show_description': 'on',
+            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact',
+            'default_currency': 'GBP', 'keep_screen_awake': 'on', 'offline_cache_enabled': 'on',
+        })
+        self.assertRedirects(response, reverse('show_items') + '?prefs_saved=1')
+
+    def test_disabling_offline_cache_adds_purge_signal(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        prefs.offline_cache_enabled = True
+        prefs.save()
+
+        response = self.client.post(reverse('update_user_preferences'), data={
+            'show_expiry_date': 'on', 'show_value': 'on', 'show_description': 'on',
+            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact',
+            'default_currency': 'GBP', 'keep_screen_awake': 'on',
+            # offline_cache_enabled omitted -> unchecked checkbox -> False
+        })
+        self.assertRedirects(response, reverse('show_items') + '?prefs_saved=1&cache_purge=1')
+        prefs.refresh_from_db()
+        self.assertFalse(prefs.offline_cache_enabled)
+
+    def test_saving_without_toggling_off_has_no_purge_signal(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        prefs.offline_cache_enabled = False
+        prefs.save()
+
+        response = self.client.post(reverse('update_user_preferences'), data={
+            'show_expiry_date': 'on', 'show_value': 'on', 'show_description': 'on',
+            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact',
+            'default_currency': 'GBP', 'keep_screen_awake': 'on',
+            # still leaving offline_cache_enabled off - no transition, no purge needed
+        })
+        self.assertRedirects(response, reverse('show_items') + '?prefs_saved=1')

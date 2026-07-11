@@ -180,7 +180,7 @@ class UserPreferenceForm(forms.ModelForm):
         fields = [
             'show_issue_date', 'show_expiry_date', 'show_value', 'show_description',
             'sort_by', 'sort_order', 'view_mode', 'fixer_api_key', 'default_currency',
-            'keep_screen_awake', 'oled_dark_mode',
+            'keep_screen_awake', 'oled_dark_mode', 'offline_cache_enabled',
         ]
         widgets = {
             'show_issue_date': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
@@ -194,6 +194,7 @@ class UserPreferenceForm(forms.ModelForm):
             'default_currency': forms.Select(attrs={'class': 'form-select'}),
             'keep_screen_awake': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'oled_dark_mode': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'offline_cache_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
 class DocumentForm(forms.ModelForm):

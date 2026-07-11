@@ -523,6 +523,45 @@ shipped with a literal "0" in the footer.
   `UpdateCheckServiceTests` (the GitHub Releases check, mocked),
   `UpdateCheckContextProcessorTests` (banner visibility by user type).
 
+## Phase 14.1 — Offline cache toggle + fix invalidation/expiry bugs
+
+The service worker's manual "Cache for Offline" feature (from earlier in
+the fork) had two real bugs, both traced back to a single design flaw:
+cache expiration was tracked once for the *entire* `PAGE_CACHE` store
+instead of per cached page.
+
+- **Global-instead-of-per-entry expiration.** `isCacheExpired()` opened
+  `PAGE_CACHE`, read `cache.keys()[0]` — whichever entry happened to sort
+  first — and used *that one entry's* `sw-cached-time` header to decide
+  whether the *entire* cache was stale. A single old entry could evict
+  every page (including ones cached seconds earlier); a single fresh
+  entry could keep genuinely 48-hours-stale pages being served. Fixed by
+  making `isCacheExpired(request)` check the specific request's own
+  cached response, and `clearExpiredCacheEntry(request)` evict just that
+  one entry — `caches.delete(PAGE_CACHE)` (a full wipe) is gone from both
+  the API and navigation fetch handlers.
+- **Stale `/dashboard` after a preference change.** A saved preference
+  (e.g. adding a Fixer.io API key) can change what `/dashboard` renders
+  (the "set an API key" warning), but the cached copy wouldn't refresh
+  until its own 48h TTL happened to expire. `update_user_preferences` now
+  redirects with `?prefs_saved=1` (and `&cache_purge=1` if offline caching
+  was just turned off); a small script in `manual-cache.js` reads that
+  signal on load and `postMessage`s the active service worker with
+  `{type: 'INVALIDATE_PATH', path: '/dashboard'}`, which the new
+  `invalidatePath()` handler in `serviceworker.js` uses to drop every
+  `PAGE_CACHE` entry whose path ends with `/dashboard` (covering
+  `/en/dashboard`, `/de/dashboard`, etc.) immediately, rather than waiting
+  on the TTL.
+- New `UserPreference.offline_cache_enabled` field (default `True`).
+  Turning it off in **Preferences → Offline Access** hides the "Cache for
+  Offline" sidebar entry (the always-available "Purge Cache" entry is
+  unaffected) and triggers the same `cache_purge=1` signal above to wipe
+  any existing offline cache outright, rather than leaving stale pages
+  sitting in storage for a feature the user just disabled.
+- New tests: `OfflineCacheTogglePreferenceTests` (default value, sidebar
+  button visibility by preference, the redirect signal in both the
+  plain-save and toggled-off cases).
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

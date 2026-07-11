@@ -78,6 +78,9 @@ class UserPreference(models.Model):
     oled_dark_mode = models.BooleanField(
         default=False, help_text="Use true-black surfaces in dark mode (OLED screens)."
     )
+    offline_cache_enabled = models.BooleanField(
+        default=True, help_text="Show the 'Cache for Offline' option in the sidebar. Turning this off purges any existing offline cache."
+    )
 
 class Wallet(models.Model):
     """

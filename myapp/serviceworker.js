@@ -70,37 +70,31 @@ const CACHE_PAGE_PATTERNS = [
 ];
 
 /**
- * Check if manual cache is expired by asking the client for the localStorage timestamp
+ * Check if the cached response for THIS request is expired, based on its
+ * own sw-cached-time header - not some other entry's. The old version
+ * checked only the first key returned by cache.keys() and used its age to
+ * decide the fate of the entire PAGE_CACHE, so a single old entry could
+ * evict everything (including a page cached seconds ago), and a single
+ * fresh entry could keep genuinely stale pages being served.
  */
-/**
- * Check if manual cache is expired by reading the timestamp from cached responses
- */
-async function isCacheExpired() {
+async function isCacheExpired(request) {
     try {
         const cache = await caches.open(PAGE_CACHE);
-        const keys = await cache.keys();
-        
-        if (keys.length === 0) {
-            console.log('[ServiceWorker] No cached pages found');
-            return true; // No cache means it's "expired"
+        const cachedResponse = await cache.match(request);
+
+        if (!cachedResponse) {
+            return true; // nothing cached for this request means it's "expired"
         }
-        
-        // Check the first cached response for the timestamp
-        const firstResponse = await cache.match(keys[0]);
-        if (!firstResponse) {
-            console.log('[ServiceWorker] Could not read cached response');
-            return true;
-        }
-        
-        const cachedTime = firstResponse.headers.get('sw-cached-time');
+
+        const cachedTime = cachedResponse.headers.get('sw-cached-time');
         if (!cachedTime) {
-            console.log('[ServiceWorker] No timestamp in cached response, assuming expired');
+            console.log('[ServiceWorker] No timestamp on cached response, assuming expired');
             return true;
         }
-        
-        const age = Date.now() - parseInt(cachedTime);
+
+        const age = Date.now() - parseInt(cachedTime, 10);
         const expired = age >= CACHE_DURATION;
-        
+
         console.log(`[ServiceWorker] Cache age: ${Math.floor(age / 1000 / 60 / 60)}h ${Math.floor((age / 1000 / 60) % 60)}m, expired: ${expired}`);
         return expired;
     } catch (error) {
@@ -110,17 +104,30 @@ async function isCacheExpired() {
 }
 
 /**
- * Clear expired page caches
+ * Evict just this request's own cache entry, not the whole PAGE_CACHE.
  */
-async function clearExpiredCache() {
+async function clearExpiredCacheEntry(request) {
     try {
-        console.log('[ServiceWorker] Clearing expired cache...');
-        const deleted = await caches.delete(PAGE_CACHE);
-        if (deleted) {
-            console.log('[ServiceWorker] ✓ Expired cache cleared');
-        }
+        const cache = await caches.open(PAGE_CACHE);
+        await cache.delete(request);
     } catch (error) {
-        console.error('[ServiceWorker] Error clearing expired cache:', error);
+        console.error('[ServiceWorker] Error clearing expired cache entry:', error);
+    }
+}
+
+/**
+ * Deletes every PAGE_CACHE entry whose path ends with `path` (so a bare
+ * '/dashboard' also matches '/en/dashboard', '/de/dashboard', etc).
+ */
+async function invalidatePath(path) {
+    try {
+        const cache = await caches.open(PAGE_CACHE);
+        const keys = await cache.keys();
+        const matches = keys.filter(req => new URL(req.url).pathname.endsWith(path));
+        await Promise.all(matches.map(req => cache.delete(req)));
+        console.log(`[ServiceWorker] Invalidated ${matches.length} cached entr${matches.length === 1 ? 'y' : 'ies'} for path:`, path);
+    } catch (error) {
+        console.error('[ServiceWorker] Error invalidating path:', path, error);
     }
 }
 
@@ -245,12 +252,12 @@ self.addEventListener("fetch", event => {
         event.respondWith(
             (async () => {
                 // Check if cache is expired
-                const expired = await isCacheExpired();
-                
+                const expired = await isCacheExpired(request);
+
                 if (expired) {
                     console.log('[ServiceWorker] Cache expired, clearing and fetching fresh data:', url.pathname + url.search);
-                    await clearExpiredCache();
-                    
+                    await clearExpiredCacheEntry(request);
+
                     // Go straight to network
                     try {
                         return await fetch(request);
@@ -318,12 +325,12 @@ self.addEventListener("fetch", event => {
         event.respondWith(
             (async () => {
                 // Check if cache is expired
-                const expired = await isCacheExpired();
-                
+                const expired = await isCacheExpired(request);
+
                 if (expired) {
                     console.log('[ServiceWorker] Cache expired for navigation, clearing:', url.pathname + url.search);
-                    await clearExpiredCache();
-                    
+                    await clearExpiredCacheEntry(request);
+
                     // Try network first since cache is expired
                     try {
                         return await fetch(request);
@@ -503,6 +510,10 @@ self.addEventListener('message', event => {
                 );
             })
         );
+    }
+
+    if (event.data && event.data.type === 'INVALIDATE_PATH' && event.data.path) {
+        event.waitUntil(invalidatePath(event.data.path));
     }
 });
 
