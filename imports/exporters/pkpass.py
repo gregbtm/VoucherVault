@@ -89,7 +89,7 @@ def _build_pass_json(item) -> dict:
         'formatVersion': 1,
         'passTypeIdentifier': _require_env('PKPASS_PASS_TYPE_ID'),
         'teamIdentifier': _require_env('PKPASS_TEAM_ID'),
-        'organizationName': os.environ.get('PKPASS_ORGANIZATION_NAME', 'VoucherVault'),
+        'organizationName': os.environ.get('PKPASS_ORGANIZATION_NAME', 'VoucherVault Plus+'),
         'serialNumber': str(item.id),
         'description': item.name,
         'barcodes': [{

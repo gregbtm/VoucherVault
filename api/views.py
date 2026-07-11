@@ -518,7 +518,7 @@ class PkpassImportView(APIView):
 
 
 class ExportCsvView(APIView):
-    """Download all of the authenticated user's items as a VoucherVault CSV backup."""
+    """Download all of the authenticated user's items as a VoucherVault Plus+ CSV backup."""
     permission_classes = [IsAuthenticated]
 
     @extend_schema(responses={200: OpenApiTypes.BINARY})
@@ -575,7 +575,7 @@ class ImportFullBackupView(APIView):
 
 
 class ExportJsonView(APIView):
-    """Download all of the authenticated user's items as a VoucherVault JSON backup."""
+    """Download all of the authenticated user's items as a VoucherVault Plus+ JSON backup."""
     permission_classes = [IsAuthenticated]
 
     @extend_schema(responses={200: OpenApiTypes.BINARY})

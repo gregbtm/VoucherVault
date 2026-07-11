@@ -370,10 +370,11 @@ h6 {
 }
 
 .logo span {
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 700;
   color: #1e1e1e;
   font-family: "Nunito", sans-serif;
+  white-space: nowrap;
 }
 
 .header {

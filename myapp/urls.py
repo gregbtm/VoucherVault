@@ -47,6 +47,6 @@ urlpatterns = (
     path('tags/<int:tag_id>/delete', views.delete_tag, name='delete_tag'),
 )
 
-admin.site.site_header = "VoucherVault"
-admin.site.site_title = "VoucherVault"
-admin.site.index_title = "Welcome to VoucherVault"
+admin.site.site_header = "VoucherVault Plus+"
+admin.site.site_title = "VoucherVault Plus+"
+admin.site.index_title = "Welcome to VoucherVault Plus+"

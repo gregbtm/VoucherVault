@@ -254,8 +254,8 @@ CELERY_BEAT_LOG_FILE = os.path.join(LOGS_DIR, 'celery_beat.log')
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'myapp', 'static')
 
-PWA_APP_NAME = 'VoucherVault'
-PWA_APP_DESCRIPTION = 'VoucherVault voucher and loyalty card management.'
+PWA_APP_NAME = 'VoucherVault Plus+'
+PWA_APP_DESCRIPTION = 'VoucherVault Plus+ voucher and loyalty card management.'
 PWA_APP_THEME_COLOR = '#4154f1'
 PWA_APP_BACKGROUND_COLOR = '#ffffff'
 PWA_APP_DISPLAY = 'standalone'
@@ -315,7 +315,7 @@ REST_FRAMEWORK = {
 }
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'VoucherVault API',
+    'TITLE': 'VoucherVault Plus+ API',
     'DESCRIPTION': 'REST API for managing vouchers, gift cards, coupons and loyalty cards.',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
