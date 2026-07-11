@@ -345,6 +345,17 @@ VoucherVault to Claude Desktop, Claude Code, and any other
   server → real running VoucherVault instance) exercising all eight tools
   before merging, on top of the unit tests.
 
+## Phase 13.1 — Fix description text overflowing its card
+
+A long unbroken token in an item's description (a URL, a code with no
+spaces) escaped the card layout instead of wrapping, because `.item-
+description` (Inventory, Sharing Center) and `.item-description-section p`
+(item detail page) had `white-space: pre-wrap` but no `overflow-wrap`, so
+a single very long word was never broken. Added `overflow-wrap: break-
+word` / `word-break: break-word` to all three rules
+(`inventory.html`, `sharing_center.html`, `view-item.html`). CSS-only, no
+behavior change otherwise.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
