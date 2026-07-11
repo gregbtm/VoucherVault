@@ -314,6 +314,10 @@ class Transaction(models.Model):
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     apprise_urls = models.TextField(blank=True, null=True)
+    ics_token = models.CharField(
+        max_length=64, unique=True, default=uuid.uuid4,
+        help_text="Secret token in the subscribe-able .ics calendar feed URL. Regenerating it invalidates the old feed URL.",
+    )
 
     def __str__(self):
         return self.user.username

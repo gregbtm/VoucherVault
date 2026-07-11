@@ -76,6 +76,29 @@
           </form>
         </div>
       </div>
+
+      <div class="card mt-3">
+        <div class="card-body">
+          <h5 class="card-title">{% trans "Calendar Feed (.ics)" %}</h5>
+          <p class="text-muted small">{% trans "A basic, read-only calendar of your active items' expiry dates. Subscribe to the URL below in Google Calendar, Apple Calendar, etc. to keep it in sync automatically, or just download a snapshot. For anything beyond expiry dates, use the webhook integrations instead." %}</p>
+          {% url 'ics_feed' token=request.user.userprofile.ics_token as ics_relative_url %}
+          <div class="input-group mb-3">
+            <input type="text" class="form-control" readonly value="{{ request.scheme }}://{{ request.get_host }}{{ ics_relative_url }}" id="ics-feed-url" onclick="this.select();">
+            <button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('ics-feed-url').value)">
+              <i class="bi bi-clipboard"></i>
+            </button>
+          </div>
+          <a href="{% url 'download_ics' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-calendar-event me-1"></i>{% trans "Download .ics" %}
+          </a>
+          <form method="POST" action="{% url 'regenerate_ics_token' %}" class="d-inline" onsubmit="return confirm('{% trans "This invalidates the current feed URL - any calendar app subscribed to it will stop updating until you re-subscribe with the new URL. Continue?" %}');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger">
+              <i class="bi bi-arrow-repeat me-1"></i>{% trans "Regenerate Link" %}
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
 
     <div class="col-lg-7">

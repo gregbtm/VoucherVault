@@ -7,10 +7,12 @@ import logging
 import treepoem
 import unicodedata
 import mimetypes
+import uuid
 import datetime as dt
 from django.db.models import Q
 from django.utils.safestring import mark_safe
 from .forms import *
+from .ics_calendar import build_ics_calendar
 from .models import *
 from .utils import get_fixer_rates, convert_currency
 from django.db.models import Sum
@@ -838,6 +840,36 @@ def verify_apprise_urls(request):
         
     except Exception as e:
         return JsonResponse({'success': False, 'message': f'Failed to send test notification: {str(e)}'})
+
+@login_required
+def download_ics(request):
+    """One-off .ics download for the logged-in user's active items."""
+    calendar = build_ics_calendar(request.user)
+    response = HttpResponse(calendar, content_type='text/calendar; charset=utf-8')
+    response['Content-Disposition'] = 'attachment; filename="vouchervault.ics"'
+    return response
+
+def ics_feed(request, token):
+    """
+    Subscribe-able feed: the token in the URL is the auth, not a session -
+    calendar apps fetch this URL directly, unauthenticated, on their own
+    refresh schedule. No login_required by design.
+    """
+    profile = get_object_or_404(UserProfile, ics_token=token)
+    calendar = build_ics_calendar(profile.user)
+    response = HttpResponse(calendar, content_type='text/calendar; charset=utf-8')
+    response['Content-Disposition'] = 'inline; filename="vouchervault.ics"'
+    return response
+
+@require_POST
+@login_required
+def regenerate_ics_token(request):
+    """Rotates the subscribe URL's secret, invalidating the old one (e.g. if it leaked)."""
+    profile = request.user.userprofile
+    profile.ics_token = uuid.uuid4()
+    profile.save(update_fields=['ics_token'])
+    messages.success(request, _('Your calendar feed link has been regenerated. Update it in any calendar apps you use.'))
+    return redirect('upload_import')
 
 @require_GET
 @login_required

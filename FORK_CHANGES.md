@@ -625,6 +625,47 @@ existing one and keeping a rotating history of it on disk.
   rotation, the `SCHEDULED_BACKUP_ENABLED` toggle, per-user isolation on
   the periodic task, and one user's failure not blocking others).
 
+## Phase 14.4 — ICS calendar export
+
+A basic, one-way expiry calendar — subscribe to it in Google Calendar,
+Apple Calendar, etc., or just download a snapshot. Deliberately minimal:
+the existing webhook system (Phase 12.2) is the path for anything beyond
+expiry-date sync — this feed only ever needs to read, never gets richer
+fields, and was built without a third-party ICS library since RFC5545's
+VCALENDAR/VEVENT format is small enough to generate by hand for this use
+case.
+
+- New `myapp/ics_calendar.py::build_ics_calendar(user)` builds a minimal
+  VCALENDAR with one all-day VEVENT per active (not used, not archived)
+  item with an expiry date — includes RFC5545 text escaping and line
+  folding (75-octet physical lines), so it stays spec-compliant even with
+  long item names/descriptions.
+- New `UserProfile.ics_token` (a UUID, auto-populated for every user via
+  the existing `post_save` signal that creates `UserProfile` rows) is the
+  secret in the subscribe URL - calendar apps fetch
+  `/calendar/<token>.ics` unauthenticated, on their own refresh schedule,
+  so the token itself has to be the auth (no session, no login prompt a
+  calendar app could satisfy). A regenerate button invalidates the old
+  URL if it ever leaks.
+  - Since `ics_token` is a `unique=True` field with a callable
+    (`uuid.uuid4`) default added after the model already had rows,
+    `AddField` alone would've given every existing `UserProfile` the
+    *same* value — the migration is split into three steps (add nullable
+    → backfill a distinct UUID per row via `RunPython` → tighten to
+    non-null), per Django's documented pattern for this exact situation.
+- New `download_ics` (login-required, one-off `.ics` download) and
+  `ics_feed` (no `@login_required` by design — token-authed) views, plus
+  `regenerate_ics_token`. A new **Calendar Feed (.ics)** card on the
+  existing Import / Export page shows the subscribe URL (with a copy
+  button), the download link, and the regenerate button — the same page
+  as the other data-export mechanisms (CSV/JSON/Full Backup), since this
+  is another way to get expiry data out of the app.
+- New tests: `IcsCalendarBuilderTests` (event inclusion/exclusion rules,
+  text escaping, line folding), `IcsFeedViewTests` (auto-provisioned
+  token, unauthenticated feed access, 404 on unknown token, download
+  auth requirement, and that regenerating actually invalidates the old
+  URL).
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
