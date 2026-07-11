@@ -5,10 +5,11 @@ import zipfile
 from decimal import Decimal, InvalidOperation
 
 from django.core.files.base import ContentFile
+from django.utils.dateparse import parse_datetime
 
-from myapp.models import Document
+from myapp.models import Document, Transaction, UserPreference
 
-from .exporters.full_backup import ITEMS_JSON_NAME
+from .exporters.full_backup import ITEMS_JSON_NAME, PREFERENCE_FIELDS, SETTINGS_JSON_NAME
 from .parsers.native_json import VALID_TYPES
 from .parsers.utils import parse_date
 from .tasks import create_item_from_row
@@ -65,12 +66,53 @@ def _row_from_entry(entry):
     }
 
 
+def _import_settings(user, payload: dict) -> None:
+    """
+    Restores settings.json (see exporters.full_backup._export_settings).
+    Unlike items, this is an upsert, not an always-insert: preferences are
+    a OneToOne (there's only ever one row to update), and NotificationRules
+    are matched on their (user, name) unique_together so restoring the same
+    backup twice doesn't pile up duplicate rules.
+    """
+    from notify.models import NotificationRule
+
+    preferences_data = payload.get('preferences')
+    if preferences_data:
+        preferences, _created = UserPreference.objects.get_or_create(user=user)
+        for field in PREFERENCE_FIELDS:
+            if field in preferences_data:
+                setattr(preferences, field, preferences_data[field])
+        preferences.save()
+
+    apprise_urls = payload.get('apprise_urls')
+    if apprise_urls:
+        from myapp.models import UserProfile
+        profile, _created = UserProfile.objects.get_or_create(user=user)
+        profile.apprise_urls = apprise_urls
+        profile.save(update_fields=['apprise_urls'])
+
+    for rule_data in payload.get('notification_rules') or []:
+        name = rule_data.get('name')
+        if not name:
+            continue
+        NotificationRule.objects.update_or_create(
+            user=user, name=name,
+            defaults={
+                'backend': rule_data.get('backend', 'webhook'),
+                'config': rule_data.get('config') or {},
+                'enabled': rule_data.get('enabled', True),
+                'event_types': rule_data.get('event_types') or [],
+            },
+        )
+
+
 def import_full_backup(user, file_bytes: bytes) -> dict:
     """
     Restore a "Full Backup" zip (see imports.exporters.full_backup). Every
     item is created fresh with a new ID — restoring a backup never
     overwrites or merges with existing items, so it's safe to run against a
-    vault that already has data in it.
+    vault that already has data in it. Settings (see _import_settings) are
+    the one exception: those are upserted, not duplicated.
     """
     if len(file_bytes) > MAX_BACKUP_SIZE:
         raise FullBackupImportError('Backup file is too large.')
@@ -131,4 +173,32 @@ def import_full_backup(user, file_bytes: bytes) -> dict:
                     file=ContentFile(zf.read(doc_arcname), name=os.path.basename(doc_arcname)),
                 )
 
-    return {'imported_count': imported_count, 'error_count': len(errors), 'errors': errors}
+        for tx in entry.get('_transactions') or []:
+            try:
+                Transaction.objects.create(
+                    item=item,
+                    date=parse_datetime(tx['date']),
+                    description=tx.get('description', ''),
+                    value=Decimal(str(tx['value'])),
+                )
+            except Exception as exc:
+                errors.append({'row': index, 'message': f'{entry.get("name", "?")}: transaction skipped ({exc})'})
+
+    settings_restored = False
+    try:
+        settings_json = zf.read(SETTINGS_JSON_NAME)
+    except KeyError:
+        settings_json = None
+    if settings_json:
+        try:
+            settings_payload = json.loads(settings_json)
+        except json.JSONDecodeError:
+            settings_payload = None
+        if isinstance(settings_payload, dict) and settings_payload:
+            _import_settings(user, settings_payload)
+            settings_restored = True
+
+    return {
+        'imported_count': imported_count, 'error_count': len(errors), 'errors': errors,
+        'settings_restored': settings_restored,
+    }

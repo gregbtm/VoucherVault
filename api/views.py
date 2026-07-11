@@ -542,8 +542,8 @@ class ExportFullBackupView(APIView):
 
     @extend_schema(responses={200: OpenApiTypes.BINARY})
     def get(self, request):
-        items = Item.objects.filter(user=request.user).select_related('wallet').prefetch_related('tags', 'documents')
-        response = HttpResponse(export_full_backup(items), content_type='application/zip')
+        items = Item.objects.filter(user=request.user).select_related('wallet').prefetch_related('tags', 'documents', 'transactions')
+        response = HttpResponse(export_full_backup(items, user=request.user), content_type='application/zip')
         response['Content-Disposition'] = 'attachment; filename="vouchervault-full-backup.zip"'
         return response
 
@@ -564,6 +564,7 @@ class ImportFullBackupView(APIView):
                 'imported_count': serializers.IntegerField(),
                 'error_count': serializers.IntegerField(),
                 'errors': serializers.ListField(child=serializers.DictField()),
+                'settings_restored': serializers.BooleanField(),
             },
         ),
     )

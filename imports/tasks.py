@@ -153,7 +153,7 @@ def backup_user(user) -> str | None:
     database/backups/<username>/ and rotates old ones. Returns the path
     written, or None if the user has no items to back up.
     """
-    items = Item.objects.filter(user=user).select_related('wallet').prefetch_related('tags', 'documents')
+    items = Item.objects.filter(user=user).select_related('wallet').prefetch_related('tags', 'documents', 'transactions')
     if not items.exists():
         return None
 
@@ -163,7 +163,7 @@ def backup_user(user) -> str | None:
     filename = f'backup-{timezone.now().strftime("%Y%m%d-%H%M%S-%f")}.zip'
     path = os.path.join(backup_dir, filename)
     with open(path, 'wb') as f:
-        f.write(export_full_backup(items))
+        f.write(export_full_backup(items, user=user))
 
     _rotate_backups(backup_dir)
     return path

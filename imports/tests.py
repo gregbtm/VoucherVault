@@ -25,7 +25,9 @@ from django.urls import reverse
 
 from myapp.models import Item, Tag, Wallet
 
-from myapp.models import Document
+from myapp.models import Document, Transaction, UserPreference, UserProfile
+
+from notify.models import NotificationRule
 
 from .exporters.csv_export import export_items_csv
 from .exporters.full_backup import export_full_backup
@@ -699,6 +701,102 @@ class FullBackupTests(TestCase):
         response = self.client.post(reverse('import_full_backup'), {'file': upload})
         self.assertRedirects(response, reverse('upload_import'))
         self.assertEqual(Item.objects.filter(user=self.user).count(), 2)
+
+    # ---- transactions ----
+
+    def test_export_import_round_trip_preserves_transactions(self):
+        item = make_item(self.user, name='Gift Card', value='50.00')
+        item.refresh_from_db()
+        Transaction.objects.create(item=item, description='Coffee', value=Decimal('-5.00'))
+        Transaction.objects.create(item=item, description='Lunch', value=Decimal('-12.50'))
+
+        zip_bytes = export_full_backup(Item.objects.filter(user=self.user).prefetch_related('transactions'))
+        other_user = User.objects.create_user(username='bob', password='pw12345!')
+        import_full_backup(other_user, zip_bytes)
+
+        restored = Item.objects.get(user=other_user, name='Gift Card')
+        self.assertEqual(restored.transactions.count(), 2)
+        self.assertEqual(
+            set(restored.transactions.values_list('description', 'value')),
+            {('Coffee', Decimal('-5.00')), ('Lunch', Decimal('-12.50'))},
+        )
+
+    def test_items_without_transactions_have_no_transactions_key(self):
+        make_item(self.user, name='No Ledger')
+        zip_bytes = export_full_backup(Item.objects.filter(user=self.user).prefetch_related('transactions'))
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            entries = json.loads(zf.read('items.json'))
+        self.assertNotIn('_transactions', entries[0])
+
+    # ---- settings ----
+
+    def test_export_omits_settings_json_without_user(self):
+        make_item(self.user, name='No Settings Export')
+        zip_bytes = export_full_backup(Item.objects.filter(user=self.user))
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            self.assertNotIn('settings.json', zf.namelist())
+
+    def test_export_import_round_trip_restores_preferences(self):
+        prefs, _created = UserPreference.objects.get_or_create(user=self.user)
+        prefs.default_currency = 'EUR'
+        prefs.oled_dark_mode = True
+        prefs.save()
+        make_item(self.user)
+
+        zip_bytes = export_full_backup(Item.objects.filter(user=self.user), user=self.user)
+        other_user = User.objects.create_user(username='bob', password='pw12345!')
+        result = import_full_backup(other_user, zip_bytes)
+
+        self.assertTrue(result['settings_restored'])
+        other_prefs = UserPreference.objects.get(user=other_user)
+        self.assertEqual(other_prefs.default_currency, 'EUR')
+        self.assertTrue(other_prefs.oled_dark_mode)
+
+    def test_export_import_round_trip_restores_notification_rules(self):
+        NotificationRule.objects.create(
+            user=self.user, name='Ntfy Alerts', backend='ntfy',
+            config={'server': 'https://ntfy.sh', 'topic': 'my-topic'},
+            event_types=['expiry_warning'],
+        )
+        make_item(self.user)
+
+        zip_bytes = export_full_backup(Item.objects.filter(user=self.user), user=self.user)
+        other_user = User.objects.create_user(username='bob', password='pw12345!')
+        import_full_backup(other_user, zip_bytes)
+
+        rule = NotificationRule.objects.get(user=other_user, name='Ntfy Alerts')
+        self.assertEqual(rule.backend, 'ntfy')
+        self.assertEqual(rule.config['topic'], 'my-topic')
+        self.assertEqual(rule.event_types, ['expiry_warning'])
+
+    def test_restoring_notification_rules_twice_does_not_duplicate(self):
+        NotificationRule.objects.create(user=self.user, name='Rule', backend='webhook', config={'url': 'https://a.example/1'})
+        make_item(self.user)
+        zip_bytes = export_full_backup(Item.objects.filter(user=self.user), user=self.user)
+
+        other_user = User.objects.create_user(username='bob', password='pw12345!')
+        import_full_backup(other_user, zip_bytes)
+        import_full_backup(other_user, zip_bytes)
+
+        self.assertEqual(NotificationRule.objects.filter(user=other_user, name='Rule').count(), 1)
+
+    def test_export_import_round_trip_restores_apprise_urls(self):
+        self.user.userprofile.apprise_urls = 'tgram://token/chatid'
+        self.user.userprofile.save()
+        make_item(self.user)
+
+        zip_bytes = export_full_backup(Item.objects.filter(user=self.user), user=self.user)
+        other_user = User.objects.create_user(username='bob', password='pw12345!')
+        import_full_backup(other_user, zip_bytes)
+
+        self.assertEqual(UserProfile.objects.get(user=other_user).apprise_urls, 'tgram://token/chatid')
+
+    def test_settings_restored_false_when_backup_has_no_settings(self):
+        make_item(self.user, name='Plain Item')
+        zip_bytes = export_full_backup(Item.objects.filter(user=self.user))
+        other_user = User.objects.create_user(username='bob', password='pw12345!')
+        result = import_full_backup(other_user, zip_bytes)
+        self.assertFalse(result['settings_restored'])
 
 
 class ScheduledBackupTests(TestCase):

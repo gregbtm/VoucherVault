@@ -73,12 +73,49 @@ If the whole container/database is gone and you're starting over:
 
 ## Copying backups off-box
 
-Since this is a local-only mechanism, consider periodically copying
-`volume-data/database/backups/` to another machine, an external drive, or
-a cloud storage sync folder — e.g. a simple `rsync` or `rclone` cron job
-on the host running Docker/Portainer, outside the container entirely.
-That's outside the scope of what VoucherVault Plus+ itself does; the app's
-job is producing consistent, rotated local backups, not off-box replication.
+This is the single most important thing to do beyond what the app does
+for you: the scheduled backup and your live database sit on the **same**
+disk/volume, so it protects you against accidental deletion or a bad
+migration, but not against that disk/volume itself failing or being
+wiped — in that scenario the live data and every rotated backup are lost
+together. VoucherVault Plus+'s job stops at producing consistent, rotated
+*local* backups; getting a copy off that box is a host-level concern,
+outside the container, and worth setting up once.
+
+Run these on the Docker/Portainer **host**, not inside the container —
+they only need read access to `volume-data/database/backups/`.
+
+### Option A — `rsync` to another machine on your network
+
+```bash
+# add to the host's crontab (crontab -e), once a day after the 03:00 backup runs
+15 3 * * * rsync -a --delete /path/to/volume-data/database/backups/ user@backup-host:/backups/vouchervault/
+```
+
+`--delete` keeps the remote copy mirroring what's currently rotated
+in locally — drop it if you'd rather keep a longer remote history than
+the local `BACKUP_RETENTION_COUNT`.
+
+### Option B — `rclone` to cloud/object storage (S3, Backblaze B2, a NAS share, etc.)
+
+```bash
+# one-time: rclone config, name the remote e.g. "vouchervault-backup"
+15 3 * * * rclone sync /path/to/volume-data/database/backups/ vouchervault-backup:vouchervault/backups
+```
+
+`rclone sync` (not `copy`) mirrors deletions too, same rotation
+consideration as `--delete` above. Use `rclone copy` instead if you want
+the remote to accumulate every backup ever produced rather than tracking
+local rotation.
+
+### Verifying it's actually working
+
+Both of the above are silent on success and (by default) silent on
+failure too. Add `-v --log-file=/var/log/vouchervault-backup-sync.log` to
+either command, or pipe the cron job's output through your host's usual
+alerting (a `MAILTO=` in the crontab, a healthcheck ping via
+`curl https://hc-ping.com/<uuid>` appended to the command, etc.) so a
+silent failure doesn't go unnoticed for weeks.
 
 ## Configuration
 

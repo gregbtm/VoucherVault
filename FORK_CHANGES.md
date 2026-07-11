@@ -726,6 +726,67 @@ custom node or per-endpoint wiring.
     covers n8n-as-consumer and n8n-as-trigger-target as the two halves
     of the integration.
 
+## Post-Phase-14 — Wider Full Backup format + off-box backup guidance
+
+Two follow-ups after a direct question about where the scheduled backup
+(Phase 14.3) actually protects you: it only ever captured `Item` rows
+(plus files/documents), and it lives on the same disk as the live
+database.
+
+- **`docs/BACKUP_RESTORE.md`** now has a concrete "Copying backups
+  off-box" section — an `rsync`-to-another-host cron example and an
+  `rclone`-to-cloud-storage cron example, plus a note on verifying they're
+  actually running (both commands are silent on success by default).
+  Deliberately documentation-only: VoucherVault Plus+'s job stops at
+  producing consistent, rotated *local* backups; automated off-box
+  replication was considered and explicitly not built; getting a copy off
+  the box is a host-level concern outside the container.
+- **The Full Backup zip format** (`imports/exporters/full_backup.py`,
+  `imports/full_backup_import.py`) now also carries, in a new
+  `settings.json` written alongside the existing `items.json`:
+  - Per-item **transaction history** (`_transactions` key per item entry
+    in `items.json` — date/description/value), restored as new
+    `Transaction` rows against the newly-created item.
+  - **Display/behavior preferences** (`UserPreference`: sort order, view
+    mode, currency, screen-wake, OLED dark mode, offline cache toggle,
+    etc.) and the legacy **Apprise URLs** field (`UserProfile`).
+  - **Notification rule configs** (`NotificationRule`: name, backend,
+    config, enabled, event types).
+  - `WebPushSubscription` rows are deliberately still excluded: a push
+    subscription is tied to one specific browser's registration with its
+    push service, and a still-subscribed browser re-establishes it
+    automatically on next visit — restoring a stale one would just create
+    a dead orphaned row.
+  - Restoring keeps the existing Phase 11.8 always-insert semantics for
+    items (disaster-recovery-oriented — restoring twice duplicates
+    items), but settings are **upserted**: preferences and Apprise URLs
+    overwrite the one existing row (`UserPreference`/`UserProfile` are
+    both `OneToOneField(User)`), and notification rules are matched on
+    their existing `(user, name)` unique-together key via
+    `update_or_create`, so restoring the same backup twice doesn't pile
+    up duplicate rules.
+  - `settings.json` is only written when the exporter is given a `user`
+    (the three call sites — the web download view, the API endpoint, and
+    the scheduled backup task — all pass one; a caller that doesn't, e.g.
+    a hypothetical items-only export, still gets a valid backup with no
+    settings section).
+  - Fixed a real bug found while adding this: reading settings via
+    `getattr(user, 'userpreference', None)` / `getattr(user, 'userprofile',
+    None)` (Django's reverse-OneToOne accessors) can return **stale**
+    data — those accessors cache on first access, and if something
+    earlier in the same request/process populated the cache (e.g. the
+    `post_save` signal that creates a default `UserPreference` at
+    signup) before the row was modified through a separate query, the
+    cached object doesn't reflect the update. `_export_settings()` now
+    always does a fresh `UserPreference.objects.filter(user=user).first()`
+    / `UserProfile.objects.filter(user=user).first()` query instead.
+- New tests in `imports/tests.py::FullBackupTests`: transaction
+  round-tripping (including items with none omitting the `_transactions`
+  key entirely), preferences/Apprise-URL/notification-rule
+  round-tripping, notification rules not duplicating on a second restore,
+  `settings.json` being omitted when no `user` is passed to the exporter,
+  and `settings_restored` reporting correctly in the import result.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
