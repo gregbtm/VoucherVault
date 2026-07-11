@@ -362,6 +362,7 @@
       </li><!-- End Blank Page Nav -->
 
       <!-- Cache and Language Toggle at Bottom -->
+      {% if global_preferences.offline_cache_enabled %}
       <li class="nav-item sidebar-footer-item">
         <a class="nav-link collapsed" href="#" onclick="event.preventDefault(); manualCacheManager.cacheData();">
           <i class="bi bi-download"></i>
@@ -369,6 +370,7 @@
           <span id="cache-status" class="badge bg-secondary ms-2" style="font-size: 0.7rem;">Not cached</span>
         </a>
       </li><!-- End Cache Nav -->
+      {% endif %}
 
       <li class="nav-item" id="purge-cache-button">
         <a class="nav-link collapsed" href="#" onclick="event.preventDefault(); manualCacheManager.clearCache();">

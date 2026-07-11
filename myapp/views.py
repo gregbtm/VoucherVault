@@ -20,6 +20,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
@@ -1087,10 +1088,18 @@ def update_user_preferences(request):
     preferences, _ = UserPreference.objects.get_or_create(user=request.user)
 
     if request.method == 'POST':
+        was_offline_cache_enabled = preferences.offline_cache_enabled
         form = UserPreferenceForm(request.POST, instance=preferences)
         if form.is_valid():
             form.save()
-            return redirect('show_items')  # or redirect to 'update_user_preferences' to stay on page
+            # A preference change can affect what /dashboard renders (e.g. the
+            # Fixer.io API key warning), so tell the service worker to drop its
+            # cached copy rather than waiting on the cache's own TTL. If offline
+            # caching was just turned off, purge everything outright.
+            redirect_url = reverse('show_items') + '?prefs_saved=1'
+            if was_offline_cache_enabled and not form.cleaned_data['offline_cache_enabled']:
+                redirect_url += '&cache_purge=1'
+            return redirect(redirect_url)
     else:
         form = UserPreferenceForm(instance=preferences)
 

@@ -358,12 +358,42 @@ class ManualCacheManager {
     }
 }
 
+/**
+ * After a preference save, the server redirects back with ?prefs_saved=1
+ * (and &cache_purge=1 if offline caching was just turned off). Rather than
+ * waiting on the cache's own TTL, tell the service worker to drop just its
+ * cached /dashboard entry immediately - a saved preference (e.g. the
+ * Fixer.io API key) can change what that page renders.
+ */
+function handlePrefsSavedSignal() {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('prefs_saved')) {
+        return;
+    }
+
+    if (params.has('cache_purge')) {
+        if (manualCacheManager) {
+            manualCacheManager.clearCache();
+        }
+    } else if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'INVALIDATE_PATH', path: '/dashboard' });
+    }
+
+    params.delete('prefs_saved');
+    params.delete('cache_purge');
+    const query = params.toString();
+    const newUrl = window.location.pathname + (query ? `?${query}` : '') + window.location.hash;
+    window.history.replaceState({}, '', newUrl);
+}
+
 // Initialize when DOM is ready
 let manualCacheManager;
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         manualCacheManager = new ManualCacheManager();
+        handlePrefsSavedSignal();
     });
 } else {
     manualCacheManager = new ManualCacheManager();
+    handlePrefsSavedSignal();
 }
