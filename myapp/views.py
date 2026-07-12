@@ -407,6 +407,22 @@ def view_item(request, item_uuid):
     }
     return render(request, 'view-item.html', context)
 
+
+def _known_issuers(user):
+    """
+    A user's own past issuer names, for an autocomplete on the Issuer field.
+    Manually typing "Amazon" one time and "Amazom" the next silently splits
+    what should be one merchant across two spellings - breaking merchant
+    logo matching, the balance-check URL suggestion, and "value by issuer"
+    analytics grouping, all of which key off this exact string. Scoped to
+    the user's own items, not every issuer ever seen on the instance, so it
+    doesn't leak other users' merchant names in a shared/multi-user setup.
+    """
+    return list(
+        Item.objects.filter(user=user).exclude(issuer='').order_by('issuer')
+        .values_list('issuer', flat=True).distinct()
+    )
+
 @login_required
 def create_item(request):
     if request.method == 'POST':
@@ -428,7 +444,7 @@ def create_item(request):
                 form.add_error(None, f'Failed to generate barcode. Error: {str(e)}')
                 form.add_error(None, f'Use the browser\'s back button to refill previous file uploads')
                 # Return the form filled with the user's previously entered data and errors
-                return render(request, 'create-item.html', {'form': form, 'ocr_enabled': ocr_enabled()})
+                return render(request, 'create-item.html', {'form': form, 'ocr_enabled': ocr_enabled(), 'known_issuers': _known_issuers(request.user)})
 
             # Handle file upload
             if 'file' in request.FILES:
@@ -455,13 +471,13 @@ def create_item(request):
             return redirect('show_items')
         else:
             # If form is not valid, render the form with validation errors
-            return render(request, 'create-item.html', {'form': form, 'ocr_enabled': ocr_enabled()})
+            return render(request, 'create-item.html', {'form': form, 'ocr_enabled': ocr_enabled(), 'known_issuers': _known_issuers(request.user)})
     else:
         # If not a POST request, initialize form with user's preferred currency
         preferences, _ = UserPreference.objects.get_or_create(user=request.user)
         form = ItemForm(initial={'currency': preferences.default_currency or 'GBP'}, user=request.user)
 
-    return render(request, 'create-item.html', {'form': form, 'ocr_enabled': ocr_enabled()})
+    return render(request, 'create-item.html', {'form': form, 'ocr_enabled': ocr_enabled(), 'known_issuers': _known_issuers(request.user)})
 
 @login_required
 def edit_item(request, item_uuid):
@@ -486,7 +502,7 @@ def edit_item(request, item_uuid):
                 except Exception as e:
                     form.add_error(None, f'Failed to generate barcode. Error: {str(e)}')
                     # Return the form filled with the user's previously entered data and errors
-                    return render(request, 'edit-item.html', {'form': form, 'item': item, 'ocr_enabled': ocr_enabled()})
+                    return render(request, 'edit-item.html', {'form': form, 'item': item, 'ocr_enabled': ocr_enabled(), 'known_issuers': _known_issuers(request.user)})
                     
             # Handle file upload
             if 'file' in request.FILES:
@@ -523,7 +539,7 @@ def edit_item(request, item_uuid):
     else:
         form = ItemForm(instance=item, user=request.user)
 
-    return render(request, 'edit-item.html', {'form': form, 'item': item, 'ocr_enabled': ocr_enabled()})
+    return render(request, 'edit-item.html', {'form': form, 'item': item, 'ocr_enabled': ocr_enabled(), 'known_issuers': _known_issuers(request.user)})
 
 @require_GET
 @login_required
@@ -564,6 +580,7 @@ def duplicate_item(request, item_uuid):
     return render(request, 'create-item.html', {
         'form': form,
         'ocr_enabled': ocr_enabled(),
+        'known_issuers': _known_issuers(request.user),
     })
 
 @require_POST

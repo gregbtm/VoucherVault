@@ -334,6 +334,45 @@ class ExtraBarcodeTypeTests(TestCase):
         self.assertEqual(resolved_type, 'ean13')
 
 
+class IssuerAutocompleteTests(TestCase):
+    """
+    Manually typing an issuer name is a common source of typos ("Amazom"
+    vs "Amazon") that silently split what should be one merchant across
+    two spellings, breaking logo matching, the balance-check URL
+    suggestion, and analytics grouping. A <datalist> of the user's own
+    past issuer names fixes that without forcing a fixed merchant list.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.other_user = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_create_item_page_lists_own_past_issuers(self):
+        make_item(self.user, redeem_code='A1', issuer='Amazon')
+        make_item(self.user, redeem_code='A2', issuer='Tesco')
+        make_item(self.other_user, redeem_code='A3', issuer='SomeoneElsesShop')
+
+        response = self.client.get(reverse('create_item'))
+        self.assertContains(response, '<option value="Amazon">')
+        self.assertContains(response, '<option value="Tesco">')
+        self.assertNotContains(response, 'SomeoneElsesShop')
+
+    def test_create_item_page_deduplicates_issuers(self):
+        make_item(self.user, redeem_code='A1', issuer='Amazon')
+        make_item(self.user, redeem_code='A2', issuer='Amazon')
+
+        response = self.client.get(reverse('create_item'))
+        self.assertEqual(response.content.decode().count('<option value="Amazon">'), 1)
+
+    def test_edit_item_page_lists_own_past_issuers(self):
+        item = make_item(self.user, redeem_code='A1', issuer='Amazon')
+        make_item(self.user, redeem_code='A2', issuer='Tesco')
+
+        response = self.client.get(reverse('edit_item', args=[item.id]))
+        self.assertContains(response, '<option value="Tesco">')
+
+
 class ShowItemsWalletFilterTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')

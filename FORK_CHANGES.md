@@ -54,6 +54,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 17 — Database-backed Site Settings page](#phase-17--database-backed-site-settings-page)
 - [Phase 18 — Bug-fix batch: no-barcode code type, share button clarity, wallet docs](#phase-18--bug-fix-batch-no-barcode-code-type-share-button-clarity-wallet-docs)
 - [Phase 19 — Smart barcode type detection](#phase-19--smart-barcode-type-detection)
+- [Phase 20 — Screenshot-friendly OCR + issuer autocomplete](#phase-20--screenshot-friendly-ocr--issuer-autocomplete)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -1120,6 +1121,41 @@ list — alongside the smart-detection work.
   a Tesseract shape-guess test, an API test confirming `code_type` passes
   through `/api/v1/ocr/extract/`, and a Catima parser test for the
   Codabar/Code 93 mapping fix.
+
+## Phase 20 — Screenshot-friendly OCR + issuer autocomplete
+
+Direct follow-up to Phase 19: "what about manual entry, and what about
+screenshots instead of a live photo?"
+
+- **Screenshots already worked - the copy and the AI prompt just didn't
+  say so.** Both the "Scan with AI" file input and the barcode "File
+  Scan" input were always plain `<input type="file">` with no `capture`
+  attribute, so picking an existing image (a screenshot of an emailed
+  gift card, a retailer app screen, a digital wallet pass) has worked
+  since these features shipped - nothing to fix there. What was actually
+  working against it: the UI copy said "Upload a photo of the voucher...
+  card", and the Claude/OpenAI OCR prompt said "This is a photo of a
+  physical voucher... card" - both framings that could read as "only a
+  photo of a physical card counts," and for the AI backends, a prompt
+  that insists it's looking at a physical object when it's actually
+  looking at a screenshot is a real thing that can measurably hurt a
+  vision model's read. Both are reworded to explicitly welcome
+  screenshots alongside photos of physical cards.
+- **New issuer autocomplete for manual entry.** Typing a merchant name by
+  hand has no smart help at all today - "Amazon" one time and "Amazom"
+  the next silently splits what should be one merchant across two
+  spellings, which breaks merchant logo matching, the balance-check URL
+  suggestion (Phase 13.3), and "value by issuer" analytics grouping, all
+  of which key off that exact string. Both create-item.html and
+  edit-item.html now render a `<datalist>` (`myapp/views.py::
+  _known_issuers()`) of the current user's own past issuer names, wired
+  to the Issuer field via `list="issuerDatalist"` - the browser's native
+  autocomplete UI, no JS framework needed. Scoped to the user's own
+  items only, not every issuer ever seen on a shared/multi-user
+  instance.
+- New tests: `IssuerAutocompleteTests` (own issuers listed, another
+  user's issuers excluded, duplicates collapsed to one `<option>` on
+  both the create and edit pages).
 
 ## New environment variables
 

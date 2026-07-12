@@ -15,8 +15,10 @@ DEFAULT_MODEL = 'claude-sonnet-5'
 _CODE_TYPE_OPTIONS = ', '.join(sorted(VALID_CODE_TYPES - {'none'}))
 
 _PROMPT = (
-    'This is a photo of a physical voucher, coupon, gift card, or loyalty '
-    'card. Extract whatever of the following you can confidently read: '
+    'This image shows a voucher, coupon, gift card, or loyalty card - it '
+    'may be a photo of a physical card, or a screenshot (an emailed gift '
+    'card, a retailer app screen, a digital wallet pass, a confirmation '
+    'page). Extract whatever of the following you can confidently read: '
     'the redeem/reference code printed or barcoded on it, the merchant or '
     'brand name, the issuer (if different from the merchant), and the '
     'expiry date. If a barcode or QR code is visible next to the code, '
