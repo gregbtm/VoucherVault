@@ -58,6 +58,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 21 — Merged AI-scan upload + auto-filled field highlighting](#phase-21--merged-ai-scan-upload--auto-filled-field-highlighting)
 - [Phase 22 — Code review pass across Phases 16–21](#phase-22--code-review-pass-across-phases-1621)
 - [Phase 23 — Public share links: smart "Share via..." with tracking](#phase-23--public-share-links-smart-share-via-with-tracking)
+- [Phase 24 — Fix false-positive "Viewing cached content" banner](#phase-24--fix-false-positive-viewing-cached-content-banner)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -1361,6 +1362,36 @@ I don't need the app") an explicit choice rather than a guess.
   excluded from the public page, the item-detail management card) and a
   `WebShareButtonWiringTests` case asserting the smart-share flag in the
   page matches the site setting.
+
+## Phase 24 — Fix false-positive "Viewing cached content" banner
+
+Reported bug: the "Cache for Offline" preference was off (and nothing
+purged the cache would fix), yet the "Viewing cached content" banner
+still appeared on ordinary, fully-online page loads.
+
+- **Root cause**: `offline-sync.js::checkIfServedFromCache()` never
+  actually checked whether anything was cached. It inferred "served from
+  cache" from `performance.getEntriesByType('navigation')[0]` having
+  `workerStart > 0` (true for *every* navigation, since the service
+  worker intercepts them all) `&& transferSize === 0` (true for plenty of
+  reasons that have nothing to do with the PWA's own Cache Storage - a
+  304, the browser's ordinary HTTP disk cache). It was checking navigation
+  timing, not the actual `PAGE_CACHE` the "Cache for Offline" toggle
+  controls, so it was never actually wired to that preference at all -
+  false positives were possible on any normal page load, toggle setting
+  notwithstanding.
+- **Fix**: check the real thing instead of a proxy for it -
+  `checkIfServedFromCache()` now opens every `vouchervault-pages-*` cache
+  and calls `cache.match(window.location.href)` directly. That cache is
+  the only place the manual "Cache for Offline" feature writes to
+  (`manual-cache.js::cacheData()`), and it's fully purged the moment the
+  preference is switched off (`ManualCacheManager.clearCache()`), so a
+  match now means the page genuinely came from that cache - and with
+  caching off and nothing cached, `cache.match()` always misses and the
+  banner never appears.
+- No Python changes; JS-only fix, verified with `node --check` (no test
+  harness exists for the client-side JS in this project to unit test
+  against).
 
 ## New environment variables
 
