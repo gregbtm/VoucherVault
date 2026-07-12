@@ -18,20 +18,24 @@
 > [!NOTE]
 > This is [gregbtm](https://github.com/gregbtm)'s fork of the upstream
 > [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault) project.
-> Seventeen rounds of additive features have been layered on top without
+> Twenty-two rounds of additive features have been layered on top without
 > touching upstream's own code: a full **REST API**, **Wallets/Tags/Notes**,
 > a rules-based **notification engine** (ntfy, webhook, Apprise, and native
 > **Web Push**) covering the full item lifecycle, bulk **Import/Export**
 > plus a full-fidelity **zip backup/restore** format, an **Analytics
 > dashboard**, **auto-fetched merchant logos**, an AI-assisted **"Scan with
-> AI"** photo capture (Claude, OpenAI, or fully local/free Tesseract),
-> **Apple Wallet import/export and Google Wallet export**, **document
+> AI"** photo capture (Claude, OpenAI, or fully local/free Tesseract, all
+> screenshot-friendly, one upload for both a ground-truth barcode decode and
+> AI-read text fields), **Apple Wallet import/export and Google Wallet
+> export**, **16 barcode symbologies with smart auto-detection**, **document
 > attachments**, **shared (multi-user) wallets**, **native OS/browser
 > sharing**, an **MCP server** for AI assistants, a **nightly scheduled
 > backup** with rotation, an **.ics calendar feed**, **bulk actions** on
-> the Inventory page, a **zero-build n8n integration**, and a handful of
-> Catima-parity touches (card numbers, archiving, last-used sort, an
-> OLED true-black theme, and screen wake lock).
+> the Inventory page, a **zero-build n8n integration**, a **one-click
+> Portainer redeploy** trigger, an in-app **Site Settings** page for every
+> app-level setting, and a handful of Catima-parity touches (card numbers,
+> archiving, last-used sort, an OLED true-black theme, and screen wake
+> lock).
 > See [`FORK_CHANGES.md`](FORK_CHANGES.md) for the full phase-by-phase
 > changelog, the [Wiki](https://github.com/gregbtm/VoucherVault/wiki) for
 > feature-by-feature guides, [`docs/UPGRADE.md`](docs/UPGRADE.md) if
