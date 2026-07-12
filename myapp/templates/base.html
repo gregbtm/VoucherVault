@@ -102,10 +102,13 @@
       font-size: 1.2rem;
     }
 
-    /* Offline content banner */
+    /* Offline content banner - top-anchored (below the fixed header) rather
+       than bottom-center, which used to sit at the exact same bottom:20px;
+       left:50% spot as the Inventory page's bulk-action bar and could
+       visually collide with it when both were showing at once. */
     .offline-content-banner {
       position: fixed;
-      bottom: 20px;
+      top: 70px;
       left: 50%;
       transform: translateX(-50%);
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -118,7 +121,7 @@
       align-items: center;
       gap: 12px;
       font-size: 14px;
-      animation: slideUp 0.3s ease-out;
+      animation: slideDown 0.3s ease-out;
     }
 
     .offline-content-banner i {
@@ -131,20 +134,20 @@
       font-size: 12px;
     }
 
-    @keyframes slideUp {
+    @keyframes slideDown {
       from {
-        bottom: -100px;
+        top: -100px;
         opacity: 0;
       }
       to {
-        bottom: 20px;
+        top: 70px;
         opacity: 1;
       }
     }
 
     @media (max-width: 768px) {
       .offline-content-banner {
-        bottom: 10px;
+        top: 70px;
         left: 10px;
         right: 10px;
         transform: none;

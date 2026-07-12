@@ -312,12 +312,17 @@ class ManualCacheManager {
      * Show toast notification
      */
     showToast(title, message, type = 'info') {
-        let toastContainer = document.getElementById('cache-toast-container');
+        // Reuse the app-wide toast container (base.html) rather than a
+        // second one of our own - a separate '#cache-toast-container' used
+        // to duplicate the same bottom-end corner with z-index 11, far
+        // below every other overlay in the app (header alone is 997), so
+        // it could render invisibly behind them.
+        let toastContainer = document.getElementById('toast-container');
         if (!toastContainer) {
             toastContainer = document.createElement('div');
-            toastContainer.id = 'cache-toast-container';
-            toastContainer.className = 'toast-container position-fixed bottom-0 end-0 p-3';
-            toastContainer.style.zIndex = '11';
+            toastContainer.id = 'toast-container';
+            toastContainer.className = 'position-fixed bottom-0 end-0 p-3';
+            toastContainer.style.zIndex = '10001';
             document.body.appendChild(toastContainer);
         }
 
