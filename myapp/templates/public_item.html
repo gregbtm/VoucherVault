@@ -12,6 +12,17 @@
     <link href="{% static 'assets/img/favicon.ico' %}" rel="shortcut icon">
     <link href="{% static 'assets/img/apple-touch-icon.png' %}" rel="apple-touch-icon">
     <link href="{% static 'assets/vendor/bootstrap-icons/bootstrap-icons.css' %}" rel="stylesheet">
+
+    {# Link-preview metadata for chat/social apps (WhatsApp, iMessage, Slack, etc.) - the merchant's #}
+    {# own logo when we have one cached, never anything containing the code/PIN/balance, so the #}
+    {# preview image itself can't become a leak vector via that app's own caching. #}
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{ item.issuer }} {{ item.get_type_display }}">
+    <meta property="og:description" content="{% blocktrans %}A {{ item.get_type_display }} shared via VoucherVault Plus+.{% endblocktrans %}">
+    <meta property="og:url" content="{{ request.build_absolute_uri }}">
+    <meta property="og:image" content="{% if merchant_logo_url %}{{ merchant_logo_url }}{% else %}{{ request.scheme }}://{{ request.get_host }}{% static 'assets/img/apple-touch-icon.png' %}{% endif %}">
+    <meta name="twitter:card" content="summary">
+
     <style>
         :root {
             color-scheme: light dark;
@@ -56,6 +67,9 @@
             padding: 24px;
             text-align: center;
         }
+        .merchant-logo {
+            max-height: 56px; max-width: 100%; margin: 0 auto 12px; display: block;
+        }
         .merchant { font-size: 1.4rem; font-weight: 700; margin: 0 0 2px; }
         .item-name { color: var(--muted); margin: 0 0 20px; font-size: 0.95rem; }
         .code-img { max-width: 100%; margin: 0 auto 16px; display: block; }
@@ -88,6 +102,16 @@
             display: inline-block; background: #dc2626; color: #fff; font-size: 0.75rem;
             font-weight: 600; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px;
         }
+        .pin-input {
+            width: 100%; font-size: 1.4rem; letter-spacing: 0.2em; text-align: center;
+            padding: 12px; border-radius: 10px; border: 1px solid var(--border);
+            background: var(--bg); color: var(--text); margin-bottom: 12px;
+        }
+        .pin-submit {
+            width: 100%; padding: 12px; border-radius: 10px; border: none;
+            background: var(--accent); color: #fff; font-size: 1rem; cursor: pointer;
+        }
+        .pin-error { color: #dc2626; font-size: 0.85rem; margin-bottom: 12px; }
     </style>
 </head>
 <body>
@@ -98,54 +122,73 @@
     </div>
 
     <div class="card">
-        {% if item.is_used %}
-        <span class="used-badge">{% trans "Already used" %}</span>
-        {% endif %}
+        {% if crawler_preview %}
+            {% if merchant_logo_url %}<img class="merchant-logo" src="{{ merchant_logo_url }}" alt="">{% endif %}
+            <p class="merchant">{{ item.issuer }}</p>
+            <p class="item-name">{{ item.get_type_display }}</p>
+        {% elif expired %}
+            <p class="merchant">{% trans "Link expired" %}</p>
+            <p class="item-name">{% trans "This shared link is no longer valid. Ask the sender for a new one." %}</p>
+        {% elif pin_required %}
+            {% if merchant_logo_url %}<img class="merchant-logo" src="{{ merchant_logo_url }}" alt="">{% endif %}
+            <p class="merchant">{{ item.issuer }}</p>
+            <p class="item-name">{% trans "Enter the access code you were given to view this." %}</p>
+            {% if pin_error %}<p class="pin-error">{{ pin_error }}</p>{% endif %}
+            <form method="POST">
+                <input class="pin-input" type="text" inputmode="numeric" name="access_pin" placeholder="••••" autofocus>
+                <button class="pin-submit" type="submit">{% trans "View" %}</button>
+            </form>
+        {% else %}
+            {% if item.is_used %}
+            <span class="used-badge">{% trans "Already used" %}</span>
+            {% endif %}
 
-        <p class="merchant">{{ item.issuer }}</p>
-        <p class="item-name">{{ item.name }} &middot; {{ item.get_type_display }}</p>
+            {% if merchant_logo_url %}<img class="merchant-logo" src="{{ merchant_logo_url }}" alt="">{% endif %}
+            <p class="merchant">{{ item.issuer }}</p>
+            <p class="item-name">{{ item.name }} &middot; {{ item.get_type_display }}</p>
 
-        {% if show_balance %}
-        <p class="balance">{{ current_balance }} {{ item.currency }}</p>
-        <p class="field-label" style="text-align:center; margin-bottom:20px;">{% trans "Remaining balance" %}</p>
-        {% endif %}
+            {% if show_balance %}
+            <p class="balance">{{ current_balance }} {{ item.currency }}</p>
+            <p class="field-label" style="text-align:center; margin-bottom:20px;">{% trans "Remaining balance" %}</p>
+            {% endif %}
 
-        {% if item.code_type != "none" and item.qr_code_base64 %}
-        <img class="code-img" src="data:image/png;base64,{{ item.qr_code_base64 }}" alt="{% trans 'Barcode' %}">
-        {% endif %}
+            {% if item.code_type != "none" and item.qr_code_base64 %}
+            <img class="code-img" src="data:image/png;base64,{{ item.qr_code_base64 }}" alt="{% trans 'Barcode' %}">
+            {% endif %}
 
-        {% if item.card_number %}
-        <div class="field">
-            <div class="field-label">{% trans "Card number" %}</div>
-            <div class="field-value-row">
-                <span class="field-value">{{ item.card_number }}</span>
-                <button type="button" class="copy-btn" data-copy="{{ item.card_number }}" title="{% trans 'Copy' %}"><i class="bi bi-clipboard"></i></button>
+            {% if item.card_number %}
+            <div class="field">
+                <div class="field-label">{% trans "Card number" %}</div>
+                <div class="field-value-row">
+                    <span class="field-value">{{ item.card_number }}</span>
+                    <button type="button" class="copy-btn" data-copy="{{ item.card_number }}" title="{% trans 'Copy' %}"><i class="bi bi-clipboard"></i></button>
+                </div>
             </div>
-        </div>
-        {% endif %}
+            {% endif %}
 
-        <div class="field">
-            <div class="field-label">{% trans "Code" %}</div>
-            <div class="field-value-row">
-                <span class="field-value">{{ item.redeem_code }}</span>
-                <button type="button" class="copy-btn" data-copy="{{ item.redeem_code }}" title="{% trans 'Copy' %}"><i class="bi bi-clipboard"></i></button>
+            <div class="field">
+                <div class="field-label">{% trans "Code" %}</div>
+                <div class="field-value-row">
+                    <span class="field-value">{{ item.redeem_code }}</span>
+                    <button type="button" class="copy-btn" data-copy="{{ item.redeem_code }}" title="{% trans 'Copy' %}"><i class="bi bi-clipboard"></i></button>
+                </div>
             </div>
-        </div>
 
-        {% if item.pin %}
-        <div class="field">
-            <div class="field-label">{% trans "PIN" %}</div>
-            <div class="field-value-row">
-                <span class="field-value">{{ item.pin }}</span>
-                <button type="button" class="copy-btn" data-copy="{{ item.pin }}" title="{% trans 'Copy' %}"><i class="bi bi-clipboard"></i></button>
+            {% if item.pin %}
+            <div class="field">
+                <div class="field-label">{% trans "PIN" %}</div>
+                <div class="field-value-row">
+                    <span class="field-value">{{ item.pin }}</span>
+                    <button type="button" class="copy-btn" data-copy="{{ item.pin }}" title="{% trans 'Copy' %}"><i class="bi bi-clipboard"></i></button>
+                </div>
             </div>
-        </div>
-        {% endif %}
+            {% endif %}
 
-        <hr class="divider">
-        <div class="meta">
-            {% if item.expiry_date %}<div>{% trans "Expires" %}: {{ item.expiry_date }}</div>{% endif %}
-        </div>
+            <hr class="divider">
+            <div class="meta">
+                {% if item.expiry_date %}<div>{% trans "Expires" %}: {{ item.expiry_date }}</div>{% endif %}
+            </div>
+        {% endif %}
     </div>
 
     <p class="footer">

@@ -63,6 +63,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 26 — Fix dark mode on the "Share via..." chooser popup](#phase-26--fix-dark-mode-on-the-share-via-chooser-popup)
 - [Phase 27 — Deeper GUI sweep: dark mode, overlays, and a touch bug](#phase-27--deeper-gui-sweep-dark-mode-overlays-and-a-touch-bug)
 - [Phase 28 — Uniform touch-target pass](#phase-28--uniform-touch-target-pass)
+- [Phase 29 — Public share link security overhaul, cache-banner root cause #2, and update-check reliability](#phase-29--public-share-link-security-overhaul-cache-banner-root-cause-2-and-update-check-reliability)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -1581,6 +1582,138 @@ size unchanged - only the surrounding tap area grew.
 - Verified with `python manage.py check` and the same template-rendering
   test slice as Phase 27 (Inventory, Sharing Center, item detail, plus
   `TagViewTests` for the tag-pill change) - 46 tests, all passing.
+
+## Phase 29 — Public share link security overhaul, cache-banner root cause #2, and update-check reliability
+
+Four issues raised together from real usage: a shared "Ticketmaster Gift
+Card" link previewed with VoucherVault's own generic icon instead of
+Ticketmaster's logo, prompting a broader question of whether the public
+share link (Phase 23) is secure enough to send frictionlessly; the
+"Viewing cached content" banner (supposedly fixed in Phase 24) was still
+appearing with the cache toggle off; and the "update available" banner
+had never once appeared despite releases going out.
+
+### Public share link: expiry, optional PIN gate, rate limiting, crawler-safe previews
+
+Phase 23's link never expired, had no rate limiting, and returned the
+full redemption card (code/PIN/balance) to *any* fetcher including the
+link-preview bots messaging apps use to build a preview card - so
+forwarding a link through WhatsApp/iMessage/Slack handed the code to that
+app's own crawler before a human ever opened it, and a leaked or guessed
+link worked forever with no throttle on retries.
+
+- **Expiry** - `ItemPublicShare.expires_at` (new field) is computed at
+  creation/regeneration time from a new `SiteConfiguration.share_link_expiry_days`
+  setting (default **30 days**, `0` = never expires, editable in Site
+  Settings). An expired link renders a plain "Link expired" state -
+  no merchant name, code, or balance - instead of any item content.
+- **Optional access PIN** - a new opt-in Site Settings toggle,
+  `share_link_pin_enabled` (**off by default**, so nothing changes for
+  anyone who doesn't turn it on). When enabled, every newly created or
+  regenerated link gets a random 4-digit `access_pin`
+  (`secrets.randbelow`, never the item's own `pin` field), shown only to
+  the owner on the item detail page - never included in the shared link
+  text itself, so a forwarded message and a leaked link each still need
+  the PIN relayed through a separate channel to be useful. The public
+  page gates all content behind a PIN-entry form until the correct code
+  is POSTed (`secrets.compare_digest`, constant-time), then remembers the
+  unlock for that browser session. Wrong guesses increment
+  `failed_pin_attempts`, surfaced to the owner on the item page as an
+  early warning sign of probing.
+- **Rate limiting**, backed by a new Redis-backed Django cache (see
+  below) so it works correctly across uWSGI's multiple worker processes:
+  10 PIN attempts / 10 minutes per link+IP (a full 4-digit keyspace sweep
+  would take several days minimum at that rate), and a looser 60
+  requests/minute per link+IP on the page itself (429 past that). Fails
+  open on any cache-backend error - a Redis hiccup blocks nobody.
+- **Link-preview/crawler detection** - a User-Agent allowlist
+  (`myapp/public_share.py::is_link_preview_bot`) covering WhatsApp,
+  iMessage-style `facebookexternalhit`, Slack, Telegram, Discord,
+  LinkedIn, Googlebot/Bingbot/Applebot, and others. These get a
+  metadata-only response (merchant name + logo, nothing sensitive) and
+  don't count as a real view or need the PIN - fixing both the leak-to-
+  the-crawler problem and (as a side effect) the "opened N times" counter
+  inflating before a human ever saw the link.
+- **New `django.core.cache.backends.redis.RedisCache`** (`myproject/settings.py`),
+  reusing the same Redis instance Celery already requires
+  (`REDIS_URL`) on a separate logical DB (index 1) so it can't collide
+  with Celery's broker/result-backend keys. No new required
+  infrastructure - if you're running this fork's `docker-compose.yml`,
+  Redis is already there for Celery.
+- New `PublicShareSecurityTests` covering expiry (set from config, "never
+  expires" when 0), PIN gate (blocks until correct, wrong-PIN error +
+  attempt counter, rate-limit message, session persists the unlock),
+  crawler detection (metadata-only, no view-count bump), and the general
+  view rate limit (429).
+
+### Merchant logo + richer link previews
+
+The actual bug report: a shared Ticketmaster gift card previewed with
+VoucherVault's generic icon in WhatsApp, not Ticketmaster's logo.
+
+- `public_item.html` now renders the item's cached merchant logo
+  (`get_cached_logo()`, same lookup Inventory already uses - no new
+  fetch) both on the page itself and via new Open Graph / Twitter Card
+  meta tags (`og:title`, `og:description`, `og:image`, `og:url`,
+  `twitter:card`) in its `<head>`, so link-preview cards in WhatsApp,
+  iMessage, Slack, etc. now show the merchant's own logo instead of a
+  generic icon - falling back to the app's own icon only when no logo is
+  cached for that issuer yet.
+- The preview image is deliberately never anything containing the
+  code/PIN/balance - it's the same merchant logo shown to a crawler under
+  the layered-checks logic above, so the image itself can't become a leak
+  vector via that app's own caching of the preview.
+
+### Cache banner root cause #2
+
+Phase 24 fixed one trigger path (`checkIfServedFromCache()`'s broken
+detection logic) but missed a second, independent one: the browser's
+native `offline` event handler in `offline-sync.js` called
+`showOfflinePageBanner()` unconditionally, with no check of actual cache
+state at all. `navigator.onLine`/the `offline` event reflect the network
+*interface*, not real reachability - both flicker on a weak signal or a
+Wi-Fi/cellular handoff on Android, which is why the banner kept
+reappearing on an ordinary, fully-online phone with the cache toggle off.
+
+- The `offline` listener now calls `checkIfServedFromCache()` (the real
+  cache check) instead of unconditionally showing the banner, and that
+  function's own early-return on `!navigator.onLine` was removed - the
+  banner's visibility is now driven entirely by an actual
+  `cache.match()` hit against `vouchervault-pages-*`, never by
+  `navigator.onLine`/`offline` on their own.
+- No Python changes; JS-only fix, verified with `node --check`.
+
+### Update-check reliability
+
+The "update available" banner had never appeared on the user's
+deployment despite releases going out. Two independent root causes:
+
+- **`docker/entrypoint.sh` only ever registered periodic Celery Beat
+  tasks (including the daily "Update Check" task added well after this
+  deployment was first initialized) on a brand-new database** - gated
+  behind the same `DB_INITIALIZED` flag used to decide whether to create
+  the initial superuser. A long-running deployment that predates a given
+  phase's periodic task never got it registered at all. Fixed by moving
+  `create_default_periodic_tasks` out of that gate to run on every
+  container start (safe: the management command's own `get_or_create`
+  makes it idempotent) - superuser creation stays inside the
+  `DB_INITIALIZED` gate, correctly, since that should only ever happen
+  once.
+- **The Phase 16 "Redeploy now" GitHub Action never fires** - confirmed
+  via the Actions run logs that `PORTAINER_WEBHOOK_URL secret is not
+  set - skipping`. This is a **repo secret** on GitHub (Settings ->
+  Secrets and variables -> Actions), separate from the in-app Site
+  Settings `Portainer Webhook URL` field that powers the manual "Redeploy
+  now" button - both need to be set independently for the two different
+  triggers to work.
+- **New manual "Check for updates now" button** on the Site Settings page
+  (superuser-only, `trigger_update_check` view) runs `check_for_update()`
+  synchronously and reports the result immediately, independent of
+  whether Celery Beat's schedule is registered correctly - a direct way
+  to confirm the check itself works without waiting for the daily task
+  or debugging Celery Beat.
+- New `TriggerUpdateCheckViewTests` (auth/permission gating, reports
+  "up to date" vs. "update available: vX.Y.Z").
 
 ## New environment variables
 

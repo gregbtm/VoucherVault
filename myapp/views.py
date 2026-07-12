@@ -1,10 +1,12 @@
 import os
 import json
 import logging
+import secrets
 import unicodedata
 import mimetypes
 import uuid
 import datetime as dt
+from django.db import IntegrityError
 from django.db.models import Q
 from django.utils.safestring import mark_safe
 from .forms import *
@@ -29,6 +31,8 @@ from .decorators import require_authorization_header_with_api_token
 from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items_by_wallet
 from .merchant_logos import get_cached_balance_check_url, get_cached_logo, get_cached_logos_for_issuers, remember_balance_check_url
 from .portainer import PortainerRedeployError, trigger_redeploy
+from .update_check import check_for_update
+from .public_share import is_link_preview_bot, pin_attempt_rate_limited, view_rate_limited
 from .tasks import fetch_merchant_logo_task
 from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
 from imports.exporters.pkpass import pkpass_enabled
@@ -863,6 +867,33 @@ def trigger_portainer_redeploy(request):
         return redirect(referer)
     return redirect('show_items')
 
+@require_POST
+@login_required
+def trigger_update_check(request):
+    """
+    Superuser-only "Check for updates now" button - runs check_for_update()
+    synchronously instead of waiting on the daily periodic task. Exists
+    because the periodic task itself can silently never run at all on an
+    already-initialized deployment (see docker/entrypoint.sh) - this gives
+    a direct, immediate way to confirm the check itself actually works,
+    independent of whether Celery Beat's schedule is registered correctly.
+    """
+    if not request.user.is_superuser:
+        messages.error(request, _('Only administrators can check for updates.'))
+        return redirect('show_items')
+
+    check_for_update()
+    status = UpdateCheckStatus.load()
+    if status.update_available:
+        messages.success(request, _('Update available: %(version)s.') % {'version': status.latest_version})
+    else:
+        messages.success(request, _('Checked for updates - you\'re on the latest version.'))
+
+    referer = request.META.get('HTTP_REFERER')
+    if referer and url_has_allowed_host_and_scheme(referer, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return redirect(referer)
+    return redirect('site_settings')
+
 @login_required
 def site_settings(request):
     """
@@ -889,7 +920,11 @@ def site_settings(request):
     else:
         form = SiteConfigurationForm(instance=config)
 
-    return render(request, 'site_settings.html', {'form': form, 'config': config})
+    return render(request, 'site_settings.html', {
+        'form': form,
+        'config': config,
+        'update_check_status': UpdateCheckStatus.load(),
+    })
 
 @require_GET
 @login_required
@@ -1013,6 +1048,7 @@ def _public_share_payload(request, item, share):
     build either a bare-link share or a full-details share client-side,
     without embedding the code/PIN/balance of every item in the page's
     HTML up front (e.g. on the Inventory grid, which can list hundreds).
+    Deliberately does NOT include share.access_pin - see _create_public_share.
     """
     return {
         'url': request.build_absolute_uri(reverse('public_item_share', args=[share.id])),
@@ -1033,6 +1069,31 @@ def _wants_json(request):
     """
     return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
+def _create_public_share(item, user):
+    """
+    Builds a fresh ItemPublicShare with expiry/access-PIN computed from the
+    current SiteConfiguration - centralized here so get_public_share_link
+    and regenerate_public_share_link (which both create a share row) can't
+    drift out of sync on this logic.
+
+    The PIN is deliberately never returned to the caller for inclusion in
+    the "Share via..." text/link (see _public_share_payload) - it's only
+    ever surfaced via share.access_pin on the item detail page, for the
+    owner to relay through a separate channel. Bundling it into the same
+    message as the link would defeat the point of a second factor for the
+    common case (message forwarded/leaked as a whole), even though it
+    still helps against the other leak vectors (search indexing, a link
+    scraped without its surrounding message, link-preview caching).
+    """
+    config = SiteConfiguration.load()
+    expires_at = None
+    if config.share_link_expiry_days:
+        expires_at = timezone.now() + dt.timedelta(days=config.share_link_expiry_days)
+    access_pin = f'{secrets.randbelow(10000):04d}' if config.share_link_pin_enabled else ''
+    return ItemPublicShare.objects.create(
+        item=item, created_by=user, expires_at=expires_at, access_pin=access_pin,
+    )
+
 @require_POST
 @login_required
 def get_public_share_link(request, item_id):
@@ -1048,7 +1109,15 @@ def get_public_share_link(request, item_id):
     if not has_item_access(item, request.user):
         return HttpResponse("Unauthorized", status=403)
 
-    share, _created = ItemPublicShare.objects.get_or_create(item=item, defaults={'created_by': request.user})
+    try:
+        share = item.public_share
+    except ItemPublicShare.DoesNotExist:
+        try:
+            share = _create_public_share(item, request.user)
+        except IntegrityError:
+            # Lost a race with a concurrent request creating the same
+            # OneToOne row - the other request's create() won, use it.
+            share = item.public_share
     if _wants_json(request):
         return JsonResponse(_public_share_payload(request, item, share))
     messages.success(request, _('Public share link created.'))
@@ -1063,7 +1132,7 @@ def regenerate_public_share_link(request, item_id):
         return HttpResponse("Unauthorized", status=403)
 
     ItemPublicShare.objects.filter(item=item).delete()
-    share = ItemPublicShare.objects.create(item=item, created_by=request.user)
+    share = _create_public_share(item, request.user)
     if _wants_json(request):
         return JsonResponse(_public_share_payload(request, item, share))
     messages.success(request, _('Public share link regenerated. The old link no longer works.'))
@@ -1083,6 +1152,7 @@ def revoke_public_share_link(request, item_id):
     messages.success(request, _('Public share link revoked.'))
     return redirect('view_item', item_uuid=item.id)
 
+@csrf_exempt
 def public_item_share(request, share_id):
     """
     Read-only, unauthenticated redemption summary: merchant, code/card
@@ -1091,14 +1161,71 @@ def public_item_share(request, share_id):
     pattern as the .ics calendar feed's token. Deliberately excludes
     notes, documents, and any edit/delete affordance - this is a page for
     someone who was handed a voucher, not a VoucherVault account holder.
+
+    csrf_exempt because the optional PIN-entry form below POSTs from a page
+    with no authenticated session to forge actions against - the worst
+    case of a forged cross-site POST here is a guessed PIN, which the rate
+    limiter below already has to defend against regardless of CSRF.
+
+    Layered protections, in the order they're checked:
+    - Link-preview/crawler user agents (WhatsApp, Slack, etc.) get a
+      metadata-only response - merchant name/logo for the preview card,
+      never the code/PIN/balance - and don't count as a real view or need
+      the PIN. Without this, sending the link via any of these apps would
+      both leak the sensitive fields to that app's own fetch and inflate
+      the "opened N times" counter before a human ever saw it.
+    - An expired link (SiteConfiguration.share_link_expiry_days) shows a
+      plain "expired" state instead of any item content.
+    - An optional access PIN (SiteConfiguration.share_link_pin_enabled),
+      checked with a constant-time comparison and a strict rate limit on
+      wrong guesses, gates everything past that point for one browser
+      session at a time.
+    - A separate, looser rate limit caps how often the full content can be
+      fetched at all, independent of the PIN.
     """
     share = get_object_or_404(ItemPublicShare.objects.select_related('item'), id=share_id)
-    share.record_view()
     item = share.item
+    cached_merchant = get_cached_logo(item.issuer)
+    merchant_logo_url = cached_merchant.logo_url if cached_merchant else None
+
+    if is_link_preview_bot(request.META.get('HTTP_USER_AGENT', '')):
+        return render(request, 'public_item.html', {
+            'item': item, 'crawler_preview': True, 'merchant_logo_url': merchant_logo_url,
+        })
+
+    if share.is_expired():
+        return render(request, 'public_item.html', {
+            'item': item, 'expired': True, 'merchant_logo_url': merchant_logo_url,
+        })
+
+    unlock_key = f'unlocked_share_{share.id}'
+    pin_error = None
+    if share.access_pin and not request.session.get(unlock_key):
+        if request.method == 'POST':
+            if pin_attempt_rate_limited(request, share.id):
+                pin_error = _('Too many attempts. Try again in a few minutes.')
+            elif secrets.compare_digest(request.POST.get('access_pin', ''), share.access_pin):
+                request.session[unlock_key] = True
+            else:
+                share.failed_pin_attempts += 1
+                share.save(update_fields=['failed_pin_attempts'])
+                pin_error = _('Incorrect code.')
+
+        if not request.session.get(unlock_key):
+            return render(request, 'public_item.html', {
+                'item': item, 'pin_required': True, 'pin_error': pin_error,
+                'merchant_logo_url': merchant_logo_url,
+            })
+
+    if view_rate_limited(request, share.id):
+        return HttpResponse('Too many requests', status=429)
+
+    share.record_view()
     return render(request, 'public_item.html', {
         'item': item,
         'current_balance': item.get_current_balance(),
         'show_balance': item.type == 'giftcard',
+        'merchant_logo_url': merchant_logo_url,
     })
 
 # API

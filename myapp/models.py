@@ -322,6 +322,23 @@ class ItemPublicShare(models.Model):
     view_count = models.PositiveIntegerField(default=0)
     first_viewed_at = models.DateTimeField(null=True, blank=True)
     last_viewed_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Blank means never expires. Set from SiteConfiguration.share_link_expiry_days at creation/regeneration time.",
+    )
+    access_pin = models.CharField(
+        max_length=10, blank=True, default='',
+        help_text="Optional short code required to view this link, separate from the item's own redemption PIN "
+                   "(Item.pin, shown on the page itself). Only set when SiteConfiguration.share_link_pin_enabled "
+                   "was on at creation/regeneration time. Shown to the owner on the item detail page to relay "
+                   "separately from the link itself - not stored as a hash, same plaintext-at-rest posture this "
+                   "app already takes with redeem codes and item PINs.",
+    )
+    failed_pin_attempts = models.PositiveIntegerField(
+        default=0,
+        help_text="Lifetime count of wrong access-code guesses, surfaced to the owner as an early warning sign "
+                   "of probing. Not reset on a successful unlock.",
+    )
 
     def record_view(self):
         now_ts = timezone.now()
@@ -330,6 +347,9 @@ class ItemPublicShare(models.Model):
         self.last_viewed_at = now_ts
         self.view_count += 1
         self.save(update_fields=['view_count', 'first_viewed_at', 'last_viewed_at'])
+
+    def is_expired(self):
+        return self.expires_at is not None and timezone.now() > self.expires_at
 
     def __str__(self):
         return f"Public share link for {self.item.name}"
@@ -490,6 +510,16 @@ class SiteConfiguration(models.Model):
         help_text="Let 'Share via...' offer a choice between a bare link and a rich "
                    "share (merchant, code, PIN, remaining balance) via a public, "
                    "no-login-required link. Off reverts to the classic single-tap share.",
+    )
+    share_link_expiry_days = models.PositiveIntegerField(
+        default=30,
+        help_text="How long a new/regenerated public share link stays valid. 0 means it never expires.",
+    )
+    share_link_pin_enabled = models.BooleanField(
+        default=False,
+        help_text="Require a short access code to view a public share link, on top of the link itself. "
+                   "The code is shown to you on the item page to relay separately (call, text, in person) - "
+                   "it is never automatically included in the shared text/link itself.",
     )
 
     # ---- OCR ("Scan with AI") ----
