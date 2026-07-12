@@ -65,6 +65,34 @@ body.dark-mode .card-footer {
   color: #e0e6eb;
 }
 
+/* Bootstrap modals (Inventory bulk-actions) and toasts (used across
+   several JS files) had no dark-mode coverage at all - both fall back to
+   Bootstrap's own light-theme defaults (--bs-body-bg etc.), which this
+   app never repoints for dark mode, so they rendered as plain white
+   boxes regardless of theme. */
+body.dark-mode .modal-content {
+  background-color: #21262d;
+  color: #e0e6eb;
+}
+
+body.dark-mode .modal-header,
+body.dark-mode .modal-footer {
+  border-color: #30363d;
+}
+
+body.dark-mode .modal-title {
+  color: #e0e6eb;
+}
+
+body.dark-mode .toast {
+  background-color: #21262d;
+  color: #e0e6eb;
+}
+
+body.dark-mode .toast-body {
+  color: #e0e6eb;
+}
+
 body.dark-mode .breadcrumb {
   color: #8b949e;
 }

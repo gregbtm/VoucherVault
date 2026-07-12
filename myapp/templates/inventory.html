@@ -512,7 +512,11 @@ body.bulk-select-mode .share-btn {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  z-index: 1000;
+  /* Below the sidebar (996) and its dimming backdrop (995) - it used to
+     be 1000, so it stayed bright and clickable on top of the mobile
+     hamburger drawer instead of getting dimmed/covered like the rest of
+     the page when the drawer opens over a bulk selection. */
+  z-index: 990;
   opacity: 0;
   pointer-events: none;
   transition: transform 0.25s ease, opacity 0.25s ease;
@@ -595,6 +599,38 @@ body.dark-mode .pin-btn.pinned i {
   color: #ffc107;
 }
 
+body.dark-mode .share-btn {
+  background: rgba(30,30,30,0.95);
+}
+
+body.dark-mode .share-btn i {
+  color: #999;
+}
+
+body.dark-mode .share-btn:hover {
+  background: #2a2a2a;
+}
+
+body.dark-mode .status-badge.used {
+  background: #1e3a5f;
+  color: #7dd3fc;
+}
+
+body.dark-mode .status-badge.expired {
+  background: #5c2626;
+  color: #fca5a5;
+}
+
+body.dark-mode .status-badge.pinned {
+  background: #4a3f1f;
+  color: #ffc107;
+}
+
+body.dark-mode .status-badge.type-badge {
+  background: #333;
+  color: #ccc;
+}
+
 body.dark-mode .meta-item {
   color: #999;
 }
@@ -667,7 +703,16 @@ body.dark-mode .mobile-filter-select {
     width: 28px;
     height: 28px;
   }
-  
+
+  /* .share-btn relies on .item-card:hover to appear, which never fires on
+     a touch device - it was permanently invisible (opacity: 0) on mobile,
+     same bug .pin-btn already had a fix for here. */
+  .share-btn {
+    opacity: 1;
+    width: 28px;
+    height: 28px;
+  }
+
   .filter-bar {
     padding: 0.875rem;
   }

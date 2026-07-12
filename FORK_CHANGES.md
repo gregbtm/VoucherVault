@@ -61,6 +61,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 24 — Fix false-positive "Viewing cached content" banner](#phase-24--fix-false-positive-viewing-cached-content-banner)
 - [Phase 25 — Decouple version bump/release from the broken security-scan pipeline](#phase-25--decouple-version-bumprelease-from-the-broken-security-scan-pipeline)
 - [Phase 26 — Fix dark mode on the "Share via..." chooser popup](#phase-26--fix-dark-mode-on-the-share-via-chooser-popup)
+- [Phase 27 — Deeper GUI sweep: dark mode, overlays, and a touch bug](#phase-27--deeper-gui-sweep-dark-mode-overlays-and-a-touch-bug)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -1469,6 +1470,82 @@ jarring against an otherwise dark page.
   Bootstrap classes/dark-mode rules already covered elsewhere, or
   (public_item.html, which has no logged-in user/theme preference to
   read) correctly uses `prefers-color-scheme` instead.
+
+## Phase 27 — Deeper GUI sweep: dark mode, overlays, and a touch bug
+
+Requested a broader pass beyond Phase 26's single fix. Ran three parallel
+research passes (dark-mode CSS coverage, fixed/sticky element overlap,
+mobile touch-target sizing) across the whole app, verified each finding
+against the actual CSS before touching anything, and fixed everything
+that held up.
+
+- **Bulk-action modals and toasts were unstyled for dark mode.** The
+  Inventory page's "Add Tags"/"Move to Wallet" modals (Phase 14.5) are
+  plain Bootstrap markup with no dark-mode override anywhere in the app -
+  `dark-mode.css` had zero `.modal`/`.toast` rules at all, since this app
+  themes via a `body.dark-mode` class with hardcoded per-selector colors,
+  not Bootstrap's CSS-variable theming, so both silently fell back to
+  Bootstrap's light defaults. Added `body.dark-mode` rules for
+  `.modal-content`, `.modal-header`/`.modal-footer`, `.modal-title`,
+  `.toast`, and `.toast-body`.
+- **`.status-badge.used`/`.expired` (and, on Inventory, `.pinned`/
+  `.type-badge`) had no dark-mode override on the Inventory or Sharing
+  Center pages**, even though `view-item.html` already had the fix for
+  `.used`/`.expired` - it just never got copied to the other two pages
+  that render the same badge classes. Copied the same override colors
+  into `inventory.html` and `sharing_center.html`.
+- **The "Share via..." icon button on Inventory cards was permanently
+  invisible on touch devices.** It's `opacity: 0` by default and only
+  reveals on `.item-card:hover` - a state that never fires on a phone.
+  The sibling `.pin-btn` already has a mobile media-query fix forcing
+  `opacity: 1`; `.share-btn` never got the same fix, so on a phone (the
+  reporting user's own setup - Samsung Android, Edge) the share icon was
+  present and tappable but literally never visible. Added the matching
+  mobile override, plus a `body.dark-mode .share-btn` background (it had
+  the same gap `.pin-btn` already had a fix for).
+- **The offline-cache banner and the Inventory bulk-action bar were
+  anchored to the exact same spot** (`bottom: 20px; left: 50%`) and could
+  both be visible at once (viewing a cached page with items selected).
+  Moved the banner to sit below the header instead (`top: 70px`) - a
+  cleaner separation for an ambient/informational banner vs. a
+  page-specific, thumb-reachable action bar, and avoids the same class of
+  collision with any future bottom-docked UI too.
+- **The QR/barcode fullscreen overlay and the offline banner had an exact
+  z-index tie** (both `9998`) - whichever painted later happened to win,
+  which meant the banner could black out invisibly *underneath* the
+  overlay while still "showing". Bumped the fullscreen overlay to `10000`
+  (above ambient status indicators, still below the `10001` toast
+  container so transient feedback stays visible over it) since a
+  user-triggered fullscreen focus view should always win that tie.
+- **`manual-cache.js` created its own second, separate toast container**
+  (`#cache-toast-container`, same bottom-end corner as the app's shared
+  one) **with `z-index: 11`** - almost certainly a typo, since every other
+  overlay in the app ranges `995`-`10001` and even the fixed header alone
+  is `997`, well above it; a cache-related toast could render invisibly
+  behind nearly everything. Switched it to reuse the shared
+  `#toast-container` from `base.html` (the pattern every other toast
+  caller already uses), removing the duplicate and the bad z-index in one
+  change.
+- **The bulk-action bar outranked the mobile sidebar drawer and its
+  dimming backdrop** (`z-index: 1000` vs. the sidebar's `996`/backdrop's
+  `995`) - opening the hamburger menu while items were selected left the
+  bulk bar bright and clickable on top of what's supposed to be a dimmed,
+  blocked background. Lowered it to `990`.
+- **Deliberately not changed**: a handful of icon-only buttons found
+  under the ~44px touch-target guideline (pin/share buttons, the barcode
+  zoom/fullscreen/copy buttons, the Public Share Link Regenerate/Revoke
+  buttons, the new share-chooser's option rows) - these match sizing
+  conventions already used consistently across the whole app (e.g.
+  `.pin-btn` is deliberately 28-32px elsewhere too), so resizing just the
+  ones this pass happened to touch would be inconsistent; a uniform
+  touch-target pass across the whole app is a separate, larger design
+  decision, not a bug fix.
+- No test suite exists for CSS/visual behavior; verified with
+  `python manage.py check` (clean) and the `myapp` tests that render
+  Inventory, Sharing Center, and item-detail templates
+  (`WebShareButtonWiringTests`, `BulkActionsTests`, `SharedWalletTests`,
+  `OfflineCacheTogglePreferenceTests`, `PublicShareLinkTests` - 51 tests,
+  all passing) to confirm no template-tag syntax broke.
 
 ## New environment variables
 

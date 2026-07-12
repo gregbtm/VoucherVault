@@ -791,7 +791,12 @@ a.action-btn-info:hover {
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 9998;
+  /* Above the offline banner/network-status badge (both 9998/9999) -
+     a fullscreen, user-triggered focus view should cover ambient status
+     indicators, not tie/lose against them - but still under the toast
+     container (10001) so transient feedback (e.g. "code copied") stays
+     visible over it. */
+  z-index: 10000;
 }
 
 .qr-overlay.show {
