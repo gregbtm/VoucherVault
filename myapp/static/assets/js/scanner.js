@@ -55,9 +55,9 @@ const barcodeFormats = [
 
 const barcodeFormatMap = {
     "AZTEC": "azteccode",
-    "CODABAR": "code39",
+    "CODABAR": "codabar",
     "CODE_39": "code39",
-    "CODE_93": "code39",
+    "CODE_93": "code93",
     "CODE_128": "code128",
     "DATA_MATRIX": "datamatrix",
     "EAN_8": "ean8",
@@ -72,6 +72,80 @@ const barcodeFormatMap = {
     "UPC_E": "upce",
     "UPC_EAN_EXTENSION": "ean13"
 };
+
+const codeTypeLabels = {
+    "qrcode": "QR Code",
+    "none": "No Barcode",
+    "ean13": "EAN-13",
+    "ean8": "EAN-8",
+    "code128": "Code 128",
+    "code39": "Code 39",
+    "code93": "Code 93",
+    "codabar": "Codabar",
+    "upca": "UPC-A",
+    "upce": "UPC-E",
+    "isbn13": "ISBN-13",
+    "issn": "ISSN",
+    "pdf417": "PDF417",
+    "datamatrix": "Data Matrix",
+    "azteccode": "Aztec Code",
+    "interleaved2of5": "Interleaved 2 of 5"
+};
+
+const codeTypeHint = document.getElementById('codeTypeHint');
+// Once the user manually picks a barcode type from the dropdown themselves,
+// stop overriding it with auto-detected/guessed values for the rest of this
+// form session - respect their explicit choice.
+let userSelectedType = false;
+redeemTypeField?.addEventListener('change', () => {
+    userSelectedType = true;
+    if (codeTypeHint) codeTypeHint.style.display = 'none';
+});
+
+function showCodeTypeHint(text) {
+    if (!codeTypeHint) return;
+    codeTypeHint.textContent = text;
+    codeTypeHint.style.display = 'block';
+}
+
+function applyDetectedFormat(formatValue, source) {
+    if (!formatValue || !redeemTypeField) return;
+    redeemTypeField.value = formatValue;
+    userSelectedType = false; // a definitive scan always wins over an earlier guess
+    const label = codeTypeLabels[formatValue] || formatValue;
+    showCodeTypeHint(`Detected from ${source}: ${label}`);
+}
+
+// Best-effort guess from the shape of a manually typed/pasted code, used
+// only when there's no barcode to actually scan (e.g. copying a code from
+// an email). Never overrides a type the user picked themselves.
+function guessCodeTypeFromValue(value) {
+    const code = (value || '').trim();
+    if (!code) return null;
+    if (/^\d+$/.test(code)) {
+        switch (code.length) {
+            case 8: return 'ean8';
+            case 12: return 'upca';
+            case 13: return 'ean13';
+            case 6:
+            case 7: return 'upce';
+            default: return code.length % 2 === 0 ? 'interleaved2of5' : 'code128';
+        }
+    }
+    if (/^[A-Z0-9 \-.$/+%]+$/.test(code)) return 'code39';
+    return 'code128';
+}
+
+if (redeemCodeField) {
+    redeemCodeField.addEventListener('input', () => {
+        if (userSelectedType) return;
+        const guess = guessCodeTypeFromValue(redeemCodeField.value);
+        if (!guess || !redeemTypeField) return;
+        redeemTypeField.value = guess;
+        const label = codeTypeLabels[guess] || guess;
+        showCodeTypeHint(`Guessed from the code you typed: ${label} - scan the barcode instead for a sure match.`);
+    });
+}
 
 function getFormatNameFromResult(result) {
     try {
@@ -145,10 +219,7 @@ function startScanning() {
     codeReader.decodeFromVideoDevice(deviceId, 'video', (result, err) => {
         if (result) {
             redeemCodeField.value = result.text;
-            const formatValue = barcodeFormatMap[barcodeFormats[result.format]];
-            if (formatValue) {
-                redeemTypeField.value = formatValue;
-            }
+            applyDetectedFormat(barcodeFormatMap[barcodeFormats[result.format]], 'camera scan');
             redeemCodeField.focus();
             stopStream();
         }
@@ -262,10 +333,7 @@ if (scanFromFileButton && fileInput) {
 
             // Map format the same way as camera scanning
             if (result.format !== undefined) {
-                const formatValue = barcodeFormatMap[barcodeFormats[result.format]];
-                if (formatValue) {
-                    redeemTypeField.value = formatValue;
-                }
+                applyDetectedFormat(barcodeFormatMap[barcodeFormats[result.format]], 'uploaded image');
             }
 
             redeemCodeField.focus();
@@ -519,14 +587,11 @@ if (scanCroppedBtn) {
             
             // Success!
             redeemCodeField.value = result.text;
-            
+
             if (result.format !== undefined) {
-                const formatValue = barcodeFormatMap[barcodeFormats[result.format]];
-                if (formatValue) {
-                    redeemTypeField.value = formatValue;
-                }
+                applyDetectedFormat(barcodeFormatMap[barcodeFormats[result.format]], 'cropped selection');
             }
-            
+
             redeemCodeField.focus();
             outputMessage.textContent = "Code successfully scanned!";
             

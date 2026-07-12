@@ -788,7 +788,8 @@ class OCRExtractApiTests(APITestCase):
     def test_success_returns_backend_result(self, mock_get_backend):
         mock_backend = MagicMock()
         mock_backend.extract.return_value = {
-            'code': 'SAVE20', 'name': 'Acme', 'issuer': None, 'expiry_date': '2026-12-31', 'confidence': 0.8,
+            'code': 'SAVE20', 'code_type': 'code128', 'name': 'Acme', 'issuer': None,
+            'expiry_date': '2026-12-31', 'confidence': 0.8,
         }
         mock_get_backend.return_value = mock_backend
 
@@ -797,6 +798,7 @@ class OCRExtractApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['code'], 'SAVE20')
+        self.assertEqual(response.data['code_type'], 'code128')
         self.assertEqual(response.data['name'], 'Acme')
         mock_backend.extract.assert_called_once()
 

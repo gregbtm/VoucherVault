@@ -57,6 +57,7 @@ class TesseractOCRBackend(OCRBackend):
 
         return {
             'code': code,
+            'code_type': self._guess_code_type(code) if code else None,
             'name': None,
             'issuer': None,
             'expiry_date': expiry_date,
@@ -70,6 +71,26 @@ class TesseractOCRBackend(OCRBackend):
             return None
         # Prefer tokens closest to a typical 8-12 char voucher code length.
         return min(candidates, key=lambda c: abs(len(c) - 10))
+
+    def _guess_code_type(self, code: str) -> str | None:
+        """
+        Tesseract has no vision understanding of what's on the card, so this
+        is a best-effort guess from the shape of the extracted code alone -
+        same heuristic used client-side in scanner.js for manually typed
+        codes. Always worth less than an actual barcode scan.
+        """
+        if code.isdigit():
+            length = len(code)
+            if length == 8:
+                return 'ean8'
+            if length == 12:
+                return 'upca'
+            if length == 13:
+                return 'ean13'
+            if length in (6, 7):
+                return 'upce'
+            return 'interleaved2of5' if length % 2 == 0 else 'code128'
+        return 'code128'
 
     def _guess_expiry_date(self, text: str) -> str | None:
         for pattern, fmt in _DATE_PATTERNS:

@@ -50,6 +50,16 @@ def _is_valid_ean13(code):
     return int(code[-1]) == _calculate_ean13_check_digit(code)
 
 
+# Our code_type values are mostly treepoem/BWIPP barcode_type names verbatim,
+# but a few need translating: "codabar" reads better in a dropdown than
+# BWIPP's "rationalizedCodabar", and a retail ISBN-13 barcode is printed as a
+# plain EAN-13 (no dashes) so it renders with the same symbology.
+_TREEPOEM_TYPE_MAP = {
+    'codabar': 'rationalizedCodabar',
+    'isbn13': 'ean13',
+}
+
+
 def generate_code_image_base64(item):
     """
     Renders the QR code / barcode image for an Item's redeem_code and
@@ -78,7 +88,7 @@ def generate_code_image_base64(item):
         qr.save(buffer)
     else:
         barcode = treepoem.generate_barcode(
-            barcode_type=code_type,
+            barcode_type=_TREEPOEM_TYPE_MAP.get(code_type, code_type),
             data=item.redeem_code,
             scale=2
         )

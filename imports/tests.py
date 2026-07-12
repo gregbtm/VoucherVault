@@ -85,6 +85,17 @@ class CatimaParserTests(TestCase):
         self.assertEqual(giftcard['expiry_date'], date(2026, 12, 31))
         self.assertEqual(giftcard['tile_color'], '#ff5733')
 
+    def test_codabar_and_code93_map_to_their_own_types(self):
+        text = (
+            'Group,Description,Note,Card Number,EAN Barcode ID,Card Type,Expiry,Balance,Balance Type,Colour,Star\n'
+            ',Codabar Card,,X1,,CODABAR,,0,,,0\n'
+            ',Code93 Card,,X2,,CODE_93,,0,,,0\n'
+        )
+        rows, errors = parse_catima(io.StringIO(text))
+        self.assertEqual(len(errors), 0)
+        self.assertEqual(rows[0]['code_type'], 'codabar')
+        self.assertEqual(rows[1]['code_type'], 'code93')
+
     def test_handles_bytes_and_bom(self):
         content = ('﻿' + CATIMA_SAMPLE).encode('utf-8')
         rows, errors = parse_catima(io.BytesIO(content))
