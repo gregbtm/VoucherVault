@@ -56,7 +56,17 @@ def generate_code_image_base64(item):
     returns (base64_string, resolved_code_type). Mirrors the logic used
     by the create-item/edit-item web views so items created through any
     entry point (form or API) get a consistent code image.
+
+    code_type == "none" is a deliberate opt-out for items that only have
+    a plain number/code and no scannable barcode at all (some gift
+    cards) - returns (None, "none") rather than generating anything, and
+    every renderer/exporter (view-item.html, the .pkpass and Google
+    Wallet exporters) treats that as "show the code as text, don't try
+    to render a barcode".
     """
+    if item.code_type == "none":
+        return None, "none"
+
     if item.code_type != "qrcode" and _is_valid_ean13(item.redeem_code):
         code_type = "ean13"
     else:

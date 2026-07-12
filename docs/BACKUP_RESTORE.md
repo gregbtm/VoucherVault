@@ -119,6 +119,11 @@ silent failure doesn't go unnoticed for weeks.
 
 ## Configuration
 
+Both settings below can be changed from the in-app **Site Settings** page
+(`/admin-tools/site-settings/`, superuser-only) — no redeploy needed. The
+environment variables are just the fallback/initial value for a fresh
+install.
+
 | Variable | Description | Default |
 |---|---|---|
 | `SCHEDULED_BACKUP_ENABLED` | Set to `False` to disable the nightly backup task entirely. | `True` |

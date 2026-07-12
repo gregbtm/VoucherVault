@@ -441,6 +441,18 @@ class PkpassExporterTests(TestCase):
         self.assertIn('coupon', pass_dict)
         self.assertNotIn('storeCard', pass_dict)
 
+    def test_generate_pkpass_omits_barcodes_for_no_barcode_code_type(self):
+        item = make_item(
+            self.user, type='giftcard', name='Coffee Gift Card', issuer='Bean Co',
+            redeem_code='GC12345', value='25.00', currency='EUR', code_type='none',
+        )
+        data = generate_pkpass(item)
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            pass_dict = json.loads(zf.read('pass.json'))
+        self.assertNotIn('barcodes', pass_dict)
+        code_field = next(f for f in pass_dict['storeCard']['secondaryFields'] if f['key'] == 'code')
+        self.assertEqual(code_field['value'], 'GC12345')
+
     def test_generate_pkpass_raises_when_disabled(self):
         set_site_config(pkpass_cert_path='')
         item = make_item(self.user)
@@ -550,6 +562,20 @@ class GoogleWalletExporterTests(TestCase):
         payload = json.loads(_b64url_decode(payload_seg))
         obj = payload['payload']['genericObjects'][0]
         self.assertEqual(obj['genericType'], 'GENERIC_LOYALTY_CARD')
+
+    def test_generate_save_url_omits_barcode_for_no_barcode_code_type(self):
+        item = make_item(
+            self.user, type='giftcard', name='Coffee Gift Card', issuer='Bean Co',
+            redeem_code='GC12345', value='25.00', currency='GBP', code_type='none',
+        )
+        save_url = generate_google_wallet_save_url(item)
+        token = save_url.rsplit('/', 1)[-1]
+        _header_seg, payload_seg, _signature_seg = token.split('.')
+        payload = json.loads(_b64url_decode(payload_seg))
+        obj = payload['payload']['genericObjects'][0]
+        self.assertNotIn('barcode', obj)
+        code_module = next(m for m in obj['textModulesData'] if m['id'] == 'code')
+        self.assertEqual(code_module['body'], 'GC12345')
 
     def test_generate_save_url_raises_when_disabled(self):
         set_site_config(google_wallet_issuer_id='')

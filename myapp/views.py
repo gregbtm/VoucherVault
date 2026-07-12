@@ -1,10 +1,6 @@
-import qrcode
-import io
-import base64
 import os
 import json
 import logging
-import treepoem
 import unicodedata
 import mimetypes
 import uuid
@@ -14,7 +10,7 @@ from django.utils.safestring import mark_safe
 from .forms import *
 from .ics_calendar import build_ics_calendar
 from .models import *
-from .utils import get_fixer_rates, convert_currency
+from .utils import generate_code_image_base64, get_fixer_rates, convert_currency
 from django.db.models import Sum
 from django.utils import timezone
 from django.http import JsonResponse
@@ -63,18 +59,6 @@ def has_item_access(item, user):
         or item.shared_with.filter(shared_with_user=user).exists()
         or has_wallet_access(item.wallet, user)
     )
-
-def calculate_ean13_check_digit(code):
-    # Calculate the EAN-13 check digit
-    sum_odd = sum(int(code[i]) for i in range(0, 12, 2))
-    sum_even = sum(int(code[i]) for i in range(1, 12, 2))
-    checksum = (sum_odd + 3 * sum_even) % 10
-    return (10 - checksum) % 10
-
-def is_valid_ean13(code):
-    if len(code) != 13 or not code.isdigit():
-        return False
-    return int(code[-1]) == calculate_ean13_check_digit(code)
 
 @require_GET
 def post_logout(request):
@@ -431,27 +415,8 @@ def create_item(request):
             item = form.save(commit=False)
             item.user = request.user  # Set the user from the session
 
-            buffer = io.BytesIO()
             try:
-
-                if item.code_type != "qrcode" and is_valid_ean13(item.redeem_code):
-                    code_type = "ean13"
-                    item.code_type = "ean13"
-                else:
-                    code_type = item.code_type
-
-                if code_type == "qrcode":
-                        qr = qrcode.make(item.redeem_code)
-                        qr.save(buffer)
-                else:
-                    barcode = treepoem.generate_barcode(
-                        barcode_type=code_type,
-                        data=item.redeem_code,
-                        scale=2
-                    )
-                    barcode.save(buffer, 'PNG')
-
-                item.qr_code_base64 = base64.b64encode(buffer.getvalue()).decode()
+                item.qr_code_base64, item.code_type = generate_code_image_base64(item)
                 item.file = None
                 item.save()  # Save the item after generating the barcode
                 form.save_m2m()  # Persist the selected tags (Item is now saved)
@@ -515,26 +480,8 @@ def edit_item(request, item_uuid):
             # Check if redeem code has changed
             if original_code_type != item.code_type or original_redeem_code != item.redeem_code:
                 # Generate new QR code or barcode and save it as base64
-                buffer = io.BytesIO()
                 try:
-                    if item.code_type != "qrcode" and is_valid_ean13(item.redeem_code):
-                        code_type = "ean13"
-                        item.code_type = "ean13"
-                        item.save()
-                    else:
-                        code_type = item.code_type
-
-                    if code_type == "qrcode":
-                        qr = qrcode.make(item.redeem_code)
-                        qr.save(buffer)
-                    else:
-                        barcode = treepoem.generate_barcode(
-                            barcode_type=code_type,
-                            data=item.redeem_code,
-                            scale=2
-                        )
-                        barcode.save(buffer, 'PNG')
-                    item.qr_code_base64 = base64.b64encode(buffer.getvalue()).decode()
+                    item.qr_code_base64, item.code_type = generate_code_image_base64(item)
                     item.save()  # Save the item after generating the barcode
                 except Exception as e:
                     form.add_error(None, f'Failed to generate barcode. Error: {str(e)}')

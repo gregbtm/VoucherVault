@@ -565,6 +565,10 @@ body.dark-mode .error-alert {
             </p>
             <input type="file" id="pkpassImportInput" accept=".pkpass" class="modern-input">
             <div id="pkpassImportStatus" style="margin-top: 0.75rem; font-size: 0.85rem;"></div>
+            <p style="color: #6c757d; margin-top: 0.75rem; margin-bottom: 0; font-size: 0.8rem;">
+              <i class="bi bi-info-circle"></i>
+              {% trans "There's no equivalent import from Google Wallet - Google doesn't let you export or download a saved pass, so there's nothing for an app to import. Google Wallet items are still fully supported for export (see the Google Wallet button on the item detail page)." %}
+            </p>
           </div>
 
           <!-- Basic Info Section -->
@@ -647,6 +651,7 @@ body.dark-mode .error-alert {
                 <label class="form-label" for="code_type">{% trans "Code Type" %} <span class="required">*</span></label>
                 <select class="modern-select" id="code_type" name="code_type" required>
                   <option value="qrcode" {% if form.code_type.value == "qrcode" %}selected{% endif %}>QR Code</option>
+                  <option value="none" {% if form.code_type.value == "none" %}selected{% endif %}>No Barcode (number only)</option>
                   <option value="ean13" {% if form.code_type.value == "ean13" %}selected{% endif %}>EAN-13</option>
                   <option value="ean8" {% if form.code_type.value == "ean8" %}selected{% endif %}>EAN-8</option>
                   <option value="code128" {% if form.code_type.value == "code128" %}selected{% endif %}>Code 128</option>

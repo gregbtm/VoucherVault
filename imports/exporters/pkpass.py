@@ -88,6 +88,9 @@ def _build_pass_json(item) -> dict:
         fields['backFields'].append({'key': 'notes', 'label': 'Notes', 'value': item.notes})
     if item.pin:
         fields['backFields'].append({'key': 'pin', 'label': 'PIN', 'value': item.pin})
+    if item.code_type == 'none':
+        # No barcode to scan, so surface the redeem code as plain text instead.
+        fields['secondaryFields'].append({'key': 'code', 'label': 'Code', 'value': item.redeem_code})
 
     pass_dict = {
         'formatVersion': 1,
@@ -96,13 +99,17 @@ def _build_pass_json(item) -> dict:
         'organizationName': config.pkpass_organization_name,
         'serialNumber': str(item.id),
         'description': item.name,
-        'barcodes': [{
+        style: fields,
+    }
+    # code_type "none" means the item has no scannable barcode (e.g. a gift
+    # card that's just a printed number) - omit 'barcodes' entirely rather
+    # than encoding the redeem code as a QR fallback the card doesn't have.
+    if item.code_type != 'none':
+        pass_dict['barcodes'] = [{
             'format': BARCODE_FORMAT_MAP.get(item.code_type, DEFAULT_BARCODE_FORMAT),
             'message': item.redeem_code,
             'messageEncoding': 'iso-8859-1',
-        }],
-        style: fields,
-    }
+        }]
     pass_dict['backgroundColor'] = _hex_to_rgb_css(item.tile_color or DEFAULT_TILE_COLOR)
     return pass_dict
 

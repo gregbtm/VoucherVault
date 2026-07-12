@@ -1177,12 +1177,14 @@ body.dark-mode .action-btn-secondary:hover {
             </a>
             <button type="button" class="action-btn action-btn-info share-voucher-btn"
                     data-title="{{ item.name }}" data-merchant="{{ item.issuer }}"
-                    data-url="{{ request.build_absolute_uri }}">
+                    data-url="{{ request.build_absolute_uri }}"
+                    title="{% trans 'Send a link to this item via your device share sheet, email, messages, etc.' %}">
               <i class="bi bi-send"></i> {% trans "Share via..." %}
             </button>
             {% if is_owner %}
-            <a href="{% url 'share_item' item.id %}" class="action-btn action-btn-success">
-              <i class="bi bi-share"></i> {% trans "Share" %}
+            <a href="{% url 'share_item' item.id %}" class="action-btn action-btn-success"
+               title="{% trans 'Give other VoucherVault users access to view and edit this item' %}">
+              <i class="bi bi-people"></i> {% trans "Share with Users" %}
             </a>
             {% endif %}
             {% if pkpass_enabled %}
@@ -1227,7 +1229,8 @@ body.dark-mode .action-btn-secondary:hover {
           <div class="action-buttons">
             <button type="button" class="action-btn action-btn-info share-voucher-btn"
                     data-title="{{ item.name }}" data-merchant="{{ item.issuer }}"
-                    data-url="{{ request.build_absolute_uri }}">
+                    data-url="{{ request.build_absolute_uri }}"
+                    title="{% trans 'Send a link to this item via your device share sheet, email, messages, etc.' %}">
               <i class="bi bi-send"></i> {% trans "Share via..." %}
             </button>
           </div>
@@ -1426,6 +1429,7 @@ body.dark-mode .action-btn-secondary:hover {
         <p class="text-muted small mb-2">{% trans "Card number shown above; barcode below encodes the redeem code." %}</p>
         {% endif %}
 
+        {% if item.code_type != "none" %}
         <div class="qr-image-wrapper">
           <img src="data:image/png;base64,{{ qr_code_base64 }}"
                alt="QR Code"
@@ -1450,9 +1454,15 @@ body.dark-mode .action-btn-secondary:hover {
             <i class="bi bi-zoom-in"></i>
           </button>
         </div>
+        {% endif %}
 
         <div class="redeem-code-wrapper">
           <div class="redeem-code opaque" id="redeem-code">{{ item.redeem_code }}</div>
+          {% if item.code_type == "none" %}
+          <div class="tap-hint" id="qr-tap-hint">
+            <i class="bi bi-hand-index"></i> {% trans "Tap to reveal" %}
+          </div>
+          {% endif %}
           <button type="button" class="copy-code-btn" id="copy-code-btn" title="{% trans 'Copy code' %}">
             <i class="bi bi-clipboard"></i>
           </button>
@@ -1600,13 +1610,14 @@ document.addEventListener("DOMContentLoaded", function() {
   zoomInBtn?.addEventListener('click', () => setZoom(getZoom() + ZOOM_STEP));
   zoomResetBtn?.addEventListener('click', () => setZoom(100));
 
-  // Toggle blur on QR click - reveals both QR and redeem code
-  qrCode?.addEventListener('click', (e) => {
-    qrCode.classList.toggle('opaque');
+  // Toggle blur on click - reveals both the barcode/QR image (if any) and the redeem code
+  function toggleCodeReveal(e) {
+    qrCode?.classList.toggle('opaque');
     redeemCode?.classList.toggle('opaque');
-    
+
     // Show/hide copy button and hints based on blur state
-    if (!qrCode.classList.contains('opaque')) {
+    const stillHidden = redeemCode ? redeemCode.classList.contains('opaque') : qrCode.classList.contains('opaque');
+    if (!stillHidden) {
       qrTapHint?.classList.add('hidden');
       copyBtn?.classList.add('visible');
     } else {
@@ -1614,7 +1625,9 @@ document.addEventListener("DOMContentLoaded", function() {
       copyBtn?.classList.remove('visible');
     }
     e.stopPropagation();
-  }, { passive: true });
+  }
+  qrCode?.addEventListener('click', toggleCodeReveal, { passive: true });
+  redeemCode?.addEventListener('click', toggleCodeReveal, { passive: true });
 
   // Copy code button
   copyBtn?.addEventListener('click', async (e) => {

@@ -52,6 +52,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 15 — Documentation, illustration & polish pass](#phase-15--documentation-illustration--polish-pass)
 - [Phase 16 — Portainer redeploy webhook](#phase-16--portainer-redeploy-webhook)
 - [Phase 17 — Database-backed Site Settings page](#phase-17--database-backed-site-settings-page)
+- [Phase 18 — Bug-fix batch: no-barcode code type, share button clarity, wallet docs](#phase-18--bug-fix-batch-no-barcode-code-type-share-button-clarity-wallet-docs)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -1004,6 +1005,52 @@ that doesn't need to exist before the app can reach its own database.
   of `django.conf.settings`, so those tests would otherwise have kept
   passing for the wrong reason (or silently stopped testing what they
   claimed to).
+
+## Phase 18 — Bug-fix batch: no-barcode code type, share button clarity, wallet docs
+
+A small batch of fixes from real-world usage: an Android/Edge user found no
+"Import from Google Wallet" option next to "Import from Apple Wallet", some
+gift cards only have a printed number with no scannable barcode at all, and
+the two "Share" buttons on the item detail page (native OS share vs. in-app
+multi-user sharing) sat next to each other with confusingly similar labels.
+
+- **"No Barcode" `code_type`** — a new `code_type` value (`none`) for items
+  that are just a printed number with nothing to scan. `Item.code_type` is a
+  plain `CharField` with no `choices=` constraint, so no migration was
+  needed. `myapp/utils.py::generate_code_image_base64()` returns
+  `(None, "none")` for this case instead of rendering an image; this
+  function is now the single shared implementation used by the create/edit
+  item views, the API serializer, and the import task, replacing two
+  near-duplicate inline copies that used to live in `myapp/views.py`.
+  `view-item.html` skips the QR/barcode image, its fullscreen button, and
+  the zoom controls for a no-barcode item, showing only the redeem code as
+  tap-to-reveal text (the existing blur/reveal JS was made to work off
+  either the barcode image or the code text, whichever exists). Both wallet
+  exporters (`imports/exporters/pkpass.py`,
+  `imports/exporters/google_wallet.py`) omit the barcode field entirely for
+  a no-barcode pass instead of silently falling back to a QR code that
+  doesn't match the physical card, and surface the code as a text field on
+  the pass instead.
+- **Google Wallet import isn't a bug — it's a platform limitation** — Google
+  Wallet gives end users no way to export or download a saved pass, so
+  there's nothing for an app to import from (unlike Apple's `.pkpass`,
+  which is a portable file you can pick from disk). The README's top note
+  used to say "Apple Wallet and Google Wallet import/export" together,
+  implying they were symmetric; reworded to "Apple Wallet import/export and
+  Google Wallet export". The create-item page's Apple Wallet import card
+  now also carries a short note explaining the asymmetry, so it reads as
+  "not supported by Google" rather than "missing feature."
+- **Share button clarity** — the item detail page's "Share via..." button
+  (native OS share sheet, for sending a link to someone outside the app)
+  and its "Share" button (in-app, for granting another VoucherVault user
+  read/write access to the item) looked and read too similarly. The in-app
+  button is now labelled "Share with Users" with a distinct `bi-people`
+  icon, and both buttons (plus the compact icon-only share button on
+  Inventory item cards) got explanatory tooltips.
+- New tests: `NoBarcodeCodeTypeTests` (create/edit an item with
+  `code_type=none`, view-item omits the barcode image), plus
+  `PkpassExporterTests`/`GoogleWalletExporterTests` cases asserting the
+  barcode field is omitted and the code appears as text instead.
 
 ## New environment variables
 
