@@ -105,27 +105,43 @@ class OfflineSyncManager {
     }
 
     /**
-     * Check if current page was served from service worker cache
+     * Check if current page was served from service worker cache.
+     *
+     * Used to check `performance.getEntriesByType('navigation')[0]` for
+     * `workerStart > 0 && transferSize === 0` as a proxy for "came from the
+     * SW cache" - but the service worker intercepts *every* navigation
+     * (workerStart > 0 always), and transferSize is 0 for plenty of
+     * non-PWA-cache reasons too (a 304, the browser's own HTTP disk cache),
+     * so it fired even with "Cache for Offline" turned off and nothing in
+     * PAGE_CACHE at all. Check the actual cache contents instead: this is
+     * the only store the manual "Cache for Offline" feature writes to
+     * (myapp/static/assets/js/manual-cache.js), and it's fully purged the
+     * moment that preference is turned off, so a match here means this
+     * page really did come from that cache.
      */
-    checkIfServedFromCache() {
+    async checkIfServedFromCache() {
         // If offline, definitely show the banner
         if (!navigator.onLine) {
             this.showOfflinePageBanner();
             return;
         }
-        
-        // Use Performance API to detect service worker cache
-        if (performance && performance.getEntriesByType) {
-            const navEntries = performance.getEntriesByType('navigation');
-            if (navEntries.length > 0) {
-                const entry = navEntries[0];
-                // workerStart > 0 means service worker was involved
-                // transferSize === 0 means no network transfer (served from cache)
-                if (entry.workerStart > 0 && entry.transferSize === 0) {
-                    console.log('[OfflineSync] Page served from service worker cache');
+
+        if (!('caches' in window)) return;
+
+        try {
+            const cacheNames = await caches.keys();
+            const pageCacheNames = cacheNames.filter(name => name.startsWith('vouchervault-pages-'));
+            for (const name of pageCacheNames) {
+                const cache = await caches.open(name);
+                const cached = await cache.match(window.location.href);
+                if (cached) {
+                    console.log('[OfflineSync] Page served from the manual offline cache');
                     this.showOfflinePageBanner();
+                    return;
                 }
             }
+        } catch (error) {
+            console.error('[OfflineSync] Error checking cache contents:', error);
         }
     }
 
