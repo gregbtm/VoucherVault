@@ -677,6 +677,7 @@ body.dark-mode .error-alert {
                 <label class="form-label" for="code_type">{% trans "Code Type" %} <span class="required">*</span></label>
                 <select class="modern-select" id="code_type" name="code_type" required>
                   <option value="qrcode" {% if item.code_type == "qrcode" %}selected{% endif %}>QR Code</option>
+                  <option value="none" {% if item.code_type == "none" %}selected{% endif %}>No Barcode (number only)</option>
                   <option value="ean13" {% if item.code_type == "ean13" %}selected{% endif %}>EAN-13</option>
                   <option value="ean8" {% if item.code_type == "ean8" %}selected{% endif %}>EAN-8</option>
                   <option value="code128" {% if item.code_type == "code128" %}selected{% endif %}>Code 128</option>

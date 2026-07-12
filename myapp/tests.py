@@ -264,6 +264,43 @@ class CreateItemWithOrganizationTests(TestCase):
         self.assertEqual(tag_names, {'discount', 'summer'})
 
 
+class NoBarcodeCodeTypeTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_create_item_with_no_barcode_stores_no_image(self):
+        response = self.client.post(reverse('create_item'), {
+            'type': 'giftcard', 'name': 'Numbers Only Card', 'issuer': 'Shop', 'redeem_code': '4111222233334444',
+            'value': '25.00', 'currency': 'GBP', 'code_type': 'none', 'value_type': 'money',
+            'issue_date': date.today().isoformat(),
+        })
+        self.assertRedirects(response, reverse('show_items'))
+        item = Item.objects.get(name='Numbers Only Card')
+        self.assertEqual(item.code_type, 'none')
+        self.assertFalse(item.qr_code_base64)
+
+    def test_edit_item_switch_to_no_barcode_clears_image(self):
+        item = make_item(self.user, redeem_code='ABC123', code_type='qrcode', qr_code_base64='dummybase64')
+        response = self.client.post(reverse('edit_item', args=[item.id]), {
+            'type': item.type, 'name': item.name, 'issuer': item.issuer, 'redeem_code': item.redeem_code,
+            'value': item.value, 'currency': item.currency, 'code_type': 'none', 'value_type': item.value_type,
+            'issue_date': date.today().isoformat(), 'expiry_date': item.expiry_date.isoformat(),
+        })
+        self.assertRedirects(response, reverse('view_item', args=[item.id]))
+        item.refresh_from_db()
+        self.assertEqual(item.code_type, 'none')
+        self.assertFalse(item.qr_code_base64)
+
+    def test_view_item_no_barcode_omits_qr_image(self):
+        item = make_item(self.user, redeem_code='4111222233334444', code_type='none')
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertNotContains(response, 'id="qr-code"')
+        self.assertNotContains(response, 'id="fullscreen-btn"')
+        self.assertContains(response, 'id="redeem-code"')
+        self.assertContains(response, '4111222233334444')
+
+
 class ShowItemsWalletFilterTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')

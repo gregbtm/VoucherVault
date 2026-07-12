@@ -25,7 +25,7 @@
 > plus a full-fidelity **zip backup/restore** format, an **Analytics
 > dashboard**, **auto-fetched merchant logos**, an AI-assisted **"Scan with
 > AI"** photo capture (Claude, OpenAI, or fully local/free Tesseract),
-> **Apple Wallet and Google Wallet import/export**, **document
+> **Apple Wallet import/export and Google Wallet export**, **document
 > attachments**, **shared (multi-user) wallets**, **native OS/browser
 > sharing**, an **MCP server** for AI assistants, a **nightly scheduled
 > backup** with rotation, an **.ics calendar feed**, **bulk actions** on
@@ -67,7 +67,7 @@
 - Transaction history tracking (gift cards only)
 - Item-specific file uploads (images and PDFs)
 - Item sharing between users
-- Display of redeem codes as QR codes or barcodes (many types supported)
+- Display of redeem codes as QR codes or barcodes (many types supported), or as plain text for cards with no scannable barcode at all
 - Client-side redeem code scanning (1D/2D) during item creation with automatic type detection using camera or file upload
 - Expiry notifications via Apprise
 - Multi-user support

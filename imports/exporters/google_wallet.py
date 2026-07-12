@@ -89,8 +89,11 @@ def _build_generic_object(item, issuer_id: str, class_id: str) -> dict:
         text_modules.append({'id': 'balance', 'header': 'Balance', 'body': f'{item.value} {item.currency}'})
     if item.expiry_date:
         text_modules.append({'id': 'expiry', 'header': 'Expires', 'body': item.expiry_date.isoformat()})
+    if item.code_type == 'none':
+        # No barcode to scan, so surface the redeem code as plain text instead.
+        text_modules.append({'id': 'code', 'header': 'Code', 'body': item.redeem_code})
 
-    return {
+    generic_object = {
         'id': f'{issuer_id}.item-{item.id}',
         'classId': class_id,
         'genericType': GENERIC_TYPE_MAP.get(item.type, DEFAULT_GENERIC_TYPE),
@@ -99,12 +102,17 @@ def _build_generic_object(item, issuer_id: str, class_id: str) -> dict:
         'cardTitle': _localized(item.issuer or 'VoucherVault Plus+'),
         'subheader': _localized(item.get_type_display()),
         'hexBackgroundColor': tile_color,
-        'barcode': {
-            'type': BARCODE_TYPE_MAP.get(item.code_type, DEFAULT_BARCODE_TYPE),
-            'value': item.redeem_code,
-        },
         'textModulesData': text_modules,
     }
+    # code_type "none" means the item has no scannable barcode (e.g. a gift
+    # card that's just a printed number) - omit 'barcode' entirely rather
+    # than encoding the redeem code as a QR fallback the card doesn't have.
+    if item.code_type != 'none':
+        generic_object['barcode'] = {
+            'type': BARCODE_TYPE_MAP.get(item.code_type, DEFAULT_BARCODE_TYPE),
+            'value': item.redeem_code,
+        }
+    return generic_object
 
 
 def generate_google_wallet_save_url(item) -> str:

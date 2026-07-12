@@ -117,18 +117,29 @@ guide can speed up.
      - ./volume-data/google-wallet:/opt/app/google-wallet:ro
    ```
 
-2. Set the environment variables (see `docker/env.example`):
+2. Point VoucherVault at the key file and your Issuer ID. **The easiest
+   way**: log in as a superuser, open **Site Settings**
+   (`/admin-tools/site-settings/`, linked from the sidebar), and fill in
+   the **Google Wallet Service Account Key Path** and **Google Wallet
+   Issuer ID** fields under the Google Wallet section. This takes effect
+   immediately — no redeploy, no `.env` file, no restart.
+
+   Alternatively, set the environment variables (see `docker/env.example`),
+   which is what Site Settings falls back to until you (or a fresh install)
+   set it there instead:
 
    ```
    GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH=/opt/app/google-wallet/key.json
    GOOGLE_WALLET_ISSUER_ID=3388000000012345678
    ```
 
-   `GOOGLE_WALLET_CLASS_ID` is optional — leave it unset and VoucherVault
-   will use `<your issuer id>.vouchervault_generic` automatically.
+   Either way, `GOOGLE_WALLET_CLASS_ID` is optional — leave it unset and
+   VoucherVault will use `<your issuer id>.vouchervault_generic`
+   automatically.
 
-3. Redeploy/recreate the container so it picks up the new environment
-   variables and volume mount.
+3. If you set the values via environment variables rather than Site
+   Settings, redeploy/recreate the container so it picks up the new
+   environment variables and volume mount.
 
 4. Open any item's detail page on an Android phone or a Chromium desktop
    browser — you should now see an **Add to Google Wallet** button (Apple
