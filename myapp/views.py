@@ -244,8 +244,6 @@ def show_items(request):
     elif filter_value == 'archived':
         items = all_accessible_items.filter(is_archived=True)
     elif filter_value == 'soon_expiring':
-        threshold_days = SiteConfiguration.load().expiry_threshold_days
-        soon_expiry_date = now() + timedelta(days=threshold_days)
         items = user_items.filter(is_used=False, expiry_date__gte=now(), expiry_date__lt=soon_expiry_date)
     else:
         items = user_items

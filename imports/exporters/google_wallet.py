@@ -22,13 +22,22 @@ GENERIC_TYPE_MAP = {
 }
 DEFAULT_GENERIC_TYPE = 'GENERIC_TYPE_UNSPECIFIED'
 
-# Only formats Google Wallet actually supports; everything else falls back
-# to QR since it can always encode the raw redeem code string.
+# Only formats Google Wallet's BarcodeType enum actually supports
+# (developers.google.com/wallet/reference/rest/v1/BarcodeType) - notably no
+# Code 93 or UPC-E, so those still fall back to QR since it can always
+# encode the raw redeem code string.
 BARCODE_TYPE_MAP = {
     'qrcode': 'QR_CODE',
     'code128': 'CODE_128',
     'pdf417': 'PDF_417',
     'azteccode': 'AZTEC',
+    'codabar': 'CODABAR',
+    'code39': 'CODE_39',
+    'ean8': 'EAN_8',
+    'ean13': 'EAN_13',
+    'datamatrix': 'DATA_MATRIX',
+    'interleaved2of5': 'ITF_14',
+    'upca': 'UPC_A',
 }
 DEFAULT_BARCODE_TYPE = 'QR_CODE'
 DEFAULT_TILE_COLOR = '#4154f1'

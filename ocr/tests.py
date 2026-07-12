@@ -75,7 +75,7 @@ class TesseractBackendTests(TestCase):
         result = backend.extract(_tiny_png_bytes(), 'image/png')
 
         self.assertEqual(result['code'], 'CODE-83921X')
-        self.assertEqual(result['code_type'], 'code128')
+        self.assertEqual(result['code_type'], 'code39')
         self.assertEqual(result['expiry_date'], '2026-12-31')
         self.assertIsNone(result['name'])
         self.assertIsNone(result['issuer'])
@@ -104,6 +104,17 @@ class TesseractBackendTests(TestCase):
 
         self.assertEqual(result['code'], '4006381333931')
         self.assertEqual(result['code_type'], 'ean13')
+
+    @patch('ocr.backends.tesseract.pytesseract.get_tesseract_version')
+    def test_guess_code_type_alphanumeric_matches_scanner_js_heuristic(self, mock_version):
+        # scanner.js's guessCodeTypeFromValue() treats the same character
+        # set (uppercase letters, digits, space, and -.$/+%) as Code 39-safe
+        # and falls back to code128 for anything outside it. _guess_code()
+        # always upper-cases extracted candidates, so 'code128' is only
+        # reachable here for characters neither regex allows (e.g. '#').
+        backend = TesseractOCRBackend()
+        self.assertEqual(backend._guess_code_type('ABC-1234'), 'code39')
+        self.assertEqual(backend._guess_code_type('ABC#1234'), 'code128')
 
 
 class TesseractLiveIntegrationTests(TestCase):

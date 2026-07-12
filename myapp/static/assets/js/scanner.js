@@ -103,6 +103,14 @@ function markAutoFilled(el) {
     el.addEventListener('change', clear, { once: true });
 }
 
+// On the edit-item form, redeemCodeField/redeemTypeField start out already
+// populated with the item's real, presumably-correct values - unlike
+// create-item, where they start empty. Auto-detection (the typed-code
+// guess, and any scan/AI result) must never overwrite an existing item's
+// code_type just because its redeem_code text was edited; it should only
+// ever fill in a type for a genuinely new/blank entry.
+const hadInitialRedeemCode = !!(redeemCodeField && redeemCodeField.value);
+
 const codeTypeHint = document.getElementById('codeTypeHint');
 // Once the user manually picks a barcode type from the dropdown themselves,
 // stop overriding it with auto-detected/guessed values for the rest of this
@@ -150,7 +158,7 @@ function guessCodeTypeFromValue(value) {
 
 if (redeemCodeField) {
     redeemCodeField.addEventListener('input', () => {
-        if (userSelectedType) return;
+        if (userSelectedType || hadInitialRedeemCode) return;
         const guess = guessCodeTypeFromValue(redeemCodeField.value);
         if (!guess || !redeemTypeField) return;
         redeemTypeField.value = guess;
@@ -277,7 +285,14 @@ if (startScannerButton) {
 // DOM/status side effects, so both callers can layer their own UI on top.
 // Returns { text, formatValue, img } on success (img included so the crop
 // fallback UI can reuse it), or null if no barcode was found in the image.
-async function decodeBarcodeFromImageFile(file) {
+//
+// onImageLoaded, if given, fires the moment the <img> has finished loading
+// (before decode()/ZXing run) so a caller that wants the old crop-tool
+// fallback can capture `img` even if decode() or the barcode scan itself
+// throws afterwards - matching how the pre-refactor inline version assigned
+// its outer `img` variable as soon as the image loaded, not only on full
+// success.
+async function decodeBarcodeFromImageFile(file, onImageLoaded) {
     const dataUrl = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
@@ -291,6 +306,7 @@ async function decodeBarcodeFromImageFile(file) {
         img.onerror = reject;
         img.src = dataUrl;
     });
+    if (onImageLoaded) onImageLoaded(img);
     if (img.decode) {
         await img.decode();
     }
@@ -345,8 +361,7 @@ if (scanFromFileButton && fileInput) {
             // Stop any camera scanning
             codeReader.reset();
 
-            const decoded = await decodeBarcodeFromImageFile(file);
-            img = decoded.img;
+            const decoded = await decodeBarcodeFromImageFile(file, (loadedImg) => { img = loadedImg; });
 
             if (!decoded.text) {
                 throw new Error("Failed to detect barcode after 2 attempts");

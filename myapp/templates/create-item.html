@@ -1027,6 +1027,12 @@ document.addEventListener("DOMContentLoaded", function () {
     const statusEl = document.getElementById('aiScanStatus');
     statusEl.innerHTML = '<span class="text-muted"><i class="bi bi-arrow-repeat spin"></i> {% trans "Scanning..." %}</span>';
 
+    // Captured before the fetch, not re-checked after: on the edit page the
+    // redeem code/type already hold this item's real values, so a photo
+    // uploaded just to refresh the name/issuer/expiry must never touch
+    // them - only a genuinely blank code field gets filled or re-typed.
+    const codeWasEmpty = redeemCodeField && !redeemCodeField.value;
+
     const formData = new FormData();
     formData.append('image', file);
 
@@ -1049,20 +1055,21 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const filled = [];
 
-        // Redeem code + type: a successful barcode decode always wins.
-        if (decoded.text && redeemCodeField && !redeemCodeField.value) {
+        // Redeem code + type: a successful barcode decode always wins, but
+        // only when there was no existing code/type to protect.
+        if (codeWasEmpty && decoded.text && redeemCodeField) {
           redeemCodeField.value = decoded.text;
           markAutoFilled(redeemCodeField);
           filled.push("{% trans 'code' %}");
-        } else if (data.code && redeemCodeField && !redeemCodeField.value) {
+        } else if (codeWasEmpty && data.code && redeemCodeField) {
           redeemCodeField.value = data.code;
           markAutoFilled(redeemCodeField);
           filled.push("{% trans 'code' %}");
         }
-        if (decoded.formatValue && typeof applyDetectedFormat === 'function') {
+        if (codeWasEmpty && decoded.formatValue && typeof applyDetectedFormat === 'function') {
           applyDetectedFormat(decoded.formatValue, "{% trans 'barcode in photo' %}");
           filled.push("{% trans 'barcode type' %}");
-        } else if (data.code_type && typeof applyDetectedFormat === 'function') {
+        } else if (codeWasEmpty && data.code_type && typeof applyDetectedFormat === 'function') {
           applyDetectedFormat(data.code_type, "{% trans 'AI photo scan' %}");
           filled.push("{% trans 'barcode type' %}");
         }
