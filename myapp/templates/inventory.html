@@ -400,8 +400,8 @@ body.dark-mode .item-description {
   position: absolute;
   top: 0.75rem;
   right: 0.5rem;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 8px;
   border: none;
   background: rgba(255,255,255,0.9);
@@ -444,8 +444,8 @@ body.dark-mode .item-description {
   position: absolute;
   top: 0.75rem;
   left: 0.5rem;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 8px;
   border: none;
   background: rgba(255,255,255,0.9);
@@ -698,19 +698,13 @@ body.dark-mode .mobile-filter-select {
     display: block;
   }
   
-  .pin-btn {
-    opacity: 1;
-    width: 28px;
-    height: 28px;
-  }
-
-  /* .share-btn relies on .item-card:hover to appear, which never fires on
-     a touch device - it was permanently invisible (opacity: 0) on mobile,
-     same bug .pin-btn already had a fix for here. */
+  /* Both rely on .item-card:hover to appear on desktop, a state that
+     never fires on a touch device - forced visible here. Size itself is
+     already 44x44 at every breakpoint (see the base .pin-btn/.share-btn
+     rules), so there's no separate mobile size to set. */
+  .pin-btn,
   .share-btn {
     opacity: 1;
-    width: 28px;
-    height: 28px;
   }
 
   .filter-bar {

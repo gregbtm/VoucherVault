@@ -62,6 +62,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 25 — Decouple version bump/release from the broken security-scan pipeline](#phase-25--decouple-version-bumprelease-from-the-broken-security-scan-pipeline)
 - [Phase 26 — Fix dark mode on the "Share via..." chooser popup](#phase-26--fix-dark-mode-on-the-share-via-chooser-popup)
 - [Phase 27 — Deeper GUI sweep: dark mode, overlays, and a touch bug](#phase-27--deeper-gui-sweep-dark-mode-overlays-and-a-touch-bug)
+- [Phase 28 — Uniform touch-target pass](#phase-28--uniform-touch-target-pass)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -1546,6 +1547,40 @@ that held up.
   (`WebShareButtonWiringTests`, `BulkActionsTests`, `SharedWalletTests`,
   `OfflineCacheTogglePreferenceTests`, `PublicShareLinkTests` - 51 tests,
   all passing) to confirm no template-tag syntax broke.
+
+## Phase 28 — Uniform touch-target pass
+
+Follow-up to Phase 27, which deliberately deferred resizing undersized
+icon buttons to avoid an inconsistent one-off change. This phase finishes
+the job: every icon-only utility button across the app is now a
+consistent 44x44px (the WCAG 2.5.5 / platform-HIG minimum), icon glyph
+size unchanged - only the surrounding tap area grew.
+
+- **Brought to 44x44px**: Inventory's `.pin-btn`/`.share-btn` (were 32px
+  desktop, 28px mobile - now the same 44px at every breakpoint, so the
+  mobile-only override that used to *shrink* them is gone entirely);
+  `view-item.html`'s `.fullscreen-btn` (36px), `.zoom-btn` (32px, all
+  three barcode zoom controls), and `.copy-code-btn` (36px, used for both
+  the redeem-code and card-number copy buttons); the standalone
+  `public_item.html`'s `.copy-btn` (was padding-based, ~31-34px).
+  `.copy-pin-btn` was already effectively 44px+ tall (stretches to match
+  its flex row) and needed no change.
+- **Bumped via a new shared `.touch-target-btn` class** (for plain
+  Bootstrap `.btn`/`.btn-sm` controls that don't have their own custom
+  CSS to edit directly): the Public Share Link card's copy-link button
+  and its Regenerate/Revoke buttons.
+- **The "Share via..." chooser popup's option rows** (`voucher-share.js`)
+  bumped from ~36-37px to 44px.
+- **One deliberate exception, clearly scoped rather than silently
+  skipped**: the edit/delete icons inside Tag pill badges
+  (`manage-tags.html`) can't reach 44px without breaking the pill's
+  compact shape entirely - a full-size redesign of that component is a
+  separate decision. Gave them a proportionate best-effort increase
+  instead (28x28, `.tag-icon-action`), rather than leaving them at their
+  previous near-zero padding.
+- Verified with `python manage.py check` and the same template-rendering
+  test slice as Phase 27 (Inventory, Sharing Center, item detail, plus
+  `TagViewTests` for the tag-pill change) - 46 tests, all passing.
 
 ## New environment variables
 

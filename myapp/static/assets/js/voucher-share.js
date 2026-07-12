@@ -163,6 +163,7 @@ function ensureShareChooserStyles() {
       align-items: center;
       gap: 8px;
       width: 100%;
+      min-height: 44px;
       text-align: left;
       background: none;
       border: none;

@@ -2,6 +2,18 @@
 {% load i18n %}
 
 {% block content %}
+<style>
+/* These sit inside a compact pill badge, where a full 44px touch target
+   would break the pill's shape entirely - a best-effort tap-area increase
+   instead of the app-wide 44px minimum used everywhere else. */
+.tag-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+}
+</style>
 <div class="pagetitle">
   <h1>{% trans "Tags" %}</h1>
   <nav>
@@ -57,11 +69,11 @@
             <span class="badge rounded-pill d-inline-flex align-items-center gap-2" style="background-color: {{ tag.color }}; color: #fff; padding: 0.5em 0.9em;">
               {{ tag.name }}
               <span class="text-white-50">{{ tag.item_count }}</span>
-              <a href="{% url 'edit_tag' tag_id=tag.id %}" class="text-white" title="{% trans 'Edit' %}"><i class="bi bi-pencil"></i></a>
+              <a href="{% url 'edit_tag' tag_id=tag.id %}" class="text-white tag-icon-action" title="{% trans 'Edit' %}"><i class="bi bi-pencil"></i></a>
               <form method="POST" action="{% url 'delete_tag' tag_id=tag.id %}" style="display:inline;"
                     onsubmit="return confirm('{% trans "Delete this tag? It will be removed from all items." %}');">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-sm p-0 border-0 text-white" style="background: transparent;" title="{% trans 'Delete' %}">
+                <button type="submit" class="btn btn-sm p-0 border-0 text-white tag-icon-action" style="background: transparent;" title="{% trans 'Delete' %}">
                   <i class="bi bi-x-circle"></i>
                 </button>
               </form>
