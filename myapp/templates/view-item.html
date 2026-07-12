@@ -402,8 +402,8 @@ a.action-btn-info:hover {
   position: absolute;
   bottom: 0.5rem;
   right: 0.5rem;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 8px;
   border: none;
   background: rgba(255,255,255,0.95);
@@ -428,8 +428,8 @@ a.action-btn-info:hover {
 }
 
 .zoom-btn {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 8px;
   border: 1px solid var(--border-color, #dee2e6);
   background: var(--card-bg, #fff);
@@ -475,8 +475,8 @@ a.action-btn-info:hover {
 }
 
 .copy-code-btn {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 8px;
   border: 1px solid var(--border-color, #dee2e6);
   background: var(--card-bg, #fff);
@@ -506,6 +506,13 @@ a.action-btn-info:hover {
   background: #198754;
   border-color: #198754;
   color: white;
+}
+
+/* Bumps otherwise-undersized Bootstrap .btn/.btn-sm controls (Public
+   Share Link's copy/regenerate/revoke buttons) up to the ~44px touch
+   target guideline without changing their visible padding/text size. */
+.touch-target-btn {
+  min-height: 44px;
 }
 
 /* PIN Card */
@@ -1249,7 +1256,7 @@ body.dark-mode .action-btn-secondary:hover {
             <div class="input-group mb-2">
               <input type="text" class="form-control" readonly id="public-share-url"
                      value="{{ request.scheme }}://{{ request.get_host }}{% url 'public_item_share' public_share.id %}">
-              <button class="btn btn-outline-secondary" type="button" id="copy-public-share-btn" title="{% trans 'Copy link' %}">
+              <button class="btn btn-outline-secondary touch-target-btn" type="button" id="copy-public-share-btn" title="{% trans 'Copy link' %}">
                 <i class="bi bi-clipboard"></i>
               </button>
             </div>
@@ -1263,12 +1270,12 @@ body.dark-mode .action-btn-secondary:hover {
             <div class="d-flex gap-2">
               <form method="POST" action="{% url 'regenerate_public_share_link' item.id %}">
                 {% csrf_token %}
-                <button class="btn btn-sm btn-outline-secondary" type="submit">{% trans "Regenerate" %}</button>
+                <button class="btn btn-sm btn-outline-secondary touch-target-btn" type="submit">{% trans "Regenerate" %}</button>
               </form>
               <form method="POST" action="{% url 'revoke_public_share_link' item.id %}"
                     onsubmit="return confirm('{% trans "Revoke this link? Anyone still holding it will lose access." %}');">
                 {% csrf_token %}
-                <button class="btn btn-sm btn-outline-danger" type="submit">{% trans "Revoke" %}</button>
+                <button class="btn btn-sm btn-outline-danger touch-target-btn" type="submit">{% trans "Revoke" %}</button>
               </form>
             </div>
             {% else %}
