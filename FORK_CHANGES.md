@@ -56,6 +56,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 19 — Smart barcode type detection](#phase-19--smart-barcode-type-detection)
 - [Phase 20 — Screenshot-friendly OCR + issuer autocomplete](#phase-20--screenshot-friendly-ocr--issuer-autocomplete)
 - [Phase 21 — Merged AI-scan upload + auto-filled field highlighting](#phase-21--merged-ai-scan-upload--auto-filled-field-highlighting)
+- [Phase 22 — Code review pass across Phases 16–21](#phase-22--code-review-pass-across-phases-1621)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -1213,6 +1214,99 @@ before - and we need to be correct about barcode types."
   JS (`decodeBarcodeFromImageFile`, the barcode-decode-wins branch) is
   present when OCR is enabled and completely absent when it's off, on
   both create and edit pages.
+
+## Phase 22 — Code review pass across Phases 16–21
+
+Requested full check across the six most recent phases (Portainer webhook
+through the merged AI-scan upload) for correctness issues and
+efficiencies. Ran an 8-angle review over `git diff` for that range and
+fixed everything that survived verification as a real, actionable bug.
+
+- **A silent notification-threshold regression.** The Phase 17
+  `SiteConfiguration` seed migration
+  (`myapp/migrations/0046_seed_siteconfiguration.py`) seeded
+  `expiry_last_notification_days` from `EXPIRY_LAST_NOTIFICATION_DAYS`
+  only, but `notify/tasks.py::final_threshold_days()` used to read
+  `EXPIRY_THRESHOLD_DAYS_FINAL` - a var that can be set independently and
+  only falls back to `EXPIRY_LAST_NOTIFICATION_DAYS` if unset. A
+  deployment with those two set to different values silently got the
+  wrong "final reminder" window on upgrade, with no warning. Fixed to
+  seed from `EXPIRY_THRESHOLD_DAYS_FINAL`. **If you already ran this
+  migration on a live deployment** with those two env vars set to
+  different values, double-check the "Final reminder" threshold on the
+  Site Settings page - the migration only affects fresh seeds, not an
+  already-populated row.
+- **Two places where "smart" barcode detection could clobber an
+  already-correct value on the edit page.** Both bugs shared the same
+  root cause: create-item.html starts with a blank redeem code/type,
+  edit-item.html starts with the item's real ones, and neither the
+  merged AI-scan handler nor the typed-code heuristic added in Phase 19
+  distinguished the two.
+  - The merged "Scan with AI" upload (Phase 21) applied a barcode-decoded
+    or AI-guessed `code_type` unconditionally, even when the redeem code
+    field was left untouched because it already held a value - uploading
+    a photo just to refresh the name/issuer/expiry on an existing item
+    could silently overwrite its code_type to match an unrelated photo.
+    Fixed by capturing `codeWasEmpty` once, before the fetch, and gating
+    every field write (code, type, and the two AI/decode branches) on it.
+  - The shape-based typed-code guess (Phase 19) fired on every keystroke
+    in Redeem Code and only stopped once the user touched the Code Type
+    dropdown directly - but a server-rendered `selected` attribute on an
+    existing item's dropdown never fires that 'change' event, so fixing
+    one typo'd character in an existing item's code silently overwrote
+    its already-correct type with a coarse guess. Fixed with a
+    `hadInitialRedeemCode` flag captured at page load that disables the
+    heuristic entirely whenever the field didn't start blank.
+- **Google Wallet exports were silently downgrading real barcode types
+  to QR.** `imports/exporters/google_wallet.py`'s `BARCODE_TYPE_MAP` only
+  had 4 entries (qrcode/code128/pdf417/azteccode), so items with
+  code_type ean13, ean8, upca, codabar, or datamatrix - all barcode
+  types Google Wallet's own `BarcodeType` enum genuinely supports -
+  exported as a QR code encoding the raw redeem code instead, which
+  won't scan as the card's actual barcode. Extended the map with the six
+  types Google's API actually documents (unlike Apple's PassKit, whose
+  `PKBarcodeFormat` truly has no equivalent for any of these - that
+  QR fallback is a real platform limit, not a bug, and is unchanged).
+- **The manual-code-type heuristic quietly disagreed with itself
+  depending on which OCR path ran it.** `ocr/backends/tesseract.py`'s
+  `_guess_code_type()` docstring claimed to be "the same heuristic used
+  client-side in scanner.js", but it dropped the alphanumeric/Code 39
+  branch, silently defaulting every non-numeric code to Code 128
+  regardless of shape. Added the matching `_CODE39_SAFE_RE` branch so
+  both heuristics agree on the same input.
+- **The file-upload scanner's crop-tool fallback regressed** when the
+  barcode-decode logic was extracted into a shared
+  `decodeBarcodeFromImageFile()` function in Phase 21 - the outer `img`
+  variable used to be assigned as soon as the photo finished loading (so
+  a failed `decode()`/scan afterward could still open the manual
+  crop-and-retry tool on the same image), but the refactor only assigned
+  it on the function's full successful return. Fixed by adding an
+  optional `onImageLoaded` callback that fires the moment the image
+  loads, restoring the original "loaded fine, scan failed" -> crop-tool
+  path while keeping the shared function.
+- **A redundant DB query** in `show_items()`'s `soon_expiring` branch
+  recomputed `SiteConfiguration.load().expiry_threshold_days` and
+  `soon_expiry_date`, both already computed identically four lines
+  earlier in the same request. Removed the duplicate.
+- **Noted but not fixed this pass** (lower severity / larger refactors,
+  tracked for a future cleanup phase): the "Scan with AI" merged handler
+  is duplicated verbatim between create-item.html and edit-item.html
+  rather than living in one shared function; `generate_pkpass()` and the
+  OCR extract flow each call `SiteConfiguration.load()` multiple times
+  per request for the same unchanging row (Phase 17's mechanical
+  settings-refactor didn't consolidate multi-read functions); and the
+  code_type vocabulary is independently declared in five places
+  (`VALID_CODE_TYPES`, two template `<select>`s, `codeTypeLabels` in
+  scanner.js, and each exporter's format map) with only a code comment
+  keeping them in sync.
+- New/updated tests: `SiteConfigurationSeedMigrationTests` (seed reads
+  `EXPIRY_THRESHOLD_DAYS_FINAL`), `OCRScanUIWiringTests` extended to
+  assert the `codeWasEmpty` guard is present on the edit page,
+  `TesseractBackendTests` extended for the Code 39 branch (one existing
+  test's expected `code_type` corrected from `code128` to `code39` now
+  that the heuristic actually matches its own docstring's claim), and a
+  new `GoogleWalletExporterTests` case for the EAN-13 barcode type no
+  longer falling back to QR.
 
 ## New environment variables
 

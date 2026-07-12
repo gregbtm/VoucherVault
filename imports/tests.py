@@ -574,6 +574,19 @@ class GoogleWalletExporterTests(TestCase):
         obj = payload['payload']['genericObjects'][0]
         self.assertEqual(obj['genericType'], 'GENERIC_LOYALTY_CARD')
 
+    def test_generate_save_url_uses_native_ean13_not_qr_fallback(self):
+        # ean13/codabar/ean8/upca/datamatrix are real BarcodeType values
+        # Google Wallet supports natively - these must not silently fall
+        # back to QR_CODE the way code93/upce/issn genuinely have to
+        # (Google's API has no equivalent for those).
+        item = make_item(self.user, redeem_code='4006381333931', code_type='ean13')
+        save_url = generate_google_wallet_save_url(item)
+        token = save_url.rsplit('/', 1)[-1]
+        _header_seg, payload_seg, _signature_seg = token.split('.')
+        payload = json.loads(_b64url_decode(payload_seg))
+        obj = payload['payload']['genericObjects'][0]
+        self.assertEqual(obj['barcode']['type'], 'EAN_13')
+
     def test_generate_save_url_omits_barcode_for_no_barcode_code_type(self):
         item = make_item(
             self.user, type='giftcard', name='Coffee Gift Card', issuer='Bean Co',

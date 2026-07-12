@@ -757,6 +757,13 @@ class OCRScanUIWiringTests(TestCase):
         self.assertTrue(response.context['ocr_enabled'])
         self.assertContains(response, 'aiScanSection')
         self.assertContains(response, 'decodeBarcodeFromImageFile(file).catch')
+        # A photo uploaded to refresh name/issuer/expiry on an existing item
+        # must never overwrite its already-correct redeem_code/code_type -
+        # the merged AI-scan handler must gate every field write on the
+        # code having started empty.
+        self.assertContains(response, 'const codeWasEmpty = redeemCodeField && !redeemCodeField.value;')
+        self.assertContains(response, 'codeWasEmpty && decoded.formatValue')
+        self.assertContains(response, 'codeWasEmpty && data.code_type')
 
     def test_duplicate_item_reflects_ocr_setting(self):
         item = make_item(self.user)
@@ -1439,6 +1446,30 @@ class SiteConfigurationModelTests(TestCase):
         second = SiteConfiguration.load()
         self.assertEqual(second.pk, first.pk)
         self.assertEqual(second.expiry_threshold_days, 99)
+
+
+class SiteConfigurationSeedMigrationTests(TestCase):
+    """
+    The 0046 seed migration must read EXPIRY_THRESHOLD_DAYS_FINAL (what
+    notify/tasks.py::final_threshold_days() actually reads pre-migration),
+    not just its own EXPIRY_LAST_NOTIFICATION_DAYS fallback - otherwise a
+    deployment that set EXPIRY_THRESHOLD_DAYS_FINAL independently silently
+    loses that value on upgrade.
+    """
+
+    def test_seed_uses_expiry_threshold_days_final_when_set(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        seed_migration = importlib.import_module('myapp.migrations.0046_seed_siteconfiguration')
+
+        SiteConfiguration.objects.filter(pk=1).delete()
+        with override_settings(EXPIRY_LAST_NOTIFICATION_DAYS=7, EXPIRY_THRESHOLD_DAYS_FINAL=3):
+            seed_migration.seed_from_env(django_apps, None)
+
+        config = SiteConfiguration.objects.get(pk=1)
+        self.assertEqual(config.expiry_last_notification_days, 3)
 
 
 def _site_config_form_data(**overrides):

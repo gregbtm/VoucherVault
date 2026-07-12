@@ -18,7 +18,12 @@ def seed_from_env(apps, schema_editor):
     SiteConfiguration.objects.create(
         pk=1,
         expiry_threshold_days=settings.EXPIRY_THRESHOLD_DAYS,
-        expiry_last_notification_days=settings.EXPIRY_LAST_NOTIFICATION_DAYS,
+        # EXPIRY_THRESHOLD_DAYS_FINAL is the var actually read pre-migration
+        # (notify/tasks.py::final_threshold_days) - it independently falls
+        # back to EXPIRY_LAST_NOTIFICATION_DAYS only if unset, so seeding
+        # from EXPIRY_LAST_NOTIFICATION_DAYS alone silently drops a
+        # deployment that configured EXPIRY_THRESHOLD_DAYS_FINAL on its own.
+        expiry_last_notification_days=settings.EXPIRY_THRESHOLD_DAYS_FINAL,
         ntfy_default_server=settings.NTFY_DEFAULT_SERVER,
         webpush_vapid_public_key=settings.WEBPUSH_VAPID_PUBLIC_KEY or '',
         webpush_vapid_private_key=settings.WEBPUSH_VAPID_PRIVATE_KEY or '',

@@ -12,6 +12,9 @@ from .base import OCRBackend
 # printed text).
 _CODE_CANDIDATE_RE = re.compile(r'\b[A-Z0-9][A-Z0-9\-]{4,19}\b')
 _HAS_DIGIT_RE = re.compile(r'\d')
+# Kept in sync with the alphanumeric branch of scanner.js's
+# guessCodeTypeFromValue() - matches the same Code 39-safe character set.
+_CODE39_SAFE_RE = re.compile(r'^[A-Z0-9 \-.$/+%]+$')
 
 _DATE_PATTERNS = [
     (re.compile(r'\b(\d{4})-(\d{1,2})-(\d{1,2})\b'), '%Y-%m-%d'),
@@ -90,6 +93,8 @@ class TesseractOCRBackend(OCRBackend):
             if length in (6, 7):
                 return 'upce'
             return 'interleaved2of5' if length % 2 == 0 else 'code128'
+        if _CODE39_SAFE_RE.match(code):
+            return 'code39'
         return 'code128'
 
     def _guess_expiry_date(self, text: str) -> str | None:
