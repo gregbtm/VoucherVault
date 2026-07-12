@@ -1266,7 +1266,22 @@ body.dark-mode .action-btn-secondary:hover {
               {% else %}
                 {% trans "Not opened yet." %}
               {% endif %}
+              {% if public_share.expires_at %}
+                {% blocktrans with expiry=public_share.expires_at|date:"Y-m-d" %}Expires {{ expiry }}.{% endblocktrans %}
+              {% else %}
+                {% trans "Never expires." %}
+              {% endif %}
+              {% if public_share.failed_pin_attempts %}
+                <span class="text-danger">{% blocktrans count counter=public_share.failed_pin_attempts %}{{ counter }} wrong access code attempt.{% plural %}{{ counter }} wrong access code attempts.{% endblocktrans %}</span>
+              {% endif %}
             </p>
+            {% if public_share.access_pin %}
+            <div class="input-group mb-2">
+              <span class="input-group-text">{% trans "Access code" %}</span>
+              <input type="text" class="form-control" readonly value="{{ public_share.access_pin }}">
+            </div>
+            <p class="text-muted small mb-2">{% trans "Give this to the recipient separately from the link (call, text, in person) - it's required to view the shared page." %}</p>
+            {% endif %}
             <div class="d-flex gap-2">
               <form method="POST" action="{% url 'regenerate_public_share_link' item.id %}">
                 {% csrf_token %}

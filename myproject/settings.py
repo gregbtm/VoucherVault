@@ -249,6 +249,22 @@ else:
     CELERY_BROKER_URL = REDIS_URL
     CELERY_RESULT_BACKEND = REDIS_URL
 
+# The same Redis instance Celery already requires, on a separate logical
+# DB (index 1) so its keys don't mix with Celery's broker/result data.
+# Used for rate-limiting the public share link view (myapp/public_share.py)
+# - needs a store shared across uWSGI worker processes, which Django's
+# default LocMemCache is not. Rebuilt via urlsplit rather than naive string
+# splitting since REDIS_URL isn't guaranteed to already end in a DB index.
+from urllib.parse import urlsplit, urlunsplit
+
+_redis_cache_parts = urlsplit(REDIS_URL or 'redis://redis:6379/0')
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': urlunsplit(_redis_cache_parts._replace(path='/1')),
+    }
+}
+
 
 CELERY_WORKER_CONCURRENCY = int(os.environ.get('CELERY_WORKER_CONCURRENCY', '1'))
 CELERY_WORKER_PREFETCH_MULTIPLIER = int(os.environ.get('CELERY_WORKER_PREFETCH_MULTIPLIER', '1'))

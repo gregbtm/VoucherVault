@@ -93,8 +93,9 @@ class OfflineSyncManager {
             console.log('[OfflineSync] Connection lost');
             this.isOnline = false;
             this.updateOnlineStatus(false);
-            // Show banner when going offline
-            this.showOfflinePageBanner();
+            // Going offline doesn't by itself mean the *current* page is a
+            // cached copy - re-check, don't assume.
+            this.checkIfServedFromCache();
         });
 
         // Check if page was served from service worker cache
@@ -113,18 +114,22 @@ class OfflineSyncManager {
      * (workerStart > 0 always), and transferSize is 0 for plenty of
      * non-PWA-cache reasons too (a 304, the browser's own HTTP disk cache),
      * so it fired even with "Cache for Offline" turned off and nothing in
-     * PAGE_CACHE at all. Check the actual cache contents instead: this is
-     * the only store the manual "Cache for Offline" feature writes to
-     * (myapp/static/assets/js/manual-cache.js), and it's fully purged the
-     * moment that preference is turned off, so a match here means this
-     * page really did come from that cache.
+     * PAGE_CACHE at all. This also used to short-circuit to "show the
+     * banner" whenever `navigator.onLine` was false - but that flag is
+     * notoriously unreliable on Android (it reflects the network
+     * *interface*, not actual reachability, and flickers on a weak signal
+     * or a Wi-Fi/cellular handoff), so the banner kept appearing on
+     * ordinary page loads regardless of the "Cache for Offline" setting.
+     * Check the actual cache contents instead, every time, online or not:
+     * this is the only store the manual "Cache for Offline" feature writes
+     * to (myapp/static/assets/js/manual-cache.js), and it's fully purged
+     * the moment that preference is turned off, so a match here means this
+     * page really did come from that cache - a raw connectivity blip with
+     * nothing cached should never show a "viewing cached content" banner,
+     * since nothing cached is being viewed.
      */
     async checkIfServedFromCache() {
-        // If offline, definitely show the banner
-        if (!navigator.onLine) {
-            this.showOfflinePageBanner();
-            return;
-        }
+        this.hideOfflinePageBanner();
 
         if (!('caches' in window)) return;
 

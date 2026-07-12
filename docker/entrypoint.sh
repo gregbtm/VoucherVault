@@ -38,9 +38,18 @@ perform_migrations() {
     #django-admin compilemessages 2>&1 > /dev/null
     echo ""
 
+    # Always re-sync periodic tasks, not just on a brand-new database.
+    # get_or_create() makes this safe to run on every start - it only adds
+    # rows for tasks that don't exist yet - but it used to be gated behind
+    # DB_INITIALIZED, meaning any periodic task added *after* someone's
+    # first-ever deploy (the Phase 13.5 update check, the Phase 14.3
+    # scheduled backup) would never actually get registered on an
+    # already-initialized install: nothing would ever call them, silently,
+    # with no error to notice.
+    echo "[TASK] Syncing periodic tasks."
+    python manage.py create_default_periodic_tasks
+
     if [ -z "$DB_INITIALIZED" ]; then
-        echo "[TASK] Creating periodic tasks for expiry notifications."
-        python manage.py create_default_periodic_tasks
         echo "-------------------------------------------------"
         admin_password=$(generate_random_string)
         echo "[TASK] Creating superuser account"

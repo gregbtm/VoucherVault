@@ -1104,6 +1104,164 @@ class PublicShareLinkTests(TestCase):
         self.assertContains(response, f'/s/{share.id}/')
 
 
+class PublicShareSecurityTests(TestCase):
+    """
+    Covers the expiry/PIN-gate/crawler-detection/rate-limiting overhaul on
+    top of the base ItemPublicShare flow tested above.
+    """
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_create_link_sets_expiry_from_site_config(self):
+        set_site_config(share_link_expiry_days=30)
+        item = make_item(self.alice)
+        self.client.post(reverse('get_public_share_link', args=[item.id]),
+                          HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        share = ItemPublicShare.objects.get(item=item)
+        self.assertIsNotNone(share.expires_at)
+        self.assertAlmostEqual(share.expires_at, timezone.now() + timedelta(days=30), delta=timedelta(minutes=1))
+
+    def test_create_link_never_expires_when_zero(self):
+        set_site_config(share_link_expiry_days=0)
+        item = make_item(self.alice)
+        self.client.post(reverse('get_public_share_link', args=[item.id]),
+                          HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        share = ItemPublicShare.objects.get(item=item)
+        self.assertIsNone(share.expires_at)
+
+    def test_create_link_generates_pin_when_enabled(self):
+        set_site_config(share_link_pin_enabled=True)
+        item = make_item(self.alice)
+        self.client.post(reverse('get_public_share_link', args=[item.id]),
+                          HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        share = ItemPublicShare.objects.get(item=item)
+        self.assertRegex(share.access_pin, r'^\d{4}$')
+
+    def test_create_link_no_pin_when_disabled(self):
+        set_site_config(share_link_pin_enabled=False)
+        item = make_item(self.alice)
+        self.client.post(reverse('get_public_share_link', args=[item.id]),
+                          HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        share = ItemPublicShare.objects.get(item=item)
+        self.assertEqual(share.access_pin, '')
+
+    def test_expired_link_shows_expired_state_and_not_content(self):
+        item = make_item(self.alice, redeem_code='SECRETCODE')
+        share = ItemPublicShare.objects.create(
+            item=item, created_by=self.alice, expires_at=timezone.now() - timedelta(days=1),
+        )
+        self.client.logout()
+        response = self.client.get(reverse('public_item_share', args=[share.id]))
+        self.assertContains(response, 'Link expired')
+        self.assertNotContains(response, 'SECRETCODE')
+        share.refresh_from_db()
+        self.assertEqual(share.view_count, 0)
+
+    def test_pin_gate_blocks_content_until_correct_pin(self):
+        item = make_item(self.alice, redeem_code='SECRETCODE')
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice, access_pin='1234')
+        self.client.logout()
+
+        get_response = self.client.get(reverse('public_item_share', args=[share.id]))
+        self.assertNotContains(get_response, 'SECRETCODE')
+
+        wrong = self.client.post(reverse('public_item_share', args=[share.id]), {'access_pin': '0000'})
+        self.assertContains(wrong, 'Incorrect code')
+        self.assertNotContains(wrong, 'SECRETCODE')
+        share.refresh_from_db()
+        self.assertEqual(share.failed_pin_attempts, 1)
+
+        correct = self.client.post(reverse('public_item_share', args=[share.id]), {'access_pin': '1234'})
+        self.assertContains(correct, 'SECRETCODE')
+
+        # session unlock persists on a subsequent GET without re-entering the PIN
+        again = self.client.get(reverse('public_item_share', args=[share.id]))
+        self.assertContains(again, 'SECRETCODE')
+
+    def test_pin_attempt_rate_limit_blocks_without_incrementing_further(self):
+        item = make_item(self.alice, redeem_code='SECRETCODE')
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice, access_pin='1234')
+        self.client.logout()
+
+        with patch('myapp.views.pin_attempt_rate_limited', return_value=True):
+            response = self.client.post(reverse('public_item_share', args=[share.id]), {'access_pin': '0000'})
+        self.assertContains(response, 'Too many attempts')
+        share.refresh_from_db()
+        self.assertEqual(share.failed_pin_attempts, 0)
+
+    def test_link_preview_bot_gets_metadata_only_and_no_view_count(self):
+        item = make_item(self.alice, redeem_code='SECRETCODE')
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
+        self.client.logout()
+
+        response = self.client.get(reverse('public_item_share', args=[share.id]),
+                                    HTTP_USER_AGENT='WhatsApp/2.23.1 A')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, item.issuer)
+        self.assertNotContains(response, 'SECRETCODE')
+        share.refresh_from_db()
+        self.assertEqual(share.view_count, 0)
+
+    def test_view_rate_limit_returns_429(self):
+        item = make_item(self.alice)
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
+        self.client.logout()
+
+        with patch('myapp.views.view_rate_limited', return_value=True):
+            response = self.client.get(reverse('public_item_share', args=[share.id]))
+        self.assertEqual(response.status_code, 429)
+
+    def test_og_meta_tags_use_merchant_logo_when_cached(self):
+        item = make_item(self.alice, issuer='Ticketmaster')
+        MerchantProfile.objects.create(name='Ticketmaster', logo_url='https://example.com/tm-logo.png')
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
+        self.client.logout()
+
+        response = self.client.get(reverse('public_item_share', args=[share.id]))
+        self.assertContains(response, 'https://example.com/tm-logo.png')
+        self.assertContains(response, 'og:title')
+
+
+class TriggerUpdateCheckViewTests(TestCase):
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(username='admin', password='pw12345!', email='a@example.com')
+        self.regular_user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_requires_login(self):
+        response = self.client.post(reverse('trigger_update_check'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/accounts/login/', response.url)
+
+    def test_requires_post(self):
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('trigger_update_check'))
+        self.assertEqual(response.status_code, 405)
+
+    @patch('myapp.views.check_for_update')
+    def test_regular_user_forbidden_and_check_not_called(self, mock_check):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.post(reverse('trigger_update_check'), follow=True)
+        mock_check.assert_not_called()
+        self.assertContains(response, 'Only administrators')
+
+    @patch('myapp.views.check_for_update')
+    def test_superuser_triggers_check_and_reports_up_to_date(self, mock_check):
+        UpdateCheckStatus.objects.update_or_create(pk=1, defaults={'update_available': False})
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.post(reverse('trigger_update_check'), follow=True)
+        mock_check.assert_called_once()
+        self.assertContains(response, 'on the latest version')
+
+    @patch('myapp.views.check_for_update')
+    def test_superuser_reports_update_available(self, mock_check):
+        UpdateCheckStatus.objects.update_or_create(pk=1, defaults={'update_available': True, 'latest_version': 'v1.9.0'})
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.post(reverse('trigger_update_check'), follow=True)
+        mock_check.assert_called_once()
+        self.assertContains(response, 'Update available: v1.9.0')
+
+
 class CardNumberDisplayTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')
@@ -1625,6 +1783,7 @@ def _site_config_form_data(**overrides):
         'webpush_vapid_claims_email': 'mailto:admin@example.com',
         'merchant_logos_enabled': True,
         'share_via_smart_enabled': True,
+        'share_link_expiry_days': 30, 'share_link_pin_enabled': False,
         'ocr_backend': 'none', 'anthropic_api_key': '', 'anthropic_ocr_model': 'claude-sonnet-5',
         'openai_api_key': '', 'openai_ocr_model': 'gpt-4o-mini',
         'pkpass_cert_path': '', 'pkpass_cert_password': '', 'pkpass_wwdr_cert_path': '',
