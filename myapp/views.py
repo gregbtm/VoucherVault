@@ -402,6 +402,7 @@ def view_item(request, item_uuid):
         'google_wallet_save_url': google_wallet_save_url,
         'document_form': DocumentForm(),
         'preferences': preferences,
+        'public_share': ItemPublicShare.objects.filter(item=item).first(),
     }
     return render(request, 'view-item.html', context)
 
@@ -1004,6 +1005,101 @@ def unshare_item(request, item_id, user_id):
     
     # Redirect back to the item view page
     return redirect('view_item', item_uuid=item.id)
+
+def _public_share_payload(request, item, share):
+    """
+    JSON shape returned to voucher-share.js by both the get-or-create and
+    regenerate endpoints - everything the "Share via..." chooser needs to
+    build either a bare-link share or a full-details share client-side,
+    without embedding the code/PIN/balance of every item in the page's
+    HTML up front (e.g. on the Inventory grid, which can list hundreds).
+    """
+    return {
+        'url': request.build_absolute_uri(reverse('public_item_share', args=[share.id])),
+        'merchant': item.issuer,
+        'name': item.name,
+        'code': item.card_number or item.redeem_code,
+        'pin': item.pin or '',
+        'balance': str(item.get_current_balance()) if item.type == 'giftcard' else None,
+        'currency': item.currency,
+    }
+
+def _wants_json(request):
+    """
+    Both voucher-share.js (fetch, for the share chooser) and plain HTML
+    forms (the "Public Share Link" card on the item detail page) hit these
+    three endpoints. fetch() calls send this header explicitly so the view
+    can return JSON to one and a normal redirect-with-message to the other.
+    """
+    return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+@require_POST
+@login_required
+def get_public_share_link(request, item_id):
+    """
+    Get-or-create the one public share link for this item, for the "Share
+    via... -> Share details" flow (voucher-share.js) and the "Create link
+    now" button on the item detail page. Anyone who can already view the
+    item (owner, ItemShare recipient, wallet collaborator) can fetch/
+    create its link - same audience the "Share via..." button itself is
+    already shown to.
+    """
+    item = get_object_or_404(Item, id=item_id)
+    if not has_item_access(item, request.user):
+        return HttpResponse("Unauthorized", status=403)
+
+    share, _created = ItemPublicShare.objects.get_or_create(item=item, defaults={'created_by': request.user})
+    if _wants_json(request):
+        return JsonResponse(_public_share_payload(request, item, share))
+    messages.success(request, _('Public share link created.'))
+    return redirect('view_item', item_uuid=item.id)
+
+@require_POST
+@login_required
+def regenerate_public_share_link(request, item_id):
+    """Invalidates the old public link (e.g. if it leaked) and issues a fresh one."""
+    item = get_object_or_404(Item, id=item_id)
+    if not has_item_access(item, request.user):
+        return HttpResponse("Unauthorized", status=403)
+
+    ItemPublicShare.objects.filter(item=item).delete()
+    share = ItemPublicShare.objects.create(item=item, created_by=request.user)
+    if _wants_json(request):
+        return JsonResponse(_public_share_payload(request, item, share))
+    messages.success(request, _('Public share link regenerated. The old link no longer works.'))
+    return redirect('view_item', item_uuid=item.id)
+
+@require_POST
+@login_required
+def revoke_public_share_link(request, item_id):
+    """Deletes the public link outright; the next 'Share details' tap creates a new one."""
+    item = get_object_or_404(Item, id=item_id)
+    if not has_item_access(item, request.user):
+        return HttpResponse("Unauthorized", status=403)
+
+    ItemPublicShare.objects.filter(item=item).delete()
+    if _wants_json(request):
+        return JsonResponse({'revoked': True})
+    messages.success(request, _('Public share link revoked.'))
+    return redirect('view_item', item_uuid=item.id)
+
+def public_item_share(request, share_id):
+    """
+    Read-only, unauthenticated redemption summary: merchant, code/card
+    number, PIN, remaining balance, and the barcode/QR image. No
+    login_required by design - the id in the URL is the auth, the same
+    pattern as the .ics calendar feed's token. Deliberately excludes
+    notes, documents, and any edit/delete affordance - this is a page for
+    someone who was handed a voucher, not a VoucherVault account holder.
+    """
+    share = get_object_or_404(ItemPublicShare.objects.select_related('item'), id=share_id)
+    share.record_view()
+    item = share.item
+    return render(request, 'public_item.html', {
+        'item': item,
+        'current_balance': item.get_current_balance(),
+        'show_balance': item.type == 'giftcard',
+    })
 
 # API
 

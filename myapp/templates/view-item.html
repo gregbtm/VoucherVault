@@ -1176,7 +1176,7 @@ body.dark-mode .action-btn-secondary:hover {
               <i class="bi bi-copy"></i> {% trans "Duplicate" %}
             </a>
             <button type="button" class="action-btn action-btn-info share-voucher-btn"
-                    data-title="{{ item.name }}" data-merchant="{{ item.issuer }}"
+                    data-item-id="{{ item.id }}" data-title="{{ item.name }}" data-merchant="{{ item.issuer }}"
                     data-url="{{ request.build_absolute_uri }}"
                     title="{% trans 'Send a link to this item via your device share sheet, email, messages, etc.' %}">
               <i class="bi bi-send"></i> {% trans "Share via..." %}
@@ -1228,12 +1228,62 @@ body.dark-mode .action-btn-secondary:hover {
           {% else %}
           <div class="action-buttons">
             <button type="button" class="action-btn action-btn-info share-voucher-btn"
-                    data-title="{{ item.name }}" data-merchant="{{ item.issuer }}"
+                    data-item-id="{{ item.id }}" data-title="{{ item.name }}" data-merchant="{{ item.issuer }}"
                     data-url="{{ request.build_absolute_uri }}"
                     title="{% trans 'Send a link to this item via your device share sheet, email, messages, etc.' %}">
               <i class="bi bi-send"></i> {% trans "Share via..." %}
             </button>
           </div>
+          {% endif %}
+
+          <!-- Public Share Link -->
+          {% if can_edit %}
+          <div class="documents-card">
+            <h5><i class="bi bi-link-45deg"></i> {% trans "Public Share Link" %}</h5>
+            {% if public_share %}
+            <div class="input-group mb-2">
+              <input type="text" class="form-control" readonly id="public-share-url"
+                     value="{{ request.scheme }}://{{ request.get_host }}{% url 'public_item_share' public_share.id %}">
+              <button class="btn btn-outline-secondary" type="button" id="copy-public-share-btn" title="{% trans 'Copy link' %}">
+                <i class="bi bi-clipboard"></i>
+              </button>
+            </div>
+            <p class="text-muted small mb-2">
+              {% if public_share.view_count %}
+                {% blocktrans count counter=public_share.view_count with last_viewed=public_share.last_viewed_at|date:"Y-m-d H:i" %}Opened {{ counter }} time - last on {{ last_viewed }}.{% plural %}Opened {{ counter }} times - last on {{ last_viewed }}.{% endblocktrans %}
+              {% else %}
+                {% trans "Not opened yet." %}
+              {% endif %}
+            </p>
+            <div class="d-flex gap-2">
+              <form method="POST" action="{% url 'regenerate_public_share_link' item.id %}">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-outline-secondary" type="submit">{% trans "Regenerate" %}</button>
+              </form>
+              <form method="POST" action="{% url 'revoke_public_share_link' item.id %}"
+                    onsubmit="return confirm('{% trans "Revoke this link? Anyone still holding it will lose access." %}');">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-outline-danger" type="submit">{% trans "Revoke" %}</button>
+              </form>
+            </div>
+            {% else %}
+            <p class="text-muted small">{% trans "No public link yet - one is created automatically the first time you use \"Share via...\" and choose \"Share details\", or create one now." %}</p>
+            <form method="POST" action="{% url 'get_public_share_link' item.id %}">
+              {% csrf_token %}
+              <button class="btn btn-sm btn-outline-primary" type="submit">{% trans "Create link now" %}</button>
+            </form>
+            {% endif %}
+          </div>
+          <script>
+          document.getElementById('copy-public-share-btn')?.addEventListener('click', function () {
+            const input = document.getElementById('public-share-url');
+            navigator.clipboard.writeText(input.value).then(() => {
+              const icon = this.querySelector('i');
+              icon.className = 'bi bi-check2';
+              setTimeout(() => { icon.className = 'bi bi-clipboard'; }, 1200);
+            });
+          });
+          </script>
           {% endif %}
 
           <!-- Documents / Receipts -->

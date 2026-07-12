@@ -160,6 +160,7 @@ TEMPLATES = [
                 'myapp.context_processors.sidebar_wallets',
                 'myapp.context_processors.user_preferences',
                 'myapp.context_processors.update_check_status',
+                'myapp.context_processors.share_settings',
             ],
         },
     },
