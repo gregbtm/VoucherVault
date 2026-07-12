@@ -5,7 +5,8 @@ import time
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
-from django.conf import settings
+
+from myapp.models import SiteConfiguration
 
 SAVE_URL_PREFIX = 'https://pay.google.com/gp/v/save/'
 
@@ -34,19 +35,20 @@ DEFAULT_TILE_COLOR = '#4154f1'
 
 
 def google_wallet_enabled() -> bool:
-    path = settings.GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH
-    return bool(path) and bool(settings.GOOGLE_WALLET_ISSUER_ID) and os.path.isfile(path)
+    config = SiteConfiguration.load()
+    path = config.google_wallet_service_account_key_path
+    return bool(path) and bool(config.google_wallet_issuer_id) and os.path.isfile(path)
 
 
-def _require_setting(name: str) -> str:
-    value = getattr(settings, name, None)
+def _require_setting(config, field_name: str, env_name: str) -> str:
+    value = getattr(config, field_name, None)
     if not value:
-        raise RuntimeError(f'{name} is not set. Required for Google Wallet export.')
+        raise RuntimeError(f'{env_name} is not set. Required for Google Wallet export.')
     return value
 
 
-def _load_service_account():
-    key_path = _require_setting('GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH')
+def _load_service_account(config):
+    key_path = _require_setting(config, 'google_wallet_service_account_key_path', 'GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH')
     with open(key_path, 'rb') as f:
         key_data = json.load(f)
 
@@ -119,9 +121,10 @@ def generate_google_wallet_save_url(item) -> str:
             'Google Wallet export is not configured (GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH not set).'
         )
 
-    client_email, private_key = _load_service_account()
-    issuer_id = _require_setting('GOOGLE_WALLET_ISSUER_ID')
-    class_id = settings.GOOGLE_WALLET_CLASS_ID or f'{issuer_id}.vouchervault_generic'
+    config = SiteConfiguration.load()
+    client_email, private_key = _load_service_account(config)
+    issuer_id = _require_setting(config, 'google_wallet_issuer_id', 'GOOGLE_WALLET_ISSUER_ID')
+    class_id = config.google_wallet_class_id or f'{issuer_id}.vouchervault_generic'
 
     payload = {
         'iss': client_email,

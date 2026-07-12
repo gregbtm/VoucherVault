@@ -4,11 +4,10 @@ from datetime import timedelta
 from decimal import Decimal
 
 from celery import shared_task
-from django.conf import settings
 from django.contrib.auth.models import User
 from django.utils import timezone
 
-from myapp.models import Item, Tag, Wallet
+from myapp.models import Item, SiteConfiguration, Tag, Wallet
 from myapp.utils import generate_code_image_base64
 
 from .exporters.full_backup import export_full_backup
@@ -137,9 +136,9 @@ def _user_backup_dir(user) -> str:
 
 
 def _rotate_backups(backup_dir: str) -> None:
-    """Keeps the newest settings.BACKUP_RETENTION_COUNT .zip files in backup_dir, deletes the rest."""
+    """Keeps the newest SiteConfiguration.backup_retention_count .zip files in backup_dir, deletes the rest."""
     entries = sorted((f for f in os.listdir(backup_dir) if f.endswith('.zip')), reverse=True)
-    for stale in entries[settings.BACKUP_RETENTION_COUNT:]:
+    for stale in entries[SiteConfiguration.load().backup_retention_count:]:
         try:
             os.remove(os.path.join(backup_dir, stale))
         except OSError as exc:
@@ -176,7 +175,7 @@ def run_scheduled_backups():
     user with at least one item. A no-op if SCHEDULED_BACKUP_ENABLED=False.
     One user's failure (e.g. a disk error) doesn't stop the others.
     """
-    if not settings.SCHEDULED_BACKUP_ENABLED:
+    if not SiteConfiguration.load().scheduled_backup_enabled:
         return
     for user in User.objects.filter(item__isnull=False).distinct():
         try:

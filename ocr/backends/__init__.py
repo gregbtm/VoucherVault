@@ -1,4 +1,4 @@
-from django.conf import settings
+from myapp.models import SiteConfiguration
 
 from .base import OCRBackend
 from .claude_backend import ClaudeOCRBackend
@@ -13,7 +13,7 @@ BACKENDS = {
 
 
 def ocr_backend_name() -> str:
-    return settings.OCR_BACKEND
+    return SiteConfiguration.load().ocr_backend
 
 
 def ocr_enabled() -> bool:

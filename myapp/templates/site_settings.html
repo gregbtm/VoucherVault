@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{% trans "Site Settings" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "Site Settings" %}</li>
+    </ol>
+  </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+  <div class="row">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">{% trans "Configure Site Settings" %}</h5>
+          <p class="text-muted small">
+            {% trans "These used to be Portainer environment variables. Changes here take effect immediately - no redeploy needed - and are stored in the database, so they survive redeploys too. Bootstrap settings a container needs before it can even reach the database (domain, database connection, secret key, sessions, SSO) still live in Portainer; everything below doesn't." %}
+          </p>
+
+          <form method="POST" action="">
+            {% csrf_token %}
+
+            <div class="mb-4">
+              <h6 class="text-muted mb-3"><i class="bi bi-clock-history me-2"></i>{% trans "Expiry & Notifications" %}</h6>
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.expiry_threshold_days.id_for_label }}" class="form-label">{% trans "Expiry warning threshold (days)" %}</label>
+                  {{ form.expiry_threshold_days }}
+                  {% if form.expiry_threshold_days.errors %}<div class="text-danger small">{{ form.expiry_threshold_days.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.expiry_last_notification_days.id_for_label }}" class="form-label">{% trans "Final warning threshold (days)" %}</label>
+                  {{ form.expiry_last_notification_days }}
+                  {% if form.expiry_last_notification_days.errors %}<div class="text-danger small">{{ form.expiry_last_notification_days.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.ntfy_default_server.id_for_label }}" class="form-label">{% trans "Default ntfy server" %}</label>
+                  {{ form.ntfy_default_server }}
+                  <small class="form-text text-muted">{% trans "Pre-filled when a user creates a new ntfy notification rule." %}</small>
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-4">
+              <h6 class="text-muted mb-3"><i class="bi bi-bell me-2"></i>{% trans "Web Push" %}</h6>
+              <p class="text-muted small">{% trans "Generate a key pair with" %} <code>docker compose exec app python manage.py generate_vapid_keys</code></p>
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.webpush_vapid_public_key.id_for_label }}" class="form-label">{% trans "VAPID public key" %}</label>
+                  {{ form.webpush_vapid_public_key }}
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.webpush_vapid_private_key.id_for_label }}" class="form-label">{% trans "VAPID private key" %}</label>
+                  {{ form.webpush_vapid_private_key }}
+                  <small class="form-text text-muted">{% if config.webpush_vapid_private_key %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %}</small>
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.webpush_vapid_claims_email.id_for_label }}" class="form-label">{% trans "VAPID contact email" %}</label>
+                  {{ form.webpush_vapid_claims_email }}
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-4">
+              <h6 class="text-muted mb-3"><i class="bi bi-image me-2"></i>{% trans "Merchant Logos" %}</h6>
+              <div class="form-check">
+                {{ form.merchant_logos_enabled }}
+                <label class="form-check-label" for="{{ form.merchant_logos_enabled.id_for_label }}">{% trans "Auto-fetch merchant logos on item cards" %}</label>
+              </div>
+            </div>
+
+            <div class="mb-4">
+              <h6 class="text-muted mb-3"><i class="bi bi-camera me-2"></i>{% trans "Scan with AI (OCR)" %}</h6>
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.ocr_backend.id_for_label }}" class="form-label">{% trans "OCR backend" %}</label>
+                  {{ form.ocr_backend }}
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.anthropic_api_key.id_for_label }}" class="form-label">{% trans "Anthropic API key" %}</label>
+                  {{ form.anthropic_api_key }}
+                  <small class="form-text text-muted">{% if config.anthropic_api_key %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %} {% trans "Required if backend is Claude." %}</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.anthropic_ocr_model.id_for_label }}" class="form-label">{% trans "Claude model override" %}</label>
+                  {{ form.anthropic_ocr_model }}
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.openai_api_key.id_for_label }}" class="form-label">{% trans "OpenAI API key" %}</label>
+                  {{ form.openai_api_key }}
+                  <small class="form-text text-muted">{% if config.openai_api_key %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %} {% trans "Required if backend is OpenAI." %}</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.openai_ocr_model.id_for_label }}" class="form-label">{% trans "OpenAI model override" %}</label>
+                  {{ form.openai_ocr_model }}
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-4">
+              <h6 class="text-muted mb-3"><i class="bi bi-apple me-2"></i>{% trans "Apple Wallet (.pkpass)" %}</h6>
+              <p class="text-muted small">{% trans "The certificate files still need to be mounted into the container via a Portainer volume - only the paths and identifiers are configured here." %}</p>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.pkpass_cert_path.id_for_label }}" class="form-label">{% trans "Certificate path (.p12)" %}</label>
+                  {{ form.pkpass_cert_path }}
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.pkpass_cert_password.id_for_label }}" class="form-label">{% trans "Certificate password" %}</label>
+                  {{ form.pkpass_cert_password }}
+                  <small class="form-text text-muted">{% if config.pkpass_cert_password %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %}</small>
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.pkpass_wwdr_cert_path.id_for_label }}" class="form-label">{% trans "Apple WWDR certificate path" %}</label>
+                  {{ form.pkpass_wwdr_cert_path }}
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.pkpass_team_id.id_for_label }}" class="form-label">{% trans "Apple Developer Team ID" %}</label>
+                  {{ form.pkpass_team_id }}
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.pkpass_pass_type_id.id_for_label }}" class="form-label">{% trans "Pass Type ID" %}</label>
+                  {{ form.pkpass_pass_type_id }}
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.pkpass_organization_name.id_for_label }}" class="form-label">{% trans "Organization name on pass" %}</label>
+                  {{ form.pkpass_organization_name }}
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-4">
+              <h6 class="text-muted mb-3"><i class="bi bi-google me-2"></i>{% trans "Google Wallet" %}</h6>
+              <p class="text-muted small">{% trans "The service account key file still needs to be mounted into the container via a Portainer volume - only the path and IDs are configured here." %}</p>
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.google_wallet_service_account_key_path.id_for_label }}" class="form-label">{% trans "Service account key path" %}</label>
+                  {{ form.google_wallet_service_account_key_path }}
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.google_wallet_issuer_id.id_for_label }}" class="form-label">{% trans "Issuer ID" %}</label>
+                  {{ form.google_wallet_issuer_id }}
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.google_wallet_class_id.id_for_label }}" class="form-label">{% trans "Pass class ID override" %}</label>
+                  {{ form.google_wallet_class_id }}
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-4">
+              <h6 class="text-muted mb-3"><i class="bi bi-arrow-repeat me-2"></i>{% trans "Update Check" %}</h6>
+              <div class="form-check mb-2">
+                {{ form.update_check_enabled }}
+                <label class="form-check-label" for="{{ form.update_check_enabled.id_for_label }}">{% trans "Check GitHub Releases and show an update banner to admins" %}</label>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.update_check_repo.id_for_label }}" class="form-label">{% trans "Repository to check (owner/repo)" %}</label>
+                  {{ form.update_check_repo }}
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-4">
+              <h6 class="text-muted mb-3"><i class="bi bi-cloud-arrow-up me-2"></i>{% trans "Portainer Redeploy Webhook" %}</h6>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.portainer_webhook_url.id_for_label }}" class="form-label">{% trans "Webhook URL" %}</label>
+                  {{ form.portainer_webhook_url }}
+                  <small class="form-text text-muted">
+                    {% if config.portainer_webhook_url %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %}
+                    {% trans "Adds a Redeploy now button to the update banner. See docs/AUTO_DEPLOY.md." %}
+                  </small>
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-4">
+              <h6 class="text-muted mb-3"><i class="bi bi-archive me-2"></i>{% trans "Scheduled Local Backups" %}</h6>
+              <div class="form-check mb-2">
+                {{ form.scheduled_backup_enabled }}
+                <label class="form-check-label" for="{{ form.scheduled_backup_enabled.id_for_label }}">{% trans "Run the nightly per-user backup" %}</label>
+              </div>
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.backup_retention_count.id_for_label }}" class="form-label">{% trans "Backups to keep per user" %}</label>
+                  {{ form.backup_retention_count }}
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-4">
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-check-circle me-1"></i>{% trans "Save Site Settings" %}
+              </button>
+            </div>
+          </form>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock content %}

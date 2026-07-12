@@ -407,3 +407,99 @@ class UpdateCheckStatus(models.Model):
     def __str__(self):
         return f"Update check (latest: {self.latest_version or 'unknown'})"
 
+
+OCR_BACKEND_CHOICES = (
+    ('none', 'Disabled'),
+    ('claude', 'Claude'),
+    ('openai', 'OpenAI'),
+    ('tesseract', 'Tesseract (local, free)'),
+)
+
+
+class SiteConfiguration(models.Model):
+    """
+    Singleton row (always pk=1) holding every operational setting that can
+    safely live in the database instead of an env var - i.e. everything
+    except the bootstrap/infra settings a process needs before it can even
+    reach the database (SECRET_KEY, DOMAIN/ALLOWED_HOSTS, DB_ENGINE and
+    friends, REDIS_URL, OIDC_*, SESSION_*). Editable from the in-app Site
+    Settings page (superusers only - see myapp/views.py::site_settings).
+
+    Every field here used to be read straight from django.conf.settings
+    (see myproject/settings.py's "APP-LEVEL / FEATURE ENV VARS" block,
+    which still exists unchanged - it's now purely the seed value used the
+    first time this singleton row is created, via a data migration, and
+    the documented default for a fresh install). App code now reads
+    SiteConfiguration.load() instead, deliberately a fresh DB query every
+    time rather than something cached on the settings module: uWSGI runs
+    multiple worker processes, and Celery's worker/beat run as separate
+    processes again, none of which share Python-level state - only the
+    database is common ground, the same reason UpdateCheckStatus above
+    works this way.
+    """
+    # ---- Expiry notifications ----
+    expiry_threshold_days = models.PositiveIntegerField(default=30)
+    expiry_last_notification_days = models.PositiveIntegerField(default=7)
+    ntfy_default_server = models.CharField(max_length=255, blank=True, default='https://ntfy.sh')
+
+    # ---- Web Push notification backend ----
+    webpush_vapid_public_key = models.CharField(max_length=255, blank=True, default='')
+    webpush_vapid_private_key = models.CharField(max_length=255, blank=True, default='')
+    webpush_vapid_claims_email = models.CharField(max_length=255, blank=True, default='mailto:admin@example.com')
+
+    # ---- Merchant logos ----
+    merchant_logos_enabled = models.BooleanField(default=True)
+
+    # ---- OCR ("Scan with AI") ----
+    ocr_backend = models.CharField(max_length=20, choices=OCR_BACKEND_CHOICES, default='none')
+    anthropic_api_key = models.CharField(max_length=255, blank=True, default='')
+    anthropic_ocr_model = models.CharField(max_length=100, blank=True, default='claude-sonnet-5')
+    openai_api_key = models.CharField(max_length=255, blank=True, default='')
+    openai_ocr_model = models.CharField(max_length=100, blank=True, default='gpt-4o-mini')
+
+    # ---- Apple Wallet (.pkpass) export ----
+    pkpass_cert_path = models.CharField(max_length=500, blank=True, default='')
+    pkpass_cert_password = models.CharField(max_length=255, blank=True, default='')
+    pkpass_wwdr_cert_path = models.CharField(max_length=500, blank=True, default='')
+    pkpass_team_id = models.CharField(max_length=100, blank=True, default='')
+    pkpass_pass_type_id = models.CharField(max_length=255, blank=True, default='')
+    pkpass_organization_name = models.CharField(max_length=255, blank=True, default='VoucherVault Plus+')
+
+    # ---- Google Wallet export ----
+    google_wallet_service_account_key_path = models.CharField(max_length=500, blank=True, default='')
+    google_wallet_issuer_id = models.CharField(max_length=100, blank=True, default='')
+    google_wallet_class_id = models.CharField(max_length=255, blank=True, default='')
+
+    # ---- Update check (GitHub Releases) ----
+    update_check_enabled = models.BooleanField(default=True)
+    update_check_repo = models.CharField(max_length=255, blank=True, default='gregbtm/VoucherVault')
+
+    # ---- Portainer redeploy webhook ----
+    portainer_webhook_url = models.CharField(max_length=500, blank=True, default='')
+
+    # ---- Scheduled local backups ----
+    scheduled_backup_enabled = models.BooleanField(default=True)
+    backup_retention_count = models.PositiveIntegerField(default=7)
+
+    # Field names whose values are credentials/secrets rather than plain
+    # config - the Site Settings form renders these as password inputs
+    # that display blank and leave the stored value untouched when
+    # submitted blank, instead of round-tripping the secret through the
+    # page on every load/save.
+    SECRET_FIELDS = (
+        'webpush_vapid_private_key', 'anthropic_api_key', 'openai_api_key',
+        'pkpass_cert_password', 'portainer_webhook_url',
+    )
+
+    class Meta:
+        verbose_name = "Site Configuration"
+        verbose_name_plural = "Site Configuration"
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return "Site Configuration"
+

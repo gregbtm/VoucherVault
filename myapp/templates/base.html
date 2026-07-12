@@ -351,6 +351,14 @@
           <span>{% trans "Import / Export" %}</span>
         </a>
       </li>
+      {% if request.user.is_superuser %}
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="{% url 'site_settings' %}">
+          <i class="bi bi-sliders"></i>
+          <span>{% trans "Site Settings" %}</span>
+        </a>
+      </li>
+      {% endif %}
 
       <li class="nav-heading">{% trans "Functions" %}</li>
 

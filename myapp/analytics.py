@@ -3,11 +3,10 @@ from datetime import date as date_cls
 from datetime import timedelta
 from decimal import Decimal
 
-from django.conf import settings
 from django.db.models import Count, Sum
 from django.utils import timezone
 
-from .models import Item
+from .models import Item, SiteConfiguration
 
 CALENDAR_MONTHS_AHEAD = 3
 EXPIRING_SOON_DAYS = 7
@@ -28,7 +27,7 @@ def get_summary_stats(user):
     """
     now = timezone.now()
     today = now.date()
-    threshold_days = settings.EXPIRY_THRESHOLD_DAYS
+    threshold_days = SiteConfiguration.load().expiry_threshold_days
     soon_cutoff = today + timedelta(days=threshold_days)
     week_cutoff = today + timedelta(days=EXPIRING_SOON_DAYS)
 

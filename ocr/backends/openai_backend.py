@@ -2,8 +2,9 @@ import base64
 import json
 import logging
 
-from django.conf import settings
 from openai import OpenAI
+
+from myapp.models import SiteConfiguration
 
 from .base import OCRBackend
 
@@ -34,14 +35,15 @@ class OpenAIOCRBackend(OCRBackend):
     """
 
     def __init__(self):
-        api_key = settings.OPENAI_API_KEY
+        config = SiteConfiguration.load()
+        api_key = config.openai_api_key
         if not api_key:
             raise RuntimeError(
                 'OPENAI_API_KEY is not set. Required when '
                 'OCR_BACKEND=openai.'
             )
         self.client = OpenAI(api_key=api_key)
-        self.model = settings.OPENAI_OCR_MODEL or DEFAULT_MODEL
+        self.model = config.openai_ocr_model or DEFAULT_MODEL
 
     def extract(self, image_bytes: bytes, media_type: str) -> dict:
         empty = {'code': None, 'name': None, 'issuer': None, 'expiry_date': None, 'confidence': 0.0}

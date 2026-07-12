@@ -4,7 +4,7 @@ import requests
 from django.conf import settings
 from django.utils import timezone
 
-from .models import UpdateCheckStatus
+from .models import SiteConfiguration, UpdateCheckStatus
 
 logger = logging.getLogger(__name__)
 
@@ -33,16 +33,17 @@ def _is_newer(latest: str, current: str) -> bool:
 
 def check_for_update() -> None:
     """
-    Hits the public GitHub Releases API for settings.UPDATE_CHECK_REPO and
+    Hits the public GitHub Releases API for SiteConfiguration.update_check_repo and
     persists the result to UpdateCheckStatus so the web process(es) can
     display it without making their own network call per request. No-ops
     (and leaves the previous result in place) if disabled or the request
     fails - a transient GitHub outage shouldn't flip the banner off.
     """
-    if not settings.UPDATE_CHECK_ENABLED:
+    config = SiteConfiguration.load()
+    if not config.update_check_enabled:
         return
 
-    url = f'https://api.github.com/repos/{settings.UPDATE_CHECK_REPO}/releases/latest'
+    url = f'https://api.github.com/repos/{config.update_check_repo}/releases/latest'
     try:
         response = requests.get(url, timeout=REQUEST_TIMEOUT, headers={'Accept': 'application/vnd.github+json'})
         response.raise_for_status()

@@ -108,7 +108,7 @@ def dashboard(request):
     default_currency = preferences.default_currency or 'GBP'
 
     # Get threshold days from environment variable or default to 30
-    threshold_days = settings.EXPIRY_THRESHOLD_DAYS
+    threshold_days = SiteConfiguration.load().expiry_threshold_days
     # Calculate soon-to-expire date (used for both "soon expiring" count and at-risk value)
     soon_expiry_date = now() + timedelta(days=threshold_days)
 
@@ -232,7 +232,7 @@ def show_items(request):
     # via the dedicated "Archived" filter)
     all_accessible_items = Item.objects.filter(Q(user=user) | Q(wallet__shared_with=user)).distinct()
     user_items = all_accessible_items.exclude(is_archived=True)
-    threshold_days = settings.EXPIRY_THRESHOLD_DAYS
+    threshold_days = SiteConfiguration.load().expiry_threshold_days
     soon_expiry_date = now() + timedelta(days=threshold_days)
 
     available_count = user_items.filter(is_used=False, expiry_date__gte=timezone.now()).count()
@@ -260,7 +260,7 @@ def show_items(request):
     elif filter_value == 'archived':
         items = all_accessible_items.filter(is_archived=True)
     elif filter_value == 'soon_expiring':
-        threshold_days = settings.EXPIRY_THRESHOLD_DAYS
+        threshold_days = SiteConfiguration.load().expiry_threshold_days
         soon_expiry_date = now() + timedelta(days=threshold_days)
         items = user_items.filter(is_used=False, expiry_date__gte=now(), expiry_date__lt=soon_expiry_date)
     else:
@@ -900,6 +900,34 @@ def trigger_portainer_redeploy(request):
         return redirect(referer)
     return redirect('show_items')
 
+@login_required
+def site_settings(request):
+    """
+    Superuser-only page for editing SiteConfiguration - everything that
+    used to require going into Portainer and setting an env var (OCR
+    backend/keys, PKPASS/Google Wallet config, notification defaults,
+    backup schedule, update check, the Portainer webhook URL itself) now
+    lives in the database and takes effect immediately, no redeploy
+    needed. See myapp/models.py::SiteConfiguration for what's deliberately
+    NOT here - bootstrap/infra settings a process needs before it can even
+    reach the database stay Portainer/env-var only.
+    """
+    if not request.user.is_superuser:
+        messages.error(request, _('Only administrators can view site settings.'))
+        return redirect('show_items')
+
+    config = SiteConfiguration.load()
+    if request.method == 'POST':
+        form = SiteConfigurationForm(request.POST, instance=config)
+        if form.is_valid():
+            form.save()
+            messages.success(request, _('Site settings saved. Changes take effect immediately.'))
+            return redirect('site_settings')
+    else:
+        form = SiteConfigurationForm(instance=config)
+
+    return render(request, 'site_settings.html', {'form': form, 'config': config})
+
 @require_GET
 @login_required
 def sharing_center(request):
@@ -1028,7 +1056,7 @@ def get_items_by_type(request, item_type):
 def get_stats(request):
     try:
         username = request.GET.get('user', None)
-        threshold_days = settings.EXPIRY_THRESHOLD_DAYS
+        threshold_days = SiteConfiguration.load().expiry_threshold_days
         soon_expiry_date = now() + timedelta(days=threshold_days)
 
         if username:

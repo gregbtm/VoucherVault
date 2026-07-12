@@ -18,7 +18,7 @@
 > [!NOTE]
 > This is [gregbtm](https://github.com/gregbtm)'s fork of the upstream
 > [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault) project.
-> Sixteen rounds of additive features have been layered on top without
+> Seventeen rounds of additive features have been layered on top without
 > touching upstream's own code: a full **REST API**, **Wallets/Tags/Notes**,
 > a rules-based **notification engine** (ntfy, webhook, Apprise, and native
 > **Web Push**) covering the full item lifecycle, bulk **Import/Export**
@@ -102,6 +102,7 @@
 - 🔧 **n8n integration, zero extra code** — the existing OpenAPI schema (`/api/v1/schema/`) plugs straight into n8n's HTTP Request Tool or AI Agent node as a full set of callable tools; see the [setup guide](docs/N8N_SETUP.md) for both directions (n8n calling VoucherVault, and VoucherVault's webhooks triggering n8n).
 - 📴 **Configurable offline cache** — the manual "Cache for Offline" PWA mode can be turned off entirely per user (hides the button, purges any existing cache), and saving a preference now invalidates just the cached dashboard immediately instead of waiting out the cache's TTL.
 - 🆙 **Update-available banner + one-click redeploy** — a periodic, opt-out check against this repo's GitHub Releases surfaces a "new version available" banner to admins and the current version in the footer. If you're running this as a git-based Portainer stack, an optional `PORTAINER_WEBHOOK_URL` adds a "Redeploy now" button right on that banner — plus a companion GitHub Action that can trigger the same webhook automatically on every push to `main`. See [`docs/AUTO_DEPLOY.md`](docs/AUTO_DEPLOY.md).
+- ⚙️ **In-app Site Settings page** — every app-level setting (OCR backend and API keys, Apple/Google Wallet config, notification defaults, backup schedule, the Portainer webhook URL, and more) is editable from a superuser-only page in the app itself, not just Portainer environment variables. Changes apply immediately, no redeploy needed, and are stored in the database so they survive redeploys too. Secret fields (API keys, passwords, the webhook URL) never round-trip back into the page — they show a "currently set" hint instead of the actual value.
 - 🔍 **Clickable tag filter on Inventory** — every tag you've created shows as a chip above the item grid with a live item count; click one or more to filter (items matching *any* selected tag show), combinable with the existing status/type/wallet filters.
 - 💷 **GBP as the default currency** — new items and user preferences default to GBP instead of EUR; a one-time migration relabelled every pre-existing item and saved preference from EUR to GBP as well (a relabel only, not a currency conversion — amounts are untouched).
 - 🤖 **MCP server** — an optional standalone service exposing VoucherVault as tools for Claude Desktop, Claude Code, and other MCP clients (search items, check what's expiring, log a gift-card spend, create an item — all through your existing API token). Runs as its own container, off by default; see the [setup guide](docs/MCP_SERVER_SETUP.md).
@@ -188,7 +189,14 @@ docker compose -f docker/docker-compose-sqlite.yml logs -f
 
 ## 🌍 Environment Variables
 
-The docker container takes various environment variables:
+The docker container takes various environment variables. **Most of the
+app-level ones below (everything except domain/database/session/SSO
+settings) can also be configured from the in-app Site Settings page**
+(`/admin-tools/site-settings/`, superuser-only, linked from the sidebar)
+instead — changes there take effect immediately, no redeploy required,
+and are stored in the database rather than the container's environment.
+The env vars below are what a fresh install starts from; once you've
+edited a setting in Site Settings, that's the value that's actually used.
 
 | Variable                         | Description                                                                                                     | Default                    | Optional/Mandatory  |
 |----------------------------------|-----------------------------------------------------------------------------------------------------------------|----------------------------|---------------------|
@@ -298,7 +306,7 @@ its backups otherwise sit on the same volume.
 
 ## 💛 About This Fork & Support
 
-All sixteen feature phases (plus several smaller standalone additions) in
+All seventeen feature phases (plus several smaller standalone additions) in
 this fork ([`FORK_CHANGES.md`](FORK_CHANGES.md)) were implemented with
 [Claude](https://claude.com/claude-code) — but every plan, feature scope,
 and priority behind them was mine, worked out phase by phase before a line

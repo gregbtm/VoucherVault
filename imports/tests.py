@@ -26,6 +26,7 @@ from django.urls import reverse
 from myapp.models import Item, Tag, Wallet
 
 from myapp.models import Document, Transaction, UserPreference, UserProfile
+from myapp.test_utils import set_site_config
 
 from notify.models import NotificationRule
 
@@ -367,26 +368,24 @@ class PkpassExporterTests(TestCase):
 
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')
-        self.settings_override = override_settings(
-            PKPASS_CERT_PATH=self.cert_path,
-            PKPASS_CERT_PASSWORD='testpass',
-            PKPASS_WWDR_CERT_PATH=self.wwdr_path,
-            PKPASS_TEAM_ID='TEAM1234',
-            PKPASS_PASS_TYPE_ID='pass.test.vouchervault',
+        set_site_config(
+            pkpass_cert_path=self.cert_path,
+            pkpass_cert_password='testpass',
+            pkpass_wwdr_cert_path=self.wwdr_path,
+            pkpass_team_id='TEAM1234',
+            pkpass_pass_type_id='pass.test.vouchervault',
         )
-        self.settings_override.enable()
-        self.addCleanup(self.settings_override.disable)
 
     def test_pkpass_enabled_true_when_cert_path_exists(self):
         self.assertTrue(pkpass_enabled())
 
     def test_pkpass_disabled_when_cert_path_unset(self):
-        with override_settings(PKPASS_CERT_PATH=None):
-            self.assertFalse(pkpass_enabled())
+        set_site_config(pkpass_cert_path='')
+        self.assertFalse(pkpass_enabled())
 
     def test_pkpass_disabled_when_cert_path_missing_file(self):
-        with override_settings(PKPASS_CERT_PATH='/nonexistent/path.p12'):
-            self.assertFalse(pkpass_enabled())
+        set_site_config(pkpass_cert_path='/nonexistent/path.p12')
+        self.assertFalse(pkpass_enabled())
 
     def test_generate_pkpass_produces_valid_signed_bundle(self):
         item = make_item(
@@ -443,16 +442,16 @@ class PkpassExporterTests(TestCase):
         self.assertNotIn('storeCard', pass_dict)
 
     def test_generate_pkpass_raises_when_disabled(self):
-        with override_settings(PKPASS_CERT_PATH=None):
-            item = make_item(self.user)
-            with self.assertRaises(RuntimeError):
-                generate_pkpass(item)
+        set_site_config(pkpass_cert_path='')
+        item = make_item(self.user)
+        with self.assertRaises(RuntimeError):
+            generate_pkpass(item)
 
     def test_generate_pkpass_raises_when_team_id_missing(self):
-        with override_settings(PKPASS_TEAM_ID=None):
-            item = make_item(self.user)
-            with self.assertRaises(RuntimeError):
-                generate_pkpass(item)
+        set_site_config(pkpass_team_id='')
+        item = make_item(self.user)
+        with self.assertRaises(RuntimeError):
+            generate_pkpass(item)
 
 
 def _b64url_decode(segment):
@@ -492,23 +491,21 @@ class GoogleWalletExporterTests(TestCase):
 
     def setUp(self):
         self.user = User.objects.create_user(username='bob', password='pw12345!')
-        self.settings_override = override_settings(
-            GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH=self.key_path,
-            GOOGLE_WALLET_ISSUER_ID='3388000000012345678',
+        set_site_config(
+            google_wallet_service_account_key_path=self.key_path,
+            google_wallet_issuer_id='3388000000012345678',
         )
-        self.settings_override.enable()
-        self.addCleanup(self.settings_override.disable)
 
     def test_google_wallet_enabled_true_when_configured(self):
         self.assertTrue(google_wallet_enabled())
 
     def test_google_wallet_disabled_when_issuer_id_unset(self):
-        with override_settings(GOOGLE_WALLET_ISSUER_ID=None):
-            self.assertFalse(google_wallet_enabled())
+        set_site_config(google_wallet_issuer_id='')
+        self.assertFalse(google_wallet_enabled())
 
     def test_google_wallet_disabled_when_key_path_missing_file(self):
-        with override_settings(GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH='/nonexistent/key.json'):
-            self.assertFalse(google_wallet_enabled())
+        set_site_config(google_wallet_service_account_key_path='/nonexistent/key.json')
+        self.assertFalse(google_wallet_enabled())
 
     def test_generate_save_url_produces_valid_signed_jwt(self):
         item = make_item(
@@ -555,19 +552,19 @@ class GoogleWalletExporterTests(TestCase):
         self.assertEqual(obj['genericType'], 'GENERIC_LOYALTY_CARD')
 
     def test_generate_save_url_raises_when_disabled(self):
-        with override_settings(GOOGLE_WALLET_ISSUER_ID=None):
-            item = make_item(self.user)
-            with self.assertRaises(RuntimeError):
-                generate_google_wallet_save_url(item)
+        set_site_config(google_wallet_issuer_id='')
+        item = make_item(self.user)
+        with self.assertRaises(RuntimeError):
+            generate_google_wallet_save_url(item)
 
     def test_generate_save_url_raises_when_key_file_invalid(self):
         bad_key_path = os.path.join(self.tmpdir.name, 'bad-key.json')
         with open(bad_key_path, 'w') as f:
             json.dump({'client_email': 'x@y.com'}, f)  # missing private_key
-        with override_settings(GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_PATH=bad_key_path):
-            item = make_item(self.user)
-            with self.assertRaises(RuntimeError):
-                generate_google_wallet_save_url(item)
+        set_site_config(google_wallet_service_account_key_path=bad_key_path)
+        item = make_item(self.user)
+        with self.assertRaises(RuntimeError):
+            generate_google_wallet_save_url(item)
 
 
 def _build_pkpass_bytes(pass_dict):
@@ -825,8 +822,8 @@ class ScheduledBackupTests(TestCase):
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]['name'], 'Backed Up Item')
 
-    @override_settings(BACKUP_RETENTION_COUNT=3)
     def test_rotation_keeps_only_retention_count(self):
+        set_site_config(backup_retention_count=3)
         make_item(self.user)
         for _ in range(5):
             backup_user(self.user)
@@ -835,14 +832,14 @@ class ScheduledBackupTests(TestCase):
         remaining = [f for f in os.listdir(backup_dir) if f.endswith('.zip')]
         self.assertEqual(len(remaining), 3)
 
-    @override_settings(SCHEDULED_BACKUP_ENABLED=False)
     @patch('imports.tasks.backup_user')
     def test_run_scheduled_backups_noop_when_disabled(self, mock_backup_user):
+        set_site_config(scheduled_backup_enabled=False)
         run_scheduled_backups()
         mock_backup_user.assert_not_called()
 
-    @override_settings(SCHEDULED_BACKUP_ENABLED=True)
     def test_run_scheduled_backups_only_backs_up_users_with_items(self):
+        set_site_config(scheduled_backup_enabled=True)
         make_item(self.user)
         User.objects.create_user(username='bob', password='pw12345!')  # no items
 
@@ -851,9 +848,9 @@ class ScheduledBackupTests(TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'alice')))
         self.assertFalse(os.path.exists(os.path.join(self.tmp_dir, 'bob')))
 
-    @override_settings(SCHEDULED_BACKUP_ENABLED=True)
     @patch('imports.tasks.backup_user')
     def test_one_users_failure_does_not_stop_others(self, mock_backup_user):
+        set_site_config(scheduled_backup_enabled=True)
         make_item(self.user)
         other = User.objects.create_user(username='bob', password='pw12345!')
         make_item(other)
