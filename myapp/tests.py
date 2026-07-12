@@ -27,6 +27,7 @@ from .portainer import PortainerRedeployError, trigger_redeploy
 from .test_utils import set_site_config
 from .tasks import check_for_update_task, fetch_merchant_logo_task
 from .update_check import _is_newer, _parse_version, check_for_update
+from .utils import generate_code_image_base64
 
 
 def make_item(user, **kwargs):
@@ -299,6 +300,38 @@ class NoBarcodeCodeTypeTests(TestCase):
         self.assertNotContains(response, 'id="fullscreen-btn"')
         self.assertContains(response, 'id="redeem-code"')
         self.assertContains(response, '4111222233334444')
+
+
+class ExtraBarcodeTypeTests(TestCase):
+    """
+    codabar/code93 were previously mis-detected by the camera scanner as
+    code39, and isbn13/isbn10 were both completely broken (treepoem has no
+    'isbn13'/'isbn10' barcode type - selecting either always raised
+    NotImplementedError). This covers the fix: codabar/code93 render as
+    their own real symbologies, and isbn13 renders as the EAN-13 it
+    actually is on a physical product barcode.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_codabar_renders_without_error(self):
+        item = make_item(self.user, redeem_code='A123456A', code_type='codabar')
+        image_b64, resolved_type = generate_code_image_base64(item)
+        self.assertIsNotNone(image_b64)
+        self.assertEqual(resolved_type, 'codabar')
+
+    def test_code93_renders_without_error(self):
+        item = make_item(self.user, redeem_code='ABC-123', code_type='code93')
+        image_b64, resolved_type = generate_code_image_base64(item)
+        self.assertIsNotNone(image_b64)
+        self.assertEqual(resolved_type, 'code93')
+
+    def test_isbn13_renders_as_ean13(self):
+        item = make_item(self.user, redeem_code='9780134685991', code_type='isbn13')
+        image_b64, resolved_type = generate_code_image_base64(item)
+        self.assertIsNotNone(image_b64)
+        self.assertEqual(resolved_type, 'ean13')
 
 
 class ShowItemsWalletFilterTests(TestCase):

@@ -75,6 +75,7 @@ class TesseractBackendTests(TestCase):
         result = backend.extract(_tiny_png_bytes(), 'image/png')
 
         self.assertEqual(result['code'], 'CODE-83921X')
+        self.assertEqual(result['code_type'], 'code128')
         self.assertEqual(result['expiry_date'], '2026-12-31')
         self.assertIsNone(result['name'])
         self.assertIsNone(result['issuer'])
@@ -88,7 +89,21 @@ class TesseractBackendTests(TestCase):
         result = backend.extract(_tiny_png_bytes(), 'image/png')
 
         self.assertIsNone(result['code'])
+        self.assertIsNone(result['code_type'])
         self.assertEqual(result['confidence'], 0.0)
+
+    @patch('ocr.backends.tesseract.pytesseract.image_to_data')
+    @patch('ocr.backends.tesseract.pytesseract.get_tesseract_version')
+    def test_extract_guesses_ean13_from_thirteen_digit_code(self, mock_version, mock_data):
+        mock_data.return_value = {
+            'text': ['', '4006381333931', ''],
+            'conf': ['-1', '95', '-1'],
+        }
+        backend = TesseractOCRBackend()
+        result = backend.extract(_tiny_png_bytes(), 'image/png')
+
+        self.assertEqual(result['code'], '4006381333931')
+        self.assertEqual(result['code_type'], 'ean13')
 
 
 class TesseractLiveIntegrationTests(TestCase):
@@ -128,7 +143,7 @@ class ClaudeBackendTests(TestCase):
         mock_client = MagicMock()
         mock_block = MagicMock(
             type='text',
-            text='{"code": "SAVE20", "name": "Acme", "issuer": null, "expiry_date": "2026-12-31", "confidence": 0.9}',
+            text='{"code": "SAVE20", "code_type": "code128", "name": "Acme", "issuer": null, "expiry_date": "2026-12-31", "confidence": 0.9}',
         )
         mock_client.messages.create.return_value = MagicMock(content=[mock_block])
         mock_anthropic_cls.return_value = mock_client
@@ -137,11 +152,28 @@ class ClaudeBackendTests(TestCase):
         result = backend.extract(b'fake-bytes', 'image/jpeg')
 
         self.assertEqual(result['code'], 'SAVE20')
+        self.assertEqual(result['code_type'], 'code128')
         self.assertEqual(result['name'], 'Acme')
         self.assertIsNone(result['issuer'])
         self.assertEqual(result['expiry_date'], '2026-12-31')
         self.assertEqual(result['confidence'], 0.9)
         mock_client.messages.create.assert_called_once()
+
+    @patch('ocr.backends.claude_backend.anthropic.Anthropic')
+    def test_extract_discards_hallucinated_code_type(self, mock_anthropic_cls):
+        set_site_config(anthropic_api_key='test-key')
+        mock_client = MagicMock()
+        mock_block = MagicMock(
+            type='text',
+            text='{"code": "SAVE20", "code_type": "not-a-real-type", "name": null, "issuer": null, "expiry_date": null, "confidence": 0.5}',
+        )
+        mock_client.messages.create.return_value = MagicMock(content=[mock_block])
+        mock_anthropic_cls.return_value = mock_client
+
+        backend = ClaudeOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertIsNone(result['code_type'])
 
     @patch('ocr.backends.claude_backend.anthropic.Anthropic')
     def test_extract_handles_malformed_response_gracefully(self, mock_anthropic_cls):
@@ -175,7 +207,7 @@ class OpenAIBackendTests(TestCase):
         set_site_config(openai_api_key='test-key')
         mock_client = MagicMock()
         mock_message = MagicMock(
-            content='{"code": "SAVE20", "name": "Acme", "issuer": null, "expiry_date": "2026-12-31", "confidence": 0.9}',
+            content='{"code": "SAVE20", "code_type": "code128", "name": "Acme", "issuer": null, "expiry_date": "2026-12-31", "confidence": 0.9}',
         )
         mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
         mock_openai_cls.return_value = mock_client
@@ -184,11 +216,27 @@ class OpenAIBackendTests(TestCase):
         result = backend.extract(b'fake-bytes', 'image/jpeg')
 
         self.assertEqual(result['code'], 'SAVE20')
+        self.assertEqual(result['code_type'], 'code128')
         self.assertEqual(result['name'], 'Acme')
         self.assertIsNone(result['issuer'])
         self.assertEqual(result['expiry_date'], '2026-12-31')
         self.assertEqual(result['confidence'], 0.9)
         mock_client.chat.completions.create.assert_called_once()
+
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_extract_discards_hallucinated_code_type(self, mock_openai_cls):
+        set_site_config(openai_api_key='test-key')
+        mock_client = MagicMock()
+        mock_message = MagicMock(
+            content='{"code": "SAVE20", "code_type": "not-a-real-type", "name": null, "issuer": null, "expiry_date": null, "confidence": 0.5}',
+        )
+        mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
+        mock_openai_cls.return_value = mock_client
+
+        backend = OpenAIOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertIsNone(result['code_type'])
 
     @patch('ocr.backends.openai_backend.OpenAI')
     def test_extract_handles_malformed_response_gracefully(self, mock_openai_cls):

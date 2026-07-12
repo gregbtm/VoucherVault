@@ -53,6 +53,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 16 — Portainer redeploy webhook](#phase-16--portainer-redeploy-webhook)
 - [Phase 17 — Database-backed Site Settings page](#phase-17--database-backed-site-settings-page)
 - [Phase 18 — Bug-fix batch: no-barcode code type, share button clarity, wallet docs](#phase-18--bug-fix-batch-no-barcode-code-type-share-button-clarity-wallet-docs)
+- [Phase 19 — Smart barcode type detection](#phase-19--smart-barcode-type-detection)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -1051,6 +1052,74 @@ multi-user sharing) sat next to each other with confusingly similar labels.
   `code_type=none`, view-item omits the barcode image), plus
   `PkpassExporterTests`/`GoogleWalletExporterTests` cases asserting the
   barcode field is omitted and the code appears as text instead.
+
+## Phase 19 — Smart barcode type detection
+
+Follow-up to "I keep picking the wrong barcode type, and I have no way to
+know which one a card's existing barcode actually is." Investigation
+turned up more than a UX gap — two real bugs sitting in the barcode type
+list — alongside the smart-detection work.
+
+- **Two barcode types were completely broken.** `code_type="isbn13"` and
+  `"isbn10"` were selectable in the dropdown but always raised
+  `NotImplementedError` the moment an item was saved (treepoem has no
+  `isbn13`/`isbn10` barcode type — its real key is a dashed-format-only
+  `isbn` that doesn't accept plain digit strings). Fixed by rendering
+  `isbn13` as the plain EAN-13 barcode a real product ISBN-13 barcode
+  actually is (no dashes), and removing `isbn10` entirely - it was
+  already unusable, and no standalone "ISBN-10 barcode" exists on a real
+  product anyway (retail always prints the EAN-13/ISBN-13 form). Since
+  every previous attempt to create an item with either type errored out
+  before the item was ever saved, there was no existing data to migrate.
+- **Codabar and Code 93 were silently mislabeled as Code 39** by the
+  camera/photo barcode scanner (`scanner.js`'s format map collapsed all
+  three into `code39`, even though they're different symbologies with
+  different valid character sets). Both are now detected and rendered as
+  their own real types - treepoem already supported them
+  (`code93` and `rationalizedCodabar`), the mapping was just wrong. This
+  also brings the barcode type list to 16 real, working types, matching
+  or exceeding the Catima Android app's 13.
+- **Every detection path now visibly confirms itself instead of silently
+  setting the dropdown.** A small inline hint under the Code Type field
+  (`#codeTypeHint` in create-item.html/edit-item.html) now shows e.g.
+  "Detected from camera scan: EAN-13" whenever the type is set
+  automatically - previously the dropdown just changed with no
+  indication anything had happened, which is very likely what made
+  "the app picked a barcode type I didn't choose" feel like a bug rather
+  than the scanner doing its job.
+- **New: a shape-based guess when a code is typed or pasted by hand**
+  (`scanner.js::guessCodeTypeFromValue()`) - 13 all-digit characters
+  suggests EAN-13, 8 suggests EAN-8, 12 suggests UPC-A, and so on, shown
+  as the same inline hint. This only fires when there's no barcode to
+  actually scan (e.g. copying a code from an email) and never overrides
+  a type you've picked yourself from the dropdown - once you touch the
+  dropdown directly, auto-detection stops overriding it for the rest of
+  that form.
+- **"Scan with AI" (Claude/OpenAI OCR) now reports the barcode type too,
+  closing a dead code path.** The `OCRBackend.extract()` interface
+  already documented a `code_type` return key and the frontend was
+  already wired to apply it - neither vision backend actually populated
+  it. Both prompts now ask the model to identify the barcode symbology
+  visible in the photo, constrained to the exact set of supported types
+  (or `"none"`/`null`), and the response is validated server-side against
+  that same set before being trusted - a hallucinated value is discarded
+  rather than being handed to the `<select>`, which would otherwise leave
+  it with nothing selected. The local Tesseract backend has no vision
+  understanding of barcodes at all, so it reuses the same shape-based
+  guess as the manual-entry heuristic, applied to whatever code it
+  extracted from the image text.
+- **Same Codabar/Code 93 bug, same fix, in the Catima CSV importer.**
+  `imports/parsers/catima.py::CATIMA_CODE_TYPE_MAP` had the identical
+  mistake (both mapped to `code39`) since it's the same ZXing-derived
+  vocabulary Catima's own export uses - fixed identically, so importing
+  a Catima backup with Codabar/Code 93 cards no longer silently
+  mislabels them either.
+- New tests: `ExtraBarcodeTypeTests` (codabar/code93 render successfully,
+  isbn13 resolves to ean13), OCR backend tests for `code_type` parsing and
+  for discarding a hallucinated/invalid value from either vision backend,
+  a Tesseract shape-guess test, an API test confirming `code_type` passes
+  through `/api/v1/ocr/extract/`, and a Catima parser test for the
+  Codabar/Code 93 mapping fix.
 
 ## New environment variables
 

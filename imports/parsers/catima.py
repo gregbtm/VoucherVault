@@ -7,9 +7,9 @@ from .utils import parse_bool, parse_date, parse_hex_color
 CATIMA_CODE_TYPE_MAP = {
     'QR_CODE': 'qrcode',
     'AZTEC': 'azteccode',
-    'CODABAR': 'code39',
+    'CODABAR': 'codabar',
     'CODE_39': 'code39',
-    'CODE_93': 'code39',
+    'CODE_93': 'code93',
     'CODE_128': 'code128',
     'DATA_MATRIX': 'datamatrix',
     'EAN_8': 'ean8',

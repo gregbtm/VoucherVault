@@ -447,6 +447,7 @@ class OCRExtractView(APIView):
             name='OCRExtractResponse',
             fields={
                 'code': serializers.CharField(allow_null=True),
+                'code_type': serializers.CharField(allow_null=True),
                 'name': serializers.CharField(allow_null=True),
                 'issuer': serializers.CharField(allow_null=True),
                 'expiry_date': serializers.CharField(allow_null=True),
