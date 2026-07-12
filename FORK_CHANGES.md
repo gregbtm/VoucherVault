@@ -60,6 +60,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 23 — Public share links: smart "Share via..." with tracking](#phase-23--public-share-links-smart-share-via-with-tracking)
 - [Phase 24 — Fix false-positive "Viewing cached content" banner](#phase-24--fix-false-positive-viewing-cached-content-banner)
 - [Phase 25 — Decouple version bump/release from the broken security-scan pipeline](#phase-25--decouple-version-bumprelease-from-the-broken-security-scan-pipeline)
+- [Phase 26 — Fix dark mode on the "Share via..." chooser popup](#phase-26--fix-dark-mode-on-the-share-via-chooser-popup)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -1445,6 +1446,29 @@ available" banner (Phase 13.5) has never once appeared.
   app is a separate, larger piece of work than "make the version number
   and update banner work," and neither job gates anything this fork's
   actual deployment path depends on.
+
+## Phase 26 — Fix dark mode on the "Share via..." chooser popup
+
+A GUI audit prompted by a general "any fixes we can apply?" request
+turned up a real regression from Phase 23: the new share chooser popup
+(`myapp/static/assets/js/voucher-share.js::ensureShareChooserStyles()`)
+was styled with `var(--bs-body-bg, #fff)` / `var(--bs-body-color, ...)` -
+Bootstrap 5 CSS custom properties this app never actually defines, since
+dark mode here is a `body.dark-mode` class with hardcoded per-selector
+colors (`myapp/static/assets/css/dark-mode.css`), not Bootstrap's
+variable-based theming. The fallback values were always what rendered, so
+the popup was a plain white box with dark text regardless of theme -
+jarring against an otherwise dark page.
+
+- Added an explicit `body.dark-mode .vv-share-chooser` override matching
+  the same palette the existing `.dropdown-menu` dark-mode style already
+  uses (`#21262d` background, `#e0e6eb` text, `#30363d` hover), so the
+  popup now actually follows the site's theme.
+- No other GUI issues found in this pass; the rest of Phase 23's new
+  markup (Public Share Link card, public_item.html) reuses existing
+  Bootstrap classes/dark-mode rules already covered elsewhere, or
+  (public_item.html, which has no logged-in user/theme preference to
+  read) correctly uses `prefers-color-scheme` instead.
 
 ## New environment variables
 

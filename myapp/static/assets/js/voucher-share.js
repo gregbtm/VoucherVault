@@ -150,8 +150,8 @@ function ensureShareChooserStyles() {
     .vv-share-chooser {
       position: absolute;
       z-index: 3000;
-      background: var(--bs-body-bg, #fff);
-      color: var(--bs-body-color, #1b1f27);
+      background: #fff;
+      color: #1b1f27;
       border: 1px solid rgba(127,127,127,0.3);
       border-radius: 10px;
       box-shadow: 0 8px 24px rgba(0,0,0,0.18);
@@ -174,6 +174,15 @@ function ensureShareChooserStyles() {
     }
     .vv-share-option:hover, .vv-share-option:focus {
       background: rgba(127,127,127,0.15);
+    }
+    body.dark-mode .vv-share-chooser {
+      background: #21262d;
+      color: #e0e6eb;
+      border-color: rgba(255,255,255,0.1);
+      box-shadow: 0 5px 30px 0 rgba(0, 0, 0, 0.5);
+    }
+    body.dark-mode .vv-share-option:hover, body.dark-mode .vv-share-option:focus {
+      background: #30363d;
     }
   `;
   document.head.appendChild(style);
