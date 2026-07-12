@@ -733,12 +733,22 @@ class OCRScanUIWiringTests(TestCase):
         response = self.client.get(reverse('create_item'))
         self.assertFalse(response.context['ocr_enabled'])
         self.assertNotContains(response, 'aiScanSection')
+        # "Dumb mode": with AI off, only the barcode-only scanner ships -
+        # no merged AI-scan wiring at all.
+        self.assertNotContains(response, 'decodeBarcodeFromImageFile(file).catch')
+        self.assertContains(response, 'id="scanFromFile"')
+        self.assertContains(response, 'id="startScanner"')
 
     def test_create_item_ocr_enabled_shows_scan_section(self):
         set_site_config(ocr_backend='tesseract')
         response = self.client.get(reverse('create_item'))
         self.assertTrue(response.context['ocr_enabled'])
         self.assertContains(response, 'aiScanSection')
+        # The merged upload runs the client-side barcode decode against the
+        # same photo instead of asking for it twice, and the barcode result
+        # always takes priority over the AI's guess.
+        self.assertContains(response, 'decodeBarcodeFromImageFile(file).catch')
+        self.assertContains(response, "applyDetectedFormat(decoded.formatValue, \"barcode in photo\")")
 
     def test_edit_item_reflects_ocr_setting(self):
         item = make_item(self.user)
@@ -746,6 +756,7 @@ class OCRScanUIWiringTests(TestCase):
         response = self.client.get(reverse('edit_item', args=[item.id]))
         self.assertTrue(response.context['ocr_enabled'])
         self.assertContains(response, 'aiScanSection')
+        self.assertContains(response, 'decodeBarcodeFromImageFile(file).catch')
 
     def test_duplicate_item_reflects_ocr_setting(self):
         item = make_item(self.user)

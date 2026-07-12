@@ -92,6 +92,17 @@ const codeTypeLabels = {
     "interleaved2of5": "Interleaved 2 of 5"
 };
 
+// Flags a field as auto-filled (scan, AI extraction, shape guess) so the
+// .auto-filled CSS can highlight it as "not yet reviewed" - cleared the
+// moment the user actually interacts with that field, marking it reviewed.
+function markAutoFilled(el) {
+    if (!el) return;
+    el.classList.add('auto-filled');
+    const clear = () => el.classList.remove('auto-filled');
+    el.addEventListener('input', clear, { once: true });
+    el.addEventListener('change', clear, { once: true });
+}
+
 const codeTypeHint = document.getElementById('codeTypeHint');
 // Once the user manually picks a barcode type from the dropdown themselves,
 // stop overriding it with auto-detected/guessed values for the rest of this
@@ -112,6 +123,7 @@ function applyDetectedFormat(formatValue, source) {
     if (!formatValue || !redeemTypeField) return;
     redeemTypeField.value = formatValue;
     userSelectedType = false; // a definitive scan always wins over an earlier guess
+    markAutoFilled(redeemTypeField);
     const label = codeTypeLabels[formatValue] || formatValue;
     showCodeTypeHint(`Detected from ${source}: ${label}`);
 }
@@ -142,6 +154,7 @@ if (redeemCodeField) {
         const guess = guessCodeTypeFromValue(redeemCodeField.value);
         if (!guess || !redeemTypeField) return;
         redeemTypeField.value = guess;
+        markAutoFilled(redeemTypeField);
         const label = codeTypeLabels[guess] || guess;
         showCodeTypeHint(`Guessed from the code you typed: ${label} - scan the barcode instead for a sure match.`);
     });
@@ -219,6 +232,7 @@ function startScanning() {
     codeReader.decodeFromVideoDevice(deviceId, 'video', (result, err) => {
         if (result) {
             redeemCodeField.value = result.text;
+            markAutoFilled(redeemCodeField);
             applyDetectedFormat(barcodeFormatMap[barcodeFormats[result.format]], 'camera scan');
             redeemCodeField.focus();
             stopStream();
@@ -257,6 +271,55 @@ if (startScannerButton) {
     });
 }
 
+// Shared image-file -> barcode decoder, used both by the standalone "File
+// Scan" button and by the merged "Scan with AI" upload (which runs this
+// against the same photo instead of asking for it twice). Pure decode, no
+// DOM/status side effects, so both callers can layer their own UI on top.
+// Returns { text, formatValue, img } on success (img included so the crop
+// fallback UI can reuse it), or null if no barcode was found in the image.
+async function decodeBarcodeFromImageFile(file) {
+    const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (e) => reject(e);
+        reader.readAsDataURL(file);
+    });
+
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = dataUrl;
+    });
+    if (img.decode) {
+        await img.decode();
+    }
+
+    // Scan twice - ZXing needs warmup
+    let result = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            const scanReader = new ZXing.BrowserMultiFormatReader();
+            const hints = new Map();
+            hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+            scanReader.hints = hints;
+            result = await scanReader.decodeFromImageElement(img);
+            break;
+        } catch (error) {
+            if (attempt < 2) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+    }
+
+    if (!result) return { text: null, formatValue: null, img };
+    return {
+        text: result.text,
+        formatValue: result.format !== undefined ? barcodeFormatMap[barcodeFormats[result.format]] : null,
+        img,
+    };
+}
+
 // File upload scanning - direct decoding with automatic retry
 if (scanFromFileButton && fileInput) {
     scanFromFileButton.addEventListener("click", function () {
@@ -266,7 +329,7 @@ if (scanFromFileButton && fileInput) {
     fileInput.addEventListener("change", async function (event) {
         const file = event.target.files?.[0];
         if (!file) return;
-        
+
         if (isDecoding) {
             return;
         }
@@ -282,59 +345,17 @@ if (scanFromFileButton && fileInput) {
             // Stop any camera scanning
             codeReader.reset();
 
-            // Load image
-            const dataUrl = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = (e) => resolve(e.target.result);
-                reader.onerror = (e) => reject(e);
-                reader.readAsDataURL(file);
-            });
+            const decoded = await decodeBarcodeFromImageFile(file);
+            img = decoded.img;
 
-            img = new Image();
-            await new Promise((resolve, reject) => {
-                img.onload = resolve;
-                img.onerror = reject;
-                img.src = dataUrl;
-            });
-
-            // Wait for image to be fully decoded
-            if (img.decode) {
-                await img.decode();
-            }
-
-            // Scan twice - ZXing needs warmup
-            let result = null;
-            let lastError = null;
-
-            for (let attempt = 1; attempt <= 2; attempt++) {
-                try {
-                    // Create fresh reader for each attempt
-                    const scanReader = new ZXing.BrowserMultiFormatReader();
-                    const hints = new Map();
-                    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-                    scanReader.hints = hints;
-                    
-                    result = await scanReader.decodeFromImageElement(img);
-                    break; // Success
-                } catch (error) {
-                    lastError = error;
-                    if (attempt < 2) {
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                    }
-                }
-            }
-
-            if (!result) {
-                throw lastError || new Error("Failed to detect barcode after 2 attempts");
+            if (!decoded.text) {
+                throw new Error("Failed to detect barcode after 2 attempts");
             }
 
             // Success! Set the barcode value and type
-            redeemCodeField.value = result.text;
-
-            // Map format the same way as camera scanning
-            if (result.format !== undefined) {
-                applyDetectedFormat(barcodeFormatMap[barcodeFormats[result.format]], 'uploaded image');
-            }
+            redeemCodeField.value = decoded.text;
+            markAutoFilled(redeemCodeField);
+            applyDetectedFormat(decoded.formatValue, 'uploaded image');
 
             redeemCodeField.focus();
             fileIcon?.classList.remove("breathe-red");
@@ -587,6 +608,7 @@ if (scanCroppedBtn) {
             
             // Success!
             redeemCodeField.value = result.text;
+            markAutoFilled(redeemCodeField);
 
             if (result.format !== undefined) {
                 applyDetectedFormat(barcodeFormatMap[barcodeFormats[result.format]], 'cropped selection');
