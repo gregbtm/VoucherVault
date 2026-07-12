@@ -43,9 +43,17 @@ you don't set anything up.
 
 ## Step 2 — Wire up the in-app button
 
-Set the webhook URL as an environment variable on the **app** container
-(the same place as every other `PORTAINER_WEBHOOK_URL`-style setting in
-`docker/docker-compose-sqlite-build.yml` / `docker-compose-psql.yml`):
+**The easiest way**: log in as a superuser, open **Site Settings**
+(`/admin-tools/site-settings/`, linked from the sidebar), and paste the
+webhook URL from Step 1 into the **Portainer Redeploy Webhook** field.
+This takes effect immediately - no redeploy, no `.env` file, no
+Portainer config edit.
+
+Alternatively, set the webhook URL as an environment variable on the
+**app** container (the same place as every other `PORTAINER_WEBHOOK_URL`-
+style setting in `docker/docker-compose-sqlite-build.yml`), which is what
+Site Settings falls back to until you (or a fresh install) set it there
+instead:
 
 ```yaml
 environment:

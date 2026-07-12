@@ -9,6 +9,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 import pytesseract
 
+from myapp.test_utils import set_site_config
+
 from .backends import get_backend, ocr_enabled
 from .backends.claude_backend import ClaudeOCRBackend
 from .backends.openai_backend import OpenAIOCRBackend
@@ -26,33 +28,33 @@ def _tiny_png_bytes() -> bytes:
 
 class BackendSelectionTests(TestCase):
     def test_disabled_by_default(self):
-        with override_settings(OCR_BACKEND='none'):
-            self.assertFalse(ocr_enabled())
+        set_site_config(ocr_backend='none')
+        self.assertFalse(ocr_enabled())
 
     def test_enabled_for_known_backend(self):
-        with override_settings(OCR_BACKEND='tesseract'):
-            self.assertTrue(ocr_enabled())
+        set_site_config(ocr_backend='tesseract')
+        self.assertTrue(ocr_enabled())
 
     def test_disabled_for_unknown_backend(self):
-        with override_settings(OCR_BACKEND='bogus'):
-            self.assertFalse(ocr_enabled())
+        set_site_config(ocr_backend='bogus')
+        self.assertFalse(ocr_enabled())
 
     def test_get_backend_raises_when_disabled(self):
-        with override_settings(OCR_BACKEND='none'):
-            with self.assertRaises(ValueError):
-                get_backend()
+        set_site_config(ocr_backend='none')
+        with self.assertRaises(ValueError):
+            get_backend()
 
     def test_get_backend_returns_tesseract(self):
-        with override_settings(OCR_BACKEND='tesseract'):
-            self.assertIsInstance(get_backend(), TesseractOCRBackend)
+        set_site_config(ocr_backend='tesseract')
+        self.assertIsInstance(get_backend(), TesseractOCRBackend)
 
     def test_get_backend_returns_claude(self):
-        with override_settings(OCR_BACKEND='claude', ANTHROPIC_API_KEY='test-key'):
-            self.assertIsInstance(get_backend(), ClaudeOCRBackend)
+        set_site_config(ocr_backend='claude', anthropic_api_key='test-key')
+        self.assertIsInstance(get_backend(), ClaudeOCRBackend)
 
     def test_get_backend_returns_openai(self):
-        with override_settings(OCR_BACKEND='openai', OPENAI_API_KEY='test-key'):
-            self.assertIsInstance(get_backend(), OpenAIOCRBackend)
+        set_site_config(ocr_backend='openai', openai_api_key='test-key')
+        self.assertIsInstance(get_backend(), OpenAIOCRBackend)
 
 
 class TesseractBackendTests(TestCase):
@@ -116,13 +118,13 @@ class TesseractLiveIntegrationTests(TestCase):
 
 class ClaudeBackendTests(TestCase):
     def test_raises_without_api_key(self):
-        with override_settings(ANTHROPIC_API_KEY=None):
-            with self.assertRaises(RuntimeError):
-                ClaudeOCRBackend()
+        set_site_config(anthropic_api_key='')
+        with self.assertRaises(RuntimeError):
+            ClaudeOCRBackend()
 
-    @override_settings(ANTHROPIC_API_KEY='test-key')
     @patch('ocr.backends.claude_backend.anthropic.Anthropic')
     def test_extract_parses_json_response(self, mock_anthropic_cls):
+        set_site_config(anthropic_api_key='test-key')
         mock_client = MagicMock()
         mock_block = MagicMock(
             type='text',
@@ -141,9 +143,9 @@ class ClaudeBackendTests(TestCase):
         self.assertEqual(result['confidence'], 0.9)
         mock_client.messages.create.assert_called_once()
 
-    @override_settings(ANTHROPIC_API_KEY='test-key')
     @patch('ocr.backends.claude_backend.anthropic.Anthropic')
     def test_extract_handles_malformed_response_gracefully(self, mock_anthropic_cls):
+        set_site_config(anthropic_api_key='test-key')
         mock_client = MagicMock()
         mock_block = MagicMock(type='text', text='not valid json')
         mock_client.messages.create.return_value = MagicMock(content=[mock_block])
@@ -155,22 +157,22 @@ class ClaudeBackendTests(TestCase):
         self.assertIsNone(result['code'])
         self.assertEqual(result['confidence'], 0.0)
 
-    @override_settings(ANTHROPIC_API_KEY='test-key', ANTHROPIC_OCR_MODEL='claude-haiku-4-5-20251001')
     @patch('ocr.backends.claude_backend.anthropic.Anthropic')
     def test_model_env_override(self, mock_anthropic_cls):
+        set_site_config(anthropic_api_key='test-key', anthropic_ocr_model='claude-haiku-4-5-20251001')
         backend = ClaudeOCRBackend()
         self.assertEqual(backend.model, 'claude-haiku-4-5-20251001')
 
 
 class OpenAIBackendTests(TestCase):
     def test_raises_without_api_key(self):
-        with override_settings(OPENAI_API_KEY=None):
-            with self.assertRaises(RuntimeError):
-                OpenAIOCRBackend()
+        set_site_config(openai_api_key='')
+        with self.assertRaises(RuntimeError):
+            OpenAIOCRBackend()
 
-    @override_settings(OPENAI_API_KEY='test-key')
     @patch('ocr.backends.openai_backend.OpenAI')
     def test_extract_parses_json_response(self, mock_openai_cls):
+        set_site_config(openai_api_key='test-key')
         mock_client = MagicMock()
         mock_message = MagicMock(
             content='{"code": "SAVE20", "name": "Acme", "issuer": null, "expiry_date": "2026-12-31", "confidence": 0.9}',
@@ -188,9 +190,9 @@ class OpenAIBackendTests(TestCase):
         self.assertEqual(result['confidence'], 0.9)
         mock_client.chat.completions.create.assert_called_once()
 
-    @override_settings(OPENAI_API_KEY='test-key')
     @patch('ocr.backends.openai_backend.OpenAI')
     def test_extract_handles_malformed_response_gracefully(self, mock_openai_cls):
+        set_site_config(openai_api_key='test-key')
         mock_client = MagicMock()
         mock_message = MagicMock(content='not valid json')
         mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
@@ -202,8 +204,8 @@ class OpenAIBackendTests(TestCase):
         self.assertIsNone(result['code'])
         self.assertEqual(result['confidence'], 0.0)
 
-    @override_settings(OPENAI_API_KEY='test-key', OPENAI_OCR_MODEL='gpt-4o')
     @patch('ocr.backends.openai_backend.OpenAI')
     def test_model_env_override(self, mock_openai_cls):
+        set_site_config(openai_api_key='test-key', openai_ocr_model='gpt-4o')
         backend = OpenAIOCRBackend()
         self.assertEqual(backend.model, 'gpt-4o')

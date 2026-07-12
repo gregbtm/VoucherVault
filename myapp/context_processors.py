@@ -1,7 +1,6 @@
-from django.conf import settings
 from django.db.models import Count, Q
 
-from .models import UpdateCheckStatus, UserPreference, Wallet
+from .models import SiteConfiguration, UpdateCheckStatus, UserPreference, Wallet
 
 
 def sidebar_wallets(request):
@@ -32,5 +31,5 @@ def update_check_status(request):
         return {}
     return {
         'update_check': UpdateCheckStatus.load(),
-        'portainer_redeploy_configured': bool(settings.PORTAINER_WEBHOOK_URL),
+        'portainer_redeploy_configured': bool(SiteConfiguration.load().portainer_webhook_url),
     }

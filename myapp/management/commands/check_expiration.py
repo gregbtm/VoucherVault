@@ -1,9 +1,8 @@
 # myapp/management/commands/check_expiration.py
 
-from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from myapp.models import Item, UserProfile
+from myapp.models import Item, SiteConfiguration, UserProfile
 import apprise
 from datetime import timedelta
 
@@ -11,12 +10,14 @@ class Command(BaseCommand):
     help = 'Send notifications for items that are about to expire'
 
     def handle(self, *args, **kwargs):
+        config = SiteConfiguration.load()
+
         # Define the time threshold for regular notifications (e.g., items expiring within the next threshold_days)
-        threshold_date = timezone.now() + timezone.timedelta(days=settings.EXPIRY_THRESHOLD_DAYS)
+        threshold_date = timezone.now() + timezone.timedelta(days=config.expiry_threshold_days)
         current_date = timezone.now()
 
         # Define the last chance notification threshold
-        last_chance_threshold_date = timezone.now() + timezone.timedelta(days=settings.EXPIRY_LAST_NOTIFICATION_DAYS)
+        last_chance_threshold_date = timezone.now() + timezone.timedelta(days=config.expiry_last_notification_days)
 
         # Get all user profiles with Apprise URLs
         user_profiles = UserProfile.objects.exclude(apprise_urls__isnull=True).exclude(apprise_urls__exact='')

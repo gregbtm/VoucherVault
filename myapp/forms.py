@@ -279,3 +279,69 @@ class TagForm(forms.ModelForm):
         if self.user is not None and qs.exists():
             raise forms.ValidationError(_('You already have a tag with this name.'))
         return name
+
+
+class SiteConfigurationForm(forms.ModelForm):
+    """
+    Every field on SiteConfiguration, editable from the in-app Site
+    Settings page. Fields in SiteConfiguration.SECRET_FIELDS render as
+    password inputs that always display blank (never round-trip the
+    actual secret back into the page) and, if left blank on submit, keep
+    whatever was already stored instead of blanking it out - see save().
+    """
+    class Meta:
+        model = SiteConfiguration
+        fields = [
+            'expiry_threshold_days', 'expiry_last_notification_days', 'ntfy_default_server',
+            'webpush_vapid_public_key', 'webpush_vapid_private_key', 'webpush_vapid_claims_email',
+            'merchant_logos_enabled',
+            'ocr_backend', 'anthropic_api_key', 'anthropic_ocr_model', 'openai_api_key', 'openai_ocr_model',
+            'pkpass_cert_path', 'pkpass_cert_password', 'pkpass_wwdr_cert_path',
+            'pkpass_team_id', 'pkpass_pass_type_id', 'pkpass_organization_name',
+            'google_wallet_service_account_key_path', 'google_wallet_issuer_id', 'google_wallet_class_id',
+            'update_check_enabled', 'update_check_repo',
+            'portainer_webhook_url',
+            'scheduled_backup_enabled', 'backup_retention_count',
+        ]
+        widgets = {
+            'expiry_threshold_days': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+            'expiry_last_notification_days': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+            'ntfy_default_server': forms.TextInput(attrs={'class': 'form-control'}),
+            'webpush_vapid_public_key': forms.TextInput(attrs={'class': 'form-control'}),
+            'webpush_vapid_claims_email': forms.TextInput(attrs={'class': 'form-control'}),
+            'merchant_logos_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'ocr_backend': forms.Select(attrs={'class': 'form-select'}),
+            'anthropic_ocr_model': forms.TextInput(attrs={'class': 'form-control'}),
+            'openai_ocr_model': forms.TextInput(attrs={'class': 'form-control'}),
+            'pkpass_cert_path': forms.TextInput(attrs={'class': 'form-control'}),
+            'pkpass_wwdr_cert_path': forms.TextInput(attrs={'class': 'form-control'}),
+            'pkpass_team_id': forms.TextInput(attrs={'class': 'form-control'}),
+            'pkpass_pass_type_id': forms.TextInput(attrs={'class': 'form-control'}),
+            'pkpass_organization_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'google_wallet_service_account_key_path': forms.TextInput(attrs={'class': 'form-control'}),
+            'google_wallet_issuer_id': forms.TextInput(attrs={'class': 'form-control'}),
+            'google_wallet_class_id': forms.TextInput(attrs={'class': 'form-control'}),
+            'update_check_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'update_check_repo': forms.TextInput(attrs={'class': 'form-control'}),
+            'scheduled_backup_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'backup_retention_count': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._original_secret_values = {
+            field: getattr(self.instance, field, '') for field in SiteConfiguration.SECRET_FIELDS
+        }
+        for field in SiteConfiguration.SECRET_FIELDS:
+            self.fields[field].required = False
+            placeholder = _('•••• leave blank to keep current value') if self._original_secret_values[field] else _('Not set')
+            self.fields[field].widget = forms.PasswordInput(render_value=False, attrs={'class': 'form-control', 'placeholder': placeholder})
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        for field in SiteConfiguration.SECRET_FIELDS:
+            if not self.cleaned_data.get(field):
+                setattr(instance, field, self._original_secret_values[field])
+        if commit:
+            instance.save()
+        return instance

@@ -7,8 +7,9 @@ import zipfile
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.serialization import Encoding, pkcs7, pkcs12
-from django.conf import settings
 from PIL import Image
+
+from myapp.models import SiteConfiguration
 
 # Only formats PassKit actually supports; everything else falls back to QR
 # since it can always encode the raw redeem code string.
@@ -27,21 +28,22 @@ STORE_CARD_TYPES = {'loyaltycard', 'giftcard'}
 
 
 def pkpass_enabled() -> bool:
-    path = settings.PKPASS_CERT_PATH
+    path = SiteConfiguration.load().pkpass_cert_path
     return bool(path) and os.path.isfile(path)
 
 
-def _require_setting(name: str) -> str:
-    value = getattr(settings, name, None)
+def _require_setting(config, field_name: str, env_name: str) -> str:
+    value = getattr(config, field_name, None)
     if not value:
-        raise RuntimeError(f'{name} is not set. Required for Apple Wallet export.')
+        raise RuntimeError(f'{env_name} is not set. Required for Apple Wallet export.')
     return value
 
 
 def _load_signing_materials():
-    cert_path = _require_setting('PKPASS_CERT_PATH')
-    wwdr_path = _require_setting('PKPASS_WWDR_CERT_PATH')
-    password = settings.PKPASS_CERT_PASSWORD
+    config = SiteConfiguration.load()
+    cert_path = _require_setting(config, 'pkpass_cert_path', 'PKPASS_CERT_PATH')
+    wwdr_path = _require_setting(config, 'pkpass_wwdr_cert_path', 'PKPASS_WWDR_CERT_PATH')
+    password = config.pkpass_cert_password
 
     with open(cert_path, 'rb') as f:
         private_key, certificate, _extra_certs = pkcs12.load_key_and_certificates(
@@ -67,6 +69,7 @@ def _hex_to_rgb_css(hex_color: str) -> str:
 
 
 def _build_pass_json(item) -> dict:
+    config = SiteConfiguration.load()
     style = 'storeCard' if item.type in STORE_CARD_TYPES else 'coupon'
     fields = {'primaryFields': [], 'secondaryFields': [], 'auxiliaryFields': [], 'backFields': []}
 
@@ -88,9 +91,9 @@ def _build_pass_json(item) -> dict:
 
     pass_dict = {
         'formatVersion': 1,
-        'passTypeIdentifier': _require_setting('PKPASS_PASS_TYPE_ID'),
-        'teamIdentifier': _require_setting('PKPASS_TEAM_ID'),
-        'organizationName': settings.PKPASS_ORGANIZATION_NAME,
+        'passTypeIdentifier': _require_setting(config, 'pkpass_pass_type_id', 'PKPASS_PASS_TYPE_ID'),
+        'teamIdentifier': _require_setting(config, 'pkpass_team_id', 'PKPASS_TEAM_ID'),
+        'organizationName': config.pkpass_organization_name,
         'serialNumber': str(item.id),
         'description': item.name,
         'barcodes': [{

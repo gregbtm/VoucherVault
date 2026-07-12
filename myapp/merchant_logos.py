@@ -3,11 +3,10 @@ import re
 from datetime import timedelta
 
 import requests
-from django.conf import settings
 from django.db.models.functions import Lower
 from django.utils import timezone
 
-from .models import MerchantProfile
+from .models import MerchantProfile, SiteConfiguration
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,7 @@ _NON_ALNUM_RE = re.compile(r'[^a-z0-9]')
 
 
 def merchant_logos_enabled() -> bool:
-    return settings.MERCHANT_LOGOS_ENABLED
+    return SiteConfiguration.load().merchant_logos_enabled
 
 
 def guess_domain(name: str) -> str:

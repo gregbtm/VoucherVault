@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from .forms import ItemForm, TagForm, WalletForm
+from .forms import ItemForm, SiteConfigurationForm, TagForm, WalletForm
 from .merchant_logos import (
     fetch_merchant_logo,
     get_cached_balance_check_url,
@@ -22,8 +22,9 @@ from .merchant_logos import (
     remember_balance_check_url,
 )
 from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
-from .models import Document, Item, MerchantProfile, Tag, Transaction, UpdateCheckStatus, UserPreference, UserProfile, Wallet
+from .models import Document, Item, MerchantProfile, SiteConfiguration, Tag, Transaction, UpdateCheckStatus, UserPreference, UserProfile, Wallet
 from .portainer import PortainerRedeployError, trigger_redeploy
+from .test_utils import set_site_config
 from .tasks import check_for_update_task, fetch_merchant_logo_task
 from .update_check import _is_newer, _parse_version, check_for_update
 
@@ -539,14 +540,14 @@ class BalanceCheckUrlServiceTests(TestCase):
 class MerchantLogoTaskTests(TestCase):
     @patch('myapp.tasks.fetch_merchant_logo')
     def test_task_calls_service_when_enabled(self, mock_fetch):
-        with override_settings(MERCHANT_LOGOS_ENABLED=True):
-            fetch_merchant_logo_task('Amazon')
+        set_site_config(merchant_logos_enabled=True)
+        fetch_merchant_logo_task('Amazon')
         mock_fetch.assert_called_once_with('Amazon')
 
     @patch('myapp.tasks.fetch_merchant_logo')
     def test_task_noop_when_disabled(self, mock_fetch):
-        with override_settings(MERCHANT_LOGOS_ENABLED=False):
-            fetch_merchant_logo_task('Amazon')
+        set_site_config(merchant_logos_enabled=False)
+        fetch_merchant_logo_task('Amazon')
         mock_fetch.assert_not_called()
 
     @patch('myapp.tasks.fetch_merchant_logo')
@@ -619,28 +620,28 @@ class OCRScanUIWiringTests(TestCase):
         self.client.login(username='alice', password='pw12345!')
 
     def test_create_item_ocr_disabled_by_default(self):
-        with override_settings(OCR_BACKEND='none'):
-            response = self.client.get(reverse('create_item'))
+        set_site_config(ocr_backend='none')
+        response = self.client.get(reverse('create_item'))
         self.assertFalse(response.context['ocr_enabled'])
         self.assertNotContains(response, 'aiScanSection')
 
     def test_create_item_ocr_enabled_shows_scan_section(self):
-        with override_settings(OCR_BACKEND='tesseract'):
-            response = self.client.get(reverse('create_item'))
+        set_site_config(ocr_backend='tesseract')
+        response = self.client.get(reverse('create_item'))
         self.assertTrue(response.context['ocr_enabled'])
         self.assertContains(response, 'aiScanSection')
 
     def test_edit_item_reflects_ocr_setting(self):
         item = make_item(self.user)
-        with override_settings(OCR_BACKEND='claude'):
-            response = self.client.get(reverse('edit_item', args=[item.id]))
+        set_site_config(ocr_backend='claude')
+        response = self.client.get(reverse('edit_item', args=[item.id]))
         self.assertTrue(response.context['ocr_enabled'])
         self.assertContains(response, 'aiScanSection')
 
     def test_duplicate_item_reflects_ocr_setting(self):
         item = make_item(self.user)
-        with override_settings(OCR_BACKEND='tesseract'):
-            response = self.client.get(reverse('duplicate_item', args=[item.id]))
+        set_site_config(ocr_backend='tesseract')
+        response = self.client.get(reverse('duplicate_item', args=[item.id]))
         self.assertTrue(response.context['ocr_enabled'])
 
 
@@ -651,8 +652,8 @@ class PkpassUIWiringTests(TestCase):
 
     def test_view_item_pkpass_disabled_by_default(self):
         item = make_item(self.user)
-        with override_settings(PKPASS_CERT_PATH=''):
-            response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        set_site_config(pkpass_cert_path='')
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
         self.assertFalse(response.context['pkpass_enabled'])
         self.assertNotContains(response, 'Add to Apple Wallet')
 
@@ -1140,15 +1141,16 @@ class VersionCompareTests(TestCase):
 
 
 class UpdateCheckServiceTests(TestCase):
-    @override_settings(UPDATE_CHECK_ENABLED=False)
     @patch('myapp.update_check.requests.get')
     def test_disabled_makes_no_request(self, mock_get):
+        set_site_config(update_check_enabled=False)
         check_for_update()
         mock_get.assert_not_called()
 
-    @override_settings(UPDATE_CHECK_ENABLED=True, VERSION='1.0.0')
+    @override_settings(VERSION='1.0.0')
     @patch('myapp.update_check.requests.get')
     def test_records_update_available_when_newer_release_exists(self, mock_get):
+        set_site_config(update_check_enabled=True)
         mock_get.return_value = MagicMock(
             status_code=200,
             json=lambda: {'tag_name': 'v1.1.0', 'html_url': 'https://github.com/gregbtm/VoucherVault/releases/tag/v1.1.0'},
@@ -1159,9 +1161,10 @@ class UpdateCheckServiceTests(TestCase):
         self.assertEqual(status.latest_version, 'v1.1.0')
         self.assertIsNotNone(status.checked_at)
 
-    @override_settings(UPDATE_CHECK_ENABLED=True, VERSION='1.0.0')
+    @override_settings(VERSION='1.0.0')
     @patch('myapp.update_check.requests.get')
     def test_records_up_to_date_when_no_newer_release(self, mock_get):
+        set_site_config(update_check_enabled=True)
         mock_get.return_value = MagicMock(
             status_code=200,
             json=lambda: {'tag_name': 'v1.0.0', 'html_url': 'https://example.com'},
@@ -1169,18 +1172,19 @@ class UpdateCheckServiceTests(TestCase):
         check_for_update()
         self.assertFalse(UpdateCheckStatus.load().update_available)
 
-    @override_settings(UPDATE_CHECK_ENABLED=True, VERSION='1.0.0')
+    @override_settings(VERSION='1.0.0')
     @patch('myapp.update_check.requests.get')
     def test_request_failure_leaves_previous_result_untouched(self, mock_get):
+        set_site_config(update_check_enabled=True)
         import requests
         UpdateCheckStatus.objects.create(pk=1, latest_version='v1.1.0', update_available=True)
         mock_get.side_effect = requests.RequestException('boom')
         check_for_update()
         self.assertTrue(UpdateCheckStatus.load().update_available)
 
-    @override_settings(UPDATE_CHECK_ENABLED=True)
     @patch('myapp.tasks.check_for_update')
     def test_task_delegates_to_service(self, mock_check):
+        set_site_config(update_check_enabled=True)
         check_for_update_task()
         mock_check.assert_called_once()
 
@@ -1209,21 +1213,21 @@ class UpdateCheckContextProcessorTests(TestCase):
 
 
 class PortainerRedeployServiceTests(TestCase):
-    @override_settings(PORTAINER_WEBHOOK_URL=None)
     def test_raises_when_not_configured(self):
+        set_site_config(portainer_webhook_url='')
         with self.assertRaises(PortainerRedeployError):
             trigger_redeploy()
 
-    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
     @patch('myapp.portainer.requests.post')
     def test_posts_to_configured_url(self, mock_post):
+        set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
         mock_post.return_value = MagicMock(status_code=204, raise_for_status=lambda: None)
         trigger_redeploy()
         mock_post.assert_called_once_with('https://portainer.example.com/api/webhooks/abc123', timeout=10)
 
-    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
     @patch('myapp.portainer.requests.post')
     def test_request_failure_raises(self, mock_post):
+        set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
         import requests
         mock_post.side_effect = requests.RequestException('boom')
         with self.assertRaises(PortainerRedeployError):
@@ -1245,40 +1249,40 @@ class PortainerRedeployViewTests(TestCase):
         response = self.client.get(reverse('trigger_portainer_redeploy'))
         self.assertEqual(response.status_code, 405)
 
-    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
     @patch('myapp.views.trigger_redeploy')
     def test_regular_user_forbidden_and_webhook_not_called(self, mock_trigger):
+        set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
         self.client.login(username='alice', password='pw12345!')
         response = self.client.post(reverse('trigger_portainer_redeploy'), follow=True)
         mock_trigger.assert_not_called()
         self.assertContains(response, 'Only administrators')
 
-    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
     @patch('myapp.views.trigger_redeploy')
     def test_superuser_success_message(self, mock_trigger):
+        set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
         self.client.login(username='admin', password='pw12345!')
         response = self.client.post(reverse('trigger_portainer_redeploy'), follow=True)
         mock_trigger.assert_called_once()
         self.assertContains(response, 'Redeploy triggered')
 
-    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
     @patch('myapp.views.trigger_redeploy')
     def test_superuser_failure_message(self, mock_trigger):
+        set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
         mock_trigger.side_effect = PortainerRedeployError('boom')
         self.client.login(username='admin', password='pw12345!')
         response = self.client.post(reverse('trigger_portainer_redeploy'), follow=True)
         self.assertContains(response, 'Redeploy request failed')
 
-    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
     @patch('myapp.views.trigger_redeploy')
     def test_redirects_to_safe_referer(self, mock_trigger):
+        set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
         self.client.login(username='admin', password='pw12345!')
         response = self.client.post(reverse('trigger_portainer_redeploy'), HTTP_REFERER='http://testserver/dashboard')
         self.assertRedirects(response, 'http://testserver/dashboard', fetch_redirect_response=False)
 
-    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
     @patch('myapp.views.trigger_redeploy')
     def test_ignores_external_referer(self, mock_trigger):
+        set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
         self.client.login(username='admin', password='pw12345!')
         response = self.client.post(reverse('trigger_portainer_redeploy'), HTTP_REFERER='https://evil.example.com/phish')
         self.assertRedirects(response, reverse('show_items'), fetch_redirect_response=False)
@@ -1290,15 +1294,126 @@ class PortainerRedeployBannerTests(TestCase):
         UpdateCheckStatus.objects.create(pk=1, latest_version='v1.1.0', update_available=True)
         self.client.login(username='admin', password='pw12345!')
 
-    @override_settings(PORTAINER_WEBHOOK_URL='https://portainer.example.com/api/webhooks/abc123')
     def test_button_shown_when_configured(self):
+        set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
         response = self.client.get(reverse('dashboard'))
         self.assertContains(response, 'Redeploy now')
 
-    @override_settings(PORTAINER_WEBHOOK_URL=None)
     def test_button_hidden_when_not_configured(self):
+        set_site_config(portainer_webhook_url='')
         response = self.client.get(reverse('dashboard'))
         self.assertNotContains(response, 'Redeploy now')
+
+
+class SiteConfigurationModelTests(TestCase):
+    def test_load_creates_singleton_with_defaults(self):
+        config = SiteConfiguration.load()
+        self.assertEqual(config.pk, 1)
+        self.assertEqual(config.expiry_threshold_days, 30)
+        self.assertEqual(config.ocr_backend, 'none')
+
+    def test_load_returns_same_row_on_repeat_calls(self):
+        first = SiteConfiguration.load()
+        first.expiry_threshold_days = 99
+        first.save()
+        second = SiteConfiguration.load()
+        self.assertEqual(second.pk, first.pk)
+        self.assertEqual(second.expiry_threshold_days, 99)
+
+
+def _site_config_form_data(**overrides):
+    data = {
+        'expiry_threshold_days': 30, 'expiry_last_notification_days': 7,
+        'ntfy_default_server': 'https://ntfy.sh',
+        'webpush_vapid_public_key': '', 'webpush_vapid_private_key': '',
+        'webpush_vapid_claims_email': 'mailto:admin@example.com',
+        'merchant_logos_enabled': True,
+        'ocr_backend': 'none', 'anthropic_api_key': '', 'anthropic_ocr_model': 'claude-sonnet-5',
+        'openai_api_key': '', 'openai_ocr_model': 'gpt-4o-mini',
+        'pkpass_cert_path': '', 'pkpass_cert_password': '', 'pkpass_wwdr_cert_path': '',
+        'pkpass_team_id': '', 'pkpass_pass_type_id': '', 'pkpass_organization_name': 'VoucherVault Plus+',
+        'google_wallet_service_account_key_path': '', 'google_wallet_issuer_id': '', 'google_wallet_class_id': '',
+        'update_check_enabled': True, 'update_check_repo': 'gregbtm/VoucherVault',
+        'portainer_webhook_url': '',
+        'scheduled_backup_enabled': True, 'backup_retention_count': 7,
+    }
+    data.update(overrides)
+    return data
+
+
+class SiteConfigurationFormTests(TestCase):
+    def setUp(self):
+        self.config = SiteConfiguration.load()
+        self.config.anthropic_api_key = 'existing-secret'
+        self.config.save()
+
+    def test_blank_secret_field_preserves_existing_value(self):
+        form = SiteConfigurationForm(data=_site_config_form_data(anthropic_api_key=''), instance=self.config)
+        self.assertTrue(form.is_valid(), form.errors)
+        saved = form.save()
+        self.assertEqual(saved.anthropic_api_key, 'existing-secret')
+
+    def test_non_blank_secret_field_updates_value(self):
+        form = SiteConfigurationForm(data=_site_config_form_data(anthropic_api_key='new-secret'), instance=self.config)
+        self.assertTrue(form.is_valid(), form.errors)
+        saved = form.save()
+        self.assertEqual(saved.anthropic_api_key, 'new-secret')
+
+    def test_non_secret_fields_save_normally(self):
+        form = SiteConfigurationForm(data=_site_config_form_data(expiry_threshold_days=45, ocr_backend='tesseract'), instance=self.config)
+        self.assertTrue(form.is_valid(), form.errors)
+        saved = form.save()
+        self.assertEqual(saved.expiry_threshold_days, 45)
+        self.assertEqual(saved.ocr_backend, 'tesseract')
+
+
+class SiteSettingsViewTests(TestCase):
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(username='admin', password='pw12345!', email='a@example.com')
+        self.regular_user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_requires_login(self):
+        response = self.client.get(reverse('site_settings'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/accounts/login/', response.url)
+
+    def test_regular_user_forbidden(self):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.get(reverse('site_settings'), follow=True)
+        self.assertContains(response, 'Only administrators')
+
+    def test_superuser_can_view(self):
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('site_settings'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Save Site Settings')
+
+    def test_secret_value_never_rendered_in_page(self):
+        config = SiteConfiguration.load()
+        config.anthropic_api_key = 'super-secret-value'
+        config.save()
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('site_settings'))
+        self.assertNotContains(response, 'super-secret-value')
+        self.assertContains(response, 'Currently set')
+
+    def test_superuser_post_saves_and_redirects(self):
+        self.client.login(username='admin', password='pw12345!')
+        data = _site_config_form_data(expiry_threshold_days=60, ocr_backend='openai')
+        response = self.client.post(reverse('site_settings'), data, follow=True)
+        self.assertContains(response, 'Site settings saved')
+        self.assertEqual(SiteConfiguration.load().expiry_threshold_days, 60)
+        self.assertEqual(SiteConfiguration.load().ocr_backend, 'openai')
+
+    def test_nav_link_shown_only_to_superuser(self):
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('show_items'))
+        self.assertContains(response, 'Site Settings')
+
+        self.client.logout()
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.get(reverse('show_items'))
+        self.assertNotContains(response, 'Site Settings')
 
 
 class OfflineCacheTogglePreferenceTests(TestCase):

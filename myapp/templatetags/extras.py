@@ -3,6 +3,8 @@ import os
 import re
 from django.conf import settings
 
+from myapp.models import SiteConfiguration
+
 register = template.Library()
 
 @register.filter
@@ -10,11 +12,11 @@ def env(key):
     if key == "OIDC_ENABLED":
         return settings.OIDC_ENABLED
     if key == "OIDC_AUTOLOGIN":
-        return settings.OIDC_AUTOLOGIN        
+        return settings.OIDC_AUTOLOGIN
     if key == "VERSION":
         return settings.VERSION
     if key == "EXPIRY_THRESHOLD":
-        return settings.EXPIRY_THRESHOLD_DAYS
+        return SiteConfiguration.load().expiry_threshold_days
 
 @register.filter()
 def comma_to_dot(value):
