@@ -145,6 +145,15 @@
   cursor: not-allowed;
 }
 
+/* Auto-filled by a scan/AI extraction - not yet reviewed by the user.
+   Cleared automatically the moment the field is edited (see markAutoFilled
+   in scanner.js), so this only ever flags values worth double-checking. */
+.modern-input.auto-filled,
+.modern-select.auto-filled {
+  background: rgba(65, 84, 241, 0.07);
+  border-color: var(--primary-color, #4154f1);
+}
+
 .modern-textarea {
   resize: vertical;
   min-height: 100px;
@@ -440,6 +449,11 @@ body.dark-mode .modern-textarea {
 body.dark-mode .modern-input::placeholder,
 body.dark-mode .modern-textarea::placeholder {
   color: #666;
+}
+
+body.dark-mode .modern-input.auto-filled,
+body.dark-mode .modern-select.auto-filled {
+  background: rgba(90, 108, 241, 0.15);
 }
 
 body.dark-mode .form-section-title {
@@ -1047,7 +1061,15 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   {% if ocr_enabled %}
-  // AI Scan: upload a photo, pre-fill fields from the extracted result
+  // AI Scan: one upload, two extractions run against the same photo -
+  // a client-side barcode decode (ZXing, same as the "File Scan" button)
+  // and the server-side AI OCR call. The barcode decode is a literal
+  // pixel-for-pixel read, so it's always correct when it finds something;
+  // the AI's code/code_type guess is only used as a fallback for images
+  // with no scannable barcode in them at all (e.g. a screenshot of just a
+  // printed number, or a listing where the AI decides the answer is
+  // "none"). Text-only fields (name, issuer, expiry date) always come
+  // from the AI, since the barcode decoder has no idea what those are.
   document.getElementById('aiScanInput').addEventListener('change', function () {
     const file = this.files[0];
     if (!file) return;
@@ -1057,37 +1079,58 @@ document.addEventListener("DOMContentLoaded", function () {
     const formData = new FormData();
     formData.append('image', file);
 
-    fetch("{% url 'api-ocr-extract' %}", {
+    const ocrPromise = fetch("{% url 'api-ocr-extract' %}", {
       method: 'POST',
       headers: { 'X-CSRFToken': '{{ csrf_token }}' },
       body: formData,
-    })
-      .then(response => response.json().then(data => ({ ok: response.ok, data })))
-      .then(({ ok, data }) => {
+    }).then(response => response.json().then(data => ({ ok: response.ok, data })));
+
+    const barcodePromise = (typeof decodeBarcodeFromImageFile === 'function'
+      ? decodeBarcodeFromImageFile(file).catch(() => ({ text: null, formatValue: null }))
+      : Promise.resolve({ text: null, formatValue: null }));
+
+    Promise.all([ocrPromise, barcodePromise])
+      .then(([{ ok, data }, decoded]) => {
         if (!ok) {
           statusEl.innerHTML = `<span class="text-danger">${data.detail || data.image || "{% trans 'Scan failed.' %}"}</span>`;
           return;
         }
 
         const filled = [];
-        if (data.code && redeemCodeField && !redeemCodeField.value) {
+
+        // Redeem code + type: a successful barcode decode always wins.
+        if (decoded.text && redeemCodeField && !redeemCodeField.value) {
+          redeemCodeField.value = decoded.text;
+          markAutoFilled(redeemCodeField);
+          filled.push("{% trans 'code' %}");
+        } else if (data.code && redeemCodeField && !redeemCodeField.value) {
           redeemCodeField.value = data.code;
+          markAutoFilled(redeemCodeField);
           filled.push("{% trans 'code' %}");
         }
-        if (data.code_type && typeof applyDetectedFormat === 'function') {
+        if (decoded.formatValue && typeof applyDetectedFormat === 'function') {
+          applyDetectedFormat(decoded.formatValue, "{% trans 'barcode in photo' %}");
+          filled.push("{% trans 'barcode type' %}");
+        } else if (data.code_type && typeof applyDetectedFormat === 'function') {
           applyDetectedFormat(data.code_type, "{% trans 'AI photo scan' %}");
           filled.push("{% trans 'barcode type' %}");
         }
+
         if (data.name && !document.getElementById('name').value) {
-          document.getElementById('name').value = data.name;
+          const nameField = document.getElementById('name');
+          nameField.value = data.name;
+          markAutoFilled(nameField);
           filled.push("{% trans 'name' %}");
         }
         if (data.issuer && !issuerCodeField.value) {
           issuerCodeField.value = data.issuer;
+          markAutoFilled(issuerCodeField);
           filled.push("{% trans 'issuer' %}");
         }
         if (data.expiry_date) {
-          document.getElementById('expiry_date').value = data.expiry_date;
+          const expiryField = document.getElementById('expiry_date');
+          expiryField.value = data.expiry_date;
+          markAutoFilled(expiryField);
           filled.push("{% trans 'expiry date' %}");
         }
 

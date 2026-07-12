@@ -55,6 +55,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 18 — Bug-fix batch: no-barcode code type, share button clarity, wallet docs](#phase-18--bug-fix-batch-no-barcode-code-type-share-button-clarity-wallet-docs)
 - [Phase 19 — Smart barcode type detection](#phase-19--smart-barcode-type-detection)
 - [Phase 20 — Screenshot-friendly OCR + issuer autocomplete](#phase-20--screenshot-friendly-ocr--issuer-autocomplete)
+- [Phase 21 — Merged AI-scan upload + auto-filled field highlighting](#phase-21--merged-ai-scan-upload--auto-filled-field-highlighting)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -1156,6 +1157,62 @@ screenshots instead of a live photo?"
 - New tests: `IssuerAutocompleteTests` (own issuers listed, another
   user's issuers excluded, duplicates collapsed to one `<option>` on
   both the create and edit pages).
+
+## Phase 21 — Merged AI-scan upload + auto-filled field highlighting
+
+Direct follow-up: "build both [the merged upload and the highlight], and
+if AI assist is off it must go back to regular 'dumb' mode exactly as
+before - and we need to be correct about barcode types."
+
+- **One upload does both extractions now.** "Scan with AI" used to be a
+  separate section from the barcode "Camera Scan"/"File Scan" buttons,
+  so a single photo showing both a barcode and printed details had to be
+  uploaded twice to fill everything. The "Scan with AI" upload now also
+  runs the same client-side ZXing decode the "File Scan" button uses
+  (extracted into a shared `decodeBarcodeFromImageFile()` in
+  `scanner.js`), in parallel with the server-side AI OCR call against
+  the identical file.
+- **Correctness rule: a barcode decode always wins over an AI guess.**
+  This directly answers "do we check against barcode types, or keep a
+  list of what types gift cards use" - neither. ZXing decoding a barcode
+  from the image is a literal, deterministic pixel-for-pixel read: when
+  it succeeds, it is correct by construction, the same way the existing
+  "File Scan" button already was. The AI's `code`/`code_type` guess is
+  inherently a probabilistic visual read, not a decode, so it's only
+  ever used as the fallback for images with **no** scannable barcode
+  present at all (a screenshot of just a printed number, or the AI
+  correctly reporting `code_type: "none"`). No static list of "what
+  barcode types gift cards use" is needed or maintained - the
+  ground-truth decode already tells us definitively when one exists.
+  Text-only fields (name, issuer, expiry date) still always come from
+  the AI, since the barcode decoder has no concept of those.
+- **Auto-filled fields are now visually flagged for review.** Any field
+  set by a scan, the AI, or a `.pkpass` import gets a `.auto-filled`
+  highlight (a subtle tint + accent border, both light/dark themes) via
+  a new `markAutoFilled()` helper in `scanner.js` - cleared automatically
+  the instant the user actually edits that field, so the highlight only
+  ever means "not yet reviewed," never "wrong." This was the previous
+  behaviour's biggest silent-trust gap: a wrong OCR read (a misheard
+  expiry date, a mis-typed name) could sail straight into a saved item
+  with zero visual cue that it came from a guess rather than the user's
+  own typing.
+- **"Dumb mode" (`OCR_BACKEND=none`) is untouched.** The entire merged
+  flow lives inside the same `{% if ocr_enabled %}` block that already
+  gated "Scan with AI" - when AI assist is off, only the barcode-only
+  "Camera Scan"/"File Scan" buttons render, using the same
+  `decodeBarcodeFromImageFile()`/`markAutoFilled()` helpers they always
+  would have, with zero AI involvement and zero behavior change from
+  before this phase.
+- Also documented: `OPENAI_OCR_MODEL` defaults to the cost-efficient
+  `gpt-4o-mini`; the README's env var table now notes that a full-tier
+  vision model reads small print (expiry dates, long codes) noticeably
+  more reliably if accuracy matters more than the extra API cost - no
+  code change needed to try one, since the model is already a Site
+  Settings field.
+- New tests: `OCRScanUIWiringTests` extended to assert the merged-flow
+  JS (`decodeBarcodeFromImageFile`, the barcode-decode-wins branch) is
+  present when OCR is enabled and completely absent when it's off, on
+  both create and edit pages.
 
 ## New environment variables
 
