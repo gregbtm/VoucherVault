@@ -59,6 +59,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 22 — Code review pass across Phases 16–21](#phase-22--code-review-pass-across-phases-1621)
 - [Phase 23 — Public share links: smart "Share via..." with tracking](#phase-23--public-share-links-smart-share-via-with-tracking)
 - [Phase 24 — Fix false-positive "Viewing cached content" banner](#phase-24--fix-false-positive-viewing-cached-content-banner)
+- [Phase 25 — Decouple version bump/release from the broken security-scan pipeline](#phase-25--decouple-version-bumprelease-from-the-broken-security-scan-pipeline)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -1392,6 +1393,58 @@ still appeared on ordinary, fully-online page loads.
 - No Python changes; JS-only fix, verified with `node --check` (no test
   harness exists for the client-side JS in this project to unit test
   against).
+
+## Phase 25 — Decouple version bump/release from the broken security-scan pipeline
+
+Reported alongside the cache bug: the footer version number ("VoucherVault
+Plus+ 1.1.0") hadn't moved across 20+ merged phases, and the "update
+available" banner (Phase 13.5) has never once appeared.
+
+- **Root cause, confirmed via the GitHub API**: this repo had **zero
+  GitHub Releases**. `myapp/update_check.py::check_for_update()` compares
+  `settings.VERSION` against `GET /repos/{repo}/releases/latest` - with no
+  releases to ever return, there's nothing to ever flag as newer.
+- **Why no release ever got cut**: the inherited
+  `.github/workflows/conventional-commits.yml` gated its `release` job on
+  `needs: [changelog, deploy]`, and `deploy` needed
+  `[changelog, bandit, grype, semgrep]`. The `SAST with Bandit` and `SAST
+  with Semgrep` jobs have failed on every single push to `main` across
+  this fork's history (confirmed via the Actions API - 10/10 recent runs
+  on `main` failed on both), so `deploy` and `release` were skipped every
+  time.
+- **Why the checked-in `VERSION` file was stuck regardless**: even a fully
+  green pipeline wouldn't have fixed the footer here. The Docker Hub image
+  path is the only place `VERSION` ever got overridden
+  (`--build-arg VERSION=<computed>` in the old `deploy` job) - a git-based
+  Portainer build (this fork's actual deployment, see
+  `docs/AUTO_DEPLOY.md`) never receives that build arg, so it always falls
+  back to whatever's checked into the repo's own `VERSION` file, and
+  nothing in the inherited pipeline ever wrote that file back to the repo.
+- **Fix**: rewrote the `release` job in
+  `.github/workflows/conventional-commits.yml` to be self-contained -
+  `needs: [changelog]` is kept only for push-ordering (so it doesn't race
+  a commit that job might make), not for its version output. On every push
+  to `main` (that isn't itself a version-bump commit), it now reads the
+  current `VERSION` file, bumps the patch number, commits the new value
+  straight back to `main` with `[skip ci]` in the message (which - a
+  native GitHub behavior, not something this workflow has to implement
+  itself - stops that push from re-triggering this workflow *or* the
+  Phase 16 Portainer auto-redeploy workflow), tags it, and creates an
+  actual GitHub Release. This makes the version bump deterministic and
+  guaranteed on every merge, rather than depending on commit messages
+  following Conventional Commits format closely enough for
+  `TriPSs/conventional-changelog-action` to decide a bump is warranted -
+  the existing `changelog` job's own version computation was demonstrably
+  unreliable for this: only one tag (`v2.0.0`, orphaned - never attached
+  to an actual Release) exists despite dozens of merges.
+- The `bandit`, `grype`, `semgrep`, and `deploy` (Docker Hub) jobs are
+  completely untouched - this fork doesn't publish to Docker Hub, so
+  leaving that path broken doesn't block anything real for it anymore.
+- **Deliberately not fixed this pass**: the Bandit and Semgrep findings
+  themselves. Auditing/fixing accumulated SAST findings across the whole
+  app is a separate, larger piece of work than "make the version number
+  and update banner work," and neither job gates anything this fork's
+  actual deployment path depends on.
 
 ## New environment variables
 
