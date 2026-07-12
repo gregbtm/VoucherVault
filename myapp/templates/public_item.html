@@ -1,0 +1,169 @@
+{% load static %}
+{% load extras %}
+{% load i18n %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>{{ item.issuer }} {{ item.get_type_display }} - VoucherVault Plus+</title>
+    <link href="{% static 'assets/img/favicon.ico' %}" rel="shortcut icon">
+    <link href="{% static 'assets/img/apple-touch-icon.png' %}" rel="apple-touch-icon">
+    <link href="{% static 'assets/vendor/bootstrap-icons/bootstrap-icons.css' %}" rel="stylesheet">
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: #f2f4f7;
+            --card-bg: #ffffff;
+            --text: #1b1f27;
+            --muted: #6b7280;
+            --border: #e5e7eb;
+            --accent: #4f46e5;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #101114;
+                --card-bg: #1b1c20;
+                --text: #f2f3f5;
+                --muted: #9aa0ab;
+                --border: #2c2d33;
+                --accent: #818cf8;
+            }
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            padding: 24px 16px 48px;
+        }
+        .wrap { width: 100%; max-width: 420px; }
+        .brand {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            margin-bottom: 18px; color: var(--muted); font-size: 0.85rem;
+        }
+        .brand img { height: 20px; width: 20px; }
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+        }
+        .merchant { font-size: 1.4rem; font-weight: 700; margin: 0 0 2px; }
+        .item-name { color: var(--muted); margin: 0 0 20px; font-size: 0.95rem; }
+        .code-img { max-width: 100%; margin: 0 auto 16px; display: block; }
+        .field { text-align: left; margin-bottom: 14px; }
+        .field-label {
+            font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em;
+            color: var(--muted); margin-bottom: 4px;
+        }
+        .field-value-row { display: flex; align-items: center; gap: 8px; }
+        .field-value {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+            font-size: 1.1rem; word-break: break-all; flex: 1;
+        }
+        .copy-btn {
+            border: 1px solid var(--border); background: transparent; color: var(--text);
+            border-radius: 8px; padding: 6px 9px; cursor: pointer; font-size: 0.9rem; flex-shrink: 0;
+        }
+        .copy-btn:active { transform: scale(0.96); }
+        .balance {
+            font-size: 1.6rem; font-weight: 700; color: var(--accent); margin: 0;
+        }
+        .divider { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+        .meta { color: var(--muted); font-size: 0.85rem; text-align: left; }
+        .footer {
+            text-align: center; margin-top: 20px; font-size: 0.8rem; color: var(--muted);
+        }
+        .footer a { color: var(--accent); text-decoration: none; }
+        .used-badge {
+            display: inline-block; background: #dc2626; color: #fff; font-size: 0.75rem;
+            font-weight: 600; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px;
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="brand">
+        <img src="{% static 'assets/img/favicon.ico' %}" alt="">
+        <span>{% trans "Shared via VoucherVault Plus+" %}</span>
+    </div>
+
+    <div class="card">
+        {% if item.is_used %}
+        <span class="used-badge">{% trans "Already used" %}</span>
+        {% endif %}
+
+        <p class="merchant">{{ item.issuer }}</p>
+        <p class="item-name">{{ item.name }} &middot; {{ item.get_type_display }}</p>
+
+        {% if show_balance %}
+        <p class="balance">{{ current_balance }} {{ item.currency }}</p>
+        <p class="field-label" style="text-align:center; margin-bottom:20px;">{% trans "Remaining balance" %}</p>
+        {% endif %}
+
+        {% if item.code_type != "none" and item.qr_code_base64 %}
+        <img class="code-img" src="data:image/png;base64,{{ item.qr_code_base64 }}" alt="{% trans 'Barcode' %}">
+        {% endif %}
+
+        {% if item.card_number %}
+        <div class="field">
+            <div class="field-label">{% trans "Card number" %}</div>
+            <div class="field-value-row">
+                <span class="field-value">{{ item.card_number }}</span>
+                <button type="button" class="copy-btn" data-copy="{{ item.card_number }}" title="{% trans 'Copy' %}"><i class="bi bi-clipboard"></i></button>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="field">
+            <div class="field-label">{% trans "Code" %}</div>
+            <div class="field-value-row">
+                <span class="field-value">{{ item.redeem_code }}</span>
+                <button type="button" class="copy-btn" data-copy="{{ item.redeem_code }}" title="{% trans 'Copy' %}"><i class="bi bi-clipboard"></i></button>
+            </div>
+        </div>
+
+        {% if item.pin %}
+        <div class="field">
+            <div class="field-label">{% trans "PIN" %}</div>
+            <div class="field-value-row">
+                <span class="field-value">{{ item.pin }}</span>
+                <button type="button" class="copy-btn" data-copy="{{ item.pin }}" title="{% trans 'Copy' %}"><i class="bi bi-clipboard"></i></button>
+            </div>
+        </div>
+        {% endif %}
+
+        <hr class="divider">
+        <div class="meta">
+            {% if item.expiry_date %}<div>{% trans "Expires" %}: {{ item.expiry_date }}</div>{% endif %}
+        </div>
+    </div>
+
+    <p class="footer">
+        {% trans "Read-only link, no account needed." %}
+        <br>
+        <a href="{% url 'show_items' %}">VoucherVault Plus+</a>
+    </p>
+</div>
+
+<script>
+document.querySelectorAll('.copy-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        navigator.clipboard.writeText(btn.dataset.copy).then(function () {
+            var icon = btn.querySelector('i');
+            icon.className = 'bi bi-check2';
+            setTimeout(function () { icon.className = 'bi bi-clipboard'; }, 1200);
+        });
+    });
+});
+</script>
+</body>
+</html>

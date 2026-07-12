@@ -57,6 +57,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 20 — Screenshot-friendly OCR + issuer autocomplete](#phase-20--screenshot-friendly-ocr--issuer-autocomplete)
 - [Phase 21 — Merged AI-scan upload + auto-filled field highlighting](#phase-21--merged-ai-scan-upload--auto-filled-field-highlighting)
 - [Phase 22 — Code review pass across Phases 16–21](#phase-22--code-review-pass-across-phases-1621)
+- [Phase 23 — Public share links: smart "Share via..." with tracking](#phase-23--public-share-links-smart-share-via-with-tracking)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -1307,6 +1308,59 @@ fixed everything that survived verification as a real, actionable bug.
   that the heuristic actually matches its own docstring's claim), and a
   new `GoogleWalletExporterTests` case for the EAN-13 barcode type no
   longer falling back to QR.
+
+## Phase 23 — Public share links: smart "Share via..." with tracking
+
+Prompted by a real bug report: "Share via..." (the native OS share sheet
+button, Phase 10.3) has always sent the *item detail page's own URL* -
+which requires a VoucherVault login to open. Sharing a voucher to someone
+without an account, or without access to this one, handed them a link
+they couldn't actually use. This phase fixes that and, per the request,
+makes the richer share content ("just tell me the code and the merchant,
+I don't need the app") an explicit choice rather than a guess.
+
+- **New `ItemPublicShare` model** (`myapp/models.py`) - one per item,
+  created lazily. Its UUID primary key *is* the token in the URL
+  (`/s/<uuid>/`), same pattern as `Item`'s own id, so there's no separate
+  secret field to keep in sync. Tracks `view_count`, `first_viewed_at`,
+  and `last_viewed_at`, bumped by `record_view()` on every open - this is
+  the "can we track if it's used" part of the request.
+- **New unauthenticated view** `public_item_share` renders a minimal,
+  read-only redemption card (`public_item.html`) - merchant, the barcode/
+  QR image, card number/redeem code with a copy button, PIN if set, and
+  the current balance for gift cards - and nothing else: no notes, no
+  documents, no edit/delete affordance, no login prompt. Same
+  no-`login_required`-by-design pattern as the existing `.ics` calendar
+  feed (Phase 14.4): the id in the URL is the auth.
+- **"Share via..." now offers a choice** instead of one fixed behavior,
+  gated by a new Site Settings toggle (`share_via_smart_enabled`, default
+  on): tapping the button opens a small chooser between "Share link"
+  (same short text as before, but now backed by the new public link
+  instead of the login-walled item page) and "Share details" (adds the
+  code, PIN, and remaining balance to the shared text). Turning the
+  setting off restores the exact single-tap behavior from before this
+  phase, unchanged - see `myapp/static/assets/js/voucher-share.js`.
+- **The link is also surfaced on the item page itself**, not just inside
+  the share sheet: a new "Public Share Link" card on `view-item.html`
+  (owner/collaborator only) shows the current link with a copy button,
+  how many times it's been opened and when it was last opened, and
+  Regenerate/Revoke buttons - regenerating invalidates the old link
+  outright (new id, old one 404s), revoking removes it until the next
+  share re-creates one.
+- Three new endpoints (`get_public_share_link`, `regenerate_public_share_link`,
+  `revoke_public_share_link`) serve both the JS share flow (JSON, via an
+  `X-Requested-With` header) and the plain HTML forms on the item page
+  (redirect-with-message) from the same view functions, gated by the same
+  `has_item_access()` check every other item action already uses.
+- This is the first `SiteConfiguration` field with no environment-variable
+  counterpart - previous fields were all migrated *from* an existing env
+  var (Phase 17); this one is Site-Settings-native from the start, which
+  is the whole point of that page existing.
+- New `PublicShareLinkTests` (link creation/reuse/regenerate/revoke,
+  access control, unauthenticated view tracking and 404 handling, notes
+  excluded from the public page, the item-detail management card) and a
+  `WebShareButtonWiringTests` case asserting the smart-share flag in the
+  page matches the site setting.
 
 ## New environment variables
 

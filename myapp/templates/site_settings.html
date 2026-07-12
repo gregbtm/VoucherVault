@@ -75,6 +75,15 @@
             </div>
 
             <div class="mb-4">
+              <h6 class="text-muted mb-3"><i class="bi bi-send me-2"></i>{% trans "Sharing" %}</h6>
+              <div class="form-check">
+                {{ form.share_via_smart_enabled }}
+                <label class="form-check-label" for="{{ form.share_via_smart_enabled.id_for_label }}">{% trans "Offer a choice on \"Share via...\": bare link, or a rich share (merchant, code, PIN, remaining balance) via a public link" %}</label>
+              </div>
+              <p class="text-muted small mb-0">{% trans "When on, the recipient doesn't need a VoucherVault account to view what was shared - the public link is read-only and can't be used to sign in or edit anything. Turn it off to go back to the plain link-only share." %}</p>
+            </div>
+
+            <div class="mb-4">
               <h6 class="text-muted mb-3"><i class="bi bi-camera me-2"></i>{% trans "Scan with AI (OCR)" %}</h6>
               <div class="row">
                 <div class="col-md-4 mb-3">

@@ -301,6 +301,40 @@ class ItemShare(models.Model):
     class Meta:
         unique_together = ('item', 'shared_with_user')
 
+
+class ItemPublicShare(models.Model):
+    """
+    A tokenized, no-login-required link to a read-only redemption summary
+    of an item (merchant, code/card number, PIN, remaining balance) - for
+    handing a voucher to someone who doesn't have a VoucherVault account,
+    as an alternative to ItemShare above (which grants another *VoucherVault
+    user* full read/write access and therefore requires them to have one).
+
+    One link per item, created lazily the first time "Share via..." is used
+    in its "share details" mode. The id itself is the token in the URL -
+    same pattern as Item's own UUID primary key - so there's no separate
+    secret field to keep in sync.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    item = models.OneToOneField(Item, on_delete=models.CASCADE, related_name='public_share')
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    view_count = models.PositiveIntegerField(default=0)
+    first_viewed_at = models.DateTimeField(null=True, blank=True)
+    last_viewed_at = models.DateTimeField(null=True, blank=True)
+
+    def record_view(self):
+        now_ts = timezone.now()
+        if self.first_viewed_at is None:
+            self.first_viewed_at = now_ts
+        self.last_viewed_at = now_ts
+        self.view_count += 1
+        self.save(update_fields=['view_count', 'first_viewed_at', 'last_viewed_at'])
+
+    def __str__(self):
+        return f"Public share link for {self.item.name}"
+
+
 class Transaction(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='transactions')
@@ -449,6 +483,14 @@ class SiteConfiguration(models.Model):
 
     # ---- Merchant logos ----
     merchant_logos_enabled = models.BooleanField(default=True)
+
+    # ---- Sharing ----
+    share_via_smart_enabled = models.BooleanField(
+        default=True,
+        help_text="Let 'Share via...' offer a choice between a bare link and a rich "
+                   "share (merchant, code, PIN, remaining balance) via a public, "
+                   "no-login-required link. Off reverts to the classic single-tap share.",
+    )
 
     # ---- OCR ("Scan with AI") ----
     ocr_backend = models.CharField(max_length=20, choices=OCR_BACKEND_CHOICES, default='none')

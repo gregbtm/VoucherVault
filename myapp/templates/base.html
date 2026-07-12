@@ -483,6 +483,7 @@
   <script src="{% static 'assets/js/manual-cache.js' %}"></script>
 
   <!-- Native Web Share -->
+  <script>window.VV_SHARE_SMART_ENABLED = {{ share_via_smart_enabled|yesno:"true,false" }};</script>
   <script src="{% static 'assets/js/voucher-share.js' %}"></script>
 
   <script>

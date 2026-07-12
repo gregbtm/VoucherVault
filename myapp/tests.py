@@ -1,5 +1,6 @@
 import json
 import os
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
@@ -22,7 +23,7 @@ from .merchant_logos import (
     remember_balance_check_url,
 )
 from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
-from .models import Document, Item, MerchantProfile, SiteConfiguration, Tag, Transaction, UpdateCheckStatus, UserPreference, UserProfile, Wallet
+from .models import Document, Item, ItemPublicShare, MerchantProfile, SiteConfiguration, Tag, Transaction, UpdateCheckStatus, UserPreference, UserProfile, Wallet
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .test_utils import set_site_config
 from .tasks import check_for_update_task, fetch_merchant_logo_task
@@ -958,6 +959,150 @@ class WebShareButtonWiringTests(TestCase):
         response = self.client.get(reverse('show_items'), {'status': 'all'})
         self.assertContains(response, 'share-voucher-btn')
 
+    def test_smart_share_flag_reflects_site_setting(self):
+        set_site_config(share_via_smart_enabled=True)
+        response = self.client.get(reverse('show_items'))
+        self.assertContains(response, 'VV_SHARE_SMART_ENABLED = true')
+
+        set_site_config(share_via_smart_enabled=False)
+        response = self.client.get(reverse('show_items'))
+        self.assertContains(response, 'VV_SHARE_SMART_ENABLED = false')
+
+
+class PublicShareLinkTests(TestCase):
+    """
+    The "Share via... -> Share details" flow: a per-item, tokenized,
+    no-login-required link (ItemPublicShare) that carries merchant, code,
+    PIN, and remaining balance - distinct from ItemShare, which grants
+    another *VoucherVault user* full access and therefore requires an
+    account.
+    """
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_owner_can_create_link(self):
+        item = make_item(self.alice, pin='4321')
+        response = self.client.post(reverse('get_public_share_link', args=[item.id]),
+                                     HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('/s/', data['url'])
+        self.assertEqual(data['merchant'], item.issuer)
+        self.assertEqual(data['code'], item.redeem_code)
+        self.assertEqual(data['pin'], '4321')
+        self.assertTrue(ItemPublicShare.objects.filter(item=item).exists())
+
+    def test_card_number_preferred_over_redeem_code(self):
+        item = make_item(self.alice, card_number='MEMBER-9')
+        response = self.client.post(reverse('get_public_share_link', args=[item.id]),
+                                     HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.json()['code'], 'MEMBER-9')
+
+    def test_balance_included_for_giftcard_only(self):
+        giftcard = make_item(self.alice, type='giftcard', redeem_code='GC1', value='25.00')
+        voucher = make_item(self.alice, type='voucher', redeem_code='V1')
+
+        gc_response = self.client.post(reverse('get_public_share_link', args=[giftcard.id]),
+                                        HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(gc_response.json()['balance'], '25.00')
+
+        v_response = self.client.post(reverse('get_public_share_link', args=[voucher.id]),
+                                       HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertIsNone(v_response.json()['balance'])
+
+    def test_repeated_calls_reuse_same_link(self):
+        item = make_item(self.alice)
+        first = self.client.post(reverse('get_public_share_link', args=[item.id]),
+                                  HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()
+        second = self.client.post(reverse('get_public_share_link', args=[item.id]),
+                                   HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()
+        self.assertEqual(first['url'], second['url'])
+        self.assertEqual(ItemPublicShare.objects.filter(item=item).count(), 1)
+
+    def test_non_collaborator_cannot_create_link(self):
+        item = make_item(self.alice)
+        self.client.logout()
+        self.client.login(username='bob', password='pw12345!')
+        response = self.client.post(reverse('get_public_share_link', args=[item.id]),
+                                     HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 403)
+
+    def test_regenerate_invalidates_old_link(self):
+        item = make_item(self.alice)
+        first = self.client.post(reverse('get_public_share_link', args=[item.id]),
+                                  HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()
+        old_share_id = ItemPublicShare.objects.get(item=item).id
+
+        second = self.client.post(reverse('regenerate_public_share_link', args=[item.id]),
+                                   HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()
+        self.assertNotEqual(first['url'], second['url'])
+
+        self.client.logout()
+        old_response = self.client.get(reverse('public_item_share', args=[old_share_id]))
+        self.assertEqual(old_response.status_code, 404)
+
+    def test_revoke_deletes_link(self):
+        item = make_item(self.alice)
+        self.client.post(reverse('get_public_share_link', args=[item.id]),
+                          HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.client.post(reverse('revoke_public_share_link', args=[item.id]),
+                          HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertFalse(ItemPublicShare.objects.filter(item=item).exists())
+
+    def test_plain_form_post_redirects_with_message_instead_of_json(self):
+        item = make_item(self.alice)
+        response = self.client.post(reverse('get_public_share_link', args=[item.id]), follow=True)
+        self.assertRedirects(response, reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertContains(response, 'Public share link created')
+
+    def test_public_page_requires_no_login_and_tracks_views(self):
+        item = make_item(self.alice, pin='1111', card_number='CARD-1')
+        share_id = ItemPublicShare.objects.create(item=item, created_by=self.alice).id
+        self.client.logout()
+
+        response = self.client.get(reverse('public_item_share', args=[share_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, item.issuer)
+        self.assertContains(response, 'CARD-1')
+        self.assertContains(response, '1111')
+
+        share = ItemPublicShare.objects.get(id=share_id)
+        self.assertEqual(share.view_count, 1)
+        self.assertIsNotNone(share.first_viewed_at)
+        self.assertIsNotNone(share.last_viewed_at)
+
+        self.client.get(reverse('public_item_share', args=[share_id]))
+        share.refresh_from_db()
+        self.assertEqual(share.view_count, 2)
+
+    def test_public_page_unknown_token_404s(self):
+        self.client.logout()
+        response = self.client.get(reverse('public_item_share', args=[uuid.uuid4()]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_public_page_excludes_notes(self):
+        item = make_item(self.alice, notes='Secret redemption instructions nobody else should see')
+        share_id = ItemPublicShare.objects.create(item=item, created_by=self.alice).id
+        self.client.logout()
+        response = self.client.get(reverse('public_item_share', args=[share_id]))
+        self.assertNotContains(response, 'Secret redemption instructions')
+
+    def test_item_detail_shows_link_management_card_to_owner(self):
+        item = make_item(self.alice)
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertContains(response, 'Public Share Link')
+        self.assertContains(response, 'Create link now')
+
+    def test_item_detail_shows_existing_link_and_view_count(self):
+        item = make_item(self.alice)
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
+        share.record_view()
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertContains(response, 'Opened 1 time')
+        self.assertContains(response, f'/s/{share.id}/')
+
 
 class CardNumberDisplayTests(TestCase):
     def setUp(self):
@@ -1479,6 +1624,7 @@ def _site_config_form_data(**overrides):
         'webpush_vapid_public_key': '', 'webpush_vapid_private_key': '',
         'webpush_vapid_claims_email': 'mailto:admin@example.com',
         'merchant_logos_enabled': True,
+        'share_via_smart_enabled': True,
         'ocr_backend': 'none', 'anthropic_api_key': '', 'anthropic_ocr_model': 'claude-sonnet-5',
         'openai_api_key': '', 'openai_ocr_model': 'gpt-4o-mini',
         'pkpass_cert_path': '', 'pkpass_cert_password': '', 'pkpass_wwdr_cert_path': '',

@@ -33,3 +33,15 @@ def update_check_status(request):
         'update_check': UpdateCheckStatus.load(),
         'portainer_redeploy_configured': bool(SiteConfiguration.load().portainer_webhook_url),
     }
+
+
+def share_settings(request):
+    """
+    Expose the "Share via..." smart-share toggle to every page - one flag,
+    read once per request here rather than adding a data attribute to
+    every share button on pages that can render hundreds of them
+    (Inventory). See myapp/static/assets/js/voucher-share.js.
+    """
+    if not request.user.is_authenticated:
+        return {}
+    return {'share_via_smart_enabled': SiteConfiguration.load().share_via_smart_enabled}
