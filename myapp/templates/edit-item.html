@@ -589,7 +589,7 @@ body.dark-mode .error-alert {
               {% trans "Scan with AI" %}
             </div>
             <p style="color: #6c757d; margin-bottom: 0.75rem; font-size: 0.85rem;">
-              {% trans "Upload a photo of the voucher, coupon, gift card or loyalty card and we'll try to pre-fill the fields below." %}
+              {% trans "Upload a photo of a physical card, or a screenshot - an emailed gift card, an app screen, anything showing the code - and we'll try to pre-fill the fields below." %}
             </p>
             <input type="file" id="aiScanInput" accept="image/jpeg,image/png,image/webp" class="modern-input">
             <div id="aiScanStatus" style="margin-top: 0.75rem; font-size: 0.85rem;"></div>
@@ -636,9 +636,14 @@ body.dark-mode .error-alert {
             
             <div class="form-group">
               <label class="form-label" for="issuer">{% trans "Issuer" %} <span class="required">*</span></label>
-              <input type="text" class="modern-input" id="issuer" name="issuer" 
-                     placeholder="{% trans 'The issuer of the item' %}" 
+              <input type="text" class="modern-input" id="issuer" name="issuer" list="issuerDatalist"
+                     placeholder="{% trans 'The issuer of the item' %}"
                      value="{{ item.issuer }}" required>
+              <datalist id="issuerDatalist">
+                {% for issuer in known_issuers %}
+                <option value="{{ issuer }}"></option>
+                {% endfor %}
+              </datalist>
             </div>
           </div>
           
