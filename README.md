@@ -18,7 +18,7 @@
 > [!NOTE]
 > This is [gregbtm](https://github.com/gregbtm)'s fork of the upstream
 > [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault) project.
-> Twenty-two rounds of additive features have been layered on top without
+> Twenty-five rounds of additive features have been layered on top without
 > touching upstream's own code: a full **REST API**, **Wallets/Tags/Notes**,
 > a rules-based **notification engine** (ntfy, webhook, Apprise, and native
 > **Web Push**) covering the full item lifecycle, bulk **Import/Export**
@@ -29,13 +29,15 @@
 > AI-read text fields), **Apple Wallet import/export and Google Wallet
 > export**, **16 barcode symbologies with smart auto-detection**, **document
 > attachments**, **shared (multi-user) wallets**, **native OS/browser
-> sharing**, an **MCP server** for AI assistants, a **nightly scheduled
-> backup** with rotation, an **.ics calendar feed**, **bulk actions** on
-> the Inventory page, a **zero-build n8n integration**, a **one-click
-> Portainer redeploy** trigger, an in-app **Site Settings** page for every
-> app-level setting, and a handful of Catima-parity touches (card numbers,
-> archiving, last-used sort, an OLED true-black theme, and screen wake
-> lock).
+> sharing with a no-login public link** (and a view-tracked "Share
+> details" option that includes the code, PIN, and remaining balance), an
+> **MCP server** for AI assistants, a **nightly scheduled backup** with
+> rotation, an **.ics calendar feed**, **bulk actions** on the Inventory
+> page, a **zero-build n8n integration**, a **one-click Portainer
+> redeploy** trigger with a working update-available banner, an in-app
+> **Site Settings** page for every app-level setting, and a handful of
+> Catima-parity touches (card numbers, archiving, last-used sort, an OLED
+> true-black theme, and screen wake lock).
 > See [`FORK_CHANGES.md`](FORK_CHANGES.md) for the full phase-by-phase
 > changelog, the [Wiki](https://github.com/gregbtm/VoucherVault/wiki) for
 > feature-by-feature guides, [`docs/UPGRADE.md`](docs/UPGRADE.md) if
@@ -94,7 +96,7 @@
 - 🟢 **Google Wallet export** — a one-tap "Add to Google Wallet" link, set up once by whoever runs the container (opt-in, requires your own free Google Wallet API issuer account — see the [step-by-step setup guide](docs/GOOGLE_WALLET_SETUP.md)). The item detail page shows the Apple or Google Wallet button automatically depending on whether you're on an Apple device, Android, or a Chromium desktop browser — never both, never neither if either is configured.
 - 📎 **Document attachments** — attach receipts and proof-of-purchase files to any item, upload/view/delete right from the item detail page.
 - 🤝 **Shared (multi-user) wallets** — invite another user by username to collaborate on a wallet; they get full read/write on every item inside it, no admin access required.
-- 📤 **Native OS/browser sharing** — a "Share via..." button on every item hands it off to your device's native share sheet (Messages, Mail, AirDrop, etc.), with a clipboard-copy fallback on desktop.
+- 📤 **Native OS/browser sharing with a public link** — a "Share via..." button on every item hands it off to your device's native share sheet (Messages, Mail, AirDrop, etc.), with a clipboard-copy fallback on desktop. When "smart share" is on (Site Settings, on by default), it offers a choice: a bare link, or "Share details" which also includes the code/card number, PIN, and remaining balance. Either way the link is a read-only, no-login-required page — not the app itself — so it actually works for someone without a VoucherVault account, and the item detail page shows how many times it's been opened, with regenerate/revoke controls.
 - 🏷️ **Card numbers, archiving & screen wake lock** — a printed member number can differ from the barcode's encoded value, items can be archived out of the default view without deleting them, and the screen stays on while a barcode is shown to a cashier.
 - 🕐 **Last-used tracking & sort** — marking a gift card or voucher used stamps it with a timestamp, so "most recently used" is a real sort option instead of guesswork.
 - 🌓 **True-black OLED dark theme** — an extra toggle on top of the regular light/dark theme that drops dark mode's background all the way to `#000`, for phones with an OLED/AMOLED screen where that also saves battery.
