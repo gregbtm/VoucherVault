@@ -2439,6 +2439,84 @@ tests, since this phase is entirely about what the page actually looks
 like. `Show Image`/`Hide Image` toggling re-verified working with the
 new markup.
 
+## Phase 46 — OCR: fixed the real bug, then made it actually useful
+
+A follow-up report supplied a specific failure: a clean, well-labeled
+gift-card screenshot ("GIFT CARD CODE" / "PIN" / "SERIAL NUMBER" /
+"VOUCHER VALUE" all in explicit boxes) came back "Nothing could be
+confidently read from that photo." That shouldn't happen on text this
+legible, so this phase root-caused it properly instead of guessing.
+
+### The actual bug
+
+`ocr/backends/openai_backend.py` asked gpt-4o-mini to "Respond with ONLY
+a JSON object" as a plain prompt instruction - there was no
+`response_format` parameter enforcing it at the API level. gpt-4o-mini
+occasionally wraps its answer in a ` ```json ` code fence anyway despite
+being told not to (a well-documented quirk of that specific model).
+When that happened, `json.loads()` on the fenced text threw, and the
+`except` block quietly returned the exact same "confidence 0.0, every
+field null" response as a genuine "I can't read this" - the two failure
+modes were indistinguishable from the outside. The existing test suite
+never caught it because every mocked response was clean, unfenced JSON.
+
+Fixed with `response_format={'type': 'json_object'}` on the OpenAI call
+(the actual, API-enforced fix), plus a shared `strip_json_fences()`
+helper (`ocr/backends/base.py`) as defensive fallback parsing on *both*
+backends - cheap insurance against the same failure mode recurring, and
+directly useful for the Claude backend too, which has no equivalent
+`response_format` parameter to lean on.
+
+### The real gap underneath it
+
+Independent of the bug: the extraction schema only ever asked for
+`code`, `code_type`, `name`, `issuer`, `expiry_date` - never PIN, value,
+currency, or a separate card/serial number, despite `Item` having fields
+for all four and plenty of real gift cards (including the one that
+prompted this) showing them in equally clear labeled boxes. Even a
+perfect read was only ever filling half the form.
+
+- Both vision backends' prompts and response parsing now also extract
+  `pin`, `value` (coerced to a float even if the model returns a
+  currency-formatted string), `currency` (validated against `Item`'s
+  actual currency choices, same pattern already used for `code_type`),
+  and `card_number`.
+- The free/local Tesseract backend gained cheap, no-API-cost regex
+  heuristics for the same two fields: a `PIN` label immediately followed
+  by digits, and a currency symbol/code paired with a decimal amount
+  (`£50.00`, `50.00 GBP`) - both guarded so they never misfire on the
+  redeem code itself.
+- `create-item.html` and `edit-item.html`'s AI-scan JS now fill `pin`,
+  `value`, `currency`, and `card_number` the same way `name`/`issuer`
+  already were (only into a field that's currently empty), and report
+  them in the "Filled from photo: ..." summary.
+- `api/views.py`'s `OCRExtractView` schema documentation updated to
+  match.
+
+### What was deliberately not built
+
+The two research documents that prompted this investigation suggested a
+barcode-parsing library (pyzbar/zxing) as part of a "hybrid" pipeline.
+Checked first: this app already does exactly that, client-side, via
+ZXing (`scanner.js`) - a decoded barcode always wins over the AI's guess
+for the redemption code. Adding a second, server-side barcode decode
+would have been pure duplication for zero benefit, so the gap this phase
+actually closed was entirely on the vision-model side, not the
+barcode side.
+
+### Tests
+
+12 new/updated tests across `ocr/tests.py`: markdown-fence stripping
+(both backends, including a literal regression test for the exact bug
+above), invalid-currency discarding, stringified-value coercion, a
+`response_format` assertion against the OpenAI call, and the Tesseract
+PIN/value/currency regex heuristics end-to-end. Also verified for real,
+not just mocked: a synthetic gift-card image run through the actual
+`pytesseract` binary and the live `/api/v1/ocr/extract/` endpoint both
+correctly extracted code, PIN, value, and currency, and a Playwright
+browser session confirmed the create-item form auto-fills all four from
+that response.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

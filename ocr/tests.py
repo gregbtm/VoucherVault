@@ -12,6 +12,7 @@ import pytesseract
 from myapp.test_utils import set_site_config
 
 from .backends import get_backend, ocr_enabled
+from .backends.base import parse_float_or_none, strip_json_fences
 from .backends.claude_backend import ClaudeOCRBackend
 from .backends.openai_backend import OpenAIOCRBackend
 from .backends.tesseract import TesseractOCRBackend
@@ -154,7 +155,11 @@ class ClaudeBackendTests(TestCase):
         mock_client = MagicMock()
         mock_block = MagicMock(
             type='text',
-            text='{"code": "SAVE20", "code_type": "code128", "name": "Acme", "issuer": null, "expiry_date": "2026-12-31", "confidence": 0.9}',
+            text=(
+                '{"code": "SAVE20", "code_type": "code128", "name": "Acme", "issuer": null, '
+                '"expiry_date": "2026-12-31", "pin": "4471", "value": 50.0, "currency": "gbp", '
+                '"card_number": "4000123456789010", "confidence": 0.9}'
+            ),
         )
         mock_client.messages.create.return_value = MagicMock(content=[mock_block])
         mock_anthropic_cls.return_value = mock_client
@@ -167,8 +172,55 @@ class ClaudeBackendTests(TestCase):
         self.assertEqual(result['name'], 'Acme')
         self.assertIsNone(result['issuer'])
         self.assertEqual(result['expiry_date'], '2026-12-31')
+        self.assertEqual(result['pin'], '4471')
+        self.assertEqual(result['value'], 50.0)
+        self.assertEqual(result['currency'], 'GBP')
+        self.assertEqual(result['card_number'], '4000123456789010')
         self.assertEqual(result['confidence'], 0.9)
         mock_client.messages.create.assert_called_once()
+
+    @patch('ocr.backends.claude_backend.anthropic.Anthropic')
+    def test_extract_strips_markdown_fence_before_parsing(self, mock_anthropic_cls):
+        """
+        Claude generally obeys "respond with ONLY JSON", but this backend
+        has no API-level JSON-mode guarantee (unlike OpenAI's
+        response_format) - a fenced response must still parse successfully
+        rather than being silently treated as "nothing found".
+        """
+        set_site_config(anthropic_api_key='test-key')
+        mock_client = MagicMock()
+        mock_block = MagicMock(
+            type='text',
+            text='```json\n{"code": "SAVE20", "code_type": null, "name": null, "issuer": null, '
+                 '"expiry_date": null, "pin": null, "value": null, "currency": null, '
+                 '"card_number": null, "confidence": 0.8}\n```',
+        )
+        mock_client.messages.create.return_value = MagicMock(content=[mock_block])
+        mock_anthropic_cls.return_value = mock_client
+
+        backend = ClaudeOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertEqual(result['code'], 'SAVE20')
+        self.assertEqual(result['confidence'], 0.8)
+
+    @patch('ocr.backends.claude_backend.anthropic.Anthropic')
+    def test_extract_discards_invalid_currency(self, mock_anthropic_cls):
+        set_site_config(anthropic_api_key='test-key')
+        mock_client = MagicMock()
+        mock_block = MagicMock(
+            type='text',
+            text='{"code": "SAVE20", "code_type": null, "name": null, "issuer": null, '
+                 '"expiry_date": null, "pin": null, "value": null, "currency": "XYZ", '
+                 '"card_number": null, "confidence": 0.5}',
+        )
+        mock_client.messages.create.return_value = MagicMock(content=[mock_block])
+        mock_anthropic_cls.return_value = mock_client
+
+        backend = ClaudeOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertIsNone(result['currency'])
 
     @patch('ocr.backends.claude_backend.anthropic.Anthropic')
     def test_extract_discards_hallucinated_code_type(self, mock_anthropic_cls):
@@ -218,7 +270,11 @@ class OpenAIBackendTests(TestCase):
         set_site_config(openai_api_key='test-key')
         mock_client = MagicMock()
         mock_message = MagicMock(
-            content='{"code": "SAVE20", "code_type": "code128", "name": "Acme", "issuer": null, "expiry_date": "2026-12-31", "confidence": 0.9}',
+            content=(
+                '{"code": "SAVE20", "code_type": "code128", "name": "Acme", "issuer": null, '
+                '"expiry_date": "2026-12-31", "pin": "4471", "value": 50.0, "currency": "gbp", '
+                '"card_number": "4000123456789010", "confidence": 0.9}'
+            ),
         )
         mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
         mock_openai_cls.return_value = mock_client
@@ -231,8 +287,90 @@ class OpenAIBackendTests(TestCase):
         self.assertEqual(result['name'], 'Acme')
         self.assertIsNone(result['issuer'])
         self.assertEqual(result['expiry_date'], '2026-12-31')
+        self.assertEqual(result['pin'], '4471')
+        self.assertEqual(result['value'], 50.0)
+        self.assertEqual(result['currency'], 'GBP')
+        self.assertEqual(result['card_number'], '4000123456789010')
         self.assertEqual(result['confidence'], 0.9)
         mock_client.chat.completions.create.assert_called_once()
+
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_extract_requests_json_mode(self, mock_openai_cls):
+        """
+        Regression test for the actual root cause of a real-world "nothing
+        could be confidently read" report: gpt-4o-mini would occasionally
+        wrap its answer in a markdown code fence despite being told not
+        to, and json.loads() on the fenced text silently failed, returning
+        the exact same response as a genuine "found nothing". response_format
+        is the API-enforced fix - assert it's actually being sent.
+        """
+        set_site_config(openai_api_key='test-key')
+        mock_client = MagicMock()
+        mock_message = MagicMock(content='{"code": null, "code_type": null, "name": null, "issuer": null, '
+                                          '"expiry_date": null, "pin": null, "value": null, "currency": null, '
+                                          '"card_number": null, "confidence": 0.0}')
+        mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
+        mock_openai_cls.return_value = mock_client
+
+        backend = OpenAIOCRBackend()
+        backend.extract(b'fake-bytes', 'image/jpeg')
+
+        _, kwargs = mock_client.chat.completions.create.call_args
+        self.assertEqual(kwargs.get('response_format'), {'type': 'json_object'})
+
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_extract_strips_markdown_fence_before_parsing(self, mock_openai_cls):
+        set_site_config(openai_api_key='test-key')
+        mock_client = MagicMock()
+        mock_message = MagicMock(
+            content='```json\n{"code": "SAVE20", "code_type": null, "name": null, "issuer": null, '
+                    '"expiry_date": null, "pin": null, "value": null, "currency": null, '
+                    '"card_number": null, "confidence": 0.8}\n```',
+        )
+        mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
+        mock_openai_cls.return_value = mock_client
+
+        backend = OpenAIOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertEqual(result['code'], 'SAVE20')
+        self.assertEqual(result['confidence'], 0.8)
+
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_extract_discards_invalid_currency(self, mock_openai_cls):
+        set_site_config(openai_api_key='test-key')
+        mock_client = MagicMock()
+        mock_message = MagicMock(
+            content='{"code": "SAVE20", "code_type": null, "name": null, "issuer": null, '
+                    '"expiry_date": null, "pin": null, "value": null, "currency": "XYZ", '
+                    '"card_number": null, "confidence": 0.5}',
+        )
+        mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
+        mock_openai_cls.return_value = mock_client
+
+        backend = OpenAIOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertIsNone(result['currency'])
+
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_extract_parses_stringified_value(self, mock_openai_cls):
+        """A model occasionally returns "value" as a currency-formatted
+        string despite instructions - must still coerce to a float."""
+        set_site_config(openai_api_key='test-key')
+        mock_client = MagicMock()
+        mock_message = MagicMock(
+            content='{"code": null, "code_type": null, "name": null, "issuer": null, '
+                    '"expiry_date": null, "pin": null, "value": "\\u00a350.00", "currency": null, '
+                    '"card_number": null, "confidence": 0.5}',
+        )
+        mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
+        mock_openai_cls.return_value = mock_client
+
+        backend = OpenAIOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertEqual(result['value'], 50.0)
 
     @patch('ocr.backends.openai_backend.OpenAI')
     def test_extract_discards_hallucinated_code_type(self, mock_openai_cls):
@@ -268,3 +406,81 @@ class OpenAIBackendTests(TestCase):
         set_site_config(openai_api_key='test-key', openai_ocr_model='gpt-4o')
         backend = OpenAIOCRBackend()
         self.assertEqual(backend.model, 'gpt-4o')
+
+
+class BaseHelperTests(TestCase):
+    def test_strip_json_fences_removes_json_fence(self):
+        text = '```json\n{"code": "X"}\n```'
+        self.assertEqual(strip_json_fences(text), '{"code": "X"}')
+
+    def test_strip_json_fences_removes_bare_fence(self):
+        text = '```\n{"code": "X"}\n```'
+        self.assertEqual(strip_json_fences(text), '{"code": "X"}')
+
+    def test_strip_json_fences_leaves_unfenced_text_alone(self):
+        text = '{"code": "X"}'
+        self.assertEqual(strip_json_fences(text), '{"code": "X"}')
+
+    def test_parse_float_or_none_handles_plain_number(self):
+        self.assertEqual(parse_float_or_none(50), 50.0)
+        self.assertEqual(parse_float_or_none(50.5), 50.5)
+
+    def test_parse_float_or_none_handles_currency_formatted_string(self):
+        self.assertEqual(parse_float_or_none('£50.00'), 50.0)
+        self.assertEqual(parse_float_or_none('50.00 GBP'), 50.0)
+
+    def test_parse_float_or_none_returns_none_for_junk(self):
+        self.assertIsNone(parse_float_or_none(None))
+        self.assertIsNone(parse_float_or_none(''))
+        self.assertIsNone(parse_float_or_none('not a number'))
+
+
+class TesseractPinAndValueTests(TestCase):
+    @patch('ocr.backends.tesseract.pytesseract.get_tesseract_version')
+    def test_guesses_pin_next_to_label(self, mock_version):
+        backend = TesseractOCRBackend()
+        self.assertEqual(backend._guess_pin('PIN: 4471', code=None), '4471')
+        self.assertEqual(backend._guess_pin('PIN CODE 9910', code=None), '9910')
+        self.assertIsNone(backend._guess_pin('no pin here', code=None))
+
+    @patch('ocr.backends.tesseract.pytesseract.get_tesseract_version')
+    def test_pin_never_matches_the_redeem_code_itself(self, mock_version):
+        backend = TesseractOCRBackend()
+        self.assertIsNone(backend._guess_pin('PIN: 4471', code='4471'))
+
+    @patch('ocr.backends.tesseract.pytesseract.get_tesseract_version')
+    def test_guesses_value_and_currency_from_symbol(self, mock_version):
+        backend = TesseractOCRBackend()
+        value, currency = backend._guess_value_and_currency('VOUCHER VALUE £50.00')
+        self.assertEqual(value, 50.0)
+        self.assertEqual(currency, 'GBP')
+
+    @patch('ocr.backends.tesseract.pytesseract.get_tesseract_version')
+    def test_guesses_value_and_currency_from_trailing_code(self, mock_version):
+        backend = TesseractOCRBackend()
+        value, currency = backend._guess_value_and_currency('Amount: 25.99 USD')
+        self.assertEqual(value, 25.99)
+        self.assertEqual(currency, 'USD')
+
+    @patch('ocr.backends.tesseract.pytesseract.get_tesseract_version')
+    def test_no_value_guess_without_a_currency_pairing(self, mock_version):
+        backend = TesseractOCRBackend()
+        value, currency = backend._guess_value_and_currency('Serial number 00103725714047298992')
+        self.assertIsNone(value)
+        self.assertIsNone(currency)
+
+    @patch('ocr.backends.tesseract.pytesseract.image_to_data')
+    @patch('ocr.backends.tesseract.pytesseract.get_tesseract_version')
+    def test_extract_includes_pin_and_value_end_to_end(self, mock_version, mock_data):
+        mock_data.return_value = {
+            'text': ['CODE-83921X', 'PIN:', '4471', 'Value', '£50.00'],
+            'conf': ['95', '90', '92', '88', '91'],
+        }
+        backend = TesseractOCRBackend()
+        result = backend.extract(_tiny_png_bytes(), 'image/png')
+
+        self.assertEqual(result['code'], 'CODE-83921X')
+        self.assertEqual(result['pin'], '4471')
+        self.assertEqual(result['value'], 50.0)
+        self.assertEqual(result['currency'], 'GBP')
+        self.assertIsNone(result['card_number'])
