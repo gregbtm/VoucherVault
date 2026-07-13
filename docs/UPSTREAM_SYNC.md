@@ -61,17 +61,22 @@ The same steps work by hand at any time, without waiting for the monthly
 check:
 
 ```bash
+git remote add upstream https://github.com/l4rm4nd/VoucherVault.git   # if not already added
 git fetch upstream main
-git log UPSTREAM_VERSION..upstream/main --oneline   # see what's new (approx - see note below)
+# Fetch upstream's tags into their own namespace rather than the shared
+# refs/tags/* - this fork's own v1.1.x release tags and upstream's own,
+# unrelated v1.1.x tags (upstream's version history predates this fork
+# and goes back to v0.1.0) collide by name if fetched into the same
+# place ("would clobber existing tag").
+git fetch upstream 'refs/tags/*:refs/upstream-tags/*'
+
+LAST_SYNCED=$(cat UPSTREAM_VERSION)
+git log "refs/upstream-tags/v${LAST_SYNCED}..upstream/main" --oneline   # see what's new
+
 git checkout -b sync/upstream-manual
 git merge upstream/main
 # resolve conflicts, run the test suite
 ```
-
-Note: `UPSTREAM_VERSION` is a version string, not a commit ref, so the
-`git log` example above is illustrative - in practice, resolve it to the
-matching upstream tag first (`git log v{UPSTREAM_VERSION}..upstream/main`
-against the `upstream` remote) to get the exact commit list.
 
 ## Why merge instead of pulling a Docker image
 
