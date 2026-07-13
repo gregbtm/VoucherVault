@@ -51,19 +51,16 @@ async function fetchPublicShareInfo(itemId) {
     },
   });
 
-  // An expired session makes @login_required redirect to the login page;
-  // fetch follows that transparently and hands back a 200 OK with login-page
-  // HTML instead of JSON, so response.json() below would throw a confusing
-  // parse error instead of the real problem. Detect it here and send the
-  // user to log back in rather than dead-ending on a generic error.
+  // Log enough to diagnose a failure from the console without guessing at
+  // *why* the response wasn't usable (session expiry, CSRF failure, a
+  // real server error, an OIDC re-auth flow, ...) - a previous attempt to
+  // auto-redirect to /accounts/login/ on any non-JSON response turned out
+  // to force a full OIDC re-authentication round-trip on every single
+  // share tap, including ones with a perfectly valid session, so this
+  // deliberately does NOT navigate the page on failure.
   const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    window.location.href = `/accounts/login/?next=${encodeURIComponent(window.location.pathname)}`;
-    const err = new Error('Session expired - redirecting to login');
-    err.vvRedirecting = true;
-    throw err;
-  }
-  if (!response.ok) {
+  if (!response.ok || !contentType.includes('application/json')) {
+    console.error(`public-share request failed: status=${response.status} content-type=${contentType}`);
     throw new Error(`public-share request failed: ${response.status}`);
   }
   return response.json();
@@ -78,7 +75,6 @@ async function shareViaLink(btn) {
       url: info.url,
     });
   } catch (err) {
-    if (err.vvRedirecting) return;
     console.error('Could not create a public share link, falling back to the item page link', err);
     shareClassic(btn);
   }
@@ -100,7 +96,6 @@ async function shareViaDetails(btn) {
       url: info.url,
     });
   } catch (err) {
-    if (err.vvRedirecting) return;
     console.error('Could not create a public share link', err);
     alert('Could not create a share link right now. Please try again.');
   }

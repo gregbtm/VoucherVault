@@ -2306,27 +2306,30 @@ already correctly resolves to the real latest version regardless.)
 `UpstreamSyncContextProcessorTests` (4, footer/Site Settings gating and
 display) plus the model/migration. Full suite passing.
 
-## Phase 42 — Inventory share button: placement and a session-expiry dead end
+## Phase 42 — Inventory share button placement (and a bad fix, reverted)
 
-Two small bugs in the Inventory grid's "Share via..." button, reported
-against a live deployment:
+Reported against a live deployment: the Inventory grid's `.share-btn` sat
+at `top: 0.75rem; left: 0.5rem` - directly on top of the item's merchant
+logo, the same corner the bulk-select checkbox also occupies. Moved it to
+the top-right, immediately left of the pin button
+(`right: calc(0.5rem + 44px + 0.5rem)`), so it no longer collides with
+card artwork.
 
-- **Placement**: `.share-btn` sat at `top: 0.75rem; left: 0.5rem` -
-  directly on top of the item's merchant logo, the same corner the
-  bulk-select checkbox also occupies. Moved it to the top-right, immediately
-  left of the pin button (`right: calc(0.5rem + 44px + 0.5rem)`), so it no
-  longer collides with card artwork.
-- **Dead-end error on session expiry**: `fetchPublicShareInfo()`
-  (`myapp/static/assets/js/voucher-share.js`) assumed every response from
-  `/items/<id>/public-share/` was JSON. `@login_required` on that endpoint
-  redirects an expired session (default `SESSION_COOKIE_AGE` is 30 minutes)
-  to the login page; `fetch` follows that redirect transparently and hands
-  back a `200 OK` with login-page HTML, so `response.json()` threw a parse
-  error that got swallowed into a generic "Could not create a share link
-  right now. Please try again." alert - with no way out, since retrying hit
-  the same dead end. `fetchPublicShareInfo` now checks the response's
-  `content-type`; a non-JSON response sends the user to `/accounts/login/`
-  (with `?next=` back to the inventory page) instead of failing silently.
+A second change in this same phase - making `fetchPublicShareInfo()`
+(`myapp/static/assets/js/voucher-share.js`) redirect to `/accounts/login/`
+whenever `/items/<id>/public-share/` didn't return JSON, on the theory
+that a non-JSON response meant an expired session - turned out to be
+wrong and was reverted one deploy later. On an OIDC-enabled instance,
+that redirect forced a full OIDC re-authentication round-trip on *every*
+share tap regardless of whether the session was actually still valid,
+breaking "Share via..." entirely on both the item page and Inventory.
+`fetchPublicShareInfo` no longer navigates the page on any failure - it
+only logs the response status/content-type to the console - matching
+the behavior this feature had before this phase. The original underlying
+"Could not create a share link right now" report is still open; it needs
+diagnosing from actual server logs/network responses rather than guessed
+at client-side, since the failure mode (expired session vs. CSRF vs. a
+genuine server error) wasn't actually confirmed.
 
 ## New environment variables
 
