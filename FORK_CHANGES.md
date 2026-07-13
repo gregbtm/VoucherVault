@@ -67,6 +67,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 30 — Site Settings save bug, and a UI cleanup batch](#phase-30--site-settings-save-bug-and-a-ui-cleanup-batch)
 - [Phase 31 — In-app help buttons on Site Settings](#phase-31--in-app-help-buttons-on-site-settings)
 - [Phase 32 — Floating toasts, Site Settings autosave, foolproof wallet-button detection](#phase-32--floating-toasts-site-settings-autosave-foolproof-wallet-button-detection)
+- [Phase 33 — Fix stale update banner, redeploy progress UX](#phase-33--fix-stale-update-banner-redeploy-progress-ux)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -1988,6 +1989,67 @@ still passing; the autosave/toast/no-reload behavior itself was verified
 end-to-end with a real headless browser (Playwright) rather than just
 Django's test client, since none of that is observable through server-
 rendered HTML alone.
+
+## Phase 33 — Fix stale update banner, redeploy progress UX
+
+Two follow-up fixes to the update-check/redeploy flow from Phase 32, plus a
+bug report: after tapping "Check for updates" and successfully redeploying,
+the "a newer version is available" banner kept showing even once the
+container was already running the latest version.
+
+### Fixed: stale "update available" banner
+
+`UpdateCheckStatus.update_available` is a boolean written to the database
+only when a check actually runs (the daily background task, or a manual
+click) - it does **not** get recomputed on every page load. A redeploy that
+ships the very update the banner was warning about doesn't itself trigger a
+check, so the stored flag stayed `True` until someone happened to check
+again, leaving the banner showing "update available" indefinitely even on
+a fully up-to-date install.
+
+- `context_processors.py::update_check_status` now recomputes
+  `update_available` on every request by comparing the stored
+  `latest_version` against the *currently running* `settings.VERSION`
+  (`_is_newer(...)`), instead of trusting the stored flag. Cheap (pure
+  string comparison), so safe to redo per-request rather than caching it.
+- New regression test:
+  `test_banner_hidden_once_running_version_catches_up_even_with_stale_flag`,
+  which seeds a stale `update_available=True` row and asserts the banner is
+  gone once `settings.VERSION` already matches.
+
+### Redeploy: no more blind multi-minute wait
+
+Confirmed the app never auto-triggers a redeploy on its own - "Check for
+updates" only checks GitHub Releases and shows the banner; a redeploy only
+ever happens if you explicitly press "Redeploy now". The actual complaint
+was that pressing it gave no feedback for the several minutes Portainer
+takes to pull the new image and restart the container - just a spinner-free
+button and an unclear wait.
+
+- "Redeploy now" is now a `fetch()` call (JSON via the existing
+  `_wants_json()` pattern in `trigger_portainer_redeploy`) instead of a
+  full-page form POST, so it can show real progress instead of a
+  redirect-and-hope.
+- On click (after a confirmation prompt): the button hides, and a spinner
+  with status text appears ("Redeploying - this can take a couple of
+  minutes..."). The page then polls its own URL every 5 seconds. Because
+  the *old* container is still the one answering during the pull/rebuild
+  window, a naive "reload as soon as a request succeeds" would reload
+  straight back onto the old version. Instead, the page waits until it has
+  seen at least one *failed* poll (old container actually went down) and
+  only then reloads on the next successful one (new container is up) - so
+  the reload reliably lands on the new version instead of firing early.
+  After ~5 minutes with no success, it gives up and tells you to check
+  Portainer directly instead of polling forever.
+- On failure (webhook unreachable, Portainer error, etc.) the button and
+  spinner reset back to their initial state and an error toast explains
+  what happened, rather than leaving the page stuck mid-spinner.
+- New tests: `test_ajax_success_returns_json`,
+  `test_ajax_failure_returns_json_error`,
+  `test_ajax_regular_user_forbidden_returns_json`. Verified end-to-end in a
+  real headless browser (Playwright) against a deliberately-unreachable
+  webhook URL: button click -> progress shown -> fetch fails -> error toast
+  -> button/progress reset back to normal.
 
 ## New environment variables
 
