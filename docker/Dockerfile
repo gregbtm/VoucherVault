@@ -34,6 +34,7 @@ COPY imports /opt/app/imports
 COPY ocr /opt/app/ocr
 COPY manage.py /opt/app/manage.py
 COPY VERSION /opt/app/VERSION
+COPY UPSTREAM_VERSION /opt/app/UPSTREAM_VERSION
 COPY requirements.txt /opt/app/requirements.txt
 COPY /docker/entrypoint.sh /opt/app/docker/entrypoint.sh
 COPY /docker/docker_uwsgi.ini /opt/app/docker/docker_uwsgi.ini

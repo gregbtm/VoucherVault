@@ -24,11 +24,11 @@ from .merchant_logos import (
     remember_balance_check_url,
 )
 from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
-from .models import AppSettings, Document, Item, ItemPublicShare, MerchantProfile, SiteConfiguration, Tag, Transaction, UpdateCheckStatus, UserPreference, UserProfile, Wallet
+from .models import AppSettings, Document, Item, ItemPublicShare, MerchantProfile, SiteConfiguration, Tag, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, Wallet
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .test_utils import set_site_config
-from .tasks import check_for_update_task, fetch_merchant_logo_task
-from .update_check import _is_newer, _parse_version, check_for_update
+from .tasks import check_for_update_task, check_upstream_version_task, fetch_merchant_logo_task
+from .update_check import _is_newer, _parse_version, check_for_update, check_upstream_version
 from .utils import fetch_oidc_discovery, generate_code_image_base64
 from .views import _integration_status
 
@@ -1826,6 +1826,62 @@ class UpdateCheckServiceTests(TestCase):
         mock_check.assert_called_once()
 
 
+class UpstreamVersionCheckTests(TestCase):
+    """
+    check_upstream_version() checks l4rm4nd/VoucherVault's (upstream)
+    latest release, independent of UPDATE_CHECK_ENABLED (that flag is
+    specifically for this fork's own releases) and independent of any
+    "update available" banner - it's purely informational.
+    """
+
+    @patch('myapp.update_check.requests.get')
+    def test_records_latest_upstream_release(self, mock_get):
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {
+                'tag_name': 'v1.30.0',
+                'html_url': 'https://github.com/l4rm4nd/VoucherVault/releases/tag/v1.30.0',
+                'published_at': '2026-07-01T00:00:00Z',
+            },
+        )
+        check_upstream_version()
+        status = UpstreamSyncStatus.load()
+        self.assertEqual(status.latest_version, 'v1.30.0')
+        self.assertEqual(status.upstream_repo, 'l4rm4nd/VoucherVault')
+        self.assertIsNotNone(status.latest_release_published_at)
+        self.assertIsNotNone(status.checked_at)
+        self.assertEqual(status.last_check_error, '')
+
+    @patch('myapp.update_check.requests.get')
+    def test_runs_regardless_of_update_check_enabled(self, mock_get):
+        # Deliberately does NOT gate on SiteConfiguration.update_check_enabled -
+        # that flag controls this fork's own release-banner feature, not
+        # this purely informational upstream check.
+        set_site_config(update_check_enabled=False)
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'tag_name': 'v1.30.0', 'html_url': 'https://example.com', 'published_at': None},
+        )
+        check_upstream_version()
+        mock_get.assert_called_once()
+
+    @patch('myapp.update_check.requests.get')
+    def test_request_failure_records_error_and_leaves_previous_version(self, mock_get):
+        import requests
+        UpstreamSyncStatus.objects.create(pk=1, latest_version='v1.29.0')
+        mock_get.side_effect = requests.RequestException('boom')
+        check_upstream_version()
+        status = UpstreamSyncStatus.load()
+        self.assertEqual(status.last_check_error, 'boom')
+        self.assertEqual(status.latest_version, 'v1.29.0')
+        self.assertIsNotNone(status.checked_at)
+
+    @patch('myapp.tasks.check_upstream_version')
+    def test_task_delegates_to_service(self, mock_check):
+        check_upstream_version_task()
+        mock_check.assert_called_once()
+
+
 @override_settings(VERSION='1.0.0')
 class UpdateCheckContextProcessorTests(TestCase):
     def setUp(self):
@@ -1863,6 +1919,35 @@ class UpdateCheckContextProcessorTests(TestCase):
         self.client.login(username='admin', password='pw12345!')
         response = self.client.get(reverse('dashboard'))
         self.assertNotContains(response, 'A newer version')
+
+
+@override_settings(VERSION='1.0.0', UPSTREAM_VERSION='1.29.0')
+class UpstreamSyncContextProcessorTests(TestCase):
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(username='admin', password='pw12345!', email='a@example.com')
+        self.regular_user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_upstream_version_shown_to_superuser(self):
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, 'based on upstream v1.29.0')
+
+    def test_upstream_version_hidden_from_regular_user(self):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.get(reverse('dashboard'))
+        self.assertNotContains(response, 'based on upstream')
+
+    def test_sync_available_badge_shown_when_upstream_ahead(self):
+        UpstreamSyncStatus.objects.create(pk=1, latest_version='v1.30.0')
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('site_settings'))
+        self.assertContains(response, 'Sync available')
+
+    def test_sync_available_badge_hidden_when_up_to_date(self):
+        UpstreamSyncStatus.objects.create(pk=1, latest_version='v1.29.0')
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('site_settings'))
+        self.assertNotContains(response, 'Sync available')
 
 
 class PortainerRedeployServiceTests(TestCase):

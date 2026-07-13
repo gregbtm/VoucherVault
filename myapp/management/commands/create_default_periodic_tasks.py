@@ -34,6 +34,8 @@ class Command(BaseCommand):
             {'name': 'Notification Rules Expiry Check', 'task': 'notify.tasks.check_and_notify_expiry', 'crontab': crontab_schedule, 'enabled': True},
             # Checks GitHub Releases for a newer version; a no-op if UPDATE_CHECK_ENABLED=False
             {'name': 'Update Check', 'task': 'myapp.tasks.check_for_update_task', 'crontab': crontab_schedule, 'enabled': True},
+            # Checks l4rm4nd/VoucherVault's (upstream) latest release, purely informational
+            {'name': 'Upstream Version Check', 'task': 'myapp.tasks.check_upstream_version_task', 'crontab': crontab_schedule, 'enabled': True},
             # Writes a rotating local Full Backup zip per user; a no-op if SCHEDULED_BACKUP_ENABLED=False
             {'name': 'Scheduled Backup', 'task': 'imports.tasks.run_scheduled_backups', 'crontab': backup_schedule, 'enabled': True},
             # Add more tasks as needed

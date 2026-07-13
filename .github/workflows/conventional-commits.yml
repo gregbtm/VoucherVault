@@ -33,6 +33,20 @@ jobs:
         with:
           preset: "conventionalcommits"
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          # This job's only job is to keep CHANGELOG.md up to date - the
+          # `release` job below is the single source of truth for this
+          # fork's own version (VERSION file, v1.1.x tags, GitHub
+          # Releases). Without these flags this action independently
+          # bumped package.json and cut its own competing tag/release off
+          # a semver computed from full commit history, producing a
+          # second, contradictory version number (an orphaned "v2.0.0"
+          # tag pointing at a commit a later squash-merge made
+          # unreachable). CHANGELOG.md changes still get committed
+          # normally - only the version-file/tag side effects are
+          # disabled.
+          skip-version-file: true
+          skip-tag: true
+          skip-git-pull: true
 
   bandit:
     name: SAST with Bandit

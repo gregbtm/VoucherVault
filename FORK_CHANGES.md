@@ -75,6 +75,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 38 — Configurable code-blur toggle](#phase-38--configurable-code-blur-toggle)
 - [Phase 39 — API write-endpoint rate limiting](#phase-39--api-write-endpoint-rate-limiting)
 - [Phase 40 — tile_color regression tests](#phase-40--tile_color-regression-tests)
+- [Phase 41 — Upstream sync management](#phase-41--upstream-sync-management)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -2244,6 +2245,66 @@ the field being touched repeatedly - added 2 tests confirming the
 existing fix holds (`TileColorPreservationTests`): the color survives
 editing an unrelated field, and survives into the duplicate form's
 pre-filled value.
+
+## Phase 41 — Upstream sync management
+
+Two problems, addressed together: this fork's own versioning had quietly
+split into two contradictory schemes, and there was no process at all for
+pulling in upstream l4rm4nd/VoucherVault's own improvements going forward.
+See [`docs/UPSTREAM_SYNC.md`](docs/UPSTREAM_SYNC.md) for the full process.
+
+### Fixed: two competing version schemes
+
+`.github/workflows/conventional-commits.yml` ran two independent
+version-bumping jobs on every merge: the `release` job (deterministic
+`VERSION`-file bump, `v1.1.x` tags, GitHub Releases - what the app
+actually reads) and, separately, `TriPSs/conventional-changelog-action`
+independently bumping `package.json` and cutting its own tag off a
+semver computed from full commit history - producing a second,
+contradictory version (`v2.0.0`, already pointing at a commit a later
+squash-merge made unreachable). The changelog job is now configured with
+`skip-version-file`/`skip-tag`/`skip-git-pull` so it only generates
+`CHANGELOG.md` text; the `VERSION` file remains the single source of
+truth, unchanged from before. `package.json` reset to match. (The
+orphaned `v2.0.0` git tag itself needs a manual delete via the GitHub UI
+- confirmed it has no GitHub Release object attached, so `releases/latest`
+already correctly resolves to the real latest version regardless.)
+
+### Track and display upstream's version
+
+- New `UPSTREAM_VERSION` file (plain text, committed, read into
+  `settings.UPSTREAM_VERSION` exactly like the existing `VERSION` file) -
+  the upstream version this fork's `main` was last actually merged up to
+  date with. Only bumped by an actual sync, not on every commit.
+- New `UpstreamSyncStatus` model + `check_upstream_version()`
+  (`myapp/update_check.py`), checked daily alongside the existing update
+  check: what upstream's latest release currently is, independent of
+  `UPDATE_CHECK_ENABLED` (purely informational, never drives a banner).
+- Footer shows "based on upstream vX.Y.Z" (superuser-only, same gating as
+  the existing update-check banner) with a warning icon linking to
+  upstream's releases page when a newer one is available. Site Settings
+  gets a fuller "Upstream Sync" section: last-synced vs. latest-available
+  version, GitHub connectivity, and a link to the latest upstream release.
+
+### Ongoing sync mechanism
+
+- **Always-on visibility**: `.github/workflows/upstream-sync-check.yml`
+  (weekly) diffs `upstream/main` against the `UPSTREAM_VERSION` file's
+  matching tag and opens/updates a single pinned tracking issue listing
+  new commits, closing it once fully synced. No AI involved - works even
+  when no session is running.
+- **Actual integration**: a monthly Claude Code Routine assesses what's
+  new, respects a 10-day cooldown after upstream's latest release (lets
+  potential hotfixes land first), posts an advance-notice summary with a
+  risk breakdown before touching anything, auto-resolves only trivial
+  conflicts (whitespace, docs), and opens a PR for anything larger rather
+  than merging it unattended - real conflicts get reviewed together.
+
+### Tests
+
+12 new tests: `UpstreamVersionCheckTests` (4, the check service) and
+`UpstreamSyncContextProcessorTests` (4, footer/Site Settings gating and
+display) plus the model/migration. Full suite passing.
 
 ## New environment variables
 

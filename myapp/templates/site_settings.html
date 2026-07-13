@@ -280,6 +280,46 @@
 
             <div class="mb-4">
               <h6 class="text-muted mb-3">
+                <i class="bi bi-signpost-split me-2"></i>{% trans "Upstream Sync" %}
+                <a href="{% url 'view_doc' 'upstream-sync' %}" target="_blank" class="help-link" title="{% trans 'How upstream sync works' %}"><i class="bi bi-question-circle"></i></a>
+              </h6>
+              <p class="text-muted small mb-2">
+                {% trans "This fork tracks l4rm4nd/VoucherVault upstream. This section is purely informational - it doesn't affect this app's own behaviour." %}
+              </p>
+              <div class="row mb-2">
+                <div class="col-md-4">
+                  <div class="text-muted small text-uppercase" style="letter-spacing:.03em;">{% trans "Last synced upstream version" %}</div>
+                  <div>{{ upstream_version }}</div>
+                </div>
+                <div class="col-md-4">
+                  <div class="text-muted small text-uppercase" style="letter-spacing:.03em;">{% trans "Latest upstream version" %}</div>
+                  <div>
+                    {{ upstream_sync_status.latest_version|default:"—" }}
+                    {% if upstream_behind %}<span class="badge bg-warning text-dark ms-1">{% trans "Sync available" %}</span>{% endif %}
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="text-muted small text-uppercase" style="letter-spacing:.03em;">{% trans "GitHub connectivity" %}</div>
+                  <div>
+                    {% if not upstream_sync_status.checked_at %}
+                      <span class="badge bg-secondary">{% trans "Never checked" %}</span>
+                    {% elif upstream_sync_status.last_check_error %}
+                      <span class="badge bg-danger" title="{{ upstream_sync_status.last_check_error }}"><i class="bi bi-x-circle me-1"></i>{% trans "Unreachable" %}</span>
+                    {% else %}
+                      <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>{% trans "Connected" %}</span>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+              {% if upstream_sync_status.latest_release_url %}
+              <p class="text-muted small mb-0">
+                <a href="{{ upstream_sync_status.latest_release_url }}" target="_blank" rel="noopener"><i class="bi bi-file-earmark-diff me-1"></i>{% trans "View latest upstream release" %}</a>
+              </p>
+              {% endif %}
+            </div>
+
+            <div class="mb-4">
+              <h6 class="text-muted mb-3">
                 <i class="bi bi-cloud-arrow-up me-2"></i>{% trans "Portainer Redeploy Webhook" %}
                 <a href="{% url 'view_doc' 'auto-deploy' %}" target="_blank" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
                 {% if config.portainer_webhook_url %}
