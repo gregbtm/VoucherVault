@@ -68,6 +68,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 31 — In-app help buttons on Site Settings](#phase-31--in-app-help-buttons-on-site-settings)
 - [Phase 32 — Floating toasts, Site Settings autosave, foolproof wallet-button detection](#phase-32--floating-toasts-site-settings-autosave-foolproof-wallet-button-detection)
 - [Phase 33 — Fix stale update banner, redeploy progress UX](#phase-33--fix-stale-update-banner-redeploy-progress-ux)
+- [Phase 34 — Site Settings field validation](#phase-34--site-settings-field-validation)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -2050,6 +2051,51 @@ button and an unclear wait.
   real headless browser (Playwright) against a deliberately-unreachable
   webhook URL: button click -> progress shown -> fetch fails -> error toast
   -> button/progress reset back to normal.
+
+## Phase 34 — Site Settings field validation
+
+Site Settings had zero custom validation on any of its ~28 fields - a
+malformed URL, a mistyped GitHub repo, or a half-filled pair of related
+settings all saved silently and only surfaced as a runtime failure the
+next time that integration actually ran. All of it now validates inline
+via the existing autosave error UI (red outline + message under the
+field), using the same `clean_<field>()` / `clean()` pattern already used
+elsewhere in `forms.py` - no new UI plumbing needed.
+
+- **URL fields**: `portainer_webhook_url` and `ntfy_default_server` must
+  be a valid `http://`/`https://` URL.
+- **`update_check_repo`**: must be shaped like `owner/repo`.
+- **Numeric thresholds**: `expiry_threshold_days`, `expiry_last_notification_days`,
+  and `backup_retention_count` must be at least 1 (previously only
+  Django's default "greater than or equal to 0" applied). Additionally,
+  the final-warning threshold can no longer be set later than the initial
+  warning threshold - `expiry_last_notification_days` must be <=
+  `expiry_threshold_days`, checked cross-field in `clean()`.
+- **Paired settings**: Web Push (VAPID public + private key), Google
+  Wallet (service account key path + issuer ID), and Apple Wallet
+  (certificate path, WWDR certificate path, Team ID, Pass Type ID) each
+  must be set together, not half-filled - a partially-configured pair now
+  errors on every field involved instead of silently saving into a broken
+  state. The VAPID private key is a `SECRET_FIELDS` entry that always
+  submits blank once already set (see Phase 30) - the pairing check
+  compares against the *stored* value in that case, not the always-blank
+  submitted one, so it doesn't spuriously flag an already-working pair as
+  broken on an unrelated autosave.
+- **API key format**: `anthropic_api_key` must start with `sk-ant-` and
+  `openai_api_key` must start with `sk-` when actually being set (the
+  blank-means-unchanged convention for secret fields is preserved - the
+  check only runs on a genuinely new, non-blank submission).
+- **Certificate/key file paths**: `pkpass_cert_path`, `pkpass_wwdr_cert_path`,
+  and `google_wallet_service_account_key_path` must point at a file that
+  actually exists inside the running container when set, matching the
+  documented setup flow (mount the volume, then set the path) - catches a
+  typo'd path immediately instead of at the next pass-export attempt.
+
+### Tests
+
+18 new tests in `SiteConfigurationFormTests` covering every rule above
+(rejection and acceptance cases), plus a fix to a pre-existing test that
+used a fake, format-invalid API key value. Full suite: 529 tests passing.
 
 ## New environment variables
 

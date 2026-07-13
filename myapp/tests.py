@@ -2023,10 +2023,10 @@ class SiteConfigurationFormTests(TestCase):
         self.assertEqual(saved.anthropic_api_key, 'existing-secret')
 
     def test_non_blank_secret_field_updates_value(self):
-        form = SiteConfigurationForm(data=_site_config_form_data(anthropic_api_key='new-secret'), instance=self.config)
+        form = SiteConfigurationForm(data=_site_config_form_data(anthropic_api_key='sk-ant-new-secret'), instance=self.config)
         self.assertTrue(form.is_valid(), form.errors)
         saved = form.save()
-        self.assertEqual(saved.anthropic_api_key, 'new-secret')
+        self.assertEqual(saved.anthropic_api_key, 'sk-ant-new-secret')
 
     def test_non_secret_fields_save_normally(self):
         form = SiteConfigurationForm(data=_site_config_form_data(expiry_threshold_days=45, ocr_backend='tesseract'), instance=self.config)
@@ -2047,6 +2047,106 @@ class SiteConfigurationFormTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         saved = form.save()
         self.assertEqual(saved.portainer_webhook_url, 'https://portainer.example.com/api/webhooks/abc123')
+
+    def test_malformed_portainer_webhook_url_rejected(self):
+        form = SiteConfigurationForm(data=_site_config_form_data(portainer_webhook_url='not-a-url'), instance=self.config)
+        self.assertFalse(form.is_valid())
+        self.assertIn('portainer_webhook_url', form.errors)
+
+    def test_malformed_ntfy_default_server_rejected(self):
+        form = SiteConfigurationForm(data=_site_config_form_data(ntfy_default_server='ntfy.sh'), instance=self.config)
+        self.assertFalse(form.is_valid())
+        self.assertIn('ntfy_default_server', form.errors)
+
+    def test_update_check_repo_must_be_owner_slash_repo(self):
+        form = SiteConfigurationForm(data=_site_config_form_data(update_check_repo='not a repo'), instance=self.config)
+        self.assertFalse(form.is_valid())
+        self.assertIn('update_check_repo', form.errors)
+
+    def test_update_check_repo_valid_shape_accepted(self):
+        form = SiteConfigurationForm(data=_site_config_form_data(update_check_repo='gregbtm/VoucherVault'), instance=self.config)
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_expiry_threshold_days_must_be_at_least_one(self):
+        form = SiteConfigurationForm(data=_site_config_form_data(expiry_threshold_days=0), instance=self.config)
+        self.assertFalse(form.is_valid())
+        self.assertIn('expiry_threshold_days', form.errors)
+
+    def test_backup_retention_count_must_be_at_least_one(self):
+        form = SiteConfigurationForm(data=_site_config_form_data(backup_retention_count=0), instance=self.config)
+        self.assertFalse(form.is_valid())
+        self.assertIn('backup_retention_count', form.errors)
+
+    def test_final_warning_cannot_exceed_initial_threshold(self):
+        form = SiteConfigurationForm(
+            data=_site_config_form_data(expiry_threshold_days=7, expiry_last_notification_days=30),
+            instance=self.config,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn('expiry_last_notification_days', form.errors)
+
+    def test_anthropic_api_key_format_checked_only_when_set(self):
+        form = SiteConfigurationForm(data=_site_config_form_data(anthropic_api_key='wrong-prefix'), instance=self.config)
+        self.assertFalse(form.is_valid())
+        self.assertIn('anthropic_api_key', form.errors)
+
+    def test_openai_api_key_format_checked_only_when_set(self):
+        form = SiteConfigurationForm(data=_site_config_form_data(openai_api_key='wrong-prefix'), instance=self.config)
+        self.assertFalse(form.is_valid())
+        self.assertIn('openai_api_key', form.errors)
+
+    def test_pkpass_cert_path_must_exist_on_disk(self):
+        form = SiteConfigurationForm(data=_site_config_form_data(pkpass_cert_path='/nonexistent/cert.p12'), instance=self.config)
+        self.assertFalse(form.is_valid())
+        self.assertIn('pkpass_cert_path', form.errors)
+
+    def test_google_wallet_key_path_must_exist_on_disk(self):
+        form = SiteConfigurationForm(
+            data=_site_config_form_data(google_wallet_service_account_key_path='/nonexistent/key.json'),
+            instance=self.config,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn('google_wallet_service_account_key_path', form.errors)
+
+    def test_webpush_keys_required_together(self):
+        form = SiteConfigurationForm(
+            data=_site_config_form_data(webpush_vapid_public_key='pub-key-only'),
+            instance=self.config,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn('webpush_vapid_public_key', form.errors)
+        self.assertIn('webpush_vapid_private_key', form.errors)
+
+    def test_webpush_keys_pass_when_private_key_already_stored(self):
+        # The private key is a SECRET_FIELDS entry that always submits blank
+        # once set - the pairing check must compare against the *stored*
+        # value, not the always-blank submitted one, or every unrelated
+        # autosave would spuriously flag an already-configured pair as broken.
+        self.config.webpush_vapid_private_key = 'existing-private-key'
+        self.config.save()
+        form = SiteConfigurationForm(
+            data=_site_config_form_data(webpush_vapid_public_key='existing-public-key'),
+            instance=self.config,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_google_wallet_fields_required_together(self):
+        form = SiteConfigurationForm(
+            data=_site_config_form_data(google_wallet_issuer_id='issuer-only'),
+            instance=self.config,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn('google_wallet_service_account_key_path', form.errors)
+        self.assertIn('google_wallet_issuer_id', form.errors)
+
+    def test_pkpass_fields_required_together(self):
+        form = SiteConfigurationForm(
+            data=_site_config_form_data(pkpass_team_id='team-only'),
+            instance=self.config,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn('pkpass_team_id', form.errors)
+        self.assertIn('pkpass_pass_type_id', form.errors)
 
 
 class IntegrationStatusTests(TestCase):
