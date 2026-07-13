@@ -2306,6 +2306,28 @@ already correctly resolves to the real latest version regardless.)
 `UpstreamSyncContextProcessorTests` (4, footer/Site Settings gating and
 display) plus the model/migration. Full suite passing.
 
+## Phase 42 — Inventory share button: placement and a session-expiry dead end
+
+Two small bugs in the Inventory grid's "Share via..." button, reported
+against a live deployment:
+
+- **Placement**: `.share-btn` sat at `top: 0.75rem; left: 0.5rem` -
+  directly on top of the item's merchant logo, the same corner the
+  bulk-select checkbox also occupies. Moved it to the top-right, immediately
+  left of the pin button (`right: calc(0.5rem + 44px + 0.5rem)`), so it no
+  longer collides with card artwork.
+- **Dead-end error on session expiry**: `fetchPublicShareInfo()`
+  (`myapp/static/assets/js/voucher-share.js`) assumed every response from
+  `/items/<id>/public-share/` was JSON. `@login_required` on that endpoint
+  redirects an expired session (default `SESSION_COOKIE_AGE` is 30 minutes)
+  to the login page; `fetch` follows that redirect transparently and hands
+  back a `200 OK` with login-page HTML, so `response.json()` threw a parse
+  error that got swallowed into a generic "Could not create a share link
+  right now. Please try again." alert - with no way out, since retrying hit
+  the same dead end. `fetchPublicShareInfo` now checks the response's
+  `content-type`; a non-JSON response sends the user to `/accounts/login/`
+  (with `?next=` back to the inventory page) instead of failing silently.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
