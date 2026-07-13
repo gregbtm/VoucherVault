@@ -1,11 +1,13 @@
 from django import forms
 from .models import *
 import os
+import re
 import qrcode
 from io import BytesIO
 from django.http import HttpResponse
 import apprise
 from django import forms
+from django.core.validators import URLValidator
 from django.db.models import Q
 from .models import *
 from django.utils.translation import gettext_lazy as _
@@ -350,6 +352,8 @@ class SiteConfigurationForm(forms.ModelForm):
             'backup_retention_count': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
         }
 
+    REPO_RE = re.compile(r'^[\w.-]+/[\w.-]+$')
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._original_secret_values = {
@@ -359,6 +363,115 @@ class SiteConfigurationForm(forms.ModelForm):
             self.fields[field].required = False
             placeholder = _('•••• leave blank to keep current value') if self._original_secret_values[field] else _('Not set')
             self.fields[field].widget = forms.PasswordInput(render_value=False, attrs={'class': 'form-control', 'placeholder': placeholder})
+
+    def _effective_secret(self, field):
+        """
+        A blank submitted value for a SECRET_FIELDS field means "leave the
+        stored value alone" (see save()), not "this is blank" - cross-field
+        checks involving a secret need the value that will actually end up
+        on the instance, not the always-blank submitted one.
+        """
+        return self.cleaned_data.get(field) or self._original_secret_values.get(field, '')
+
+    def _clean_url(self, field_name):
+        value = (self.cleaned_data.get(field_name) or '').strip()
+        if value:
+            try:
+                URLValidator(schemes=['http', 'https'])(value)
+            except forms.ValidationError:
+                raise forms.ValidationError(_('Enter a valid http:// or https:// URL.'))
+        return value
+
+    def clean_portainer_webhook_url(self):
+        return self._clean_url('portainer_webhook_url')
+
+    def clean_ntfy_default_server(self):
+        return self._clean_url('ntfy_default_server')
+
+    def clean_update_check_repo(self):
+        value = (self.cleaned_data.get('update_check_repo') or '').strip()
+        if value and not self.REPO_RE.match(value):
+            raise forms.ValidationError(_('Enter a GitHub repository as "owner/repo".'))
+        return value
+
+    def clean_expiry_threshold_days(self):
+        value = self.cleaned_data.get('expiry_threshold_days')
+        if value is not None and value < 1:
+            raise forms.ValidationError(_('Must be at least 1 day.'))
+        return value
+
+    def clean_expiry_last_notification_days(self):
+        value = self.cleaned_data.get('expiry_last_notification_days')
+        if value is not None and value < 1:
+            raise forms.ValidationError(_('Must be at least 1 day.'))
+        return value
+
+    def clean_backup_retention_count(self):
+        value = self.cleaned_data.get('backup_retention_count')
+        if value is not None and value < 1:
+            raise forms.ValidationError(_('Must keep at least 1 backup.'))
+        return value
+
+    def clean_anthropic_api_key(self):
+        value = self.cleaned_data.get('anthropic_api_key', '')
+        if value and not value.startswith('sk-ant-'):
+            raise forms.ValidationError(_('Anthropic API keys start with "sk-ant-" - double check you copied the whole key.'))
+        return value
+
+    def clean_openai_api_key(self):
+        value = self.cleaned_data.get('openai_api_key', '')
+        if value and not value.startswith('sk-'):
+            raise forms.ValidationError(_('OpenAI API keys start with "sk-" - double check you copied the whole key.'))
+        return value
+
+    def _clean_cert_path(self, field_name):
+        value = (self.cleaned_data.get(field_name) or '').strip()
+        if value and not os.path.isfile(value):
+            raise forms.ValidationError(_('No file found at this path inside the container - check the path and that the volume is mounted.'))
+        return value
+
+    def clean_pkpass_cert_path(self):
+        return self._clean_cert_path('pkpass_cert_path')
+
+    def clean_pkpass_wwdr_cert_path(self):
+        return self._clean_cert_path('pkpass_wwdr_cert_path')
+
+    def clean_google_wallet_service_account_key_path(self):
+        return self._clean_cert_path('google_wallet_service_account_key_path')
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        threshold = cleaned_data.get('expiry_threshold_days')
+        final_warning = cleaned_data.get('expiry_last_notification_days')
+        if threshold is not None and final_warning is not None and final_warning > threshold:
+            self.add_error(
+                'expiry_last_notification_days',
+                _('The final warning must be sooner than the initial warning threshold.'),
+            )
+
+        public_key = cleaned_data.get('webpush_vapid_public_key')
+        private_key = self._effective_secret('webpush_vapid_private_key')
+        if bool(public_key) != bool(private_key):
+            msg = _('Both the VAPID public and private key are required together to enable Web Push.')
+            self.add_error('webpush_vapid_public_key', msg)
+            self.add_error('webpush_vapid_private_key', msg)
+
+        key_path = cleaned_data.get('google_wallet_service_account_key_path')
+        issuer_id = cleaned_data.get('google_wallet_issuer_id')
+        if bool(key_path) != bool(issuer_id):
+            msg = _('Both the service account key path and issuer ID are required together to enable Google Wallet export.')
+            self.add_error('google_wallet_service_account_key_path', msg)
+            self.add_error('google_wallet_issuer_id', msg)
+
+        pkpass_fields = ['pkpass_cert_path', 'pkpass_wwdr_cert_path', 'pkpass_team_id', 'pkpass_pass_type_id']
+        filled = [f for f in pkpass_fields if cleaned_data.get(f)]
+        if filled and len(filled) < len(pkpass_fields):
+            msg = _('Certificate path, WWDR certificate path, Team ID, and Pass Type ID are all required together to enable Apple Wallet export.')
+            for f in pkpass_fields:
+                self.add_error(f, msg)
+
+        return cleaned_data
 
     def save(self, commit=True):
         instance = super().save(commit=False)

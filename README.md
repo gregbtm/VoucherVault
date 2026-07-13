@@ -18,7 +18,7 @@
 > [!NOTE]
 > This is [gregbtm](https://github.com/gregbtm)'s fork of the upstream
 > [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault) project.
-> Thirty-three rounds of additive features have been layered on top without
+> Thirty-four rounds of additive features have been layered on top without
 > touching upstream's own code: a full **REST API**, **Wallets/Tags/Notes**,
 > a rules-based **notification engine** (ntfy, webhook, Apprise, and native
 > **Web Push**) covering the full item lifecycle, bulk **Import/Export**
