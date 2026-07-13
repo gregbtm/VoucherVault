@@ -37,6 +37,27 @@ def get_fixer_rates(api_key):
         return None
 
 
+def fetch_oidc_discovery(discovery_url):
+    """
+    Fetch and parse an OIDC provider's .well-known/openid-configuration
+    document. Returns a dict (authorization_endpoint, token_endpoint,
+    userinfo_endpoint, jwks_uri, ...) on success, or {} on any failure -
+    callers fall back to manually configured OIDC_OP_* endpoints in that
+    case. Extracted into its own function (rather than living inline in
+    settings.py) purely so it's unit-testable without reloading the
+    settings module.
+    """
+    try:
+        with urllib.request.urlopen(discovery_url, timeout=5) as response:  # nosec B310 — operator-supplied provider URL, not user input
+            return json.loads(response.read().decode())
+    except (urllib.error.URLError, ValueError, TimeoutError) as exc:
+        logger.warning(
+            "OIDC discovery failed for %s (%s) - falling back to any manually configured OIDC_OP_* endpoints.",
+            discovery_url, exc,
+        )
+        return {}
+
+
 def _calculate_ean13_check_digit(code):
     sum_odd = sum(int(code[i]) for i in range(0, 12, 2))
     sum_even = sum(int(code[i]) for i in range(1, 12, 2))

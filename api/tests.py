@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.urls import reverse
@@ -10,6 +11,7 @@ from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
+from api.throttling import WriteRateThrottle
 from imports.models import ImportJob
 from myapp.models import Item, ItemShare, MerchantProfile, Tag, Transaction, Wallet
 from myapp.test_utils import set_site_config
@@ -138,6 +140,56 @@ class ItemCrudTests(APITestCase):
         searched = self.client.get('/api/v1/items/?search=Beta')
         self.assertEqual(searched.data['count'], 1)
         self.assertEqual(searched.data['results'][0]['name'], 'Beta Voucher')
+
+
+class WriteRateThrottleTests(APITestCase):
+    """
+    The full CRUD API previously had no rate limiting at all - a leaked
+    token or misbehaving script could hammer writes with zero
+    backpressure. WriteRateThrottle (api/throttling.py) limits only
+    unsafe methods; reads stay unlimited.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.force_authenticate(user=self.user)
+
+    def _create_payload(self):
+        return {
+            'type': 'voucher', 'name': 'Coffee Shop', 'redeem_code': 'SAVE10',
+            'issuer': 'Cafe Corp', 'value': '10.00', 'currency': 'EUR',
+        }
+
+    def test_write_requests_throttled_after_limit(self):
+        # override_settings(REST_FRAMEWORK=...) doesn't actually reach
+        # SimpleRateThrottle.THROTTLE_RATES - DRF copies
+        # api_settings.DEFAULT_THROTTLE_RATES onto the throttle class once
+        # at import time, and its setting_changed signal handler only
+        # resets api_settings' own cache, not that already-copied class
+        # attribute. Patching the class dict directly is what actually
+        # takes effect at request time.
+        with patch.dict(WriteRateThrottle.THROTTLE_RATES, {'write': '2/minute'}):
+            first = self.client.post('/api/v1/items/', self._create_payload())
+            second = self.client.post('/api/v1/items/', self._create_payload())
+            third = self.client.post('/api/v1/items/', self._create_payload())
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(third.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_read_requests_never_throttled(self):
+        make_item(self.user)
+        with patch.dict(WriteRateThrottle.THROTTLE_RATES, {'write': '2/minute'}):
+            for _ in range(5):
+                response = self.client.get('/api/v1/items/')
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_default_rate_permits_normal_test_suite_volume(self):
+        # Sanity check on the shipped default (60/minute) - a handful of
+        # writes in quick succession (normal usage) must never be blocked.
+        for _ in range(5):
+            response = self.client.post('/api/v1/items/', self._create_payload())
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
 
 class Phase11FieldsApiTests(APITestCase):

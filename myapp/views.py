@@ -1400,13 +1400,74 @@ def get_stats(request):
             is_used=False, expiry_date__gte=now()
         ).with_current_balance()
 
-        total_value = round((items_with_transaction_values.aggregate(
-            total_value=Sum('current_balance'))['total_value'] or 0), 2)
+        # Summing `current_balance` directly across items of different
+        # currencies produces a meaningless number (see upstream
+        # l4rm4nd/VoucherVault#135) - only do it when every item shares one
+        # currency. For a mixed-currency queryset, convert via the
+        # requested user's own Fixer.io key if one was requested (mirrors
+        # the dashboard's own per-user conversion, see dashboard() above);
+        # there's no single applicable key for a cross-user aggregate, so
+        # in that case report the accurate per-currency breakdown instead
+        # of a silently wrong total.
+        currencies_used = set(items_with_transaction_values.values_list('currency', flat=True).distinct())
+        total_value = 0.0
+        total_currency = None
+        total_value_by_currency = None
+        currency_conversion_note = None
+
+        if len(currencies_used) == 1:
+            total_currency = next(iter(currencies_used))
+            total_value = round(float(items_with_transaction_values.aggregate(
+                total_value=Sum('current_balance'))['total_value'] or 0), 2)
+        elif currencies_used:
+            # current_balance is itself an aggregate annotation (from
+            # with_current_balance()), so it can't be summed via a grouped
+            # .values().annotate() call in one query (Django raises
+            # "Cannot compute Sum('current_balance'): 'current_balance' is
+            # an aggregate") - one plain .aggregate() per currency instead,
+            # the same pattern the single-currency branch above already uses.
+            by_currency = {}
+            for currency in currencies_used:
+                total = items_with_transaction_values.filter(currency=currency).aggregate(
+                    total=Sum('current_balance'))['total']
+                if total is not None:
+                    by_currency[currency] = total
+            total_value_by_currency = {currency: round(float(amount), 2) for currency, amount in by_currency.items()}
+
+            fixer_api_key = None
+            default_currency = None
+            if username:
+                prefs = UserPreference.objects.filter(user=user).first()
+                if prefs:
+                    fixer_api_key = prefs.fixer_api_key
+                    default_currency = prefs.default_currency or 'GBP'
+
+            total_value = None
+            if fixer_api_key:
+                rates = get_fixer_rates(fixer_api_key)
+                if rates:
+                    converted_total = 0.0
+                    for currency, amount in by_currency.items():
+                        converted = convert_currency(amount, currency, default_currency, rates)
+                        if converted is None:
+                            converted_total = None
+                            break
+                        converted_total += converted
+                    if converted_total is not None:
+                        total_value = round(converted_total, 2)
+                        total_currency = default_currency
+                    else:
+                        currency_conversion_note = "Currency conversion failed for one or more currencies; see total_value_by_currency."
+                else:
+                    currency_conversion_note = "Currency conversion failed; see total_value_by_currency."
+            else:
+                currency_conversion_note = "Items span multiple currencies with no Fixer.io key available to convert them; see total_value_by_currency."
 
         # Item stats
         item_stats = {
             "total_items": items_query.count(),
             "total_value": total_value,
+            "total_value_currency": total_currency,
             "vouchers": items_query.filter(type='voucher').count(),
             "giftcards": items_query.filter(type='giftcard').count(),
             "coupons": items_query.filter(type='coupon').count(),
@@ -1416,6 +1477,10 @@ def get_stats(request):
             "expired_items": items_query.filter(expiry_date__lt=now()).count(),
             "soon_expiring_items": items_query.filter(expiry_date__gte=now(), expiry_date__lt=soon_expiry_date).count(),
         }
+        if total_value_by_currency is not None:
+            item_stats["total_value_by_currency"] = total_value_by_currency
+        if currency_conversion_note:
+            item_stats["currency_conversion_note"] = currency_conversion_note
 
         # Return global user_stats
         user_stats = {
@@ -1426,10 +1491,13 @@ def get_stats(request):
             "staff_members": User.objects.filter(is_staff=True).count(),
         }
 
-        # Issuer stats
+        # Issuer stats - grouped by (issuer, currency) rather than issuer
+        # alone, so total_value is always an accurate same-currency sum
+        # without needing any conversion (the same issuer name can span
+        # multiple currencies across different items/users).
         issuer_transaction_totals = (
             items_query.filter(is_used=False, expiry_date__gte=now())
-            .values('issuer')
+            .values('issuer', 'currency')
             .annotate(
                 transaction_total=Coalesce(
                     Sum('transactions__value', output_field=models.DecimalField()),
@@ -1437,11 +1505,13 @@ def get_stats(request):
                 )
             )
         )
-        issuer_transaction_map = {item['issuer']: item['transaction_total'] for item in issuer_transaction_totals}
+        issuer_transaction_map = {
+            (item['issuer'], item['currency']): item['transaction_total'] for item in issuer_transaction_totals
+        }
 
         issuers = (
             items_query.filter(is_used=False, expiry_date__gte=now())
-            .values('issuer')
+            .values('issuer', 'currency')
             .annotate(
                 count=Count('issuer'),
                 base_value=Coalesce(
@@ -1455,8 +1525,10 @@ def get_stats(request):
         issuer_stats = [
             {
                 "issuer": issuer["issuer"],
+                "currency": issuer["currency"],
                 "count": issuer["count"],
-                "total_value": round((issuer["base_value"] + issuer_transaction_map.get(issuer["issuer"], 0)), 2),
+                "total_value": round((issuer["base_value"] + issuer_transaction_map.get(
+                    (issuer["issuer"], issuer["currency"]), 0)), 2),
             }
             for issuer in issuers
         ]

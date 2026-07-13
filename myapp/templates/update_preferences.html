@@ -126,16 +126,21 @@
             <div class="mb-4">
               <h6 class="text-muted mb-3"><i class="bi bi-phone me-2"></i>{% trans "Barcode & Screen" %}</h6>
               {% for field in form %}
-                {% if field.name == "keep_screen_awake" or field.name == "oled_dark_mode" %}
+                {% if field.name == "keep_screen_awake" or field.name == "oled_dark_mode" or field.name == "blur_codes_enabled" %}
                   <div class="mb-2 form-check">
                     {{ field }}
                     <label class="form-check-label" for="{{ field.id_for_label }}">
                       {% if field.name == "keep_screen_awake" %}
                         {% trans "Keep screen on while viewing an item" %}
-                      {% else %}
+                      {% elif field.name == "oled_dark_mode" %}
                         {% trans "True-black dark mode (OLED)" %}
+                      {% else %}
+                        {% trans "Blur barcodes and codes until tapped" %}
                       {% endif %}
                     </label>
+                    {% if field.name == "blur_codes_enabled" %}
+                      <div class="form-text text-muted">{% trans "Turn off for faster access at point-of-sale - the code shows immediately instead of requiring a tap to reveal." %}</div>
+                    {% endif %}
                     {% if field.errors %}
                       <div class="text-danger small">{{ field.errors }}</div>
                     {% endif %}

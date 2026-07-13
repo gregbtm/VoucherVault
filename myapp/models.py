@@ -81,6 +81,10 @@ class UserPreference(models.Model):
     offline_cache_enabled = models.BooleanField(
         default=True, help_text="Show the 'Cache for Offline' option in the sidebar. Turning this off purges any existing offline cache."
     )
+    blur_codes_enabled = models.BooleanField(
+        default=True,
+        help_text="Blur barcodes and redeem codes until tapped. Turn off for faster access at point-of-sale.",
+    )
 
 class Wallet(models.Model):
     """

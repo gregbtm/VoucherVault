@@ -1522,11 +1522,13 @@ body.dark-mode .action-btn-secondary:hover {
         <div class="qr-image-wrapper">
           <img src="data:image/png;base64,{{ qr_code_base64 }}"
                alt="QR Code"
-               class="qr-image opaque"
+               class="qr-image{% if global_preferences.blur_codes_enabled %} opaque{% endif %}"
                id="qr-code">
+          {% if global_preferences.blur_codes_enabled %}
           <div class="tap-hint" id="qr-tap-hint">
             <i class="bi bi-hand-index"></i> {% trans "Tap to reveal" %}
           </div>
+          {% endif %}
           <button type="button" id="fullscreen-btn" class="fullscreen-btn" title="{% trans 'Fullscreen' %}">
             <i class="bi bi-arrows-fullscreen"></i>
           </button>
@@ -1546,13 +1548,13 @@ body.dark-mode .action-btn-secondary:hover {
         {% endif %}
 
         <div class="redeem-code-wrapper">
-          <div class="redeem-code opaque" id="redeem-code">{{ item.redeem_code }}</div>
-          {% if item.code_type == "none" %}
+          <div class="redeem-code{% if global_preferences.blur_codes_enabled %} opaque{% endif %}" id="redeem-code">{{ item.redeem_code }}</div>
+          {% if item.code_type == "none" and global_preferences.blur_codes_enabled %}
           <div class="tap-hint" id="qr-tap-hint">
             <i class="bi bi-hand-index"></i> {% trans "Tap to reveal" %}
           </div>
           {% endif %}
-          <button type="button" class="copy-code-btn" id="copy-code-btn" title="{% trans 'Copy code' %}">
+          <button type="button" class="copy-code-btn{% if not global_preferences.blur_codes_enabled %} visible{% endif %}" id="copy-code-btn" title="{% trans 'Copy code' %}">
             <i class="bi bi-clipboard"></i>
           </button>
         </div>
@@ -1664,6 +1666,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
+  const blurCodesEnabled = {{ global_preferences.blur_codes_enabled|yesno:"true,false" }};
   const qrCode = document.getElementById('qr-code');
   const redeemCode = document.getElementById('redeem-code');
   const qrTapHint = document.getElementById('qr-tap-hint');
@@ -1715,8 +1718,10 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     e.stopPropagation();
   }
-  qrCode?.addEventListener('click', toggleCodeReveal, { passive: true });
-  redeemCode?.addEventListener('click', toggleCodeReveal, { passive: true });
+  if (blurCodesEnabled) {
+    qrCode?.addEventListener('click', toggleCodeReveal, { passive: true });
+    redeemCode?.addEventListener('click', toggleCodeReveal, { passive: true });
+  }
 
   // Copy code button
   copyBtn?.addEventListener('click', async (e) => {
