@@ -2394,6 +2394,51 @@ bug: everything else already builds its URL via `{% url %}`/`.action`/
 (survives the redirect harmlessly) - this was the one hand-built POST URL
 in the codebase.
 
+## Phase 45 — Item detail page: visual pass and the "two barcodes" fix
+
+Requested review: the item detail page's action-button row read as a wall
+of solid-colored blocks (blue/grey/grey/grey/yellow/grey/red) with no
+clear hierarchy, cards had inconsistent shadow/radius from one section to
+the next, and - the concrete bug - the page showed what looked like two
+redundant barcodes with nothing explaining why.
+
+**The "two barcodes"**: not actually a duplicate. The top "Scan to
+Redeem" card is the auto-generated, scannable code. Further down, the
+"Show Image"/"Download" section is `item.file` - the original photo/scan
+you uploaded when adding the item, which for barcode-photographed items
+looks near-identical to the real code above it. Relabeled that section
+"Original Upload" with a caption ("The file you uploaded when adding this
+item - not the redemption code above.") and gave it quieter, smaller
+typography than the primary scan card, so the two are unmistakably
+different things instead of unexplained duplicates.
+
+**Action buttons**: collapsed five different solid-color treatments down
+to three semantic tiers - Edit stays the one filled primary-blue button;
+every routine action (Duplicate, Share via..., Share with Users, wallet
+exports, Check Balance, Archive) is now a single neutral outline style
+(new `.action-btn-outline`, matching the outline look the file-download
+buttons already used); Delete moved from a solid red block to a red
+outline (`.action-btn-danger-outline`) so it reads as "careful" rather
+than shouting as loud as Edit. Mark Used/Available keeps its filled
+green/amber treatment - it's a genuine status change, not a routine
+action, so it earns the extra visual weight.
+
+**Card consistency**: `.pin-card`, `.shared-users-card`/`.documents-card`,
+and `.file-section` previously used a smaller shadow/radius (or none at
+all) than `.item-detail-card`/`.transaction-card` - unified all of them
+to the same `border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08)`
+so the whole page reads as one consistent card system. The PIN card also
+gained a small "PIN" title (matching the QR card's own title styling) -
+it previously started straight into a masked value with no label at all.
+
+Verified end-to-end with Playwright screenshots (light + dark mode,
+mobile + desktop widths) against a seeded item carrying every optional
+field (PIN, description, wallet, tags, notes, an uploaded image, a
+receipt document, and gift-card transactions) - not just template-render
+tests, since this phase is entirely about what the page actually looks
+like. `Show Image`/`Hide Image` toggling re-verified working with the
+new markup.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
