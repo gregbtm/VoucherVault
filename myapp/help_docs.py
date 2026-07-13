@@ -18,6 +18,7 @@ DOCS = {
     'ocr': ('Scan with AI (OCR) setup', 'OCR_SETUP.md'),
     'auto-deploy': ('Update check & Portainer redeploy', 'AUTO_DEPLOY.md'),
     'backup-restore': ('Scheduled backups & restore', 'BACKUP_RESTORE.md'),
+    'upstream-sync': ('How upstream sync works', 'UPSTREAM_SYNC.md'),
 }
 
 

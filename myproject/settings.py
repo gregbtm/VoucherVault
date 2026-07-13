@@ -29,16 +29,22 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # get debug modus from env
 DEBUG = os.environ.get('DEBUG', 'False').lower() in ['true']
 
-def _read_version_file() -> str | None:
-    """Reads the VERSION file baked into the image by docker/Dockerfile."""
+def _read_version_file(filename: str) -> str | None:
+    """Reads a plain-text version file baked into the image by docker/Dockerfile."""
     try:
-        return (BASE_DIR / 'VERSION').read_text().strip() or None
+        return (BASE_DIR / filename).read_text().strip() or None
     except OSError:
         return None
 
 # an explicit env var wins (useful for CI/local overrides), then the
 # VERSION file shipped in the image, then 'unknown' if neither is present
-VERSION = escape(os.environ.get("VERSION") or _read_version_file() or 'unknown')
+VERSION = escape(os.environ.get("VERSION") or _read_version_file('VERSION') or 'unknown')
+
+# The upstream l4rm4nd/VoucherVault version this fork's `main` was last
+# merged up to date with (see docs/UPSTREAM_SYNC.md) - bumped only when an
+# actual upstream sync happens, not on every commit. Lets the app display
+# "based on upstream vX.Y.Z" alongside its own VERSION.
+UPSTREAM_VERSION = escape(_read_version_file('UPSTREAM_VERSION') or 'unknown')
 
 # auto-generate a secure secret key or use from env variable
 SECRET_KEY = os.environ.get("SECRET_KEY", secrets.token_urlsafe(32))

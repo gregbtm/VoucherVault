@@ -570,6 +570,16 @@
   <footer id="footer" class="footer">
     <div class="copyright">
       <h5>VoucherVault Plus+ {{ "VERSION"|env }}</h5>
+      {% if upstream_version %}
+      <div class="small text-muted">
+        {% blocktrans with version=upstream_version %}based on upstream v{{ version }}{% endblocktrans %}
+        {% if upstream_behind %}
+          <a href="https://github.com/l4rm4nd/VoucherVault/releases" target="_blank" rel="noopener" title="{% trans 'A newer upstream release is available' %}">
+            <i class="bi bi-arrow-up-circle text-warning"></i>
+          </a>
+        {% endif %}
+      </div>
+      {% endif %}
       &copy; Copyright <strong><span>NiceAdmin</span></strong>. All Rights Reserved
     </div>
     <div class="credits">

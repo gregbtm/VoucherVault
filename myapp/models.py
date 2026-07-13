@@ -471,6 +471,37 @@ class UpdateCheckStatus(models.Model):
         return f"Update check (latest: {self.latest_version or 'unknown'})"
 
 
+class UpstreamSyncStatus(models.Model):
+    """
+    Singleton row (always pk=1) holding the result of the last check
+    against l4rm4nd/VoucherVault's own releases - the upstream project
+    this fork is built on top of. Separate from UpdateCheckStatus above,
+    which tracks this FORK's own releases. Refreshed by the periodic
+    check_upstream_version_task (see myapp/update_check.py). What was
+    last actually merged from upstream is tracked in the committed
+    UPSTREAM_VERSION file (settings.UPSTREAM_VERSION), not here - this
+    model only holds what's currently available upstream.
+    """
+    upstream_repo = models.CharField(max_length=255, default='l4rm4nd/VoucherVault')
+    latest_version = models.CharField(max_length=50, blank=True)
+    latest_release_url = models.URLField(blank=True)
+    latest_release_published_at = models.DateTimeField(null=True, blank=True)
+    checked_at = models.DateTimeField(null=True, blank=True)
+    last_check_error = models.CharField(max_length=500, blank=True, default='')
+
+    class Meta:
+        verbose_name = "Upstream Sync Status"
+        verbose_name_plural = "Upstream Sync Status"
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return f"Upstream sync (latest: {self.latest_version or 'unknown'})"
+
+
 OCR_BACKEND_CHOICES = (
     ('none', 'Disabled'),
     ('claude', 'Claude'),

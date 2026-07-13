@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db.models import Count, Q
 
-from .models import SiteConfiguration, UpdateCheckStatus, UserPreference, Wallet
+from .models import SiteConfiguration, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, Wallet
 from .update_check import _is_newer
 
 
@@ -40,10 +40,14 @@ def update_check_status(request):
     # until someone happens to check again. Cheap (pure string parsing),
     # so safe to redo on every request instead of caching it too.
     update_available = _is_newer(status.latest_version, settings.VERSION)
+    upstream_status = UpstreamSyncStatus.load()
     return {
         'update_check': status,
         'update_check_available': update_available,
         'portainer_redeploy_configured': bool(SiteConfiguration.load().portainer_webhook_url),
+        'upstream_sync_status': upstream_status,
+        'upstream_version': settings.UPSTREAM_VERSION,
+        'upstream_behind': _is_newer(upstream_status.latest_version, settings.UPSTREAM_VERSION),
     }
 
 
