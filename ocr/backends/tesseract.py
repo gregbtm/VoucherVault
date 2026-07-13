@@ -22,12 +22,28 @@ _DATE_PATTERNS = [
     (re.compile(r'\b(\d{1,2})[./](\d{1,2})[./](\d{2})\b'), '%d.%m.%y'),
 ]
 
+# "PIN 1234", "PIN: 1234", "PIN CODE 1234" - a label immediately followed
+# by a short digit run, same layout as the labeled boxes on most gift
+# card screenshots (e.g. "PIN" / "GIFT CARD CODE" bounding boxes).
+_PIN_RE = re.compile(r'\bPIN\b[: ]*(?:CODE[: ]*)?(\d{3,8})\b', re.IGNORECASE)
+# A currency symbol/code next to a decimal amount, either order -
+# "£50.00", "50.00 GBP", "USD 25.99".
+_VALUE_RE = re.compile(
+    r'(?:[£$€]|GBP|USD|EUR)\s*(\d+(?:[.,]\d{2})?)|(\d+(?:[.,]\d{2})?)\s*(?:[£$€]|GBP|USD|EUR)',
+    re.IGNORECASE,
+)
+_CURRENCY_SYMBOL_MAP = {'£': 'GBP', '$': 'USD', '€': 'EUR'}
+_CURRENCY_RE = re.compile(r'[£$€]|\b(?:GBP|USD|EUR)\b', re.IGNORECASE)
+
 
 class TesseractOCRBackend(OCRBackend):
     """
-    Local, free OCR via the tesseract binary. Only extracts a best-guess
-    redeem code from raw recognized text — it has no understanding of what
-    a "merchant name" or "issuer" is, so those always come back None.
+    Local, free OCR via the tesseract binary. Best-effort regex guesses
+    against the raw recognized text for the redeem code, expiry date, PIN,
+    and value/currency (when a label or currency symbol sits right next to
+    them) - no vision understanding, so "merchant name" and "issuer"
+    always come back None, and card_number is never guessed (nothing
+    reliably distinguishes it from the redeem code in plain OCR text).
     """
 
     def __init__(self):
@@ -56,6 +72,8 @@ class TesseractOCRBackend(OCRBackend):
         full_text = ' '.join(words)
         code = self._guess_code(full_text)
         expiry_date = self._guess_expiry_date(full_text)
+        pin = self._guess_pin(full_text, code)
+        value, currency = self._guess_value_and_currency(full_text)
         confidence = (sum(confidences) / len(confidences) / 100) if confidences else 0.0
 
         return {
@@ -64,6 +82,10 @@ class TesseractOCRBackend(OCRBackend):
             'name': None,
             'issuer': None,
             'expiry_date': expiry_date,
+            'pin': pin,
+            'value': value,
+            'currency': currency,
+            'card_number': None,
             'confidence': round(confidence, 2) if code else 0.0,
         }
 
@@ -107,3 +129,34 @@ class TesseractOCRBackend(OCRBackend):
             except ValueError:
                 continue
         return None
+
+    def _guess_pin(self, text: str, code: str | None) -> str | None:
+        """Looks for a 'PIN' label immediately followed by digits - cheap
+        and only matches when the layout is that explicit, so it never
+        fires on the redeem code itself (which _PIN_RE's \\bPIN\\b prefix
+        won't match unless that literal word is printed on the card)."""
+        match = _PIN_RE.search(text)
+        if not match:
+            return None
+        pin = match.group(1)
+        return pin if pin != code else None
+
+    def _guess_value_and_currency(self, text: str) -> tuple[float | None, str | None]:
+        """A currency symbol/code directly beside a decimal amount, in
+        either order - e.g. '£50.00' or '50.00 GBP'. Returns (None, None)
+        if no such pairing is found; a bare number or bare symbol alone
+        isn't confident enough to guess from."""
+        match = _VALUE_RE.search(text)
+        if not match:
+            return None, None
+        amount_text = match.group(1) or match.group(2)
+        try:
+            value = float(amount_text.replace(',', '.'))
+        except ValueError:
+            return None, None
+        symbol_match = _CURRENCY_RE.search(match.group(0))
+        currency = None
+        if symbol_match:
+            token = symbol_match.group(0).upper()
+            currency = _CURRENCY_SYMBOL_MAP.get(symbol_match.group(0), token if token in ('GBP', 'USD', 'EUR') else None)
+        return value, currency

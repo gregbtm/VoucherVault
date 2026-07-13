@@ -1097,6 +1097,30 @@ document.addEventListener("DOMContentLoaded", function () {
           markAutoFilled(expiryField);
           filled.push("{% trans 'expiry date' %}");
         }
+        const pinField = document.getElementById('pin');
+        if (data.pin && pinField && !pinField.value) {
+          pinField.value = data.pin;
+          markAutoFilled(pinField);
+          filled.push("{% trans 'PIN' %}");
+        }
+        const valueField = document.getElementById('value');
+        if (data.value != null && valueField && !valueField.value) {
+          valueField.value = data.value;
+          markAutoFilled(valueField);
+          filled.push("{% trans 'value' %}");
+        }
+        const currencyField = document.getElementById('currency');
+        if (data.currency && currencyField) {
+          currencyField.value = data.currency;
+          markAutoFilled(currencyField);
+          filled.push("{% trans 'currency' %}");
+        }
+        if (data.card_number && !document.getElementById('card_number').value) {
+          const cardNumberField = document.getElementById('card_number');
+          cardNumberField.value = data.card_number;
+          markAutoFilled(cardNumberField);
+          filled.push("{% trans 'card number' %}");
+        }
 
         if (filled.length) {
           statusEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> {% trans "Filled from photo:" %} ${filled.join(', ')}</span>`;
