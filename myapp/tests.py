@@ -991,10 +991,33 @@ class WebShareButtonWiringTests(TestCase):
         response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
         self.assertContains(response, 'share-voucher-btn')
 
+    def test_view_item_share_button_carries_correct_public_share_url(self):
+        """
+        Regression test: voucher-share.js used to hand-build this URL as
+        `/items/<id>/public-share/`, which 404s against myapp.urls' i18n
+        prefix (see myproject/urls.py's i18n_patterns), gets 301/302-redirected
+        by LocaleMiddleware to the prefixed URL, and browsers silently
+        downgrade a POST to a GET when following that redirect - which
+        @require_POST then rejected with 405. The button must instead carry
+        the server-rendered (already-prefixed) URL so no redirect is ever
+        involved.
+        """
+        item = make_item(self.user)
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        expected_url = reverse('get_public_share_link', args=[item.id])
+        self.assertIn('/public-share/', expected_url)
+        self.assertContains(response, f'data-public-share-url="{expected_url}"')
+
     def test_inventory_cards_render_share_button(self):
         make_item(self.user)
         response = self.client.get(reverse('show_items'), {'status': 'all'})
         self.assertContains(response, 'share-voucher-btn')
+
+    def test_inventory_card_share_button_carries_correct_public_share_url(self):
+        item = make_item(self.user)
+        response = self.client.get(reverse('show_items'), {'status': 'all'})
+        expected_url = reverse('get_public_share_link', args=[item.id])
+        self.assertContains(response, f'data-public-share-url="{expected_url}"')
 
     def test_smart_share_flag_reflects_site_setting(self):
         set_site_config(share_via_smart_enabled=True)

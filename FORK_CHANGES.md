@@ -2358,6 +2358,42 @@ Every 500 error in a real deployment left zero trace in `docker logs`.
 This is general-purpose: any future unhandled exception anywhere in the
 app is now visible in the container's logs, not just this one flow.
 
+## Phase 44 — Found it: share button root cause was POST-to-GET on an i18n redirect
+
+The Phase 43 logging paid off immediately - the very next real failure
+logged:
+
+```
+WARNING django.request Method Not Allowed (GET): /en/items/<uuid>/public-share/
+```
+
+`myproject/urls.py` wraps `myapp.urls` (and therefore the public-share
+endpoints) in `i18n_patterns(...)`, which requires a locale prefix
+(`/en/...`). `voucher-share.js` built its fetch URL by hand as
+`/items/${itemId}/public-share/` - no prefix. That 404s against the
+i18n-prefixed URLconf, `LocaleMiddleware` 301/302-redirects to the
+correctly-prefixed URL, and per longstanding (if not strictly
+spec-compliant) browser behavior, a POST following a 301/302 is
+re-sent as a GET. The GET that actually landed hit `@require_POST` and
+was rejected with 405 - a non-JSON response, which is exactly what
+produced the original "Could not create a share link right now" dead
+end, on every tap, on both the item page and Inventory.
+
+Fixed at the source instead of guessed at again: the three
+`share-voucher-btn` elements (`view-item.html` x2, `inventory.html`)
+now carry `data-public-share-url="{% url 'get_public_share_link' ... %}"`
+- server-rendered, already locale-prefixed, the same way `data-url`
+already worked for the classic share link. `fetchPublicShareInfo()` uses
+that URL directly instead of reconstructing it, so the request goes
+straight to the right place with no redirect (and therefore no
+GET-downgrade) involved at all.
+
+Audited every other `fetch()` call site in the app for the same class of
+bug: everything else already builds its URL via `{% url %}`/`.action`/
+`.dataset.url` (all server-rendered, already prefixed) or is a GET
+(survives the redirect harmlessly) - this was the one hand-built POST URL
+in the codebase.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

@@ -1199,6 +1199,7 @@ body.dark-mode .action-btn-secondary:hover {
             <button type="button" class="action-btn action-btn-secondary share-voucher-btn"
                     data-item-id="{{ item.id }}" data-title="{{ item.name }}" data-merchant="{{ item.issuer }}"
                     data-url="{{ request.build_absolute_uri }}"
+                    data-public-share-url="{% url 'get_public_share_link' item_id=item.id %}"
                     title="{% trans 'Send a link to this item via your device share sheet, email, messages, etc.' %}">
               <i class="bi bi-send"></i> {% trans "Share via..." %}
             </button>
@@ -1254,6 +1255,7 @@ body.dark-mode .action-btn-secondary:hover {
             <button type="button" class="action-btn action-btn-info share-voucher-btn"
                     data-item-id="{{ item.id }}" data-title="{{ item.name }}" data-merchant="{{ item.issuer }}"
                     data-url="{{ request.build_absolute_uri }}"
+                    data-public-share-url="{% url 'get_public_share_link' item_id=item.id %}"
                     title="{% trans 'Send a link to this item via your device share sheet, email, messages, etc.' %}">
               <i class="bi bi-send"></i> {% trans "Share via..." %}
             </button>
