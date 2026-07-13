@@ -308,28 +308,37 @@ a.action-btn-warning:hover {
   color: #000 !important;
 }
 
-.action-btn-secondary,
-a.action-btn-secondary {
-  background: #6c757d;
+/* Neutral outline: every routine, non-destructive action (Duplicate,
+   Share, Share with Users, wallet exports, balance-check link, Archive) -
+   one consistent look instead of the previous mix of solid grey/cyan
+   blocks, so the primary blue Edit button is the only "loud" color here. */
+.action-btn-outline,
+a.action-btn-outline {
+  background: var(--card-bg, #fff);
+  color: var(--text-color, #495057) !important;
+  border: 1.5px solid var(--border-color, #dee2e6);
+}
+
+.action-btn-outline:hover,
+a.action-btn-outline:hover {
+  background: var(--hover-bg, #f8f9fa);
+  border-color: var(--primary-color, #4154f1);
+  color: var(--primary-color, #4154f1) !important;
+}
+
+/* Destructive but not shouting: outline instead of a solid block, so
+   Delete reads as "careful" rather than competing with Edit for attention. */
+.action-btn-danger-outline,
+a.action-btn-danger-outline {
+  background: var(--card-bg, #fff);
+  color: #dc3545 !important;
+  border: 1.5px solid #dc3545;
+}
+
+.action-btn-danger-outline:hover,
+a.action-btn-danger-outline:hover {
+  background: #dc3545;
   color: white !important;
-}
-
-.action-btn-secondary:hover,
-a.action-btn-secondary:hover {
-  background: #5c636a;
-  color: white !important;
-}
-
-.action-btn-info,
-a.action-btn-info {
-  background: #0dcaf0;
-  color: #000 !important;
-}
-
-.action-btn-info:hover,
-a.action-btn-info:hover {
-  background: #31d2f2;
-  color: #000 !important;
 }
 
 /* QR Section */
@@ -527,10 +536,22 @@ a.action-btn-info:hover {
 /* PIN Card */
 .pin-card {
   background: var(--card-bg, #fff);
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
   border: 1px solid var(--border-color, #eee);
   margin-top: 1rem;
+  padding: 1rem;
+}
+
+.pin-card-title {
+  font-size: 0.75rem;
+  color: #6c757d;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .pin-input-group {
@@ -547,7 +568,7 @@ a.action-btn-info:hover {
   font-size: 1rem;
   background: var(--input-bg, #fff);
   color: var(--text-color, #1e1e1e);
-  border-radius: 12px 0 0 12px;
+  border-radius: 8px 0 0 8px;
 }
 
 .pin-input:focus {
@@ -591,7 +612,7 @@ a.action-btn-info:hover {
   flex-shrink: 0;
   text-overflow: clip;
   overflow: visible;
-  border-radius: 0 12px 12px 0;
+  border-radius: 0 8px 8px 0;
 }
 
 .pin-toggle-btn:hover {
@@ -622,7 +643,8 @@ a.action-btn-info:hover {
 .shared-users-card,
 .documents-card {
   background: var(--card-bg, #fff);
-  border-radius: 12px;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
   padding: 1.25rem;
   border: 1px solid var(--border-color, #eee);
   margin-top: 1.5rem;
@@ -661,14 +683,36 @@ a.action-btn-info:hover {
   border-radius: 6px;
 }
 
-/* File Section */
+/* File Section - the ORIGINAL file uploaded when this item was created
+   (a scan/photo/screenshot), separate from the auto-generated scan code
+   in the sidebar. Deliberately styled a notch quieter than the other
+   cards (smaller heading, muted caption, no shadow-drawing color) so it
+   doesn't visually compete with the actual redemption code - it used to
+   read as a confusing second barcode with no explanation of what it was. */
 .file-section {
   background: var(--card-bg, #fff);
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 1.25rem;
   border: 1px solid var(--border-color, #eee);
   margin-top: 1.5rem;
   text-align: center;
+}
+
+.file-section-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-color, #1e1e1e);
+  margin-bottom: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.file-section-caption {
+  font-size: 0.8rem;
+  color: #6c757d;
+  margin-bottom: 1rem;
 }
 
 .file-buttons {
@@ -1036,12 +1080,27 @@ body.dark-mode .action-btn-primary:hover {
   background: #4a5cd1;
 }
 
-body.dark-mode .action-btn-secondary {
-  background: #4a5568;
+body.dark-mode .action-btn-outline {
+  background: #2a2a2a;
+  color: #e0e0e0 !important;
+  border-color: #444;
 }
 
-body.dark-mode .action-btn-secondary:hover {
-  background: #5a6578;
+body.dark-mode .action-btn-outline:hover {
+  background: #333;
+  border-color: #5a6cf1;
+  color: #5a6cf1 !important;
+}
+
+body.dark-mode .action-btn-danger-outline {
+  background: #2a2a2a;
+  color: #ff6b6b !important;
+  border-color: #ff6b6b;
+}
+
+body.dark-mode .action-btn-danger-outline:hover {
+  background: #dc3545;
+  color: white !important;
 }
 </style>
 
@@ -1193,10 +1252,10 @@ body.dark-mode .action-btn-secondary:hover {
             <a href="{% url 'edit_item' item.id %}" class="action-btn action-btn-primary">
               <i class="bi bi-pencil"></i> {% trans "Edit" %}
             </a>
-            <a href="{% url 'duplicate_item' item.id %}" class="action-btn action-btn-secondary">
+            <a href="{% url 'duplicate_item' item.id %}" class="action-btn action-btn-outline">
               <i class="bi bi-copy"></i> {% trans "Duplicate" %}
             </a>
-            <button type="button" class="action-btn action-btn-secondary share-voucher-btn"
+            <button type="button" class="action-btn action-btn-outline share-voucher-btn"
                     data-item-id="{{ item.id }}" data-title="{{ item.name }}" data-merchant="{{ item.issuer }}"
                     data-url="{{ request.build_absolute_uri }}"
                     data-public-share-url="{% url 'get_public_share_link' item_id=item.id %}"
@@ -1204,23 +1263,23 @@ body.dark-mode .action-btn-secondary:hover {
               <i class="bi bi-send"></i> {% trans "Share via..." %}
             </button>
             {% if is_owner %}
-            <a href="{% url 'share_item' item.id %}" class="action-btn action-btn-secondary"
+            <a href="{% url 'share_item' item.id %}" class="action-btn action-btn-outline"
                title="{% trans 'Give other VoucherVault users access to view and edit this item' %}">
               <i class="bi bi-people"></i> {% trans "Share with Users" %}
             </a>
             {% endif %}
             {% if pkpass_enabled %}
-            <a href="{% url 'item-pkpass' item.id %}" class="action-btn action-btn-secondary" id="apple-wallet-btn" style="display:none;">
+            <a href="{% url 'item-pkpass' item.id %}" class="action-btn action-btn-outline" id="apple-wallet-btn" style="display:none;">
               <i class="bi bi-wallet2"></i> {% trans "Add to Apple Wallet" %}
             </a>
             {% endif %}
             {% if google_wallet_save_url %}
-            <a href="{{ google_wallet_save_url }}" class="action-btn action-btn-secondary" id="google-wallet-btn" style="display:none;">
+            <a href="{{ google_wallet_save_url }}" class="action-btn action-btn-outline" id="google-wallet-btn" style="display:none;">
               <i class="bi bi-wallet2"></i> {% trans "Add to Google Wallet" %}
             </a>
             {% endif %}
             {% if item.balance_check_url %}
-            <a href="{{ item.balance_check_url }}" class="action-btn action-btn-secondary" target="_blank" rel="noopener">
+            <a href="{{ item.balance_check_url }}" class="action-btn action-btn-outline" target="_blank" rel="noopener">
               <i class="bi bi-search"></i> {% trans "Check Balance" %}
             </a>
             {% endif %}
@@ -1238,21 +1297,21 @@ body.dark-mode .action-btn-secondary:hover {
             {% endif %}
             <form action="{% url 'toggle_archive_item' item.id %}" method="post" style="display:contents;">
               {% csrf_token %}
-              <button type="submit" class="action-btn action-btn-secondary">
+              <button type="submit" class="action-btn action-btn-outline">
                 <i class="bi bi-archive"></i>
                 {% if item.is_archived %}{% trans "Unarchive" %}{% else %}{% trans "Archive" %}{% endif %}
               </button>
             </form>
             <form action="{% url 'delete_item' item.id %}" method="post" style="display:contents;">
               {% csrf_token %}
-              <button type="submit" class="action-btn action-btn-danger" onclick="return confirm('{% trans "Are you sure to delete?" %}');">
+              <button type="submit" class="action-btn action-btn-danger-outline" onclick="return confirm('{% trans "Are you sure to delete?" %}');">
                 <i class="bi bi-trash"></i> {% trans "Delete" %}
               </button>
             </form>
           </div>
           {% else %}
           <div class="action-buttons">
-            <button type="button" class="action-btn action-btn-info share-voucher-btn"
+            <button type="button" class="action-btn action-btn-outline share-voucher-btn"
                     data-item-id="{{ item.id }}" data-title="{{ item.name }}" data-merchant="{{ item.issuer }}"
                     data-url="{{ request.build_absolute_uri }}"
                     data-public-share-url="{% url 'get_public_share_link' item_id=item.id %}"
@@ -1386,9 +1445,11 @@ body.dark-mode .action-btn-secondary:hover {
         </div>
       </div>
 
-      <!-- File Section -->
+      <!-- File Section: the original upload, not the scan code above -->
       {% if item.file.name|is_image_file %}
       <div class="file-section">
+        <div class="file-section-title"><i class="bi bi-image"></i> {% trans "Original Upload" %}</div>
+        <p class="file-section-caption">{% trans "The file you uploaded when adding this item - not the redemption code above." %}</p>
         <div class="file-buttons" id="image-button-group">
           <button class="file-btn" id="show-image-btn">
             <i class="bi bi-eye"></i> {% trans "Show Image" %}
@@ -1404,6 +1465,8 @@ body.dark-mode .action-btn-secondary:hover {
       </div>
       {% elif item.file.name %}
       <div class="file-section">
+        <div class="file-section-title"><i class="bi bi-file-earmark"></i> {% trans "Original Upload" %}</div>
+        <p class="file-section-caption">{% trans "The file you uploaded when adding this item." %}</p>
         <a href="{% url 'download_file' item.id %}" class="file-btn">
           <i class="bi bi-download"></i> {% trans "Download File" %}
         </a>
@@ -1564,6 +1627,9 @@ body.dark-mode .action-btn-secondary:hover {
       
       {% if item.pin %}
       <div class="pin-card">
+        <div class="pin-card-title">
+          <i class="bi bi-shield-lock"></i> {% trans "PIN" %}
+        </div>
         <div class="pin-input-group">
           <input type="password" id="pin-code" class="pin-input" value="{{ item.pin }}" readonly>
           <button type="button" class="copy-pin-btn" id="copy-pin-btn" title="{% trans 'Copy PIN' %}">
