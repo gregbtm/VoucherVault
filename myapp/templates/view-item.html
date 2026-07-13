@@ -225,6 +225,15 @@
   gap: 0.75rem;
 }
 
+/* Status/destructive actions (Mark Used, Archive, Delete) sit in their own
+   grid below the everyday actions, set off by a thin divider - keeps the
+   button grid from reading as one undifferentiated wall of color. */
+.action-buttons-status {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--border-color, #e5e7eb);
+}
+
 .action-btn {
   display: inline-flex;
   align-items: center;
@@ -1187,14 +1196,14 @@ body.dark-mode .action-btn-secondary:hover {
             <a href="{% url 'duplicate_item' item.id %}" class="action-btn action-btn-secondary">
               <i class="bi bi-copy"></i> {% trans "Duplicate" %}
             </a>
-            <button type="button" class="action-btn action-btn-info share-voucher-btn"
+            <button type="button" class="action-btn action-btn-secondary share-voucher-btn"
                     data-item-id="{{ item.id }}" data-title="{{ item.name }}" data-merchant="{{ item.issuer }}"
                     data-url="{{ request.build_absolute_uri }}"
                     title="{% trans 'Send a link to this item via your device share sheet, email, messages, etc.' %}">
               <i class="bi bi-send"></i> {% trans "Share via..." %}
             </button>
             {% if is_owner %}
-            <a href="{% url 'share_item' item.id %}" class="action-btn action-btn-success"
+            <a href="{% url 'share_item' item.id %}" class="action-btn action-btn-secondary"
                title="{% trans 'Give other VoucherVault users access to view and edit this item' %}">
               <i class="bi bi-people"></i> {% trans "Share with Users" %}
             </a>
@@ -1214,6 +1223,9 @@ body.dark-mode .action-btn-secondary:hover {
               <i class="bi bi-search"></i> {% trans "Check Balance" %}
             </a>
             {% endif %}
+          </div>
+
+          <div class="action-buttons action-buttons-status">
             {% if item.type != "loyaltycard" %}
             <form action="{% url 'toggle_item_status' item.id %}" method="post" style="display:contents;">
               {% csrf_token %}
@@ -1245,6 +1257,31 @@ body.dark-mode .action-btn-secondary:hover {
                     title="{% trans 'Send a link to this item via your device share sheet, email, messages, etc.' %}">
               <i class="bi bi-send"></i> {% trans "Share via..." %}
             </button>
+          </div>
+          {% endif %}
+
+          <!-- Shared Users Section (Owner only) -->
+          {% if is_owner and is_shared %}
+          <div class="shared-users-card">
+            <h5><i class="bi bi-people"></i> {% trans "Shared With" %}</h5>
+            {% for share in item.shared_with.all %}
+            <div class="shared-user-item">
+              <span class="shared-user-info">
+                <i class="bi bi-person"></i> {{ share.shared_with_user.username }}
+                {% if share.shared_with_user.email %}
+                <small class="text-muted">({{ share.shared_with_user.email }})</small>
+                {% endif %}
+              </span>
+              <form method="POST" action="{% url 'unshare_item' item_id=item.id user_id=share.shared_with_user.id %}" style="display:inline;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger unshare-btn" onclick="return confirm('{% trans "Are you sure you want to unshare this item?" %}');">
+                  {% trans "Unshare" %}
+                </button>
+              </form>
+            </div>
+            {% empty %}
+            <p class="text-muted mb-0">{% trans "This item is not shared with anyone." %}</p>
+            {% endfor %}
           </div>
           {% endif %}
 
@@ -1344,34 +1381,9 @@ body.dark-mode .action-btn-secondary:hover {
             </form>
             {% endif %}
           </div>
-
-          <!-- Shared Users Section (Owner only) -->
-          {% if is_owner and is_shared %}
-          <div class="shared-users-card">
-            <h5><i class="bi bi-people"></i> {% trans "Shared With" %}</h5>
-            {% for share in item.shared_with.all %}
-            <div class="shared-user-item">
-              <span class="shared-user-info">
-                <i class="bi bi-person"></i> {{ share.shared_with_user.username }}
-                {% if share.shared_with_user.email %}
-                <small class="text-muted">({{ share.shared_with_user.email }})</small>
-                {% endif %}
-              </span>
-              <form method="POST" action="{% url 'unshare_item' item_id=item.id user_id=share.shared_with_user.id %}" style="display:inline;">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-danger unshare-btn" onclick="return confirm('{% trans "Are you sure you want to unshare this item?" %}');">
-                  {% trans "Unshare" %}
-                </button>
-              </form>
-            </div>
-            {% empty %}
-            <p class="text-muted mb-0">{% trans "This item is not shared with anyone." %}</p>
-            {% endfor %}
-          </div>
-          {% endif %}
         </div>
       </div>
-      
+
       <!-- File Section -->
       {% if item.file.name|is_image_file %}
       <div class="file-section">
@@ -1856,29 +1868,16 @@ document.querySelectorAll('.editable-date').forEach(span => {
 {% endif %}
 
 {% if pkpass_enabled or google_wallet_save_url %}
+<script src="{% static 'assets/js/device-detect.js' %}"></script>
 <script>
-// Only show the wallet button the visiting device can actually use: Apple
-// Wallet needs Safari on an Apple OS (iPadOS 13+ reports as "Macintosh" but
-// is touch-capable, hence the maxTouchPoints check); Google Wallet's save
-// flow works on Android and on Chromium desktop browsers, but not in Safari.
+// Only show the wallet button the visiting device can actually use - see
+// device-detect.js for the detection logic itself.
 (function() {
-  var ua = navigator.userAgent || '';
-  var isIOSDevice = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  var isMac = /Macintosh/.test(ua) && navigator.maxTouchPoints <= 1;
-  var isSafari = /Safari/.test(ua) && !/Chrome|CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
-  var isApple = (isIOSDevice || isMac) && isSafari;
-
-  var isAndroid = /Android/.test(ua);
-  // CriOS/FxiOS etc. on iOS are just Safari's WebKit wearing a different
-  // badge, so only count a "Chrome" UA as real Chromium off iOS.
-  var isChromiumBrowser = !isIOSDevice && /Chrome|Chromium|Edg\//.test(ua);
-  var isGoogleWalletCompatible = isAndroid || isChromiumBrowser;
-
   var appleBtn = document.getElementById('apple-wallet-btn');
-  if (appleBtn) appleBtn.style.display = isApple ? '' : 'none';
+  if (appleBtn) appleBtn.style.display = VVDeviceDetect.isApple ? '' : 'none';
 
   var googleBtn = document.getElementById('google-wallet-btn');
-  if (googleBtn) googleBtn.style.display = (!isApple && isGoogleWalletCompatible) ? '' : 'none';
+  if (googleBtn) googleBtn.style.display = (!VVDeviceDetect.isApple && VVDeviceDetect.isGoogleWalletCompatible) ? '' : 'none';
 })();
 </script>
 {% endif %}

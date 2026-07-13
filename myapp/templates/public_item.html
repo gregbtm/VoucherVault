@@ -112,6 +112,13 @@
             background: var(--accent); color: #fff; font-size: 1rem; cursor: pointer;
         }
         .pin-error { color: #dc2626; font-size: 0.85rem; margin-bottom: 12px; }
+        .wallet-buttons { display: flex; flex-direction: column; gap: 8px; margin: 0 0 16px; }
+        .wallet-btn {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 10px; border-radius: 10px; border: 1px solid var(--border);
+            background: var(--bg); color: var(--text); text-decoration: none;
+            font-size: 0.9rem; font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -150,6 +157,21 @@
             {% if show_balance %}
             <p class="balance">{{ current_balance }} {{ item.currency }}</p>
             <p class="field-label" style="text-align:center; margin-bottom:20px;">{% trans "Remaining balance" %}</p>
+            {% endif %}
+
+            {% if pkpass_enabled or google_wallet_save_url %}
+            <div class="wallet-buttons">
+                {% if pkpass_enabled %}
+                <a href="{% url 'public_item_pkpass' share_id %}" class="wallet-btn" id="public-apple-wallet-btn" style="display:none;">
+                    <i class="bi bi-wallet2"></i> {% trans "Add to Apple Wallet" %}
+                </a>
+                {% endif %}
+                {% if google_wallet_save_url %}
+                <a href="{{ google_wallet_save_url }}" class="wallet-btn" id="public-google-wallet-btn" style="display:none;">
+                    <i class="bi bi-wallet2"></i> {% trans "Add to Google Wallet" %}
+                </a>
+                {% endif %}
+            </div>
             {% endif %}
 
             {% if item.code_type != "none" and item.qr_code_base64 %}
@@ -209,5 +231,20 @@ document.querySelectorAll('.copy-btn').forEach(function (btn) {
     });
 });
 </script>
+
+{% if pkpass_enabled or google_wallet_save_url %}
+<script src="{% static 'assets/js/device-detect.js' %}"></script>
+<script>
+// Only show the wallet button the visiting device can actually use - see
+// device-detect.js for the detection logic itself.
+(function () {
+    var appleBtn = document.getElementById('public-apple-wallet-btn');
+    if (appleBtn) appleBtn.style.display = VVDeviceDetect.isApple ? '' : 'none';
+
+    var googleBtn = document.getElementById('public-google-wallet-btn');
+    if (googleBtn) googleBtn.style.display = (!VVDeviceDetect.isApple && VVDeviceDetect.isGoogleWalletCompatible) ? '' : 'none';
+})();
+</script>
+{% endif %}
 </body>
 </html>

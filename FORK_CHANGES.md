@@ -64,6 +64,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 27 — Deeper GUI sweep: dark mode, overlays, and a touch bug](#phase-27--deeper-gui-sweep-dark-mode-overlays-and-a-touch-bug)
 - [Phase 28 — Uniform touch-target pass](#phase-28--uniform-touch-target-pass)
 - [Phase 29 — Public share link security overhaul, cache-banner root cause #2, and update-check reliability](#phase-29--public-share-link-security-overhaul-cache-banner-root-cause-2-and-update-check-reliability)
+- [Phase 30 — Site Settings save bug, and a UI cleanup batch](#phase-30--site-settings-save-bug-and-a-ui-cleanup-batch)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -1714,6 +1715,123 @@ deployment despite releases going out. Two independent root causes:
   or debugging Celery Beat.
 - New `TriggerUpdateCheckViewTests` (auth/permission gating, reports
   "up to date" vs. "update available: vX.Y.Z").
+
+## Phase 30 — Site Settings save bug, and a UI cleanup batch
+
+A bug report plus a batch of follow-up polish, all from real usage of the
+Site Settings page and the item detail/create pages.
+
+### Site Settings "Save" doing nothing - the actual bug
+
+Entering an OpenAI key and clicking "Save Site Settings" silently did
+nothing - no success banner, no persisted value, even after a refresh.
+
+- **Root cause**: `site_settings.html`'s "Check for updates now" control
+  (added in Phase 29) was a literal `<form method="POST" action="...">`
+  nested inside the page's own settings `<form>`. HTML forbids nesting
+  `<form>` elements - a browser's parser treats the inner closing `</form>`
+  tag as closing whichever form is actually open, which is the *outer*
+  one (there's only ever one form element in the parsed tree at that
+  point). Everything rendered after that point in the template - the
+  Portainer Webhook URL section, Scheduled Backups, and critically the
+  "Save Site Settings" submit button - ended up outside the real form
+  element in the DOM, even though the template source still looked
+  correctly indented inside it. Clicking Save had nothing to submit.
+- **Fix**: the "Check for updates now" control is now a plain `<button>`
+  that builds and submits its own standalone `<form>` via JS at click
+  time, appended directly to `<body>` - never a literal nested `<form>`
+  in the template source. Verified with a real headless-browser run
+  (Playwright): fill a field, click Save, confirm the success banner
+  appears and the value survives a reload - the kind of check Django's
+  test client can't do, since `self.client.post()` bypasses HTML parsing
+  entirely and would have passed even with the bug in place.
+- New regression test (`test_check_updates_control_is_not_a_nested_form`)
+  asserts the page contains exactly one `<form method="POST" action="">`
+  and no nested `action="...trigger_update_check..."` form.
+
+### Site Settings cleanup
+
+- **Portainer Webhook URL is no longer password-masked.** It's a webhook
+  URL you look up in Portainer, not a secret you type from memory - being
+  hidden behind a password input made it hard to confirm what was
+  actually saved. Removed from `SiteConfiguration.SECRET_FIELDS`; it now
+  renders and round-trips as a plain visible field like any other.
+- **OCR backend settings are now backend-specific.** Previously all of
+  Anthropic's and OpenAI's key/model fields showed at once regardless of
+  which backend (or none) was selected. The page now shows only the
+  selected backend's fields (JS, toggled on the backend `<select>`'s
+  `change` event) - Tesseract shows a short "nothing to configure" note,
+  and "Disabled" shows nothing.
+- **Readiness badges** ("Ready" / "Not ready", green/amber) next to OCR,
+  Apple Wallet, and Google Wallet - a real check, not just "is the field
+  filled in": Apple/Google Wallet check whether the certificate/key file
+  the configured path points to actually exists on disk
+  (`pkpass_enabled()` / `google_wallet_enabled()`, both pre-existing
+  helpers, just surfaced here); OCR checks the relevant API key is
+  present for Claude/OpenAI, or that the `tesseract` binary is actually
+  found in the container for the local backend.
+- **Update Check now shows both the installed version and the latest
+  known version side by side**, plus a "GitHub connectivity" badge
+  (Connected / Unreachable / Never checked). Backed by a new
+  `UpdateCheckStatus.last_check_error` field - `check_for_update()` now
+  records *why* the last check failed (and clears it on the next success)
+  instead of just silently leaving the previous result in place.
+
+### Item detail page
+
+- **Reorganized the action button grid** - it had grown to seven equally
+  loud, differently-colored buttons in one undifferentiated grid. Split
+  into two groups: everyday actions (Edit, Duplicate, Share via...,
+  Share with Users, wallet buttons, Check Balance) now share one calm
+  neutral style with Edit alone kept as the primary blue CTA; status/
+  destructive actions (Mark Used/Available, Archive, Delete) sit in a
+  second grid below a thin divider, keeping their semantic colors
+  (warning/success/danger) since those actually change the item's state.
+- **Moved the "Shared With" card above "Public Share Link"** - the two
+  sharing-related cards are now adjacent instead of separated by the
+  unrelated Documents card.
+
+### Create item page
+
+- **Apple Wallet import (.pkpass upload) is now hidden unless the visiting
+  device is actually an Apple one** (Safari on iOS/iPadOS/macOS - the
+  same detection already used for the wallet export buttons on the item
+  detail page, now factored out into a shared `device-detect.js` so both
+  pages use identical logic instead of two copies drifting apart).
+  Previously it showed unconditionally on every device/browser.
+- **The barcode-type dropdown now defaults to "No Barcode"** instead of
+  the model's own "qrcode" default - most new items haven't had anything
+  scanned yet, and a real scan, AI photo extraction, or `.pkpass` import
+  still overwrites this field the moment it actually detects a symbology
+  (unchanged - see `scanner.js::applyDetectedFormat`). Editing an existing
+  item, or duplicating one, is unaffected - both still show the item's
+  real code_type.
+
+### Public share page
+
+- **Apple/Google Wallet "Add to Wallet" buttons**, shown only when that
+  export method is configured server-side and only the one the visiting
+  device can actually use (same `device-detect.js` logic as above).
+  Google Wallet's save link is computed inline when the page renders (no
+  separate endpoint needed, mirroring how the authenticated item detail
+  page already does it); Apple Wallet's `.pkpass` is a binary file, so it
+  gets its own endpoint (`public_item_pkpass`) - one that re-checks the
+  same crawler/expiry/PIN gates as the page itself before generating
+  anything, since a wallet pass carries the same code/PIN/balance as the
+  page's own "full content" view.
+
+### Tests
+
+New/updated coverage: `PublicShareWalletTests` (wallet button visibility,
+`.pkpass` download success/404-when-unconfigured/403-when-gated),
+`CodeTypeDefaultTests` (new item defaults to "none", duplicate/edit
+preserve the real value), `IntegrationStatusTests` (the readiness-badge
+logic for OCR/PKPASS/Google Wallet), plus additions to
+`SiteConfigurationFormTests`, `SiteSettingsViewTests`, and
+`UpdateCheckServiceTests` for the plaintext webhook field, the nested-form
+regression, the installed/latest version display, the GitHub connectivity
+badge, and `last_check_error` recording. Full suite: 499 tests, all
+passing.
 
 ## New environment variables
 

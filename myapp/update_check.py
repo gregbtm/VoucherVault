@@ -43,25 +43,33 @@ def check_for_update() -> None:
     if not config.update_check_enabled:
         return
 
+    status = UpdateCheckStatus.load()
     url = f'https://api.github.com/repos/{config.update_check_repo}/releases/latest'
     try:
         response = requests.get(url, timeout=REQUEST_TIMEOUT, headers={'Accept': 'application/vnd.github+json'})
         response.raise_for_status()
+        data = response.json()
     except requests.RequestException as exc:
         logger.warning('Update check request failed: %s', exc)
+        # checked_at still advances so "last checked" reflects this attempt,
+        # but latest_version/update_available are deliberately left as-is -
+        # a transient GitHub outage shouldn't flip the banner off.
+        status.last_check_error = str(exc)
+        status.checked_at = timezone.now()
+        status.save()
         return
-
-    try:
-        data = response.json()
-        latest_version = data.get('tag_name', '') or ''
-        release_url = data.get('html_url', '') or ''
     except ValueError:
         logger.warning('Update check response was not valid JSON')
+        status.last_check_error = 'GitHub returned an unexpected response.'
+        status.checked_at = timezone.now()
+        status.save()
         return
 
-    status = UpdateCheckStatus.load()
+    latest_version = data.get('tag_name', '') or ''
+    release_url = data.get('html_url', '') or ''
     status.latest_version = latest_version
     status.latest_release_url = release_url
     status.checked_at = timezone.now()
+    status.last_check_error = ''
     status.update_available = _is_newer(latest_version, settings.VERSION)
     status.save()
