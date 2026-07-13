@@ -853,14 +853,20 @@ def trigger_portainer_redeploy(request):
     concern, this is the actual authorization check.
     """
     if not request.user.is_superuser:
+        if _wants_json(request):
+            return JsonResponse({'error': str(_('Only administrators can trigger a redeploy.'))}, status=403)
         messages.error(request, _('Only administrators can trigger a redeploy.'))
         return redirect('show_items')
 
     try:
         trigger_redeploy()
     except PortainerRedeployError as exc:
+        if _wants_json(request):
+            return JsonResponse({'error': str(_('Redeploy request failed: %(error)s') % {'error': exc})}, status=503)
         messages.error(request, _('Redeploy request failed: %(error)s') % {'error': exc})
     else:
+        if _wants_json(request):
+            return JsonResponse({'success': True, 'message': str(_('Redeploy triggered.'))})
         messages.success(request, _('Redeploy triggered. The app will restart once Portainer finishes rebuilding.'))
 
     referer = request.META.get('HTTP_REFERER')

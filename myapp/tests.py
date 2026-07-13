@@ -1790,6 +1790,7 @@ class UpdateCheckServiceTests(TestCase):
         mock_check.assert_called_once()
 
 
+@override_settings(VERSION='1.0.0')
 class UpdateCheckContextProcessorTests(TestCase):
     def setUp(self):
         self.superuser = User.objects.create_superuser(username='admin', password='pw12345!', email='a@example.com')
@@ -1807,7 +1808,22 @@ class UpdateCheckContextProcessorTests(TestCase):
         self.assertNotContains(response, 'A newer version')
 
     def test_banner_hidden_when_no_update_available(self):
-        UpdateCheckStatus.objects.filter(pk=1).update(update_available=False)
+        UpdateCheckStatus.objects.filter(pk=1).update(update_available=False, latest_version='1.0.0')
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('dashboard'))
+        self.assertNotContains(response, 'A newer version')
+
+    def test_banner_hidden_once_running_version_catches_up_even_with_stale_flag(self):
+        # Regression test for a real bug: update_available is only
+        # recomputed when check_for_update() actually runs (daily task or
+        # a manual click) - if the container gets redeployed to the fix in
+        # between, the stored flag stays stale (True) until the next check,
+        # so the banner kept showing "update available" even though the
+        # currently running version already *is* that update. The banner
+        # must be driven by comparing the stored latest_version against the
+        # live settings.VERSION on every request, not by trusting the
+        # stored boolean.
+        UpdateCheckStatus.objects.filter(pk=1).update(update_available=True, latest_version='v1.0.0')
         self.client.login(username='admin', password='pw12345!')
         response = self.client.get(reverse('dashboard'))
         self.assertNotContains(response, 'A newer version')
@@ -1888,7 +1904,33 @@ class PortainerRedeployViewTests(TestCase):
         response = self.client.post(reverse('trigger_portainer_redeploy'), HTTP_REFERER='https://evil.example.com/phish')
         self.assertRedirects(response, reverse('show_items'), fetch_redirect_response=False)
 
+    @patch('myapp.views.trigger_redeploy')
+    def test_ajax_success_returns_json(self, mock_trigger):
+        set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.post(reverse('trigger_portainer_redeploy'), HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
 
+    @patch('myapp.views.trigger_redeploy')
+    def test_ajax_failure_returns_json_error(self, mock_trigger):
+        set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
+        mock_trigger.side_effect = PortainerRedeployError('boom')
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.post(reverse('trigger_portainer_redeploy'), HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 503)
+        self.assertIn('boom', response.json()['error'])
+
+    @patch('myapp.views.trigger_redeploy')
+    def test_ajax_regular_user_forbidden_returns_json(self, mock_trigger):
+        set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.post(reverse('trigger_portainer_redeploy'), HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 403)
+        mock_trigger.assert_not_called()
+
+
+@override_settings(VERSION='1.0.0')
 class PortainerRedeployBannerTests(TestCase):
     def setUp(self):
         self.superuser = User.objects.create_superuser(username='admin', password='pw12345!', email='a@example.com')

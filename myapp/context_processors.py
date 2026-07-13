@@ -1,6 +1,8 @@
+from django.conf import settings
 from django.db.models import Count, Q
 
 from .models import SiteConfiguration, UpdateCheckStatus, UserPreference, Wallet
+from .update_check import _is_newer
 
 
 def sidebar_wallets(request):
@@ -29,8 +31,18 @@ def update_check_status(request):
     """
     if not request.user.is_authenticated or not request.user.is_superuser:
         return {}
+    status = UpdateCheckStatus.load()
+    # Re-validate against the *currently running* version on every request,
+    # rather than trusting status.update_available as stored - that flag is
+    # only recomputed when a check actually runs (daily task or a manual
+    # click), so a redeploy that ships the fix since the last check would
+    # otherwise leave a stale "update available" banner showing forever
+    # until someone happens to check again. Cheap (pure string parsing),
+    # so safe to redo on every request instead of caching it too.
+    update_available = _is_newer(status.latest_version, settings.VERSION)
     return {
-        'update_check': UpdateCheckStatus.load(),
+        'update_check': status,
+        'update_check_available': update_available,
         'portainer_redeploy_configured': bool(SiteConfiguration.load().portainer_webhook_url),
     }
 
