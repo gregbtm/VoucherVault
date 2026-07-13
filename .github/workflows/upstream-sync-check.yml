@@ -70,6 +70,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMIT_COUNT: ${{ steps.compare.outputs.commit_count }}
           COMMIT_LIST: ${{ steps.compare.outputs.commit_list }}
+        # Uses `gh api` (REST) rather than `gh issue` (GraphQL) - the
+        # auto-generated GITHUB_TOKEN has repeatedly hit "Resource not
+        # accessible by integration (createIssue)" on the GraphQL mutation
+        # even with issues: write granted and Issues enabled on the repo.
+        # REST's POST/PATCH /issues works with the exact same token/scope.
         run: |
           TITLE="Upstream sync available - ${COMMIT_COUNT} new commit(s)"
           BODY=$(cat <<EOF
@@ -84,11 +89,11 @@ jobs:
           EOF
           )
 
-          EXISTING=$(gh issue list --search "Upstream sync available in:title" --state open --json number --jq '.[0].number')
+          EXISTING=$(gh api "repos/${{ github.repository }}/issues?state=open&per_page=100" --jq '[.[] | select(.title | startswith("Upstream sync available"))][0].number // empty')
           if [ -n "$EXISTING" ]; then
-            gh issue edit "$EXISTING" --title "$TITLE" --body "$BODY"
+            gh api "repos/${{ github.repository }}/issues/${EXISTING}" -X PATCH -f title="$TITLE" -f body="$BODY"
           else
-            gh issue create --title "$TITLE" --body "$BODY"
+            gh api "repos/${{ github.repository }}/issues" -X POST -f title="$TITLE" -f body="$BODY"
           fi
 
       - name: Close tracking issue if fully synced
@@ -96,7 +101,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          EXISTING=$(gh issue list --search "Upstream sync available in:title" --state open --json number --jq '.[0].number')
+          EXISTING=$(gh api "repos/${{ github.repository }}/issues?state=open&per_page=100" --jq '[.[] | select(.title | startswith("Upstream sync available"))][0].number // empty')
           if [ -n "$EXISTING" ]; then
-            gh issue close "$EXISTING" --comment "Fully synced with upstream as of this check."
+            gh api "repos/${{ github.repository }}/issues/${EXISTING}/comments" -X POST -f body="Fully synced with upstream as of this check."
+            gh api "repos/${{ github.repository }}/issues/${EXISTING}" -X PATCH -f state=closed -f state_reason=not_planned
           fi
