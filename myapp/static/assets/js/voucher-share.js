@@ -42,8 +42,18 @@ function shareClassic(btn) {
   });
 }
 
-async function fetchPublicShareInfo(itemId) {
-  const response = await fetch(`/items/${itemId}/public-share/`, {
+async function fetchPublicShareInfo(btn) {
+  // Root cause of the original "Could not create a share link" bug: this
+  // used to hand-build the URL as `/items/${itemId}/public-share/`, but
+  // myapp.urls is wrapped in i18n_patterns (see myproject/urls.py), which
+  // requires a locale prefix (/en/...). A POST to the unprefixed URL 404s,
+  // LocaleMiddleware 302-redirects to the prefixed one, and browsers
+  // silently downgrade POST to GET when following a 301/302 - so the
+  // request that actually landed was a GET, which @require_POST correctly
+  // rejected with 405. Using the server-rendered, already-prefixed URL
+  // (data-public-share-url, built with {% url %} in the template) sidesteps
+  // the whole redirect entirely.
+  const response = await fetch(btn.dataset.publicShareUrl, {
     method: 'POST',
     headers: {
       'X-CSRFToken': vvGetCSRFToken(),
@@ -68,7 +78,7 @@ async function fetchPublicShareInfo(itemId) {
 
 async function shareViaLink(btn) {
   try {
-    const info = await fetchPublicShareInfo(btn.dataset.itemId);
+    const info = await fetchPublicShareInfo(btn);
     shareVoucher({
       title: `${info.merchant} Voucher`,
       text: `Here is my ${info.name} for ${info.merchant}.`,
@@ -82,7 +92,7 @@ async function shareViaLink(btn) {
 
 async function shareViaDetails(btn) {
   try {
-    const info = await fetchPublicShareInfo(btn.dataset.itemId);
+    const info = await fetchPublicShareInfo(btn);
     let text = `${info.merchant} - ${info.name}\nCode: ${info.code}`;
     if (info.pin) {
       text += `\nPIN: ${info.pin}`;
