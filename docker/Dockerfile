@@ -38,6 +38,7 @@ COPY requirements.txt /opt/app/requirements.txt
 COPY /docker/entrypoint.sh /opt/app/docker/entrypoint.sh
 COPY /docker/docker_uwsgi.ini /opt/app/docker/docker_uwsgi.ini
 COPY locale /opt/app/locale
+COPY docs /opt/app/docs
 
 # install dependencies, fix permissions
 RUN pip install --upgrade pip && \

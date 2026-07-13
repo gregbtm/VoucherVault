@@ -2,6 +2,10 @@
 {% load i18n %}
 
 {% block content %}
+<style>
+  .help-link { color: var(--text-muted, #6c757d); margin-left: 0.35rem; text-decoration: none; }
+  .help-link:hover { color: var(--primary-color, #4154f1); }
+</style>
 <div class="pagetitle">
   <h1>{% trans "Site Settings" %}</h1>
   <nav>
@@ -20,9 +24,10 @@
           <h5 class="card-title">{% trans "Configure Site Settings" %}</h5>
           <p class="text-muted small">
             {% trans "These used to be Portainer environment variables. Changes here take effect immediately - no redeploy needed - and are stored in the database, so they survive redeploys too. Bootstrap settings a container needs before it can even reach the database (domain, database connection, secret key, sessions, SSO) still live in Portainer; everything below doesn't." %}
+            {% trans "Every field below saves itself the moment you change it - no separate save step." %}
           </p>
 
-          <form method="POST" action="">
+          <form method="POST" action="" id="site-settings-form">
             {% csrf_token %}
 
             <div class="mb-4">
@@ -96,7 +101,10 @@
             </div>
 
             <div class="mb-4">
-              <h6 class="text-muted mb-3"><i class="bi bi-camera me-2"></i>{% trans "Scan with AI (OCR)" %}</h6>
+              <h6 class="text-muted mb-3">
+                <i class="bi bi-camera me-2"></i>{% trans "Scan with AI (OCR)" %}
+                <a href="{% url 'view_doc' 'ocr' %}" target="_blank" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
+              </h6>
               <div class="row">
                 <div class="col-md-4 mb-3">
                   <label for="{{ form.ocr_backend.id_for_label }}" class="form-label">{% trans "OCR backend" %}</label>
@@ -143,6 +151,7 @@
             <div class="mb-4">
               <h6 class="text-muted mb-3">
                 <i class="bi bi-apple me-2"></i>{% trans "Apple Wallet (.pkpass)" %}
+                <a href="{% url 'view_doc' 'apple-wallet' %}" target="_blank" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
                 {% if integration_status.pkpass %}
                   {% if integration_status.pkpass.ready %}
                     <span class="badge bg-success ms-2"><i class="bi bi-check-circle me-1"></i>{% trans "Ready" %}</span>
@@ -189,6 +198,7 @@
             <div class="mb-4">
               <h6 class="text-muted mb-3">
                 <i class="bi bi-google me-2"></i>{% trans "Google Wallet" %}
+                <a href="{% url 'view_doc' 'google-wallet' %}" target="_blank" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
                 {% if integration_status.google_wallet %}
                   {% if integration_status.google_wallet.ready %}
                     <span class="badge bg-success ms-2"><i class="bi bi-check-circle me-1"></i>{% trans "Ready" %}</span>
@@ -216,7 +226,10 @@
             </div>
 
             <div class="mb-4">
-              <h6 class="text-muted mb-3"><i class="bi bi-arrow-repeat me-2"></i>{% trans "Update Check" %}</h6>
+              <h6 class="text-muted mb-3">
+                <i class="bi bi-arrow-repeat me-2"></i>{% trans "Update Check" %}
+                <a href="{% url 'view_doc' 'auto-deploy' %}" target="_blank" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
+              </h6>
               <div class="form-check mb-2">
                 {{ form.update_check_enabled }}
                 <label class="form-check-label" for="{{ form.update_check_enabled.id_for_label }}">{% trans "Check GitHub Releases and show an update banner to admins" %}</label>
@@ -230,15 +243,15 @@
               <div class="row mb-2">
                 <div class="col-md-4">
                   <div class="text-muted small text-uppercase" style="letter-spacing:.03em;">{% trans "Installed version" %}</div>
-                  <div>{{ installed_version }}</div>
+                  <div id="update-check-installed">{{ installed_version }}</div>
                 </div>
                 <div class="col-md-4">
                   <div class="text-muted small text-uppercase" style="letter-spacing:.03em;">{% trans "Latest known version" %}</div>
-                  <div>{{ update_check_status.latest_version|default:"—" }}</div>
+                  <div id="update-check-latest">{{ update_check_status.latest_version|default:"—" }}</div>
                 </div>
                 <div class="col-md-4">
                   <div class="text-muted small text-uppercase" style="letter-spacing:.03em;">{% trans "GitHub connectivity" %}</div>
-                  <div>
+                  <div id="update-check-connectivity">
                     {% if not update_check_status.checked_at %}
                       <span class="badge bg-secondary">{% trans "Never checked" %}</span>
                     {% elif update_check_status.last_check_error %}
@@ -249,13 +262,16 @@
                   </div>
                 </div>
               </div>
-              <p class="text-muted small mb-2">
+              <p class="text-muted small mb-2" id="update-check-last-checked">
                 {% if update_check_status.checked_at %}
                   {% blocktrans with checked=update_check_status.checked_at|date:"Y-m-d H:i" %}Last checked {{ checked }}.{% endblocktrans %}
                   {% if update_check_status.last_check_error %}{{ update_check_status.last_check_error }}{% endif %}
                 {% else %}
                   {% trans "Never checked yet." %}
                 {% endif %}
+              </p>
+              <p class="text-muted small mb-2" id="update-check-release-link" {% if not update_check_status.latest_release_url %}style="display:none;"{% endif %}>
+                <a href="{{ update_check_status.latest_release_url }}" target="_blank" rel="noopener"><i class="bi bi-file-earmark-diff me-1"></i>{% trans "View what's changed in the latest release" %}</a>
               </p>
               <button type="button" id="check-updates-btn" class="btn btn-sm btn-outline-secondary" data-url="{% url 'trigger_update_check' %}">
                 {% trans "Check for updates now" %}
@@ -265,6 +281,7 @@
             <div class="mb-4">
               <h6 class="text-muted mb-3">
                 <i class="bi bi-cloud-arrow-up me-2"></i>{% trans "Portainer Redeploy Webhook" %}
+                <a href="{% url 'view_doc' 'auto-deploy' %}" target="_blank" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
                 {% if config.portainer_webhook_url %}
                   <span class="badge bg-success ms-2"><i class="bi bi-check-circle me-1"></i>{% trans "Configured" %}</span>
                 {% else %}
@@ -283,7 +300,10 @@
             </div>
 
             <div class="mb-4">
-              <h6 class="text-muted mb-3"><i class="bi bi-archive me-2"></i>{% trans "Scheduled Local Backups" %}</h6>
+              <h6 class="text-muted mb-3">
+                <i class="bi bi-archive me-2"></i>{% trans "Scheduled Local Backups" %}
+                <a href="{% url 'view_doc' 'backup-restore' %}" target="_blank" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
+              </h6>
               <div class="form-check mb-2">
                 {{ form.scheduled_backup_enabled }}
                 <label class="form-check-label" for="{{ form.scheduled_backup_enabled.id_for_label }}">{% trans "Run the nightly per-user backup" %}</label>
@@ -296,10 +316,8 @@
               </div>
             </div>
 
-            <div class="mt-4">
-              <button type="submit" class="btn btn-primary">
-                <i class="bi bi-check-circle me-1"></i>{% trans "Save Site Settings" %}
-              </button>
+            <div class="mt-4 text-muted small" id="autosave-status">
+              <i class="bi bi-cloud-check me-1"></i>{% trans "Changes save automatically." %}
             </div>
           </form>
 
@@ -326,27 +344,139 @@ document.addEventListener('DOMContentLoaded', function () {
     syncOcrFields();
   }
 
-  // "Check for updates now" posts to a different URL than this page's own
-  // save form. It's built as its own standalone <form>, submitted here via
-  // JS rather than written as a literal nested <form> in the template -
-  // HTML doesn't allow a <form> inside another <form>, and a browser
-  // encountering one closes the outer form early, which silently detached
-  // the "Save Site Settings" button (further down the page) from the real
-  // settings form.
+  // Autosave: every field on this form saves itself on change, via fetch,
+  // with a toast confirming success/failure instead of a Save button and
+  // a full page reload. A short debounce coalesces several near-
+  // simultaneous field changes (e.g. tabbing through a few in a row) into
+  // one request rather than one per field.
+  var settingsForm = document.getElementById('site-settings-form');
+  var autosaveStatus = document.getElementById('autosave-status');
+  var saveInFlight = false;
+  var savePending = false;
+  var debounceTimer = null;
+
+  function clearFieldErrors() {
+    settingsForm.querySelectorAll('.is-invalid').forEach(function (el) { el.classList.remove('is-invalid'); });
+    settingsForm.querySelectorAll('.autosave-error').forEach(function (el) { el.remove(); });
+  }
+
+  function showFieldErrors(errors) {
+    Object.keys(errors || {}).forEach(function (fieldName) {
+      var field = settingsForm.querySelector('[name="' + fieldName + '"]');
+      if (!field) return;
+      field.classList.add('is-invalid');
+      var msg = errors[fieldName].map(function (e) { return e.message; }).join(' ');
+      var errEl = document.createElement('div');
+      errEl.className = 'invalid-feedback d-block autosave-error';
+      errEl.textContent = msg;
+      field.insertAdjacentElement('afterend', errEl);
+    });
+  }
+
+  function runAutosave() {
+    saveInFlight = true;
+    clearFieldErrors();
+    if (autosaveStatus) autosaveStatus.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>{% trans "Saving..." %}';
+    fetch(settingsForm.action || window.location.href, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: new FormData(settingsForm),
+    })
+      .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
+      .then(function (result) {
+        saveInFlight = false;
+        if (result.ok && result.data.success) {
+          window.showToast(result.data.message, 'success');
+          if (autosaveStatus) autosaveStatus.innerHTML = '<i class="bi bi-cloud-check me-1"></i>{% trans "Changes save automatically." %}';
+        } else {
+          showFieldErrors(result.data.errors);
+          window.showToast('{% trans "Some settings could not be saved - check the highlighted fields." %}', 'danger');
+          if (autosaveStatus) autosaveStatus.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>{% trans "Not saved - see the errors above." %}';
+        }
+        if (savePending) { savePending = false; runAutosave(); }
+      })
+      .catch(function () {
+        saveInFlight = false;
+        window.showToast('{% trans "Save failed - could not reach the server." %}', 'danger');
+        if (autosaveStatus) autosaveStatus.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>{% trans "Save failed - could not reach the server." %}';
+      });
+  }
+
+  function scheduleAutosave() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function () {
+      if (saveInFlight) { savePending = true; return; }
+      runAutosave();
+    }, 400);
+  }
+
+  if (settingsForm) {
+    settingsForm.addEventListener('change', function (e) {
+      if (e.target.closest('#check-updates-btn')) return;
+      scheduleAutosave();
+    });
+    // Enter-to-submit in a text field would otherwise navigate the page -
+    // route it through the same autosave path instead.
+    settingsForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      clearTimeout(debounceTimer);
+      if (saveInFlight) { savePending = true; return; }
+      runAutosave();
+    });
+  }
+
+  // "Check for updates now" hits GitHub Releases and updates the version/
+  // connectivity display in place via fetch - no page reload, matching
+  // the rest of this page's autosave-and-toast behavior.
   var checkUpdatesBtn = document.getElementById('check-updates-btn');
   if (checkUpdatesBtn) {
     checkUpdatesBtn.addEventListener('click', function () {
       var csrfInput = document.querySelector('input[name=csrfmiddlewaretoken]');
-      var f = document.createElement('form');
-      f.method = 'POST';
-      f.action = checkUpdatesBtn.dataset.url;
-      var csrf = document.createElement('input');
-      csrf.type = 'hidden';
-      csrf.name = 'csrfmiddlewaretoken';
-      csrf.value = csrfInput.value;
-      f.appendChild(csrf);
-      document.body.appendChild(f);
-      f.submit();
+      checkUpdatesBtn.disabled = true;
+      fetch(checkUpdatesBtn.dataset.url, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfInput.value, 'X-Requested-With': 'XMLHttpRequest' },
+      })
+        .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
+        .then(function (result) {
+          checkUpdatesBtn.disabled = false;
+          if (!result.ok) {
+            window.showToast(result.data.error || '{% trans "Check failed." %}', 'danger');
+            return;
+          }
+          var data = result.data;
+          document.getElementById('update-check-installed').textContent = data.installed_version;
+          document.getElementById('update-check-latest').textContent = data.latest_version || '—';
+
+          var connectivityEl = document.getElementById('update-check-connectivity');
+          if (data.last_check_error) {
+            connectivityEl.innerHTML = '<span class="badge bg-danger" title="' + data.last_check_error.replace(/"/g, '&quot;') + '"><i class="bi bi-x-circle me-1"></i>{% trans "Unreachable" %}</span>';
+          } else {
+            connectivityEl.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>{% trans "Connected" %}</span>';
+          }
+
+          var lastCheckedEl = document.getElementById('update-check-last-checked');
+          if (data.checked_at) {
+            var checkedDate = new Date(data.checked_at);
+            var formatted = checkedDate.getFullYear() + '-' + String(checkedDate.getMonth() + 1).padStart(2, '0') + '-' + String(checkedDate.getDate()).padStart(2, '0')
+              + ' ' + String(checkedDate.getHours()).padStart(2, '0') + ':' + String(checkedDate.getMinutes()).padStart(2, '0');
+            lastCheckedEl.textContent = '{% trans "Last checked" %} ' + formatted + '.' + (data.last_check_error ? ' ' + data.last_check_error : '');
+          }
+
+          var releaseLinkEl = document.getElementById('update-check-release-link');
+          if (data.latest_release_url) {
+            releaseLinkEl.querySelector('a').href = data.latest_release_url;
+            releaseLinkEl.style.display = '';
+          } else {
+            releaseLinkEl.style.display = 'none';
+          }
+
+          window.showToast(data.message, 'success');
+        })
+        .catch(function () {
+          checkUpdatesBtn.disabled = false;
+          window.showToast('{% trans "Check failed - could not reach the server." %}', 'danger');
+        });
     });
   }
 });

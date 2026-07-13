@@ -65,6 +65,8 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 28 — Uniform touch-target pass](#phase-28--uniform-touch-target-pass)
 - [Phase 29 — Public share link security overhaul, cache-banner root cause #2, and update-check reliability](#phase-29--public-share-link-security-overhaul-cache-banner-root-cause-2-and-update-check-reliability)
 - [Phase 30 — Site Settings save bug, and a UI cleanup batch](#phase-30--site-settings-save-bug-and-a-ui-cleanup-batch)
+- [Phase 31 — In-app help buttons on Site Settings](#phase-31--in-app-help-buttons-on-site-settings)
+- [Phase 32 — Floating toasts, Site Settings autosave, foolproof wallet-button detection](#phase-32--floating-toasts-site-settings-autosave-foolproof-wallet-button-detection)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -1832,6 +1834,160 @@ logic for OCR/PKPASS/Google Wallet), plus additions to
 regression, the installed/latest version display, the GitHub connectivity
 badge, and `last_check_error` recording. Full suite: 499 tests, all
 passing.
+
+## Phase 31 — In-app help buttons on Site Settings
+
+A follow-up request: "could we add help buttons at the end of each setting
+to show the appropriate help section" - e.g. tapping a help icon next to
+Google Wallet should show that feature's setup guide.
+
+- **New in-app doc viewer** (`myapp/help_docs.py`, `view_doc` in
+  `myapp/views.py`, `doc_viewer.html`) renders `docs/*.md` as HTML at
+  `/admin-tools/help/<slug>/`, superuser-only. Deliberately rendered
+  locally rather than linking out to GitHub - the guide stays available
+  even on a fully offline deployment, and always matches the docs actually
+  shipped in the running image rather than whatever's on `main` right now.
+  Uses an allowlisted slug -> filename map (`help_docs.py::DOCS`), never a
+  raw path from the URL, so this can't become an arbitrary-file-read.
+  `docs/` is now copied into the Docker image (`docker/Dockerfile`) so
+  it's actually present at runtime - previously only the app code itself
+  was baked in.
+- **"?" help icons** added next to every Site Settings section that has
+  real setup content: Scan with AI (OCR), Apple Wallet, Google Wallet,
+  Update Check, Portainer Redeploy Webhook, and Scheduled Local Backups -
+  each opens its guide in a new tab so the in-progress settings form isn't
+  lost. Sections that are already self-explanatory via their own inline
+  help text (Expiry & Notifications, Web Push, Merchant Logos, Sharing)
+  deliberately don't get one - a "?" that just repeats the paragraph right
+  below it isn't help, it's noise.
+- **Two new setup guides** to fill real gaps this surfaced:
+  `docs/APPLE_WALLET_SETUP.md` (registering a Pass Type ID, generating and
+  exporting the certificate via Keychain Access, getting Apple's WWDR
+  intermediate certificate, and configuring the five `PKPASS_*` settings)
+  and `docs/OCR_SETUP.md` (comparing the three interchangeable OCR
+  backends - Claude, OpenAI, local/free Tesseract - and how to set up
+  each one). Apple Wallet previously had zero standalone documentation
+  despite being one of the more involved integrations to configure;
+  Google Wallet already had a full guide, so this brings Apple Wallet to
+  parity with it.
+- **Fixed a pre-existing latent bug found along the way**: `serve_image_file`
+  raised a bare `Http404` with no import for it anywhere in `views.py` -
+  every other usage of `HttpResponse`/`JsonResponse` was imported, but not
+  `Http404`. It would have crashed with a `NameError` instead of returning
+  a 404 the one time that branch actually ran (an item with no file
+  attached, viewed via the image-serving endpoint). Caught this because I
+  was about to introduce a second, correctly-imported use of the same
+  exception for the new doc viewer and noticed the existing one had no
+  import backing it. Fixed with a regression test.
+- Added `Markdown==3.10.2` to `requirements.txt` for the renderer
+  (`fenced_code`, `tables`, and `toc` extensions enabled).
+- New tests: `HelpDocViewerTests` (auth/permission gating, unknown-slug
+  404, all five known docs render with real HTML headings rather than
+  literal markdown `#`), a `SiteSettingsViewTests` case confirming every
+  documented section actually links to its guide, and `ServeImageFileTests`
+  covering the `Http404` fix. Verified the end-to-end click-through in a
+  real headless browser (Playwright): six help links present, clicking
+  one opens the rendered guide in a new tab with converted HTML headings.
+
+## Phase 32 — Floating toasts, Site Settings autosave, foolproof wallet-button detection
+
+A follow-up UX pass on the Site Settings page plus a real device-detection
+bug report from a Samsung Galaxy device on Edge for Android.
+
+### Toast messages now float, instead of forcing a scroll-to-top
+
+Every Django message (save confirmations, errors, etc.) previously
+rendered in-flow at the very top of the page content - visible only
+because a full-page POST/redirect naturally lands scrolled to the top.
+Scrolled anywhere else on a long page, you'd never see it without
+scrolling back up manually.
+
+- `base.html`'s messages block is now a fixed-position toast stack
+  (`#toast-stack`, top-center, `env(safe-area-inset-top)`-aware for phones
+  with a notch/punch-hole), independent of scroll position, auto-dismissing
+  after 5 seconds (manual close still available).
+- New shared `window.showToast(text, tag)` helper lets JS-driven flows
+  (autosave, update check) show the exact same toast without a page
+  navigation at all - see below.
+
+### Site Settings: autosave, no reload, no Save button
+
+Saving used to be a full-page POST + redirect: click Save, whole page
+reloads, banner appears back at the top. Per feedback, every field now
+saves itself the moment it changes.
+
+- Every field in the Site Settings form now has a `change` listener
+  (event delegation on the form itself); on change, the *entire* current
+  form state is POSTed via `fetch()` with a short debounce (400ms, so
+  tabbing through several fields quickly coalesces into one request
+  rather than one per field). The view now recognizes an
+  `X-Requested-With: XMLHttpRequest` AJAX request (same `_wants_json()`
+  pattern already used elsewhere) and returns JSON instead of a redirect:
+  `{"success": true, "message": "..."}` on save, or
+  `{"success": false, "errors": {...}}` (Django's structured
+  `form.errors.get_json_data()`) on validation failure.
+- On success: a toast, and that's it - no reload, page position
+  unchanged. On failure: the offending field(s) get a red outline plus
+  inline error text, and an error toast - no data is lost, nothing
+  navigates away.
+- The "Save Site Settings" button is gone, replaced with a small
+  "Changes save automatically" status line. Pressing Enter in a text
+  field (which would otherwise trigger a native form submission/page
+  navigation) is intercepted and routed through the same autosave path
+  instead.
+- Verified end-to-end in a real headless browser (Playwright): field
+  change -> fetch fires -> toast appears -> page URL unchanged -> value
+  survives an actual reload -> clearing a required field shows the
+  inline error and error toast instead of silently failing.
+
+### Wallet button device detection: switched to User-Agent Client Hints
+
+Reported bug: on a Samsung Galaxy device running Microsoft Edge for
+Android, the Apple/Google Wallet button logic wasn't reliably picking the
+right one. The previous approach parsed `navigator.userAgent` with regexes
+tuned against known UA formats (Safari/Chrome/Edge-desktop/Edge-iOS/...) -
+a fundamentally best-effort approach, since browser UA strings are a long
+tail of vendor-specific quirks that's easy to miss an edge case in
+(pun intended).
+
+- `device-detect.js` now prefers `navigator.userAgentData` (the User-Agent
+  Client Hints API) when the browser supports it: a structured signal
+  (`platform`, `brands`) rather than a freeform string to regex against.
+  Critically, **Safari has never implemented Client Hints at all** - so
+  its mere presence is itself a reliable "this is definitely not an Apple
+  browser" signal, and Chromium-family browsers (Chrome, Edge, Samsung
+  Internet, Opera, Brave, ...) on Android all expose it consistently
+  regardless of how each one's raw UA string happens to be formatted.
+  The old regex-based logic is kept as the fallback for browsers that
+  don't support Client Hints (i.e. genuinely Safari on iOS/iPadOS/macOS),
+  unchanged from before.
+- Applies to both the item detail page and the public share page's wallet
+  buttons (both already shared the same `device-detect.js`).
+
+### Update check: no reload, plus a link to what changed
+
+- "Check for updates now" now hits its endpoint via `fetch()` (same
+  `_wants_json()`-aware view as the settings autosave) and updates the
+  installed/latest version text and the connectivity badge in place,
+  with a toast - no page reload, matching the rest of this page's new
+  behavior.
+- Added a "View what's changed in the latest release" link beneath the
+  version display, pointing at the latest GitHub Release page
+  (`UpdateCheckStatus.latest_release_url`, already tracked) - which itself
+  is auto-generated from conventional commits by the CI release step
+  (Phase 25), so it doubles as a changelog for that release.
+
+### Tests
+
+New: `test_autosave_ajax_post_saves_without_redirect`,
+`test_autosave_ajax_post_invalid_returns_field_errors`,
+`test_no_save_button_present`, `test_ajax_returns_json_with_version_and_release_link`,
+`test_ajax_regular_user_forbidden_returns_json`. Updated the Phase 30
+nested-form regression test for the new form `id` attribute. Full suite
+still passing; the autosave/toast/no-reload behavior itself was verified
+end-to-end with a real headless browser (Playwright) rather than just
+Django's test client, since none of that is observable through server-
+rendered HTML alone.
 
 ## New environment variables
 
