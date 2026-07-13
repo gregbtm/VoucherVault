@@ -2331,6 +2331,33 @@ diagnosing from actual server logs/network responses rather than guessed
 at client-side, since the failure mode (expired session vs. CSRF vs. a
 genuine server error) wasn't actually confirmed.
 
+## Phase 43 — Server errors were invisible in production
+
+While chasing the Phase 42 share bug it became clear the app had no way
+to actually see it: Django's own default `LOGGING` config only prints
+tracebacks to console when `DEBUG=True`. With `DEBUG=False` (this app's
+production default), an unhandled exception instead only tries to email
+`ADMINS` over SMTP - unconfigured here, so it silently went nowhere.
+Every 500 error in a real deployment left zero trace in `docker logs`.
+
+- New explicit `LOGGING` config in `myproject/settings.py`: a console
+  handler active unconditionally (not gated on `DEBUG`), with
+  `django.request` logging both unhandled exceptions (full traceback,
+  level ERROR) and 404s/other 4xx (level WARNING) - previously invisible
+  in production either way.
+- New `LOG_LEVEL` env var (`INFO` by default) controls overall verbosity;
+  server errors and denied-access warnings always log regardless.
+- `get_public_share_link`, `regenerate_public_share_link`, and
+  `revoke_public_share_link` (`myapp/views.py`) now explicitly log who
+  was denied access (`has_item_access` returning `False` is a normal
+  `HttpResponse`, not an exception, so it never hit Django's own request
+  logger) and wrap their body in a try/except that logs the item id and
+  user before re-raising, so a genuine failure in this flow is now
+  attributable to a specific item/user instead of an anonymous 500.
+
+This is general-purpose: any future unhandled exception anywhere in the
+app is now visible in the container's logs, not just this one flow.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
@@ -2364,6 +2391,7 @@ On top of everything documented in the README, this fork adds:
 | `VERSION` | Overrides the version shown in the footer. Normally unset - the `VERSION` file baked into the image is the source of truth. | `<VERSION file>` |
 | `OIDC_DISCOVERY_URL` | Auto-populate `OIDC_OP_*_ENDPOINT` from a provider's `.well-known/openid-configuration` document. Any endpoint set explicitly via its own env var still wins. | `None` |
 | `API_WRITE_RATE_LIMIT` | Rate limit on REST API write requests (POST/PUT/PATCH/DELETE); reads are never throttled. | `60/minute` |
+| `LOG_LEVEL` | Console log verbosity (`DEBUG`/`INFO`/`WARNING`/`ERROR`). Server errors and denied-access warnings always log regardless. | `INFO` |
 
 See `docker/env.example` for the full, commented list.
 

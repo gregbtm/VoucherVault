@@ -1203,19 +1203,25 @@ def get_public_share_link(request, item_id):
     """
     item = get_object_or_404(Item, id=item_id)
     if not has_item_access(item, request.user):
+        logger.warning('get_public_share_link: user %s denied access to item %s', request.user, item_id)
         return HttpResponse("Unauthorized", status=403)
 
     try:
-        share = item.public_share
-    except ItemPublicShare.DoesNotExist:
         try:
-            share = _create_public_share(item, request.user)
-        except IntegrityError:
-            # Lost a race with a concurrent request creating the same
-            # OneToOne row - the other request's create() won, use it.
             share = item.public_share
+        except ItemPublicShare.DoesNotExist:
+            try:
+                share = _create_public_share(item, request.user)
+            except IntegrityError:
+                # Lost a race with a concurrent request creating the same
+                # OneToOne row - the other request's create() won, use it.
+                share = item.public_share
+        payload = _public_share_payload(request, item, share)
+    except Exception:
+        logger.exception('get_public_share_link failed for item %s (user %s)', item_id, request.user)
+        raise
     if _wants_json(request):
-        return JsonResponse(_public_share_payload(request, item, share))
+        return JsonResponse(payload)
     messages.success(request, _('Public share link created.'))
     return redirect('view_item', item_uuid=item.id)
 
@@ -1225,12 +1231,18 @@ def regenerate_public_share_link(request, item_id):
     """Invalidates the old public link (e.g. if it leaked) and issues a fresh one."""
     item = get_object_or_404(Item, id=item_id)
     if not has_item_access(item, request.user):
+        logger.warning('regenerate_public_share_link: user %s denied access to item %s', request.user, item_id)
         return HttpResponse("Unauthorized", status=403)
 
-    ItemPublicShare.objects.filter(item=item).delete()
-    share = _create_public_share(item, request.user)
+    try:
+        ItemPublicShare.objects.filter(item=item).delete()
+        share = _create_public_share(item, request.user)
+        payload = _public_share_payload(request, item, share)
+    except Exception:
+        logger.exception('regenerate_public_share_link failed for item %s (user %s)', item_id, request.user)
+        raise
     if _wants_json(request):
-        return JsonResponse(_public_share_payload(request, item, share))
+        return JsonResponse(payload)
     messages.success(request, _('Public share link regenerated. The old link no longer works.'))
     return redirect('view_item', item_uuid=item.id)
 
@@ -1240,6 +1252,7 @@ def revoke_public_share_link(request, item_id):
     """Deletes the public link outright; the next 'Share details' tap creates a new one."""
     item = get_object_or_404(Item, id=item_id)
     if not has_item_access(item, request.user):
+        logger.warning('revoke_public_share_link: user %s denied access to item %s', request.user, item_id)
         return HttpResponse("Unauthorized", status=403)
 
     ItemPublicShare.objects.filter(item=item).delete()
