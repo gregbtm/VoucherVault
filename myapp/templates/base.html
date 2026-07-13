@@ -432,23 +432,69 @@
     </div>
   {% endif %}
 
-  {% if messages %}
-    <div class="container mt-3">
-      {% for message in messages %}
-        <div class="alert alert-{{ message.tags }} alert-dismissible shadow-sm rounded-3 p-3 mb-3" role="alert">
-          <strong class="me-2">
-            {% if message.tags == 'success' %}✅
-            {% elif message.tags == 'error' or message.tags == 'danger' %}❌
-            {% elif message.tags == 'warning' %}⚠️
-            {% elif message.tags == 'info' %}ℹ️
-            {% endif %}
-          </strong>
-          {{ message }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-      {% endfor %}
-    </div>
-  {% endif %}
+  <div id="toast-stack" class="toast-stack" aria-live="polite">
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }} alert-dismissible shadow-sm rounded-3 p-3 mb-0 toast-item" role="alert">
+        <strong class="me-2">
+          {% if message.tags == 'success' %}✅
+          {% elif message.tags == 'error' or message.tags == 'danger' %}❌
+          {% elif message.tags == 'warning' %}⚠️
+          {% elif message.tags == 'info' %}ℹ️
+          {% endif %}
+        </strong>
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  </div>
+
+  <style>
+    .toast-stack {
+      position: fixed;
+      top: max(12px, env(safe-area-inset-top));
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2000;
+      width: min(92vw, 440px);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .toast-stack .toast-item { pointer-events: auto; }
+  </style>
+  <script>
+    (function () {
+      var AUTO_DISMISS_MS = 5000;
+      function autoDismiss(el) {
+        if (!el || el.dataset.autoDismissArmed) return;
+        el.dataset.autoDismissArmed = '1';
+        setTimeout(function () {
+          if (!el.isConnected) return;
+          var bsAlert = window.bootstrap && window.bootstrap.Alert ? window.bootstrap.Alert.getOrCreateInstance(el) : null;
+          if (bsAlert) bsAlert.close(); else el.remove();
+        }, AUTO_DISMISS_MS);
+      }
+      // Toasts already rendered by Django's messages framework on page load.
+      document.querySelectorAll('#toast-stack .toast-item').forEach(autoDismiss);
+
+      // Shared helper for JS-driven flows (autosave, update check, ...) to
+      // show a toast without a page navigation - same markup/styling as a
+      // server-rendered Django message.
+      window.showToast = function (text, tag) {
+        tag = tag || 'info';
+        var icon = { success: '✅', error: '❌', danger: '❌', warning: '⚠️', info: 'ℹ️' }[tag] || 'ℹ️';
+        var el = document.createElement('div');
+        el.className = 'alert alert-' + tag + ' alert-dismissible shadow-sm rounded-3 p-3 mb-0 toast-item';
+        el.setAttribute('role', 'alert');
+        el.innerHTML = '<strong class="me-2">' + icon + '</strong>' + text +
+          '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>';
+        document.getElementById('toast-stack').appendChild(el);
+        autoDismiss(el);
+        return el;
+      };
+    })();
+  </script>
 
     {% block content %}{% endblock content %}
 

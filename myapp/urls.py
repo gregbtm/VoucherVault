@@ -61,6 +61,7 @@ urlpatterns = (
     path('admin-tools/redeploy/', views.trigger_portainer_redeploy, name='trigger_portainer_redeploy'),
     path('admin-tools/check-for-updates/', views.trigger_update_check, name='trigger_update_check'),
     path('admin-tools/site-settings/', views.site_settings, name='site_settings'),
+    path('admin-tools/help/<str:doc_slug>/', views.view_doc, name='view_doc'),
 )
 
 admin.site.site_header = "VoucherVault Plus+"

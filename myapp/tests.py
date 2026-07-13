@@ -1262,6 +1262,29 @@ class TriggerUpdateCheckViewTests(TestCase):
         mock_check.assert_called_once()
         self.assertContains(response, 'Update available: v1.9.0')
 
+    @override_settings(VERSION='v1.2.3')
+    @patch('myapp.views.check_for_update')
+    def test_ajax_returns_json_with_version_and_release_link(self, mock_check):
+        UpdateCheckStatus.objects.update_or_create(pk=1, defaults={
+            'update_available': True, 'latest_version': 'v1.9.0',
+            'latest_release_url': 'https://github.com/gregbtm/VoucherVault/releases/tag/v1.9.0',
+        })
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.post(reverse('trigger_update_check'), HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['installed_version'], 'v1.2.3')
+        self.assertEqual(payload['latest_version'], 'v1.9.0')
+        self.assertEqual(payload['latest_release_url'], 'https://github.com/gregbtm/VoucherVault/releases/tag/v1.9.0')
+        self.assertTrue(payload['update_available'])
+
+    @patch('myapp.views.check_for_update')
+    def test_ajax_regular_user_forbidden_returns_json(self, mock_check):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.post(reverse('trigger_update_check'), HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 403)
+        mock_check.assert_not_called()
+
 
 class PublicShareWalletTests(TestCase):
     """
@@ -1389,6 +1412,24 @@ class CardNumberDisplayTests(TestCase):
         item = make_item(self.user, card_number='MEMBER-123')
         response = self.client.get(reverse('duplicate_item', args=[item.id]))
         self.assertEqual(response.context['form'].initial['card_number'], 'MEMBER-123')
+
+
+class ServeImageFileTests(TestCase):
+    """
+    Regression test for a latent bug found while adding an unrelated
+    Http404 usage elsewhere: this view's "no file attached" branch raised
+    a bare Http404 with no import for it anywhere in views.py, which would
+    have crashed with NameError instead of returning a 404 the one time
+    this branch actually ran.
+    """
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_returns_404_instead_of_crashing_when_no_file_attached(self):
+        item = make_item(self.user)
+        response = self.client.get(reverse('serve_image_file', args=[item.id]))
+        self.assertEqual(response.status_code, 404)
 
 
 class ArchivedItemTests(TestCase):
@@ -2017,7 +2058,7 @@ class SiteSettingsViewTests(TestCase):
         self.client.login(username='admin', password='pw12345!')
         response = self.client.get(reverse('site_settings'))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Save Site Settings')
+        self.assertContains(response, 'Configure Site Settings')
 
     def test_secret_value_never_rendered_in_page(self):
         config = SiteConfiguration.load()
@@ -2036,6 +2077,30 @@ class SiteSettingsViewTests(TestCase):
         self.assertEqual(SiteConfiguration.load().expiry_threshold_days, 60)
         self.assertEqual(SiteConfiguration.load().ocr_backend, 'openai')
 
+    def test_autosave_ajax_post_saves_without_redirect(self):
+        self.client.login(username='admin', password='pw12345!')
+        data = _site_config_form_data(expiry_threshold_days=45)
+        response = self.client.post(reverse('site_settings'), data, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['success'], True)
+        self.assertEqual(SiteConfiguration.load().expiry_threshold_days, 45)
+
+    def test_autosave_ajax_post_invalid_returns_field_errors(self):
+        self.client.login(username='admin', password='pw12345!')
+        data = _site_config_form_data()
+        del data['expiry_threshold_days']
+        response = self.client.post(reverse('site_settings'), data, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 400)
+        payload = response.json()
+        self.assertEqual(payload['success'], False)
+        self.assertIn('expiry_threshold_days', payload['errors'])
+
+    def test_no_save_button_present(self):
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('site_settings'))
+        self.assertNotContains(response, 'Save Site Settings')
+        self.assertContains(response, 'Changes save automatically')
+
     def test_nav_link_shown_only_to_superuser(self):
         self.client.login(username='admin', password='pw12345!')
         response = self.client.get(reverse('show_items'))
@@ -2049,17 +2114,18 @@ class SiteSettingsViewTests(TestCase):
     def test_check_updates_control_is_not_a_nested_form(self):
         # Regression test for a real bug: a literal <form> nested inside the
         # page's own settings <form> gets auto-closed early by the browser's
-        # HTML parser, silently detaching the "Save Site Settings" button
-        # (further down the page) from the actual form element - so clicking
-        # Save did nothing. The "Check for updates now" control must be a
-        # plain <button> that builds and submits its own standalone <form>
-        # via JS instead (see the script at the bottom of site_settings.html).
+        # HTML parser, silently detaching everything rendered after that
+        # point in the template from the actual form element (previously
+        # this broke the "Save Site Settings" button; now it would break
+        # autosave, which submits the same #site-settings-form). The
+        # "Check for updates now" control must be a plain <button> that
+        # hits its own endpoint via fetch instead of a literal nested <form>.
         self.client.login(username='admin', password='pw12345!')
         response = self.client.get(reverse('site_settings'))
         content = response.content.decode()
         self.assertNotIn(f'action="{reverse("trigger_update_check")}"', content)
         self.assertIn('id="check-updates-btn"', content)
-        self.assertEqual(content.count('<form method="POST" action="">'), 1)
+        self.assertEqual(content.count('<form method="POST" action="" id="site-settings-form">'), 1)
 
     def test_portainer_webhook_url_renders_as_plaintext(self):
         set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
@@ -2092,6 +2158,43 @@ class SiteSettingsViewTests(TestCase):
         self.client.login(username='admin', password='pw12345!')
         response = self.client.get(reverse('site_settings'))
         self.assertContains(response, 'ocr-fields')
+
+    def test_help_links_present_for_sections_with_setup_docs(self):
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('site_settings'))
+        for slug in ('ocr', 'apple-wallet', 'google-wallet', 'auto-deploy', 'backup-restore'):
+            self.assertContains(response, reverse('view_doc', args=[slug]))
+
+
+class HelpDocViewerTests(TestCase):
+    """The in-app docs/*.md renderer behind the Site Settings '?' buttons."""
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(username='admin', password='pw12345!', email='a@example.com')
+        self.regular_user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_requires_login(self):
+        response = self.client.get(reverse('view_doc', args=['google-wallet']))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/accounts/login/', response.url)
+
+    def test_regular_user_forbidden(self):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.get(reverse('view_doc', args=['google-wallet']), follow=True)
+        self.assertContains(response, 'Only administrators')
+
+    def test_unknown_doc_slug_404s(self):
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('view_doc', args=['not-a-real-doc']))
+        self.assertEqual(response.status_code, 404)
+
+    def test_known_docs_render_successfully(self):
+        self.client.login(username='admin', password='pw12345!')
+        for slug in ('google-wallet', 'apple-wallet', 'ocr', 'auto-deploy', 'backup-restore'):
+            response = self.client.get(reverse('view_doc', args=[slug]))
+            self.assertEqual(response.status_code, 200, f'{slug} did not render')
+            # Markdown headings should have been converted to real HTML, not left as literal "#" text.
+            self.assertContains(response, '<h1', msg_prefix=f'{slug} missing rendered heading')
 
 
 class OfflineCacheTogglePreferenceTests(TestCase):

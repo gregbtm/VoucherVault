@@ -15,7 +15,7 @@ from .models import *
 from .utils import generate_code_image_base64, get_fixer_rates, convert_currency
 from django.db.models import Sum
 from django.utils import timezone
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
@@ -32,6 +32,7 @@ from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items
 from .merchant_logos import get_cached_balance_check_url, get_cached_logo, get_cached_logos_for_issuers, remember_balance_check_url
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .update_check import check_for_update
+from .help_docs import render_doc
 from .public_share import is_link_preview_bot, pin_attempt_rate_limited, view_rate_limited
 from .tasks import fetch_merchant_logo_task
 from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
@@ -877,18 +878,36 @@ def trigger_update_check(request):
     already-initialized deployment (see docker/entrypoint.sh) - this gives
     a direct, immediate way to confirm the check itself actually works,
     independent of whether Celery Beat's schedule is registered correctly.
+
+    Supports an AJAX JSON round-trip (see _wants_json) so the Site Settings
+    page can show the result as a toast and update the version display in
+    place, instead of a full page reload.
     """
     if not request.user.is_superuser:
+        if _wants_json(request):
+            return JsonResponse({'error': str(_('Only administrators can check for updates.'))}, status=403)
         messages.error(request, _('Only administrators can check for updates.'))
         return redirect('show_items')
 
     check_for_update()
     status = UpdateCheckStatus.load()
     if status.update_available:
-        messages.success(request, _('Update available: %(version)s.') % {'version': status.latest_version})
+        message = _('Update available: %(version)s.') % {'version': status.latest_version}
     else:
-        messages.success(request, _('Checked for updates - you\'re on the latest version.'))
+        message = _('Checked for updates - you\'re on the latest version.')
 
+    if _wants_json(request):
+        return JsonResponse({
+            'message': message,
+            'installed_version': settings.VERSION,
+            'latest_version': status.latest_version,
+            'latest_release_url': status.latest_release_url,
+            'update_available': status.update_available,
+            'checked_at': status.checked_at.isoformat() if status.checked_at else None,
+            'last_check_error': status.last_check_error,
+        })
+
+    messages.success(request, message)
     referer = request.META.get('HTTP_REFERER')
     if referer and url_has_allowed_host_and_scheme(referer, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
         return redirect(referer)
@@ -942,6 +961,24 @@ def _integration_status(config):
     return status
 
 @login_required
+def view_doc(request, doc_slug):
+    """
+    Renders one of docs/*.md in-app for the "?" help buttons next to Site
+    Settings sections - superuser-only since it's only linked from there,
+    and rendered locally (see help_docs.py) rather than out to GitHub so
+    it's available on a fully offline deployment too.
+    """
+    if not request.user.is_superuser:
+        messages.error(request, _('Only administrators can view setup guides.'))
+        return redirect('show_items')
+
+    result = render_doc(doc_slug)
+    if result is None:
+        raise Http404('Unknown help topic.')
+    title, html = result
+    return render(request, 'doc_viewer.html', {'title': title, 'body_html': html})
+
+@login_required
 def site_settings(request):
     """
     Superuser-only page for editing SiteConfiguration - everything that
@@ -962,8 +999,12 @@ def site_settings(request):
         form = SiteConfigurationForm(request.POST, instance=config)
         if form.is_valid():
             form.save()
+            if _wants_json(request):
+                return JsonResponse({'success': True, 'message': str(_('Settings saved.'))})
             messages.success(request, _('Site settings saved. Changes take effect immediately.'))
             return redirect('site_settings')
+        if _wants_json(request):
+            return JsonResponse({'success': False, 'errors': form.errors.get_json_data(escape_html=False)}, status=400)
     else:
         form = SiteConfigurationForm(instance=config)
 
