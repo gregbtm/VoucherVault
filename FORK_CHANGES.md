@@ -2517,6 +2517,52 @@ correctly extracted code, PIN, value, and currency, and a Playwright
 browser session confirmed the create-item form auto-fills all four from
 that response.
 
+## Phase 47 — Timezone bug: "days left" was wrong for part of every day
+
+Flagged as a side effect of the Phase 46 OCR work: the analytics test
+`test_get_expiring_soon_items_respects_window_and_attaches_days_left`
+was failing (`4 != 3`), reproducibly, with no relation to the OCR
+changes in that PR.
+
+### The bug
+
+`USE_TZ = True`, and `settings.TIME_ZONE` is `Europe/Berlin` (UTC+1/+2).
+Several call sites computed "today" as `timezone.now().date()` -
+but `timezone.now()` returns a UTC-aware datetime, and calling `.date()`
+directly on it truncates to the **UTC** calendar date, not the
+Berlin-local one. During the ~1-2 hour window each day where UTC and
+Berlin fall on different calendar dates (e.g. 22:00-00:00 UTC during
+CEST), every one of these came out a day behind: `days_left` on the
+dashboard's "expiring soon" list, the `days_until_expiry` field in the
+REST API, the expiry calendar's day-grid, and several `expiry_date__gte`
+filters used for "is this expired yet" counts across the dashboard and
+inventory pages. `timezone.localtime(now).date()` (or `date.today()`,
+which respects the OS `TZ` env var) both give the correct local date;
+`timezone.now().date()` does not.
+
+Fixed every occurrence of the `timezone.now().date()` /
+`now().date()` pattern found by a full-codebase grep, switching each to
+`timezone.localtime(...).date()`:
+
+- `myapp/analytics.py` - `get_summary_stats`, `get_expiry_timeline`,
+  `get_expiring_soon_items`, `build_expiry_calendar` (the last two are
+  what backs the dashboard's expiry list and calendar widget).
+- `myapp/views.py` - the dashboard's at-risk-value calculation, the
+  shared-items-with-you count, and the sharing center's expired/shared
+  filters (5 call sites).
+- `api/serializers.py` - `ItemSerializer.get_days_until_expiry` (the
+  REST API's `days_until_expiry` field) and the default `expiry_date`/
+  `issue_date` fallbacks used when creating an item without one.
+- `imports/tasks.py` - the same fallback defaults, for items created via
+  CSV/JSON import.
+
+### Tests
+
+The previously-failing analytics test now passes; full suite (577
+tests) still green. No new tests added - the existing test already
+covered the exact `days_left` behavior this fixes, it was just asserting
+against the buggy value's neighbor.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

@@ -170,7 +170,7 @@ class ItemSerializer(serializers.ModelSerializer):
     def get_days_until_expiry(self, item) -> int | None:
         if not item.expiry_date:
             return None
-        return (item.expiry_date - timezone.now().date()).days
+        return (item.expiry_date - timezone.localtime().date()).days
 
     def get_transaction_total(self, item) -> str:
         total = sum((t.value for t in item.transactions.all()), item.value)
@@ -212,10 +212,10 @@ class ItemSerializer(serializers.ModelSerializer):
         file_obj = validated_data.pop('file', None)
         tags = validated_data.pop('tags', _UNSET)
         if not validated_data.get('expiry_date'):
-            validated_data['expiry_date'] = timezone.now().date() + timedelta(days=50 * 365)
+            validated_data['expiry_date'] = timezone.localtime().date() + timedelta(days=50 * 365)
         # Item.issue_date's model default is timezone.now (a datetime) even though
         # it's a DateField; set it explicitly here to avoid storing a datetime.
-        validated_data.setdefault('issue_date', timezone.now().date())
+        validated_data.setdefault('issue_date', timezone.localtime().date())
 
         item = Item(**validated_data)
         item.qr_code_base64, item.code_type = generate_code_image_base64(item)
