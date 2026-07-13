@@ -26,7 +26,7 @@ def get_summary_stats(user):
     month" can't be determined.
     """
     now = timezone.now()
-    today = now.date()
+    today = timezone.localtime(now).date()
     threshold_days = SiteConfiguration.load().expiry_threshold_days
     soon_cutoff = today + timedelta(days=threshold_days)
     week_cutoff = today + timedelta(days=EXPIRING_SOON_DAYS)
@@ -65,7 +65,7 @@ def get_expiry_timeline(user, months_ahead=CALENDAR_MONTHS_AHEAD):
     Items grouped by ISO expiry date (sparse — only dates with items),
     for the analytics API's calendar feed.
     """
-    today = timezone.now().date()
+    today = timezone.localtime().date()
     horizon_end = today + timedelta(days=31 * months_ahead)
 
     items = (
@@ -121,7 +121,7 @@ def get_expiring_soon_items(user, days=EXPIRING_SOON_DAYS, limit=EXPIRING_SOON_L
     item gets a `.days_left` attribute (int) attached for display.
     """
     now = timezone.now()
-    today = now.date()
+    today = timezone.localtime(now).date()
     cutoff = now + timedelta(days=days)
     items = list(
         Item.objects.filter(user=user, is_used=False, expiry_date__gte=now, expiry_date__lt=cutoff)
@@ -140,7 +140,7 @@ def build_expiry_calendar(user, months_ahead=CALENDAR_MONTHS_AHEAD):
     where each day_cell is None (padding outside the month) or a dict with
     day/date/is_today/is_past/count of items expiring that day.
     """
-    today = timezone.now().date()
+    today = timezone.localtime().date()
     horizon_end = today + timedelta(days=31 * months_ahead)
 
     rows = (

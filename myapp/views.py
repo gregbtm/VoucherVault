@@ -124,7 +124,7 @@ def dashboard(request):
             for item in items:
                 item_value = float(item.current_balance)
                 total_value += item_value
-                if item.expiry_date < soon_expiry_date.date():
+                if item.expiry_date < timezone.localtime(soon_expiry_date).date():
                     at_risk_value += item_value
             total_value = round(total_value, 2)
             at_risk_value = round(at_risk_value, 2)
@@ -144,7 +144,7 @@ def dashboard(request):
                         at_risk_value = None
                         break
                     total_value += converted
-                    if item.expiry_date < soon_expiry_date.date():
+                    if item.expiry_date < timezone.localtime(soon_expiry_date).date():
                         at_risk_value += converted
                 if total_value is not None:
                     total_value = round(total_value, 2)
@@ -166,7 +166,7 @@ def dashboard(request):
     shared_items_count_with_you = ItemShare.objects.filter(
         shared_with_user=user,
         item__is_used=False,
-        item__expiry_date__gte=now().date()
+        item__expiry_date__gte=timezone.localtime().date()
     ).exclude(item__user=user).values('item').distinct().count()
 
     # Count the number of items soon expiring based on EXPIRY_THRESHOLD_DAYS
@@ -244,7 +244,7 @@ def show_items(request):
         items = Item.objects.filter(
             shared_with__shared_with_user=user,
             is_used=False,
-            expiry_date__gte=now().date()  # Only not expired
+            expiry_date__gte=timezone.localtime().date()  # Only not expired
         ).exclude(user=user).exclude(is_archived=True).distinct()
     elif filter_value == 'archived':
         items = all_accessible_items.filter(is_archived=True)
@@ -1026,7 +1026,7 @@ def site_settings(request):
 @login_required
 def sharing_center(request):
     current_user = request.user
-    today = now().date()
+    today = timezone.localtime().date()
     
     # Get filter and search parameters
     filter_type = request.GET.get('filter', 'all')

@@ -56,8 +56,8 @@ def create_item_from_row(user, row):
     if wallet_name:
         wallet, _created = Wallet.objects.get_or_create(user=user, name=wallet_name)
 
-    expiry_date = row.get('expiry_date') or (timezone.now().date() + timedelta(days=50 * 365))
-    issue_date = row.get('issue_date') or timezone.now().date()
+    expiry_date = row.get('expiry_date') or (timezone.localtime().date() + timedelta(days=50 * 365))
+    issue_date = row.get('issue_date') or timezone.localtime().date()
 
     item = Item(
         user=user,
