@@ -324,8 +324,7 @@ issue and I'm happy to help scope and build it out.
 
 If this fork has been useful to you, tips are always appreciated:
 
-<!-- TODO(gregbtm): replace with your PayPal.me link -->
-[![Donate via PayPal](https://img.shields.io/badge/Donate-PayPal-00457C.svg?logo=paypal&logoColor=white)](https://paypal.me/YOUR_PAYPAL_HERE)
+https://www.paypal.com/donate/?business=MKWLBLPGMVLY4&no_recurring=1&item_name=If+these+new+features+or+additions+have+brightened+your+day+-+feel+free+to+donate.+I+do+this+for+fun+and+anything+helps%21+Thx+%21%21&currency_code=GBP
 
 And don't forget the original upstream maintainer, whose project this fork is built on:
 
