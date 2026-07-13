@@ -101,35 +101,58 @@
                 <div class="col-md-4 mb-3">
                   <label for="{{ form.ocr_backend.id_for_label }}" class="form-label">{% trans "OCR backend" %}</label>
                   {{ form.ocr_backend }}
+                  {% if integration_status.ocr %}
+                    <div class="mt-2">
+                      {% if integration_status.ocr.ready %}
+                        <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>{% trans "Ready" %}</span>
+                      {% else %}
+                        <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>{% trans "Not ready" %}</span>
+                      {% endif %}
+                      <span class="text-muted small ms-1">{{ integration_status.ocr.detail }}</span>
+                    </div>
+                  {% endif %}
                 </div>
               </div>
-              <div class="row">
+              <div class="row ocr-fields" data-ocr-backend="claude">
                 <div class="col-md-6 mb-3">
                   <label for="{{ form.anthropic_api_key.id_for_label }}" class="form-label">{% trans "Anthropic API key" %}</label>
                   {{ form.anthropic_api_key }}
-                  <small class="form-text text-muted">{% if config.anthropic_api_key %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %} {% trans "Required if backend is Claude." %}</small>
+                  <small class="form-text text-muted">{% if config.anthropic_api_key %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %}</small>
                 </div>
                 <div class="col-md-6 mb-3">
                   <label for="{{ form.anthropic_ocr_model.id_for_label }}" class="form-label">{% trans "Claude model override" %}</label>
                   {{ form.anthropic_ocr_model }}
                 </div>
               </div>
-              <div class="row">
+              <div class="row ocr-fields" data-ocr-backend="openai">
                 <div class="col-md-6 mb-3">
                   <label for="{{ form.openai_api_key.id_for_label }}" class="form-label">{% trans "OpenAI API key" %}</label>
                   {{ form.openai_api_key }}
-                  <small class="form-text text-muted">{% if config.openai_api_key %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %} {% trans "Required if backend is OpenAI." %}</small>
+                  <small class="form-text text-muted">{% if config.openai_api_key %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %}</small>
                 </div>
                 <div class="col-md-6 mb-3">
                   <label for="{{ form.openai_ocr_model.id_for_label }}" class="form-label">{% trans "OpenAI model override" %}</label>
                   {{ form.openai_ocr_model }}
                 </div>
               </div>
+              <p class="text-muted small mb-0 ocr-fields" data-ocr-backend="tesseract">
+                {% trans "No extra configuration needed - uses the tesseract binary bundled in the image." %}
+              </p>
             </div>
 
             <div class="mb-4">
-              <h6 class="text-muted mb-3"><i class="bi bi-apple me-2"></i>{% trans "Apple Wallet (.pkpass)" %}</h6>
+              <h6 class="text-muted mb-3">
+                <i class="bi bi-apple me-2"></i>{% trans "Apple Wallet (.pkpass)" %}
+                {% if integration_status.pkpass %}
+                  {% if integration_status.pkpass.ready %}
+                    <span class="badge bg-success ms-2"><i class="bi bi-check-circle me-1"></i>{% trans "Ready" %}</span>
+                  {% else %}
+                    <span class="badge bg-warning text-dark ms-2"><i class="bi bi-exclamation-triangle me-1"></i>{% trans "Not ready" %}</span>
+                  {% endif %}
+                {% endif %}
+              </h6>
               <p class="text-muted small">{% trans "The certificate files still need to be mounted into the container via a Portainer volume - only the paths and identifiers are configured here." %}</p>
+              {% if integration_status.pkpass %}<p class="text-muted small">{{ integration_status.pkpass.detail }}</p>{% endif %}
               <div class="row">
                 <div class="col-md-6 mb-3">
                   <label for="{{ form.pkpass_cert_path.id_for_label }}" class="form-label">{% trans "Certificate path (.p12)" %}</label>
@@ -164,8 +187,18 @@
             </div>
 
             <div class="mb-4">
-              <h6 class="text-muted mb-3"><i class="bi bi-google me-2"></i>{% trans "Google Wallet" %}</h6>
+              <h6 class="text-muted mb-3">
+                <i class="bi bi-google me-2"></i>{% trans "Google Wallet" %}
+                {% if integration_status.google_wallet %}
+                  {% if integration_status.google_wallet.ready %}
+                    <span class="badge bg-success ms-2"><i class="bi bi-check-circle me-1"></i>{% trans "Ready" %}</span>
+                  {% else %}
+                    <span class="badge bg-warning text-dark ms-2"><i class="bi bi-exclamation-triangle me-1"></i>{% trans "Not ready" %}</span>
+                  {% endif %}
+                {% endif %}
+              </h6>
               <p class="text-muted small">{% trans "The service account key file still needs to be mounted into the container via a Portainer volume - only the path and IDs are configured here." %}</p>
+              {% if integration_status.google_wallet %}<p class="text-muted small">{{ integration_status.google_wallet.detail }}</p>{% endif %}
               <div class="row">
                 <div class="col-md-4 mb-3">
                   <label for="{{ form.google_wallet_service_account_key_path.id_for_label }}" class="form-label">{% trans "Service account key path" %}</label>
@@ -194,27 +227,55 @@
                   {{ form.update_check_repo }}
                 </div>
               </div>
+              <div class="row mb-2">
+                <div class="col-md-4">
+                  <div class="text-muted small text-uppercase" style="letter-spacing:.03em;">{% trans "Installed version" %}</div>
+                  <div>{{ installed_version }}</div>
+                </div>
+                <div class="col-md-4">
+                  <div class="text-muted small text-uppercase" style="letter-spacing:.03em;">{% trans "Latest known version" %}</div>
+                  <div>{{ update_check_status.latest_version|default:"—" }}</div>
+                </div>
+                <div class="col-md-4">
+                  <div class="text-muted small text-uppercase" style="letter-spacing:.03em;">{% trans "GitHub connectivity" %}</div>
+                  <div>
+                    {% if not update_check_status.checked_at %}
+                      <span class="badge bg-secondary">{% trans "Never checked" %}</span>
+                    {% elif update_check_status.last_check_error %}
+                      <span class="badge bg-danger" title="{{ update_check_status.last_check_error }}"><i class="bi bi-x-circle me-1"></i>{% trans "Unreachable" %}</span>
+                    {% else %}
+                      <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>{% trans "Connected" %}</span>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
               <p class="text-muted small mb-2">
                 {% if update_check_status.checked_at %}
                   {% blocktrans with checked=update_check_status.checked_at|date:"Y-m-d H:i" %}Last checked {{ checked }}.{% endblocktrans %}
+                  {% if update_check_status.last_check_error %}{{ update_check_status.last_check_error }}{% endif %}
                 {% else %}
                   {% trans "Never checked yet." %}
                 {% endif %}
               </p>
-              <form method="POST" action="{% url 'trigger_update_check' %}">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-sm btn-outline-secondary">{% trans "Check for updates now" %}</button>
-              </form>
+              <button type="button" id="check-updates-btn" class="btn btn-sm btn-outline-secondary" data-url="{% url 'trigger_update_check' %}">
+                {% trans "Check for updates now" %}
+              </button>
             </div>
 
             <div class="mb-4">
-              <h6 class="text-muted mb-3"><i class="bi bi-cloud-arrow-up me-2"></i>{% trans "Portainer Redeploy Webhook" %}</h6>
+              <h6 class="text-muted mb-3">
+                <i class="bi bi-cloud-arrow-up me-2"></i>{% trans "Portainer Redeploy Webhook" %}
+                {% if config.portainer_webhook_url %}
+                  <span class="badge bg-success ms-2"><i class="bi bi-check-circle me-1"></i>{% trans "Configured" %}</span>
+                {% else %}
+                  <span class="badge bg-secondary ms-2">{% trans "Not configured" %}</span>
+                {% endif %}
+              </h6>
               <div class="row">
                 <div class="col-md-6 mb-3">
                   <label for="{{ form.portainer_webhook_url.id_for_label }}" class="form-label">{% trans "Webhook URL" %}</label>
                   {{ form.portainer_webhook_url }}
                   <small class="form-text text-muted">
-                    {% if config.portainer_webhook_url %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %}
                     {% trans "Adds a Redeploy now button to the update banner. See docs/AUTO_DEPLOY.md." %}
                   </small>
                 </div>
@@ -247,4 +308,47 @@
     </div>
   </div>
 </section>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  // Show only the OCR backend's own fields - hidden entirely when the
+  // backend is 'none', since there's nothing to configure at that point.
+  var ocrBackendSelect = document.getElementById('{{ form.ocr_backend.id_for_label }}');
+  var ocrFieldGroups = document.querySelectorAll('.ocr-fields');
+  function syncOcrFields() {
+    var selected = ocrBackendSelect ? ocrBackendSelect.value : 'none';
+    ocrFieldGroups.forEach(function (el) {
+      el.style.display = (el.dataset.ocrBackend === selected) ? '' : 'none';
+    });
+  }
+  if (ocrBackendSelect) {
+    ocrBackendSelect.addEventListener('change', syncOcrFields);
+    syncOcrFields();
+  }
+
+  // "Check for updates now" posts to a different URL than this page's own
+  // save form. It's built as its own standalone <form>, submitted here via
+  // JS rather than written as a literal nested <form> in the template -
+  // HTML doesn't allow a <form> inside another <form>, and a browser
+  // encountering one closes the outer form early, which silently detached
+  // the "Save Site Settings" button (further down the page) from the real
+  // settings form.
+  var checkUpdatesBtn = document.getElementById('check-updates-btn');
+  if (checkUpdatesBtn) {
+    checkUpdatesBtn.addEventListener('click', function () {
+      var csrfInput = document.querySelector('input[name=csrfmiddlewaretoken]');
+      var f = document.createElement('form');
+      f.method = 'POST';
+      f.action = checkUpdatesBtn.dataset.url;
+      var csrf = document.createElement('input');
+      csrf.type = 'hidden';
+      csrf.name = 'csrfmiddlewaretoken';
+      csrf.value = csrfInput.value;
+      f.appendChild(csrf);
+      document.body.appendChild(f);
+      f.submit();
+    });
+  }
+});
+</script>
 {% endblock content %}

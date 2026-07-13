@@ -568,8 +568,9 @@ body.dark-mode .error-alert {
           </div>
           {% endif %}
 
-          <!-- Apple Wallet Import Section -->
-          <div class="scanner-section" id="pkpassImportSection">
+          <!-- Apple Wallet Import Section - hidden unless the visiting device can
+               plausibly have a .pkpass file to hand, see device-detect.js below -->
+          <div class="scanner-section" id="pkpassImportSection" style="display:none;">
             <div class="form-section-title" style="margin-bottom: 0.75rem;">
               <i class="bi bi-wallet2"></i>
               {% trans "Import from Apple Wallet" %}
@@ -874,6 +875,11 @@ body.dark-mode .error-alert {
 
 <script src="{% static 'assets/js/zxing.js' %}"></script>
 <script src="{% static 'assets/js/scanner.js' %}"></script>
+<script src="{% static 'assets/js/device-detect.js' %}"></script>
+<script>
+  var pkpassImportSection = document.getElementById('pkpassImportSection');
+  if (pkpassImportSection) pkpassImportSection.style.display = VVDeviceDetect.isApple ? '' : 'none';
+</script>
 
 <script>
 function handleSubmitButton() {

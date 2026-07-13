@@ -448,6 +448,11 @@ class UpdateCheckStatus(models.Model):
     latest_release_url = models.URLField(blank=True)
     checked_at = models.DateTimeField(null=True, blank=True)
     update_available = models.BooleanField(default=False)
+    last_check_error = models.CharField(
+        max_length=500, blank=True, default='',
+        help_text="Set when the most recent check couldn't reach GitHub or got an unexpected response; "
+                   "cleared on the next successful check. Blank with a recent checked_at means GitHub was reachable.",
+    )
 
     class Meta:
         verbose_name = "Update Check Status"
@@ -560,7 +565,7 @@ class SiteConfiguration(models.Model):
     # page on every load/save.
     SECRET_FIELDS = (
         'webpush_vapid_private_key', 'anthropic_api_key', 'openai_api_key',
-        'pkpass_cert_password', 'portainer_webhook_url',
+        'pkpass_cert_password',
     )
 
     class Meta:

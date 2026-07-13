@@ -35,7 +35,7 @@ from .update_check import check_for_update
 from .public_share import is_link_preview_bot, pin_attempt_rate_limited, view_rate_limited
 from .tasks import fetch_merchant_logo_task
 from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
-from imports.exporters.pkpass import pkpass_enabled
+from imports.exporters.pkpass import generate_pkpass, pkpass_enabled
 from notify.tasks import notify_balance_changed, notify_item_archived, notify_item_created, notify_item_shared, notify_item_used
 from ocr.backends import ocr_enabled
 from django.db.models import Count, Sum, Q
@@ -894,6 +894,53 @@ def trigger_update_check(request):
         return redirect(referer)
     return redirect('site_settings')
 
+def _integration_status(config):
+    """
+    Cheap, synchronous readiness checks for the Site Settings page - "is
+    this section actually usable right now" (e.g. does the certificate
+    file this path points to actually exist), not just "are the fields
+    filled in". No network calls here - the update-check status shown
+    alongside these is read from the last background/manual check
+    (myapp/update_check.py), never triggered by loading this page.
+    """
+    status = {'ocr': None, 'pkpass': None, 'google_wallet': None}
+
+    if config.ocr_backend == 'claude':
+        status['ocr'] = {
+            'ready': bool(config.anthropic_api_key),
+            'detail': _('Anthropic API key is set.') if config.anthropic_api_key else _('Missing Anthropic API key above.'),
+        }
+    elif config.ocr_backend == 'openai':
+        status['ocr'] = {
+            'ready': bool(config.openai_api_key),
+            'detail': _('OpenAI API key is set.') if config.openai_api_key else _('Missing OpenAI API key above.'),
+        }
+    elif config.ocr_backend == 'tesseract':
+        try:
+            import pytesseract
+            pytesseract.get_tesseract_version()
+            status['ocr'] = {'ready': True, 'detail': _('tesseract binary found in the container.')}
+        except Exception:
+            status['ocr'] = {'ready': False, 'detail': _('tesseract binary not found in the container.')}
+
+    if config.pkpass_cert_path:
+        ready = pkpass_enabled()
+        status['pkpass'] = {
+            'ready': ready,
+            'detail': _('Certificate file found - Apple Wallet export is live.') if ready
+            else _('No certificate file found at that path yet - check the volume mount.'),
+        }
+
+    if config.google_wallet_service_account_key_path:
+        ready = google_wallet_enabled()
+        status['google_wallet'] = {
+            'ready': ready,
+            'detail': _('Service account key file found - Google Wallet export is live.') if ready
+            else _('No key file found at that path yet - check the volume mount.'),
+        }
+
+    return status
+
 @login_required
 def site_settings(request):
     """
@@ -924,6 +971,8 @@ def site_settings(request):
         'form': form,
         'config': config,
         'update_check_status': UpdateCheckStatus.load(),
+        'installed_version': settings.VERSION,
+        'integration_status': _integration_status(config),
     })
 
 @require_GET
@@ -1220,13 +1269,57 @@ def public_item_share(request, share_id):
     if view_rate_limited(request, share.id):
         return HttpResponse('Too many requests', status=429)
 
+    google_wallet_save_url = None
+    if google_wallet_enabled():
+        try:
+            google_wallet_save_url = generate_google_wallet_save_url(item)
+        except Exception as exc:
+            logger.warning('Public Google Wallet link generation failed for share %s: %s', share.id, exc, exc_info=True)
+
     share.record_view()
     return render(request, 'public_item.html', {
         'item': item,
+        'share_id': share.id,
         'current_balance': item.get_current_balance(),
         'show_balance': item.type == 'giftcard',
         'merchant_logo_url': merchant_logo_url,
+        'pkpass_enabled': pkpass_enabled(),
+        'google_wallet_save_url': google_wallet_save_url,
     })
+
+def public_item_pkpass(request, share_id):
+    """
+    Apple Wallet .pkpass download for the public share page's "Add to Apple
+    Wallet" button - a binary file, so unlike Google Wallet's save link
+    (computed inline above) it needs its own endpoint. Only reachable once
+    a visitor has already passed public_item_share's own checks: a crawler,
+    an expired link, or a PIN-gated link that hasn't been unlocked in this
+    session all get turned away here too, since this endpoint has no PIN
+    form of its own to show them.
+    """
+    share = get_object_or_404(ItemPublicShare.objects.select_related('item'), id=share_id)
+    item = share.item
+
+    if is_link_preview_bot(request.META.get('HTTP_USER_AGENT', '')):
+        return HttpResponse(status=403)
+    if share.is_expired():
+        return HttpResponse(status=403)
+    if share.access_pin and not request.session.get(f'unlocked_share_{share.id}'):
+        return HttpResponse(status=403)
+    if view_rate_limited(request, share.id):
+        return HttpResponse('Too many requests', status=429)
+    if not pkpass_enabled():
+        return HttpResponse(status=404)
+
+    try:
+        data = generate_pkpass(item)
+    except Exception as exc:
+        logger.warning('Public pkpass generation failed for share %s: %s', share.id, exc, exc_info=True)
+        return HttpResponse(status=503)
+
+    response = HttpResponse(data, content_type='application/vnd.apple.pkpass')
+    response['Content-Disposition'] = f'attachment; filename="{item.id}.pkpass"'
+    return response
 
 # API
 

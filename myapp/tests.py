@@ -29,6 +29,7 @@ from .test_utils import set_site_config
 from .tasks import check_for_update_task, fetch_merchant_logo_task
 from .update_check import _is_newer, _parse_version, check_for_update
 from .utils import generate_code_image_base64
+from .views import _integration_status
 
 
 def make_item(user, **kwargs):
@@ -1262,6 +1263,112 @@ class TriggerUpdateCheckViewTests(TestCase):
         self.assertContains(response, 'Update available: v1.9.0')
 
 
+class PublicShareWalletTests(TestCase):
+    """
+    The public share page's "Add to Apple/Google Wallet" buttons - only
+    shown when that export method is configured server-side, and (for
+    Apple Wallet's binary download) only servable to a visitor who has
+    already passed public_item_share's own crawler/expiry/PIN checks.
+    """
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    @patch('myapp.views.pkpass_enabled', return_value=True)
+    def test_apple_wallet_button_present_when_configured(self, mock_enabled):
+        item = make_item(self.alice)
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
+        self.client.logout()
+        response = self.client.get(reverse('public_item_share', args=[share.id]))
+        self.assertContains(response, 'public-apple-wallet-btn')
+
+    def test_apple_wallet_button_absent_when_not_configured(self):
+        item = make_item(self.alice)
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
+        self.client.logout()
+        response = self.client.get(reverse('public_item_share', args=[share.id]))
+        self.assertNotContains(response, 'public-apple-wallet-btn')
+
+    @patch('myapp.views.generate_google_wallet_save_url', return_value='https://pay.google.com/gp/v/save/xyz')
+    @patch('myapp.views.google_wallet_enabled', return_value=True)
+    def test_google_wallet_button_present_when_configured(self, mock_enabled, mock_generate):
+        item = make_item(self.alice)
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
+        self.client.logout()
+        response = self.client.get(reverse('public_item_share', args=[share.id]))
+        self.assertContains(response, 'https://pay.google.com/gp/v/save/xyz')
+
+    @patch('myapp.views.generate_pkpass', return_value=b'PKPASSDATA')
+    @patch('myapp.views.pkpass_enabled', return_value=True)
+    def test_pkpass_download_succeeds_when_unlocked(self, mock_enabled, mock_generate):
+        item = make_item(self.alice)
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
+        self.client.logout()
+        response = self.client.get(reverse('public_item_pkpass', args=[share.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b'PKPASSDATA')
+
+    def test_pkpass_download_404s_when_not_configured(self):
+        item = make_item(self.alice)
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
+        self.client.logout()
+        response = self.client.get(reverse('public_item_pkpass', args=[share.id]))
+        self.assertEqual(response.status_code, 404)
+
+    @patch('myapp.views.pkpass_enabled', return_value=True)
+    def test_pkpass_download_blocked_when_pin_not_unlocked(self, mock_enabled):
+        item = make_item(self.alice)
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice, access_pin='1234')
+        self.client.logout()
+        response = self.client.get(reverse('public_item_pkpass', args=[share.id]))
+        self.assertEqual(response.status_code, 403)
+
+    @patch('myapp.views.pkpass_enabled', return_value=True)
+    def test_pkpass_download_blocked_for_expired_link(self, mock_enabled):
+        item = make_item(self.alice)
+        share = ItemPublicShare.objects.create(
+            item=item, created_by=self.alice, expires_at=timezone.now() - timedelta(days=1),
+        )
+        self.client.logout()
+        response = self.client.get(reverse('public_item_pkpass', args=[share.id]))
+        self.assertEqual(response.status_code, 403)
+
+    @patch('myapp.views.pkpass_enabled', return_value=True)
+    def test_pkpass_download_blocked_for_crawler_ua(self, mock_enabled):
+        item = make_item(self.alice)
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
+        self.client.logout()
+        response = self.client.get(reverse('public_item_pkpass', args=[share.id]), HTTP_USER_AGENT='WhatsApp/2.23.1')
+        self.assertEqual(response.status_code, 403)
+
+
+class CodeTypeDefaultTests(TestCase):
+    """
+    A brand-new item defaults its barcode-type dropdown to "No Barcode"
+    rather than the model's own "qrcode" default - most items haven't had
+    anything scanned yet, and a real scan/import overwrites this field for
+    you (scanner.js::applyDetectedFormat). Editing or duplicating an
+    existing item must still show its real code_type, unaffected.
+    """
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_new_item_form_defaults_code_type_to_none(self):
+        response = self.client.get(reverse('create_item'))
+        self.assertContains(response, '<option value="none" selected>No Barcode (number only)</option>')
+
+    def test_duplicate_item_preserves_original_code_type(self):
+        item = make_item(self.user, code_type='qrcode')
+        response = self.client.get(reverse('duplicate_item', args=[item.id]))
+        self.assertContains(response, '<option value="qrcode" selected>QR Code</option>')
+
+    def test_edit_item_preserves_existing_code_type(self):
+        item = make_item(self.user, code_type='ean13')
+        response = self.client.get(reverse('edit_item', kwargs={'item_uuid': item.id}))
+        self.assertContains(response, '<option value="ean13" selected>EAN-13</option>')
+
+
 class CardNumberDisplayTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')
@@ -1612,6 +1719,29 @@ class UpdateCheckServiceTests(TestCase):
         check_for_update()
         self.assertTrue(UpdateCheckStatus.load().update_available)
 
+    @override_settings(VERSION='1.0.0')
+    @patch('myapp.update_check.requests.get')
+    def test_request_failure_records_error_and_checked_at(self, mock_get):
+        set_site_config(update_check_enabled=True)
+        import requests
+        mock_get.side_effect = requests.RequestException('boom')
+        check_for_update()
+        status = UpdateCheckStatus.load()
+        self.assertEqual(status.last_check_error, 'boom')
+        self.assertIsNotNone(status.checked_at)
+
+    @override_settings(VERSION='1.0.0')
+    @patch('myapp.update_check.requests.get')
+    def test_success_clears_previous_error(self, mock_get):
+        set_site_config(update_check_enabled=True)
+        UpdateCheckStatus.objects.create(pk=1, last_check_error='old error')
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'tag_name': 'v1.0.0', 'html_url': 'https://example.com'},
+        )
+        check_for_update()
+        self.assertEqual(UpdateCheckStatus.load().last_check_error, '')
+
     @patch('myapp.tasks.check_for_update')
     def test_task_delegates_to_service(self, mock_check):
         set_site_config(update_check_enabled=True)
@@ -1822,6 +1952,51 @@ class SiteConfigurationFormTests(TestCase):
         self.assertEqual(saved.expiry_threshold_days, 45)
         self.assertEqual(saved.ocr_backend, 'tesseract')
 
+    def test_portainer_webhook_url_is_not_a_secret_field(self):
+        # Deliberately visible/plaintext rather than password-masked - see
+        # SiteConfiguration.SECRET_FIELDS - so it round-trips normally like
+        # any other plain field instead of requiring a blank-to-preserve dance.
+        self.assertNotIn('portainer_webhook_url', SiteConfiguration.SECRET_FIELDS)
+        form = SiteConfigurationForm(
+            data=_site_config_form_data(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123'),
+            instance=self.config,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        saved = form.save()
+        self.assertEqual(saved.portainer_webhook_url, 'https://portainer.example.com/api/webhooks/abc123')
+
+
+class IntegrationStatusTests(TestCase):
+    """_integration_status() - the readiness badges shown on Site Settings."""
+
+    def test_ocr_status_none_when_backend_disabled(self):
+        config = set_site_config(ocr_backend='none')
+        self.assertIsNone(_integration_status(config)['ocr'])
+
+    def test_ocr_status_ready_when_claude_key_set(self):
+        config = set_site_config(ocr_backend='claude', anthropic_api_key='sk-ant-x')
+        self.assertTrue(_integration_status(config)['ocr']['ready'])
+
+    def test_ocr_status_not_ready_when_openai_key_missing(self):
+        config = set_site_config(ocr_backend='openai', openai_api_key='')
+        self.assertFalse(_integration_status(config)['ocr']['ready'])
+
+    def test_pkpass_status_none_when_path_blank(self):
+        config = set_site_config(pkpass_cert_path='')
+        self.assertIsNone(_integration_status(config)['pkpass'])
+
+    def test_pkpass_status_not_ready_when_file_missing(self):
+        config = set_site_config(pkpass_cert_path='/nonexistent/cert.p12')
+        self.assertFalse(_integration_status(config)['pkpass']['ready'])
+
+    def test_google_wallet_status_none_when_path_blank(self):
+        config = set_site_config(google_wallet_service_account_key_path='')
+        self.assertIsNone(_integration_status(config)['google_wallet'])
+
+    def test_google_wallet_status_not_ready_when_file_missing(self):
+        config = set_site_config(google_wallet_service_account_key_path='/nonexistent/key.json')
+        self.assertFalse(_integration_status(config)['google_wallet']['ready'])
+
 
 class SiteSettingsViewTests(TestCase):
     def setUp(self):
@@ -1870,6 +2045,53 @@ class SiteSettingsViewTests(TestCase):
         self.client.login(username='alice', password='pw12345!')
         response = self.client.get(reverse('show_items'))
         self.assertNotContains(response, 'Site Settings')
+
+    def test_check_updates_control_is_not_a_nested_form(self):
+        # Regression test for a real bug: a literal <form> nested inside the
+        # page's own settings <form> gets auto-closed early by the browser's
+        # HTML parser, silently detaching the "Save Site Settings" button
+        # (further down the page) from the actual form element - so clicking
+        # Save did nothing. The "Check for updates now" control must be a
+        # plain <button> that builds and submits its own standalone <form>
+        # via JS instead (see the script at the bottom of site_settings.html).
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('site_settings'))
+        content = response.content.decode()
+        self.assertNotIn(f'action="{reverse("trigger_update_check")}"', content)
+        self.assertIn('id="check-updates-btn"', content)
+        self.assertEqual(content.count('<form method="POST" action="">'), 1)
+
+    def test_portainer_webhook_url_renders_as_plaintext(self):
+        set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('site_settings'))
+        self.assertContains(response, 'https://portainer.example.com/api/webhooks/abc123')
+
+    def test_shows_installed_and_latest_version(self):
+        UpdateCheckStatus.objects.update_or_create(pk=1, defaults={'latest_version': 'v9.9.9', 'checked_at': timezone.now()})
+        self.client.login(username='admin', password='pw12345!')
+        with override_settings(VERSION='v1.2.3'):
+            response = self.client.get(reverse('site_settings'))
+        self.assertContains(response, 'v1.2.3')
+        self.assertContains(response, 'v9.9.9')
+
+    def test_github_connectivity_badge_shows_connected_after_clean_check(self):
+        UpdateCheckStatus.objects.update_or_create(pk=1, defaults={'checked_at': timezone.now(), 'last_check_error': ''})
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('site_settings'))
+        self.assertContains(response, 'Connected')
+
+    def test_github_connectivity_badge_shows_unreachable_on_error(self):
+        UpdateCheckStatus.objects.update_or_create(pk=1, defaults={'checked_at': timezone.now(), 'last_check_error': 'boom'})
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('site_settings'))
+        self.assertContains(response, 'Unreachable')
+
+    def test_ocr_status_badge_shown_when_backend_configured(self):
+        set_site_config(ocr_backend='claude', anthropic_api_key='sk-ant-x')
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('site_settings'))
+        self.assertContains(response, 'ocr-fields')
 
 
 class OfflineCacheTogglePreferenceTests(TestCase):

@@ -88,6 +88,24 @@ class ItemForm(forms.ModelForm):
             self.fields['wallet'].queryset = Wallet.objects.none()
             self.fields['tags'].queryset = Tag.objects.none()
 
+        # Default a brand-new item to "No Barcode" rather than the model's
+        # own "qrcode" default - most items start out with nothing scanned
+        # yet, and a scan/AI-photo/.pkpass import updates this field for you
+        # once it actually detects a symbology (see scanner.js). Editing an
+        # existing item, or duplicating one (which passes code_type via its
+        # own explicit `initial=`, taking precedence over this), is unaffected.
+        # Must go through self.initial (not just field.initial) - ModelForm's
+        # own __init__ already seeded self.initial['code_type'] from the
+        # unsaved instance's model-default value ("qrcode"), and a BoundField
+        # always prefers self.initial over field.initial when both are set.
+        # Item.id is a UUIDField with default=uuid.uuid4, so even a
+        # brand-new unsaved Item() already has a non-empty pk - _state.adding
+        # is the actual "hasn't been saved to the DB yet" signal here.
+        is_new_item = self.instance._state.adding
+        caller_set_code_type = 'code_type' in (kwargs.get('initial') or {})
+        if is_new_item and not caller_set_code_type:
+            self.initial['code_type'] = 'none'
+
     def clean_new_tags(self):
         raw = self.cleaned_data.get('new_tags', '')
         return [name.strip() for name in raw.split(',') if name.strip()]
@@ -327,6 +345,7 @@ class SiteConfigurationForm(forms.ModelForm):
             'google_wallet_class_id': forms.TextInput(attrs={'class': 'form-control'}),
             'update_check_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'update_check_repo': forms.TextInput(attrs={'class': 'form-control'}),
+            'portainer_webhook_url': forms.TextInput(attrs={'class': 'form-control'}),
             'scheduled_backup_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'backup_retention_count': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
         }
