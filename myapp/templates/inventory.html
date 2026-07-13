@@ -439,11 +439,12 @@ body.dark-mode .item-description {
   color: #cc9a06;
 }
 
-/* Share Button */
+/* Share Button - sits immediately left of .pin-btn (top-right), not over
+   the item logo on the left where it used to collide with the artwork. */
 .share-btn {
   position: absolute;
   top: 0.75rem;
-  left: 0.5rem;
+  right: calc(0.5rem + 44px + 0.5rem);
   width: 44px;
   height: 44px;
   border-radius: 8px;
