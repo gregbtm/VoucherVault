@@ -57,3 +57,14 @@ def share_settings(request):
     if not request.user.is_authenticated:
         return {}
     return {'share_via_smart_enabled': SiteConfiguration.load().share_via_smart_enabled}
+
+
+def pwa_cache_clear_signal(request):
+    """
+    One-shot flag consumed here (via pop, not get) so it fires on exactly
+    the first page rendered after a fresh login - see
+    myapp/signals.py::flag_pwa_cache_clear_on_login.
+    """
+    if not request.user.is_authenticated or not hasattr(request, 'session'):
+        return {}
+    return {'clear_pwa_cache_on_load': request.session.pop('clear_pwa_cache', False)}

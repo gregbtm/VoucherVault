@@ -606,33 +606,69 @@
       document.getElementById('languageForm').submit();
     });
 
+    // Deletes every PWA cache this app owns (Cache Storage API is
+    // origin-scoped, not session-scoped, so the service worker's caches
+    // by URL alone - two different users on the same shared/kiosk
+    // browser could otherwise be served each other's cached authenticated
+    // pages). Used on both login (see clear_pwa_cache_on_load below) and
+    // logout. Returns a Promise so the caller can wait for it to finish
+    // before navigating away.
+    function clearPwaCaches() {
+      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+      }
+      if (!('caches' in window)) {
+        return Promise.resolve();
+      }
+      return caches.keys().then(function (names) {
+        return Promise.all(
+          names.filter(function (n) { return n.indexOf('vouchervault') !== -1; })
+               .map(function (n) { return caches.delete(n); })
+        );
+      });
+    }
+
+    {% if clear_pwa_cache_on_load %}
+    // Defense-in-depth: a previous session on this browser may have ended
+    // without a clean logout (closed tab, crash) and left its cached
+    // pages behind - clear everything the moment a fresh login lands.
+    clearPwaCaches();
+    {% endif %}
+
     // CSRF Fix: Force page reload before logout to get fresh CSRF token
     const logoutForm = document.getElementById('logout-form');
     if (logoutForm) {
       logoutForm.addEventListener('submit', function(e) {
         // Check if we just reloaded (to avoid infinite loop)
         const urlParams = new URLSearchParams(window.location.search);
-        
+
         if (!urlParams.has('sw-bypass')) {
           // First click: reload page with sw-bypass to get fresh content
           e.preventDefault();
           console.log('[Logout] Reloading page to get fresh CSRF token...');
-          
+
           // Store logout intent in sessionStorage
           sessionStorage.setItem('pending-logout', 'true');
-          
+
           // Reload with cache bypass
           const url = new URL(window.location.href);
           url.searchParams.set('sw-bypass', '1');
           window.location.href = url.toString();
         } else {
-          // Second click after reload: proceed with logout
-          console.log('[Logout] Fresh page loaded, proceeding with logout');
+          // Second click after reload: clear PWA caches before the next
+          // user on this browser could otherwise see this session's
+          // cached pages, then proceed with logout.
+          e.preventDefault();
+          console.log('[Logout] Fresh page loaded, clearing PWA cache before logout...');
           sessionStorage.removeItem('pending-logout');
-          // Let form submit normally
+          clearPwaCaches().then(function () {
+            logoutForm.submit();
+          }, function () {
+            logoutForm.submit();
+          });
         }
       });
-      
+
       // Auto-submit logout if we just reloaded for logout
       if (sessionStorage.getItem('pending-logout') === 'true') {
         console.log('[Logout] Auto-submitting after page refresh');

@@ -69,6 +69,12 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 32 — Floating toasts, Site Settings autosave, foolproof wallet-button detection](#phase-32--floating-toasts-site-settings-autosave-foolproof-wallet-button-detection)
 - [Phase 33 — Fix stale update banner, redeploy progress UX](#phase-33--fix-stale-update-banner-redeploy-progress-ux)
 - [Phase 34 — Site Settings field validation](#phase-34--site-settings-field-validation)
+- [Phase 35 — Fix PWA cross-user cache leak](#phase-35--fix-pwa-cross-user-cache-leak)
+- [Phase 36 — Fix currency-blind stats totals](#phase-36--fix-currency-blind-stats-totals)
+- [Phase 37 — OIDC discovery URL](#phase-37--oidc-discovery-url)
+- [Phase 38 — Configurable code-blur toggle](#phase-38--configurable-code-blur-toggle)
+- [Phase 39 — API write-endpoint rate limiting](#phase-39--api-write-endpoint-rate-limiting)
+- [Phase 40 — tile_color regression tests](#phase-40--tile_color-regression-tests)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -2097,6 +2103,148 @@ elsewhere in `forms.py` - no new UI plumbing needed.
 (rejection and acceptance cases), plus a fix to a pre-existing test that
 used a fake, format-invalid API key value. Full suite: 529 tests passing.
 
+## Phase 35 — Fix PWA cross-user cache leak
+
+Triggered by an external audit of upstream l4rm4nd/VoucherVault's issue
+tracker, which flagged a still-open, unfixed bug (upstream #119): the PWA
+service worker caches authenticated pages (`/dashboard`, `/items/view/*`,
+etc.) by URL only, with no per-user/session scoping. On a shared or kiosk
+browser, a session that ends without a clean logout (closed tab, crash)
+could leave the next person who logs in served the previous user's
+cached pages until the 48h cache TTL expires or someone manually purges.
+This fork had already fixed the CSRF-403-on-logout symptom that made the
+upstream bug obvious - which meant the deeper leak was more likely to go
+unnoticed, not less real.
+
+- `myapp/signals.py`: a new `user_logged_in` signal receiver flags the
+  session so the very next page render clears every PWA cache
+  client-side - defense-in-depth for whatever a prior session left
+  behind, on top of...
+- ...logout, which now also clears every PWA cache (not just
+  `/dashboard`) before the actual logout POST proceeds, via a new shared
+  `clearPwaCaches()` JS helper in `base.html` used by both flows.
+- New context processor `pwa_cache_clear_signal` (one-shot: consumed via
+  `request.session.pop()`, so it fires on exactly the first page after a
+  fresh login).
+
+### Tests
+
+4 new tests in `PwaCacheClearOnLoginTests` covering the one-shot flag
+lifecycle and that anonymous requests never see it.
+
+## Phase 36 — Fix currency-blind stats totals
+
+Same external audit surfaced a second still-open upstream bug (#135):
+the stats API sums item values straight across currencies with no
+grouping or conversion, producing a meaningless total for any
+multi-currency inventory. This fork's newer dashboard/analytics code
+already handles this correctly (converts via Fixer.io, or reports
+per-currency when it can't) - but the legacy backward-compat endpoint
+`/api/get/stats` (`get_stats()` in `myapp/views.py`) still had the bug,
+untouched since it predates that fix.
+
+- `item_stats.total_value`: sums directly only when every item shares one
+  currency (unchanged, still a flat number). For a mixed-currency result,
+  converts via the requested user's own Fixer.io key when `?user=` was
+  given (mirrors the dashboard's per-user conversion); otherwise there's
+  no single applicable key for a cross-user aggregate, so it now reports
+  `total_value: null` plus an honest `total_value_by_currency` breakdown
+  instead of a silently wrong number.
+- `issuer_stats[]`: now grouped by `(issuer, currency)` instead of
+  `issuer` alone (a `currency` key was added to each entry) - the same
+  issuer name can span multiple currencies across items/users, and this
+  avoids ever needing conversion for issuer-level totals at all.
+- Purely additive to the response shape (new keys only) - existing
+  integrations reading `total_value` as a plain number in the common
+  single-currency case are unaffected.
+
+### Tests
+
+4 new tests in `GetStatsCurrencyTests` covering single-currency (sums
+directly), mixed-currency with and without a fixer key, and issuer-level
+currency grouping.
+
+## Phase 37 — OIDC discovery URL
+
+Third item from the external audit: upstream closed "add
+`.well-known/openid-configuration` auto-discovery" as not planned
+(#67), since `mozilla-django-oidc` itself has no discovery support. This
+fork adds it independently - the discovery document is fetched once at
+Django startup, before `mozilla-django-oidc` ever reads the individual
+`OIDC_OP_*_ENDPOINT` settings.
+
+- New optional `OIDC_DISCOVERY_URL` env var. When set, its
+  `.well-known/openid-configuration` document is fetched and used to
+  populate `OIDC_OP_AUTHORIZATION_ENDPOINT`, `OIDC_OP_TOKEN_ENDPOINT`,
+  `OIDC_OP_USER_ENDPOINT`, and `OIDC_OP_JWKS_ENDPOINT`.
+  **Additive only** - any of those four set explicitly via its own env
+  var always wins over the discovered value.
+  On fetch failure, logs a warning and falls back to whatever's
+  configured manually.
+  - `myapp/utils.py::fetch_oidc_discovery()` does the actual fetch/parse
+  (extracted out of `settings.py` purely so it's unit-testable without
+  reloading the settings module).
+
+### Tests
+
+3 new tests in `OidcDiscoveryTests` covering success, network failure,
+and invalid-JSON response.
+
+## Phase 38 — Configurable code-blur toggle
+
+Fourth audit item: upstream closed "option to disable barcode blur" as
+not planned (#96). The tap-to-reveal blur on barcodes/redeem codes was
+hardcoded with no way to turn it off - real friction at point-of-sale
+(an extra tap before a loyalty card's barcode is even scannable).
+
+- New `UserPreference.blur_codes_enabled` field (default `True` -
+  unchanged behavior unless a user opts out), exposed as a checkbox on
+  the Preferences page ("Blur barcodes and codes until tapped").
+- When off: the barcode/QR image and redeem code render fully visible
+  immediately (no `opaque` CSS class, no "Tap to reveal" hint, copy
+  button visible from the start), and the tap-to-toggle click handler
+  isn't attached at all, since there's nothing to reveal.
+
+### Tests
+
+4 new tests in `BlurCodesTogglePreferenceTests` covering the default,
+both rendered states, and saving the preference.
+
+## Phase 39 — API write-endpoint rate limiting
+
+Fifth audit item: the full CRUD REST API (Phase 1) had no rate limiting
+at all - a leaked token or misbehaving script could hammer writes with
+zero backpressure.
+
+- New `api/throttling.py::WriteRateThrottle` - throttles only unsafe
+  methods (POST/PUT/PATCH/DELETE); GET/HEAD/OPTIONS are never limited,
+  since reads are comparatively cheap and throttling them would break
+  normal browsing/polling.
+- Wired in globally via `DEFAULT_THROTTLE_CLASSES` in `REST_FRAMEWORK`
+  settings, so every existing and future DRF view gets it automatically
+  without per-view changes.
+- Rate is configurable via `API_WRITE_RATE_LIMIT` (default `60/minute`).
+
+### Tests
+
+3 new tests in `WriteRateThrottleTests`, patching the throttle's rate
+directly (`override_settings` on `REST_FRAMEWORK` does **not** propagate
+to already-imported DRF throttle classes' `THROTTLE_RATES` - a real DRF
+gotcha discovered while writing this test) to deterministically trip the
+limit, confirm reads are exempt, and confirm the shipped default doesn't
+interfere with normal usage.
+
+## Phase 40 — tile_color regression tests
+
+Final audit item: `tile_color` has been the root cause of three separate
+historical upstream bugs (#86, #107, #126 - lost on edit, lost on
+duplicate) despite this fork's `duplicate_item` view already correctly
+carrying it forward. No regression test existed for either case despite
+the field being touched repeatedly - added 2 tests confirming the
+existing fix holds (`TileColorPreservationTests`): the color survives
+editing an unrelated field, and survives into the duplicate form's
+pre-filled value.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
@@ -2128,6 +2276,8 @@ On top of everything documented in the README, this fork adds:
 | `UPDATE_CHECK_ENABLED` | Set to `False` to disable the periodic GitHub Releases check. | `True` |
 | `UPDATE_CHECK_REPO` | `owner/repo` to check for releases. | `gregbtm/VoucherVault` |
 | `VERSION` | Overrides the version shown in the footer. Normally unset - the `VERSION` file baked into the image is the source of truth. | `<VERSION file>` |
+| `OIDC_DISCOVERY_URL` | Auto-populate `OIDC_OP_*_ENDPOINT` from a provider's `.well-known/openid-configuration` document. Any endpoint set explicitly via its own env var still wins. | `None` |
+| `API_WRITE_RATE_LIMIT` | Rate limit on REST API write requests (POST/PUT/PATCH/DELETE); reads are never throttled. | `60/minute` |
 
 See `docker/env.example` for the full, commented list.
 

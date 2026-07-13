@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/3.2/ref/settings/
 
 from pathlib import Path
 from dotenv import load_dotenv
+import logging
 import os
 import pytz
 import secrets
@@ -161,6 +162,7 @@ TEMPLATES = [
                 'myapp.context_processors.user_preferences',
                 'myapp.context_processors.update_check_status',
                 'myapp.context_processors.share_settings',
+                'myapp.context_processors.pwa_cache_clear_signal',
             ],
         },
     },
@@ -338,6 +340,15 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 25,
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    # Only write requests (POST/PUT/PATCH/DELETE) are throttled - see
+    # api/throttling.py::WriteRateThrottle. Reads are left unlimited since
+    # the API previously had no rate limiting at all, and a leaked token
+    # or misbehaving script could otherwise hammer writes with zero
+    # backpressure.
+    'DEFAULT_THROTTLE_CLASSES': ['api.throttling.WriteRateThrottle'],
+    'DEFAULT_THROTTLE_RATES': {
+        'write': os.environ.get('API_WRITE_RATE_LIMIT', '60/minute'),
+    },
 }
 
 SPECTACULAR_SETTINGS = {
@@ -432,14 +443,38 @@ if OIDC_ENABLED:
     # get oidc config from env
     OIDC_CREATE_USER = os.environ.get('OIDC_CREATE_USER', 'True').lower() in ['true']
     OIDC_RP_SIGN_ALGO = os.environ.get('OIDC_RP_SIGN_ALGO', 'HS256')
-    OIDC_OP_JWKS_ENDPOINT = os.environ.get('OIDC_OP_JWKS_ENDPOINT')
     OIDC_RP_IDP_SIGN_KEY = os.environ.get('OIDC_RP_IDP_SIGN_KEY')
     OIDC_RP_CLIENT_ID = os.environ.get('OIDC_RP_CLIENT_ID', "vouchervault")
     OIDC_RP_CLIENT_SECRET = os.environ.get('OIDC_RP_CLIENT_SECRET')
-    OIDC_OP_AUTHORIZATION_ENDPOINT = os.environ.get('OIDC_OP_AUTHORIZATION_ENDPOINT')
-    OIDC_OP_TOKEN_ENDPOINT = os.environ.get('OIDC_OP_TOKEN_ENDPOINT')
-    OIDC_OP_USER_ENDPOINT = os.environ.get('OIDC_OP_USER_ENDPOINT')
     OIDC_USERNAME_ALGO = 'myapp.utils.generate_username'
+
+    # Optional: instead of configuring every OIDC_OP_*_ENDPOINT by hand,
+    # point OIDC_DISCOVERY_URL at the provider's
+    # .well-known/openid-configuration document (e.g.
+    # https://auth.example.com/.well-known/openid-configuration) and the
+    # individual endpoints are read from it automatically. Any endpoint
+    # set explicitly via its own env var always wins over the discovered
+    # value - this is additive/opt-in, not a replacement for manual
+    # configuration. mozilla-django-oidc itself has no discovery support
+    # (upstream closed this as not-planned - l4rm4nd/VoucherVault#67,
+    # citing mozilla/mozilla-django-oidc#414) - this fetches the document
+    # once at startup, before mozilla-django-oidc ever reads these
+    # settings, so it works with any provider without waiting on that
+    # library to add the feature.
+    _oidc_discovery_url = os.environ.get('OIDC_DISCOVERY_URL')
+    _oidc_discovered = {}
+    if _oidc_discovery_url:
+        from myapp.utils import fetch_oidc_discovery
+        _oidc_discovered = fetch_oidc_discovery(_oidc_discovery_url)
+        if _oidc_discovered:
+            logging.getLogger(__name__).info(
+                "OIDC discovery: fetched provider configuration from %s", _oidc_discovery_url
+            )
+
+    OIDC_OP_AUTHORIZATION_ENDPOINT = os.environ.get('OIDC_OP_AUTHORIZATION_ENDPOINT') or _oidc_discovered.get('authorization_endpoint')
+    OIDC_OP_TOKEN_ENDPOINT = os.environ.get('OIDC_OP_TOKEN_ENDPOINT') or _oidc_discovered.get('token_endpoint')
+    OIDC_OP_USER_ENDPOINT = os.environ.get('OIDC_OP_USER_ENDPOINT') or _oidc_discovered.get('userinfo_endpoint')
+    OIDC_OP_JWKS_ENDPOINT = os.environ.get('OIDC_OP_JWKS_ENDPOINT') or _oidc_discovered.get('jwks_uri')
     #ALLOW_LOGOUT_GET_METHOD = True
 
     # Add 'mozilla_django_oidc.middleware.SessionRefresh' to INSTALLED_APPS

@@ -1,5 +1,6 @@
 import json
 import os
+import urllib.error
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
@@ -23,12 +24,12 @@ from .merchant_logos import (
     remember_balance_check_url,
 )
 from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
-from .models import Document, Item, ItemPublicShare, MerchantProfile, SiteConfiguration, Tag, Transaction, UpdateCheckStatus, UserPreference, UserProfile, Wallet
+from .models import AppSettings, Document, Item, ItemPublicShare, MerchantProfile, SiteConfiguration, Tag, Transaction, UpdateCheckStatus, UserPreference, UserProfile, Wallet
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .test_utils import set_site_config
 from .tasks import check_for_update_task, fetch_merchant_logo_task
 from .update_check import _is_newer, _parse_version, check_for_update
-from .utils import generate_code_image_base64
+from .utils import fetch_oidc_discovery, generate_code_image_base64
 from .views import _integration_status
 
 
@@ -302,6 +303,41 @@ class NoBarcodeCodeTypeTests(TestCase):
         self.assertNotContains(response, 'id="fullscreen-btn"')
         self.assertContains(response, 'id="redeem-code"')
         self.assertContains(response, '4111222233334444')
+
+
+class TileColorPreservationTests(TestCase):
+    """
+    tile_color has been the root cause of three separate historical bugs
+    (upstream #86, #107, #126) - lost on edit, lost on duplicate. No
+    regression test existed for either despite the field being touched
+    repeatedly. clean_tile_color() treats the UI's default placeholder
+    swatches as "unset" (returns None) - '#ff5733' here is deliberately
+    not one of those placeholders, so it must round-trip unchanged.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_tile_color_survives_editing_an_unrelated_field(self):
+        item = make_item(self.user, tile_color='#ff5733')
+        response = self.client.post(reverse('edit_item', args=[item.id]), {
+            'type': item.type, 'name': 'Renamed Voucher', 'issuer': item.issuer,
+            'redeem_code': item.redeem_code, 'value': item.value, 'currency': item.currency,
+            'code_type': item.code_type, 'value_type': item.value_type,
+            'issue_date': date.today().isoformat(), 'expiry_date': item.expiry_date.isoformat(),
+            'tile_color': '#ff5733',
+        })
+        self.assertRedirects(response, reverse('view_item', args=[item.id]))
+        item.refresh_from_db()
+        self.assertEqual(item.name, 'Renamed Voucher')
+        self.assertEqual(item.tile_color, '#ff5733')
+
+    def test_tile_color_preserved_in_duplicate_form(self):
+        item = make_item(self.user, tile_color='#ff5733')
+        response = self.client.get(reverse('duplicate_item', args=[item.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'value="#ff5733"')
 
 
 class ExtraBarcodeTypeTests(TestCase):
@@ -2401,6 +2437,180 @@ class OfflineCacheTogglePreferenceTests(TestCase):
             # still leaving offline_cache_enabled off - no transition, no purge needed
         })
         self.assertRedirects(response, reverse('show_items') + '?prefs_saved=1')
+
+
+class BlurCodesTogglePreferenceTests(TestCase):
+    """
+    The tap-to-reveal blur on barcodes/redeem codes used to be hardcoded
+    with no way to turn it off, causing real friction at point-of-sale
+    (an extra tap before a loyalty card's barcode is even scannable).
+    blur_codes_enabled makes it an opt-out per-user preference.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_defaults_to_enabled(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        self.assertTrue(prefs.blur_codes_enabled)
+
+    def test_codes_blurred_by_default(self):
+        item = make_item(self.user)
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertContains(response, 'qr-image opaque')
+        self.assertContains(response, 'redeem-code opaque')
+
+    def test_codes_not_blurred_when_disabled(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        prefs.blur_codes_enabled = False
+        prefs.save()
+        item = make_item(self.user)
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertNotContains(response, 'qr-image opaque')
+        self.assertNotContains(response, 'redeem-code opaque')
+        self.assertContains(response, 'copy-code-btn visible')
+
+    def test_toggle_off_saves_via_preferences_form(self):
+        response = self.client.post(reverse('update_user_preferences'), data={
+            'show_expiry_date': 'on', 'show_value': 'on', 'show_description': 'on',
+            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact',
+            'default_currency': 'GBP', 'keep_screen_awake': 'on', 'offline_cache_enabled': 'on',
+            # blur_codes_enabled omitted -> unchecked checkbox -> False
+        })
+        self.assertRedirects(response, reverse('show_items') + '?prefs_saved=1')
+        prefs = UserPreference.objects.get(user=self.user)
+        self.assertFalse(prefs.blur_codes_enabled)
+
+
+class PwaCacheClearOnLoginTests(TestCase):
+    """
+    Regression coverage for a real cross-user data leak: the service
+    worker caches authenticated pages by URL only (see
+    myapp/serviceworker.js), with no per-session scoping. On a shared or
+    kiosk browser, a session that ends without a clean logout (closed tab,
+    crash) could leave the next user served the previous user's cached
+    pages. Login now flags the very next page render to clear all PWA
+    caches client-side, as defense-in-depth on top of logout's own
+    proactive clear (see the logout JS in base.html).
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_clear_cache_call_present_on_first_page_after_login(self):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.get(reverse('show_items'))
+        self.assertContains(response, 'clearPwaCaches();')
+
+    def test_clear_cache_call_absent_on_subsequent_page_loads(self):
+        self.client.login(username='alice', password='pw12345!')
+        self.client.get(reverse('show_items'))  # consumes the one-shot flag
+        response = self.client.get(reverse('show_items'))
+        self.assertNotContains(response, 'clearPwaCaches();')
+
+    def test_clear_pwa_caches_helper_always_defined(self):
+        # The shared helper function itself must always be present so the
+        # logout flow (which also calls it) works even when this page
+        # wasn't reached via a fresh login.
+        self.client.login(username='alice', password='pw12345!')
+        self.client.get(reverse('show_items'))  # consume the flag
+        response = self.client.get(reverse('show_items'))
+        self.assertContains(response, 'function clearPwaCaches()')
+
+    def test_flag_not_set_for_anonymous_requests(self):
+        response = self.client.get(reverse('login'))
+        self.assertNotContains(response, 'clearPwaCaches();')
+
+
+class GetStatsCurrencyTests(TestCase):
+    """
+    Regression coverage for a real data-correctness bug: get_stats() used
+    to Sum() item values straight across currencies with no grouping or
+    conversion, producing a meaningless total for any multi-currency
+    inventory (see upstream l4rm4nd/VoucherVault#135, still open there).
+    """
+
+    def setUp(self):
+        token = '11111111-1111-1111-1111-111111111111'
+        AppSettings.objects.create(api_token=token)
+        self.auth_header = {'HTTP_AUTHORIZATION': f'Bearer {token}'}
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_single_currency_sums_directly(self):
+        make_item(self.user, name='A', value='10.00', currency='GBP')
+        make_item(self.user, name='B', value='5.00', currency='GBP')
+        response = self.client.get(reverse('get_stats'), {'user': 'alice'}, **self.auth_header)
+        payload = response.json()
+        self.assertEqual(payload['item_stats']['total_value'], 15.0)
+        self.assertEqual(payload['item_stats']['total_value_currency'], 'GBP')
+        self.assertNotIn('total_value_by_currency', payload['item_stats'])
+
+    def test_mixed_currency_without_fixer_key_reports_breakdown_not_a_wrong_sum(self):
+        make_item(self.user, name='A', value='10.00', currency='GBP')
+        make_item(self.user, name='B', value='20.00', currency='USD')
+        response = self.client.get(reverse('get_stats'), {'user': 'alice'}, **self.auth_header)
+        payload = response.json()
+        self.assertIsNone(payload['item_stats']['total_value'])
+        self.assertEqual(payload['item_stats']['total_value_by_currency'], {'GBP': 10.0, 'USD': 20.0})
+        self.assertIn('currency_conversion_note', payload['item_stats'])
+
+    def test_mixed_currency_across_users_with_no_user_filter_reports_breakdown(self):
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        make_item(self.user, name='A', value='10.00', currency='GBP')
+        make_item(bob, name='B', value='20.00', currency='EUR')
+        response = self.client.get(reverse('get_stats'), **self.auth_header)
+        payload = response.json()
+        self.assertIsNone(payload['item_stats']['total_value'])
+        self.assertEqual(payload['item_stats']['total_value_by_currency'], {'GBP': 10.0, 'EUR': 20.0})
+
+    def test_issuer_stats_grouped_by_currency_not_summed_across_them(self):
+        make_item(self.user, name='A', issuer='Acme', value='10.00', currency='GBP')
+        make_item(self.user, name='B', issuer='Acme', value='20.00', currency='USD')
+        response = self.client.get(reverse('get_stats'), {'user': 'alice'}, **self.auth_header)
+        payload = response.json()
+        acme_entries = [row for row in payload['issuer_stats'] if row['issuer'] == 'Acme']
+        self.assertEqual(len(acme_entries), 2)
+        totals_by_currency = {row['currency']: str(row['total_value']) for row in acme_entries}
+        self.assertEqual(totals_by_currency, {'GBP': '10.00', 'USD': '20.00'})
+
+
+class OidcDiscoveryTests(TestCase):
+    """
+    fetch_oidc_discovery() backs the optional OIDC_DISCOVERY_URL setting,
+    which auto-populates OIDC_OP_*_ENDPOINT from a provider's
+    .well-known/openid-configuration document instead of requiring each
+    endpoint to be configured by hand (upstream closed this as not
+    planned - l4rm4nd/VoucherVault#67 - since mozilla-django-oidc itself
+    has no discovery support).
+    """
+
+    def test_returns_parsed_document_on_success(self):
+        document = {
+            'authorization_endpoint': 'https://idp.example.com/auth',
+            'token_endpoint': 'https://idp.example.com/token',
+            'userinfo_endpoint': 'https://idp.example.com/userinfo',
+            'jwks_uri': 'https://idp.example.com/jwks',
+        }
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(document).encode()
+        mock_response.__enter__.return_value = mock_response
+        with patch('myapp.utils.urllib.request.urlopen', return_value=mock_response):
+            result = fetch_oidc_discovery('https://idp.example.com/.well-known/openid-configuration')
+        self.assertEqual(result, document)
+
+    def test_returns_empty_dict_on_network_failure(self):
+        with patch('myapp.utils.urllib.request.urlopen', side_effect=urllib.error.URLError('unreachable')):
+            result = fetch_oidc_discovery('https://idp.example.com/.well-known/openid-configuration')
+        self.assertEqual(result, {})
+
+    def test_returns_empty_dict_on_invalid_json(self):
+        mock_response = MagicMock()
+        mock_response.read.return_value = b'not json'
+        mock_response.__enter__.return_value = mock_response
+        with patch('myapp.utils.urllib.request.urlopen', return_value=mock_response):
+            result = fetch_oidc_discovery('https://idp.example.com/.well-known/openid-configuration')
+        self.assertEqual(result, {})
 
 
 class IcsCalendarBuilderTests(TestCase):
