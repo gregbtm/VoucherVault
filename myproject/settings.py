@@ -435,6 +435,58 @@ BACKUP_RETENTION_COUNT = int(os.environ.get('BACKUP_RETENTION_COUNT', 7))
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Django's own default LOGGING config only prints tracebacks to console
+# when DEBUG=True; with DEBUG=False (this app's production default) an
+# unhandled exception instead only tries to email ADMINS (unconfigured
+# here, so it silently goes nowhere) - meaning server errors left zero
+# trace in `docker logs` before this. Explicit config below always logs
+# to stdout regardless of DEBUG, so a real deployment's container logs
+# actually show what broke.
+LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{asctime} {levelname} {name} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': LOG_LEVEL,
+    },
+    'loggers': {
+        # Full tracebacks for every unhandled exception (500, level ERROR)
+        # that Django's exception middleware catches, plus 404s (level
+        # WARNING) and other 4xx - unconditionally, regardless of DEBUG.
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.security': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        # Quiets Django's normal per-request access log (GET /items/... 200)
+        # down to warnings only - runserver/gunicorn access logs cover that
+        # already and this would otherwise double up with LOG_LEVEL=INFO.
+        'django.server': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+}
+
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/post-logout/'
