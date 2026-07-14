@@ -1330,6 +1330,50 @@ class ItemShareLogoViewTests(TestCase):
         self.assertEqual(response['Content-Type'], 'image/png')
         mock_get.assert_called_once_with('https://logo.clearbit.com/amazon.com', timeout=5)
 
+    @patch('myapp.views.requests.get')
+    def test_resolves_from_logo_slug_when_nothing_cached_yet(self, mock_get):
+        # No prior MerchantProfile row at all - the synchronous resolution
+        # in _resolve_merchant_share_image must still find the right
+        # domain from the item's own logo_slug, without needing the
+        # async fetch_merchant_logo_task to have run first.
+        item = make_item(self.alice, issuer='Every Wish', logo_slug='uber.com')
+        mock_get.return_value = MagicMock(
+            status_code=200, content=b'uber-logo-bytes', headers={'Content-Type': 'image/png'}
+        )
+        response = self.client.get(reverse('item_share_logo', args=[item.id]))
+        self.assertEqual(response.content, b'uber-logo-bytes')
+        profile = MerchantProfile.objects.get(name='Every Wish')
+        self.assertEqual(profile.domain, 'uber.com')
+
+    @patch('myapp.views.requests.get')
+    def test_resolves_from_logo_slug_even_with_a_stale_wrong_domain_already_cached(self, mock_get):
+        # Regression test for the exact reported bug: "Every Wish" (the
+        # issuer) already has a stale MerchantProfile cached under a
+        # wrong guessed domain - as would happen for an item saved
+        # before logo_slug existed, or before this item's own scan
+        # populated it. The share image must resolve via this item's own
+        # logo_slug right now, not require a prior edit/save to
+        # re-trigger the async fetch task.
+        item = make_item(self.alice, issuer='Every Wish', logo_slug='uber.com')
+        MerchantProfile.objects.create(
+            name='Every Wish', domain='everywish.com', logo_url='', fetched_at=timezone.now()
+        )
+        mock_get.return_value = MagicMock(
+            status_code=200, content=b'uber-logo-bytes', headers={'Content-Type': 'image/png'}
+        )
+        response = self.client.get(reverse('item_share_logo', args=[item.id]))
+        self.assertEqual(response.content, b'uber-logo-bytes')
+        profile = MerchantProfile.objects.get(name='Every Wish')
+        self.assertEqual(profile.domain, 'uber.com')
+
+    def test_skips_synchronous_refresh_when_merchant_logos_disabled(self):
+        set_site_config(merchant_logos_enabled=False)
+        item = make_item(self.alice, issuer='Every Wish', logo_slug='uber.com')
+        with patch('myapp.views.fetch_merchant_logo') as mock_fetch:
+            response = self.client.get(reverse('item_share_logo', args=[item.id]))
+        mock_fetch.assert_not_called()
+        self.assertEqual(response.status_code, 200)
+
     def test_falls_back_to_generated_avatar_when_no_cached_logo(self):
         item = make_item(self.alice, issuer='Totally Unknown Merchant')
         response = self.client.get(reverse('item_share_logo', args=[item.id]))
