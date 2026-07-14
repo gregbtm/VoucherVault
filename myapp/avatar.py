@@ -50,3 +50,40 @@ def generate_initial_avatar(name: str, size: int = 512) -> bytes:
     buffer = BytesIO()
     image.save(buffer, format='PNG')
     return buffer.getvalue()
+
+
+def normalize_logo_image(content: bytes, size: int = 256) -> bytes:
+    """
+    Re-encodes a fetched merchant logo/favicon to a consistently-sized PNG
+    using smooth (Lanczos) resampling. Some sources (Google's favicon
+    service especially) return whatever native resolution a domain's
+    favicon actually has - often just 32-48px for anything but the
+    biggest brands - and without this, that gets blockily stretched by
+    whatever ends up displaying it (a WhatsApp chat bubble, a Web Share
+    preview), which is what "pixelated logo" share reports turn out to
+    be. Preserves aspect ratio, centered on a transparent square canvas,
+    so a non-square source doesn't get distorted.
+
+    Returns the original bytes unchanged if they can't be parsed as a
+    raster image (e.g. an SVG, or corrupt/truncated data) rather than
+    raising - the caller still has *something* to serve.
+    """
+    try:
+        image = Image.open(BytesIO(content)).convert('RGBA')
+    except Exception:
+        return content
+
+    width, height = image.size
+    if not width or not height:
+        return content
+
+    scale = size / max(width, height)
+    new_size = (max(1, round(width * scale)), max(1, round(height * scale)))
+    image = image.resize(new_size, Image.LANCZOS)
+
+    canvas = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    canvas.paste(image, ((size - new_size[0]) // 2, (size - new_size[1]) // 2), image)
+
+    buffer = BytesIO()
+    canvas.save(buffer, format='PNG')
+    return buffer.getvalue()

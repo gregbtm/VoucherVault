@@ -30,7 +30,7 @@ from django.utils.timezone import now
 from django.utils.http import url_has_allowed_host_and_scheme
 from .decorators import require_authorization_header_with_api_token
 from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items_by_wallet
-from .avatar import generate_initial_avatar
+from .avatar import generate_initial_avatar, normalize_logo_image
 from .merchant_logos import fetch_merchant_logo, get_cached_balance_check_url, get_cached_logo, get_cached_logos_for_issuers, merchant_logos_enabled, remember_balance_check_url
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .update_check import _is_newer, check_for_update, check_upstream_version
@@ -1264,6 +1264,12 @@ def _resolve_merchant_share_image(item):
     Deliberately never falls back to VoucherVault's own app icon - a
     share/link-preview showing our own branding in place of a specific
     merchant's would misrepresent whose voucher is being shared.
+
+    The fetched logo is passed through avatar.normalize_logo_image before
+    being returned - some sources (Google's favicon service especially)
+    return whatever native resolution a domain's favicon actually has,
+    often just 32-48px, which looks blockily pixelated once stretched to
+    fill a chat bubble or share preview otherwise.
     """
     if item.logo_slug and merchant_logos_enabled():
         try:
@@ -1278,7 +1284,7 @@ def _resolve_merchant_share_image(item):
         try:
             response = requests.get(logo_url, timeout=5)
             if response.status_code == 200 and response.content:
-                return response.content, response.headers.get('Content-Type', 'image/png')
+                return normalize_logo_image(response.content), 'image/png'
         except requests.RequestException:
             logger.warning('Merchant logo proxy fetch failed for %r via %s', item.issuer, logo_url, exc_info=True)
 

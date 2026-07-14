@@ -18,7 +18,7 @@ from PIL import Image
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from .avatar import generate_initial_avatar
+from .avatar import generate_initial_avatar, normalize_logo_image
 from .forms import ItemForm, SiteConfigurationForm, TagForm, WalletForm
 from .merchant_logos import (
     fetch_merchant_logo,
@@ -632,6 +632,53 @@ class GenerateInitialAvatarTests(TestCase):
         self.assertEqual(image.size, (128, 128))
 
 
+class NormalizeLogoImageTests(TestCase):
+    """
+    myapp.avatar.normalize_logo_image - smooths a fetched merchant logo/
+    favicon up (or down) to a consistent size, since some sources (Google's
+    favicon service especially) return whatever native resolution a
+    domain's favicon actually has - often just 32-48px for anything but
+    the biggest brands - which looks blockily pixelated once stretched to
+    fill a chat bubble or share preview otherwise.
+    """
+    def _make_png(self, size, color=(10, 20, 30, 255)):
+        image = Image.new('RGBA', size, color)
+        buffer = BytesIO()
+        image.save(buffer, format='PNG')
+        return buffer.getvalue()
+
+    def test_upscales_a_small_source_image_to_the_target_size(self):
+        small = self._make_png((32, 32))
+        normalized = normalize_logo_image(small, size=256)
+        image = Image.open(BytesIO(normalized))
+        self.assertEqual(image.size, (256, 256))
+        self.assertEqual(image.format, 'PNG')
+
+    def test_downscales_a_larger_source_image_too(self):
+        large = self._make_png((512, 512))
+        normalized = normalize_logo_image(large, size=256)
+        image = Image.open(BytesIO(normalized))
+        self.assertEqual(image.size, (256, 256))
+
+    def test_preserves_aspect_ratio_for_a_non_square_source(self):
+        wide = self._make_png((100, 50))
+        normalized = normalize_logo_image(wide, size=256)
+        image = Image.open(BytesIO(normalized))
+        # Scaled to fill the longer dimension (width, 256), then centered
+        # on a 256x256 transparent canvas - never stretched/distorted.
+        self.assertEqual(image.size, (256, 256))
+
+    def test_returns_original_bytes_unchanged_when_not_a_parseable_image(self):
+        garbage = b'not an image at all'
+        self.assertEqual(normalize_logo_image(garbage), garbage)
+
+    def test_already_correct_size_still_returns_valid_image(self):
+        exact = self._make_png((256, 256))
+        normalized = normalize_logo_image(exact, size=256)
+        image = Image.open(BytesIO(normalized))
+        self.assertEqual(image.size, (256, 256))
+
+
 class MerchantLogoServiceTests(TestCase):
     def test_guess_domain_strips_non_alnum_and_lowercases(self):
         self.assertEqual(guess_domain('Amazon'), 'amazon.com')
@@ -659,7 +706,7 @@ class MerchantLogoServiceTests(TestCase):
     def test_fetch_merchant_logo_uses_first_successful_source(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200)
         profile = fetch_merchant_logo('Amazon')
-        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/amazon.com')
+        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/amazon.com?size=256')
         self.assertEqual(profile.domain, 'amazon.com')
         self.assertIsNotNone(profile.fetched_at)
         mock_get.assert_called_once()
@@ -668,7 +715,7 @@ class MerchantLogoServiceTests(TestCase):
     def test_fetch_merchant_logo_falls_back_to_second_source(self, mock_get):
         mock_get.side_effect = [MagicMock(status_code=404), MagicMock(status_code=200)]
         profile = fetch_merchant_logo('Amazon')
-        self.assertEqual(profile.logo_url, 'https://www.google.com/s2/favicons?sz=64&domain=amazon.com')
+        self.assertEqual(profile.logo_url, 'https://www.google.com/s2/favicons?sz=256&domain=amazon.com')
         self.assertEqual(mock_get.call_count, 2)
 
     @patch('myapp.merchant_logos.requests.get')
@@ -699,7 +746,7 @@ class MerchantLogoServiceTests(TestCase):
         mock_get.return_value = MagicMock(status_code=200)
         profile = fetch_merchant_logo('Every Wish', domain_hint='uber.com')
         self.assertEqual(profile.domain, 'uber.com')
-        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/uber.com')
+        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/uber.com?size=256')
 
     @patch('myapp.merchant_logos.requests.get')
     def test_fetch_merchant_logo_refetches_when_domain_hint_changes_despite_fresh_cache(self, mock_get):
@@ -709,13 +756,13 @@ class MerchantLogoServiceTests(TestCase):
         mock_get.return_value = MagicMock(status_code=200)
         profile = fetch_merchant_logo('Every Wish', domain_hint='uber.com')
         self.assertEqual(profile.domain, 'uber.com')
-        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/uber.com')
+        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/uber.com?size=256')
         mock_get.assert_called_once()
 
     @patch('myapp.merchant_logos.requests.get')
     def test_fetch_merchant_logo_skips_refetch_when_domain_hint_matches_cached_domain(self, mock_get):
         MerchantProfile.objects.create(
-            name='Every Wish', domain='uber.com', logo_url='https://logo.clearbit.com/uber.com',
+            name='Every Wish', domain='uber.com', logo_url='https://logo.clearbit.com/uber.com?size=256',
             fetched_at=timezone.now(),
         )
         fetch_merchant_logo('Every Wish', domain_hint='uber.com')
@@ -728,7 +775,7 @@ class MerchantLogoServiceTests(TestCase):
         )
         mock_get.return_value = MagicMock(status_code=200)
         profile = fetch_merchant_logo('Amazon')
-        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/amazon.com')
+        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/amazon.com?size=256')
         mock_get.assert_called_once()
 
     @patch('myapp.merchant_logos.requests.get')

@@ -3064,6 +3064,51 @@ and *no* other change (no re-save, no manual cache fix) - hit the public
 share page's logo endpoint directly and got back the real Uber logo, with
 the `MerchantProfile` row corrected in place (`domain` now `uber.com`).
 
+## Phase 55 — Merchant logo image quality: stop shipping pixelated favicons
+
+Follow-up bug report: the Uber logo *was* now resolving correctly (Phase
+54), but looked "awful" - a heavily pixelated, blown-up black square in
+the WhatsApp share. Root cause was resolution, not identity: Google's
+favicon fallback was requested at `sz=64` and Google returns whatever
+native resolution a domain's favicon actually has, often capped well
+below that anyway (32-48px is common for anything but the biggest
+brands) - then whatever renders it (a WhatsApp chat bubble, a Web Share
+preview) stretches that tiny source to fill a much larger space with
+blocky nearest-neighbour scaling.
+
+- `LOGO_SOURCES` (`myapp/merchant_logos.py`) now requests `size=256` from
+  Clearbit and `sz=256` from Google's favicon service - a plain size bump
+  that alone took Uber's icon from 64x64 to a properly composed 180x180
+  in testing (native resolution varies by domain; the source is still
+  the ceiling).
+- New `myapp/avatar.py::normalize_logo_image()` re-encodes *whatever*
+  comes back from either source to a consistent 256x256 PNG using smooth
+  (Lanczos) resampling before it's ever served, centered on a transparent
+  square canvas to preserve aspect ratio. This is the real fix for the
+  "awful" complaint: even a domain whose favicon genuinely is only
+  32x32 now gets a smoothly upscaled result instead of a blocky one,
+  and every merchant logo comes back a consistent size regardless of
+  source. Falls back to returning the original bytes unchanged if PIL
+  can't parse them (e.g. an SVG slipping through), rather than raising.
+  Wired into `_resolve_merchant_share_image`, so both `item_share_logo`
+  (the Web Share file attachment) and `public_item_share_logo` (the
+  public page's on-page image and its `og:image` link-preview) benefit
+  identically.
+
+### Tests
+
+7 new tests (`NormalizeLogoImageTests`: upscales small sources, downscales
+large ones, preserves aspect ratio for non-square sources, passes
+through unparseable content unchanged, handles an already-correct-size
+source) plus updated `LOGO_SOURCES` URL assertions in the existing
+`MerchantLogoServiceTests`. Full suite (659 tests) green.
+
+Also verified live: hit the public share logo endpoint for the same
+"Every Wish"/`logo_slug=uber.com` item used in the prior phase's
+regression test and confirmed a 256x256 PNG comes back now instead of
+64x64, and that it renders as a crisp, properly composed Uber icon
+rather than a pixelated smear.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
