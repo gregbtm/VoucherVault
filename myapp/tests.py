@@ -1008,6 +1008,25 @@ class WebShareButtonWiringTests(TestCase):
         self.assertIn('/public-share/', expected_url)
         self.assertContains(response, f'data-public-share-url="{expected_url}"')
 
+    def test_view_item_renders_action_toolbar_and_more_sheet(self):
+        # Class names also appear unconditionally in the page's own <style>
+        # block, so assert on the actual class="..." attribute usage rather
+        # than a bare substring match against the whole response body.
+        item = make_item(self.user)
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertContains(response, 'id="more-actions-toggle"')
+        self.assertContains(response, 'id="more-actions-sheet"')
+        self.assertContains(response, 'class="toolbar-btn toolbar-btn-primary"')
+        # Secondary/destructive actions moved into the "More actions" sheet
+        self.assertContains(response, 'class="more-action-row more-action-row-warning"')
+        self.assertContains(response, 'class="more-action-row more-action-row-danger"')
+
+    def test_view_item_mark_used_toggle_uses_success_row_when_already_used(self):
+        item = make_item(self.user, is_used=True)
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertContains(response, 'class="more-action-row more-action-row-success"')
+        self.assertNotContains(response, 'class="more-action-row more-action-row-warning"')
+
     def test_inventory_cards_render_share_button(self):
         make_item(self.user)
         response = self.client.get(reverse('show_items'), {'status': 'all'})
