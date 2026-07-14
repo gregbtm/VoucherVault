@@ -336,7 +336,7 @@ def show_items(request):
         # Appended to the static status/type filter chip hrefs so switching
         # status or type doesn't silently drop the active tag filter.
         # tag_ids is already validated as digit-only strings, safe to mark.
-        'tag_query_params': mark_safe(''.join(f'&tag={t}' for t in tag_ids)),
+        'tag_query_params': mark_safe(''.join(f'&tag={t}' for t in tag_ids)),  # nosec
     }
     return render(request, 'inventory.html', context)
 

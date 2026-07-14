@@ -16,7 +16,9 @@ _FONT_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 
 
 def _color_for(name: str) -> str:
-    digest = hashlib.md5(name.encode('utf-8')).hexdigest()
+    # Palette index only, not a security context - usedforsecurity=False
+    # keeps this fast and off FIPS-mode restrictions on MD5.
+    digest = hashlib.md5(name.encode('utf-8'), usedforsecurity=False).hexdigest()
     return _PALETTE[int(digest, 16) % len(_PALETTE)]
 
 
