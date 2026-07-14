@@ -31,7 +31,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from .decorators import require_authorization_header_with_api_token
 from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items_by_wallet
 from .avatar import generate_initial_avatar
-from .merchant_logos import get_cached_balance_check_url, get_cached_logo, get_cached_logos_for_issuers, remember_balance_check_url
+from .merchant_logos import fetch_merchant_logo, get_cached_balance_check_url, get_cached_logo, get_cached_logos_for_issuers, merchant_logos_enabled, remember_balance_check_url
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .update_check import _is_newer, check_for_update, check_upstream_version
 from .help_docs import render_doc
@@ -1238,22 +1238,40 @@ def _public_share_payload(request, item, share):
         'logo_image_url': request.build_absolute_uri(reverse('item_share_logo', args=[item.id])),
     }
 
-def _resolve_merchant_share_image(issuer):
+def _resolve_merchant_share_image(item):
     """
     Returns (content_bytes, content_type) for whichever of these is
-    available: the merchant's real cached logo (fetched here rather than
-    handed to the caller as a bare third-party URL - see item_share_logo/
-    public_item_share_logo below for why), or, if nothing is cached
-    successfully, a generated initial-letter avatar for `issuer`. Shared by
-    both the authenticated (item_share_logo) and public
+    available: the merchant's real logo (fetched here rather than handed
+    to the caller as a bare third-party URL - see item_share_logo/
+    public_item_share_logo below for why), or, if nothing can be
+    resolved, a generated initial-letter avatar for the item's issuer.
+    Shared by both the authenticated (item_share_logo) and public
     (public_item_share_logo) endpoints so they can't drift into different
     fallback behaviour.
+
+    When the item has a logo_slug (an OCR-extracted domain - e.g.
+    "uber.com" for an "Every Wish" gift card that's actually branded Uber
+    Eats), that's resolved synchronously here rather than only relying on
+    the async fetch_merchant_logo_task queued on save: that task may
+    never have had a chance to run (no worker, or the item predates this
+    field), or may have run once with a worse guess before logo_slug
+    existed and never been re-triggered since a save is the only thing
+    that queues it again. fetch_merchant_logo() already skips its own
+    network call when its cache is fresh and the domain hasn't changed,
+    so this only actually hits the network on a genuine cache miss or a
+    newly-arrived/changed domain, not on every share.
 
     Deliberately never falls back to VoucherVault's own app icon - a
     share/link-preview showing our own branding in place of a specific
     merchant's would misrepresent whose voucher is being shared.
     """
-    cached_merchant = get_cached_logo(issuer)
+    if item.logo_slug and merchant_logos_enabled():
+        try:
+            fetch_merchant_logo(item.issuer, domain_hint=item.logo_slug)
+        except Exception:
+            logger.warning('Synchronous merchant logo refresh failed for item %s', item.id, exc_info=True)
+
+    cached_merchant = get_cached_logo(item.issuer)
     logo_url = cached_merchant.logo_url if cached_merchant else None
 
     if logo_url:
@@ -1262,9 +1280,9 @@ def _resolve_merchant_share_image(issuer):
             if response.status_code == 200 and response.content:
                 return response.content, response.headers.get('Content-Type', 'image/png')
         except requests.RequestException:
-            logger.warning('Merchant logo proxy fetch failed for %r via %s', issuer, logo_url, exc_info=True)
+            logger.warning('Merchant logo proxy fetch failed for %r via %s', item.issuer, logo_url, exc_info=True)
 
-    return generate_initial_avatar(issuer), 'image/png'
+    return generate_initial_avatar(item.issuer), 'image/png'
 
 @require_GET
 @login_required
@@ -1283,7 +1301,7 @@ def item_share_logo(request, item_id):
     if not has_item_access(item, request.user):
         return HttpResponse("Unauthorized", status=403)
 
-    content, content_type = _resolve_merchant_share_image(item.issuer)
+    content, content_type = _resolve_merchant_share_image(item)
     response = HttpResponse(content, content_type=content_type)
     response['Cache-Control'] = 'private, max-age=86400'
     return response
@@ -1304,7 +1322,7 @@ def public_item_share_logo(request, share_id):
     if view_rate_limited(request, share.id):
         return HttpResponse('Too many requests', status=429)
 
-    content, content_type = _resolve_merchant_share_image(share.item.issuer)
+    content, content_type = _resolve_merchant_share_image(share.item)
     response = HttpResponse(content, content_type=content_type)
     response['Cache-Control'] = 'public, max-age=86400'
     return response

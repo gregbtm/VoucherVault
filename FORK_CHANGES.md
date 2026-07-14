@@ -3021,6 +3021,49 @@ image" now attaches the actual ~750-byte Uber PNG (not the app icon) and
 that the shared text reads "Code: 0010372571404729899" (the redeem code)
 rather than the card number.
 
+## Phase 54 — Share logo: trust the item's own logo_slug immediately, not just as a cache hint
+
+Phase 53's domain-hint-override fix only helped once the async
+`fetch_merchant_logo_task` actually ran again with the new hint - which
+only happens on a create/edit save. An item that already had a stale,
+wrong-domain `MerchantProfile` cached under its issuer name (e.g. "Every
+Wish", guessed as `everywish.com` before `logo_slug` ever pointed at
+`uber.com`) stayed wrong indefinitely unless someone happened to re-save
+it, since nothing else re-triggers that task. Confirmed live: an "Every
+Wish" gift card actually branded Uber Eats kept sharing a green "E"
+avatar instead of Uber's logo, across every "Share via..." option and
+the public page itself.
+
+`_resolve_merchant_share_image()` (`myapp/views.py`, shared by
+`item_share_logo` and `public_item_share_logo`) now takes the item
+itself rather than just its issuer name, and - when the item has a
+`logo_slug` and merchant logo fetching is enabled - calls
+`fetch_merchant_logo(item.issuer, domain_hint=item.logo_slug)`
+*synchronously*, right before resolving the image, instead of only
+relying on that async task having already run with the right hint.
+`fetch_merchant_logo()` already no-ops over the network when its cache
+is fresh and the domain hasn't changed (see Phase 53), so this only
+actually costs a real fetch on a genuine cache miss or a newly-arrived/
+changed domain - not on every share - while guaranteeing the *first*
+time anyone shares or views a public link for an item with a logo_slug,
+it's already correct, with no dependency on a Celery worker having
+processed the save-time task first.
+
+### Tests
+
+4 new tests: resolving from `logo_slug` with nothing cached yet,
+resolving from `logo_slug` despite an existing *stale, wrong-domain*
+cached profile (the exact regression scenario above), and confirming the
+synchronous refresh is skipped entirely when merchant logo fetching is
+disabled in Site Settings. Full suite (654 tests) green.
+
+Also verified live: recreated the exact bug report end-to-end - seeded a
+`MerchantProfile("Every Wish", domain="everywish.com")` row already fresh-
+cached with the wrong domain, then an item with `logo_slug="uber.com"`
+and *no* other change (no re-save, no manual cache fix) - hit the public
+share page's logo endpoint directly and got back the real Uber logo, with
+the `MerchantProfile` row corrected in place (`domain` now `uber.com`).
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
