@@ -16,10 +16,17 @@ FETCH_TIMEOUT = 5
 
 # Clearbit first (real brand logos), Google favicons as a fallback (near
 # 100% hit rate but often just a generic favicon, sometimes a blank/default
-# globe icon for domains that don't exist).
+# globe icon for domains that don't exist). Both requested at a large size -
+# Google in particular serves whatever native resolution a domain's favicon
+# actually has, capped at this; a small `sz` here used to mean even a
+# perfectly good higher-res favicon got capped down to 64px before it ever
+# reached us, then stretched blocky-huge by whatever renders it later (a
+# WhatsApp bubble, a Web Share preview). See also
+# myapp.avatar.normalize_logo_image, which smooths out whatever resolution
+# actually comes back.
 LOGO_SOURCES = [
-    'https://logo.clearbit.com/{domain}',
-    'https://www.google.com/s2/favicons?sz=64&domain={domain}',
+    'https://logo.clearbit.com/{domain}?size=256',
+    'https://www.google.com/s2/favicons?sz=256&domain={domain}',
 ]
 
 _NON_ALNUM_RE = re.compile(r'[^a-z0-9]')
