@@ -31,7 +31,7 @@ from .decorators import require_authorization_header_with_api_token
 from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items_by_wallet
 from .merchant_logos import get_cached_balance_check_url, get_cached_logo, get_cached_logos_for_issuers, remember_balance_check_url
 from .portainer import PortainerRedeployError, trigger_redeploy
-from .update_check import check_for_update
+from .update_check import _is_newer, check_for_update, check_upstream_version
 from .help_docs import render_doc
 from .public_share import is_link_preview_bot, pin_attempt_rate_limited, view_rate_limited
 from .tasks import fetch_merchant_logo_task
@@ -911,6 +911,47 @@ def trigger_update_check(request):
             'update_available': status.update_available,
             'checked_at': status.checked_at.isoformat() if status.checked_at else None,
             'last_check_error': status.last_check_error,
+        })
+
+    messages.success(request, message)
+    referer = request.META.get('HTTP_REFERER')
+    if referer and url_has_allowed_host_and_scheme(referer, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return redirect(referer)
+    return redirect('site_settings')
+
+@require_POST
+@login_required
+def trigger_upstream_check(request):
+    """
+    Superuser-only "Check now" button for the Upstream Sync card - same
+    rationale as trigger_update_check above: the periodic task can
+    silently never run at all on an already-initialized deployment, and
+    unlike the fork's own update check, this section previously had no
+    manual fallback, so its "GitHub connectivity" badge could get stuck
+    on "Never checked" indefinitely with no way to confirm or fix it
+    from the UI.
+    """
+    if not request.user.is_superuser:
+        if _wants_json(request):
+            return JsonResponse({'error': str(_('Only administrators can check for updates.'))}, status=403)
+        messages.error(request, _('Only administrators can check for updates.'))
+        return redirect('show_items')
+
+    check_upstream_version()
+    status = UpstreamSyncStatus.load()
+    if status.last_check_error:
+        message = _('Could not reach GitHub: %(error)s') % {'error': status.last_check_error}
+    else:
+        message = _('Checked upstream - latest release is %(version)s.') % {'version': status.latest_version or '?'}
+
+    if _wants_json(request):
+        return JsonResponse({
+            'message': message,
+            'latest_version': status.latest_version,
+            'latest_release_url': status.latest_release_url,
+            'checked_at': status.checked_at.isoformat() if status.checked_at else None,
+            'last_check_error': status.last_check_error,
+            'upstream_behind': _is_newer(status.latest_version, settings.UPSTREAM_VERSION),
         })
 
     messages.success(request, message)

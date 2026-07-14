@@ -1345,6 +1345,67 @@ class TriggerUpdateCheckViewTests(TestCase):
         mock_check.assert_not_called()
 
 
+class TriggerUpstreamCheckViewTests(TestCase):
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(username='admin', password='pw12345!', email='a@example.com')
+        self.regular_user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_requires_login(self):
+        response = self.client.post(reverse('trigger_upstream_check'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/accounts/login/', response.url)
+
+    def test_requires_post(self):
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('trigger_upstream_check'))
+        self.assertEqual(response.status_code, 405)
+
+    @patch('myapp.views.check_upstream_version')
+    def test_regular_user_forbidden_and_check_not_called(self, mock_check):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.post(reverse('trigger_upstream_check'), follow=True)
+        mock_check.assert_not_called()
+        self.assertContains(response, 'Only administrators')
+
+    @patch('myapp.views.check_upstream_version')
+    def test_superuser_triggers_check_and_reports_version(self, mock_check):
+        UpstreamSyncStatus.objects.update_or_create(pk=1, defaults={'latest_version': 'v1.29.0'})
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.post(reverse('trigger_upstream_check'), follow=True)
+        mock_check.assert_called_once()
+        self.assertContains(response, 'v1.29.0')
+
+    @patch('myapp.views.check_upstream_version')
+    def test_superuser_reports_unreachable_error(self, mock_check):
+        UpstreamSyncStatus.objects.update_or_create(pk=1, defaults={'last_check_error': 'timed out'})
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.post(reverse('trigger_upstream_check'), follow=True)
+        mock_check.assert_called_once()
+        self.assertContains(response, 'timed out')
+
+    @override_settings(UPSTREAM_VERSION='1.28.0')
+    @patch('myapp.views.check_upstream_version')
+    def test_ajax_returns_json_with_version_and_upstream_behind(self, mock_check):
+        UpstreamSyncStatus.objects.update_or_create(pk=1, defaults={
+            'latest_version': 'v1.29.0',
+            'latest_release_url': 'https://github.com/l4rm4nd/VoucherVault/releases/tag/v1.29.0',
+        })
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.post(reverse('trigger_upstream_check'), HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['latest_version'], 'v1.29.0')
+        self.assertEqual(payload['latest_release_url'], 'https://github.com/l4rm4nd/VoucherVault/releases/tag/v1.29.0')
+        self.assertTrue(payload['upstream_behind'])
+
+    @patch('myapp.views.check_upstream_version')
+    def test_ajax_regular_user_forbidden_returns_json(self, mock_check):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.post(reverse('trigger_upstream_check'), HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 403)
+        mock_check.assert_not_called()
+
+
 class PublicShareWalletTests(TestCase):
     """
     The public share page's "Add to Apple/Google Wallet" buttons - only
@@ -1913,8 +1974,10 @@ class UpdateCheckContextProcessorTests(TestCase):
         UpdateCheckStatus.objects.create(pk=1, latest_version='v1.1.0', update_available=True)
 
     def test_banner_shown_to_superuser(self):
+        # The banner lives on Site Settings, next to the update-checker
+        # card it's about - not as a global banner on every page.
         self.client.login(username='admin', password='pw12345!')
-        response = self.client.get(reverse('dashboard'))
+        response = self.client.get(reverse('site_settings'))
         self.assertContains(response, 'A newer version')
 
     def test_banner_hidden_from_regular_user(self):
@@ -1925,7 +1988,7 @@ class UpdateCheckContextProcessorTests(TestCase):
     def test_banner_hidden_when_no_update_available(self):
         UpdateCheckStatus.objects.filter(pk=1).update(update_available=False, latest_version='1.0.0')
         self.client.login(username='admin', password='pw12345!')
-        response = self.client.get(reverse('dashboard'))
+        response = self.client.get(reverse('site_settings'))
         self.assertNotContains(response, 'A newer version')
 
     def test_banner_hidden_once_running_version_catches_up_even_with_stale_flag(self):
@@ -1940,7 +2003,7 @@ class UpdateCheckContextProcessorTests(TestCase):
         # stored boolean.
         UpdateCheckStatus.objects.filter(pk=1).update(update_available=True, latest_version='v1.0.0')
         self.client.login(username='admin', password='pw12345!')
-        response = self.client.get(reverse('dashboard'))
+        response = self.client.get(reverse('site_settings'))
         self.assertNotContains(response, 'A newer version')
 
 
@@ -1961,16 +2024,22 @@ class UpstreamSyncContextProcessorTests(TestCase):
         self.assertNotContains(response, 'based on upstream')
 
     def test_sync_available_badge_shown_when_upstream_ahead(self):
+        # Assert the actual server-rendered badge markup, not just the bare
+        # word - "Sync available" also appears unconditionally as a JS
+        # string literal in the page's "Check now" script (used to
+        # reconstruct the badge client-side after a manual check), so a
+        # plain assertContains(response, 'Sync available') would pass
+        # regardless of whether the badge is actually rendered.
         UpstreamSyncStatus.objects.create(pk=1, latest_version='v1.30.0')
         self.client.login(username='admin', password='pw12345!')
         response = self.client.get(reverse('site_settings'))
-        self.assertContains(response, 'Sync available')
+        self.assertContains(response, '<span class="badge bg-warning text-dark ms-1">Sync available</span>')
 
     def test_sync_available_badge_hidden_when_up_to_date(self):
         UpstreamSyncStatus.objects.create(pk=1, latest_version='v1.29.0')
         self.client.login(username='admin', password='pw12345!')
         response = self.client.get(reverse('site_settings'))
-        self.assertNotContains(response, 'Sync available')
+        self.assertNotContains(response, '<span class="badge bg-warning text-dark ms-1">Sync available</span>')
 
 
 class PortainerRedeployServiceTests(TestCase):
@@ -2076,20 +2145,45 @@ class PortainerRedeployViewTests(TestCase):
 
 @override_settings(VERSION='1.0.0')
 class PortainerRedeployBannerTests(TestCase):
+    """
+    The update-available banner (and its "Redeploy now" button) lives on
+    the Site Settings page next to the update-checker card it's about,
+    not as a global banner on every page - see the "Update Check" section
+    of site_settings.html.
+    """
     def setUp(self):
         self.superuser = User.objects.create_superuser(username='admin', password='pw12345!', email='a@example.com')
         UpdateCheckStatus.objects.create(pk=1, latest_version='v1.1.0', update_available=True)
         self.client.login(username='admin', password='pw12345!')
 
     def test_button_shown_when_configured(self):
+        # "Redeploy now" also appears as static help copy elsewhere on this
+        # page regardless of config, so assert on the actual button element.
         set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
-        response = self.client.get(reverse('dashboard'))
-        self.assertContains(response, 'Redeploy now')
+        response = self.client.get(reverse('site_settings'))
+        self.assertContains(response, 'id="redeploy-btn"')
 
     def test_button_hidden_when_not_configured(self):
         set_site_config(portainer_webhook_url='')
+        response = self.client.get(reverse('site_settings'))
+        self.assertNotContains(response, 'id="redeploy-btn"')
+
+    def test_banner_not_shown_on_other_pages(self):
+        set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
         response = self.client.get(reverse('dashboard'))
         self.assertNotContains(response, 'Redeploy now')
+        self.assertNotContains(response, 'A newer version')
+
+    def test_redeploy_button_is_not_a_nested_form(self):
+        # Same class of bug as test_check_updates_control_is_not_a_nested_form:
+        # this banner now lives inside #site-settings-form, so the button
+        # must be a plain <button> + fetch, not a literal nested <form>.
+        set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
+        response = self.client.get(reverse('site_settings'))
+        content = response.content.decode()
+        self.assertNotIn(f'action="{reverse("trigger_portainer_redeploy")}"', content)
+        self.assertIn('id="redeploy-btn"', content)
+        self.assertEqual(content.count('<form method="POST" action="" id="site-settings-form">'), 1)
 
 
 class SiteConfigurationModelTests(TestCase):

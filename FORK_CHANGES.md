@@ -2563,6 +2563,75 @@ tests) still green. No new tests added - the existing test already
 covered the exact `days_left` behavior this fixes, it was just asserting
 against the buggy value's neighbor.
 
+## Phase 48 — Update-available banner relocated, Upstream Sync gets a manual check
+
+Two small admin-facing follow-ups from a live report against the deployed
+site.
+
+### The update banner now lives with the update checker
+
+The "A newer version (vX.Y.Z) is available" banner (and its "Redeploy
+now" button) used to render globally, at the top of `<main>` in
+`base.html` - on every page, for every request, regardless of what the
+admin was actually looking at. Moved into `site_settings.html`, directly
+under the "Update Check" heading it's actually about, right above the
+installed/latest version display it explains. It's gone from every other
+page.
+
+Moving it inside `site_settings.html` meant it now lives inside the
+page's own `#site-settings-form` - and the banner's "Redeploy now"
+control was a literal nested `<form>`, which is exactly the bug class
+`test_check_updates_control_is_not_a_nested_form` already guards
+against elsewhere on this page (a `<form>` inside a `<form>` gets
+silently mishandled by the browser's HTML parser). Converted it to a
+plain `<button>` + `fetch()`, matching the "Check for updates now"
+button's existing pattern, instead of reproducing the bug.
+
+### Upstream Sync's "GitHub connectivity" could get stuck on "Never checked" forever
+
+Flagged as: "the GitHub Connectivity has always shown never checked - is
+this correct?" It isn't. `checked_at` is only ever set inside
+`check_upstream_version()`, which only runs via the daily
+"Upstream Version Check" Celery Beat periodic task - and
+`trigger_update_check`'s own docstring already documented the reason
+this class of bug exists: *"the periodic task itself can silently never
+run at all on an already-initialized deployment"* (see
+`docker/entrypoint.sh`). The fork's own Update Check got a manual
+"Check for updates now" button specifically to route around that; the
+Upstream Sync card never got the equivalent, so if its periodic task
+didn't fire, there was no way to confirm it, trigger it, or fix it from
+the UI - just a badge stuck on "Never checked" with no path forward.
+
+Added a "Check now" button to the Upstream Sync card, wired to a new
+`trigger_upstream_check` view (mirrors `trigger_update_check`: superuser
+gated, runs `check_upstream_version()` synchronously, AJAX JSON
+round-trip that updates the version/connectivity/last-checked text and
+"Sync available" badge in place, no page reload). Verified live against
+this app's real GitHub API path (see Tests below): the badge no longer
+gets stuck - it now correctly flips to "Connected" or "Unreachable" the
+moment an admin clicks it.
+
+### Tests
+
+7 new/updated tests: a `TriggerUpstreamCheckViewTests` class (login
+required, POST required, non-superuser forbidden, superuser triggers +
+sees the result, AJAX JSON round-trip including the `upstream_behind`
+flag), `PortainerRedeployBannerTests` updated to assert the banner
+renders on Site Settings and nowhere else, plus a nested-form regression
+test for the new "Redeploy now" button. Two pre-existing
+`UpstreamSyncContextProcessorTests` were tightened to assert on the
+actual server-rendered "Sync available" badge markup rather than the
+bare word, since that word now also appears (correctly) as a JS string
+literal in the "Check now" button's inline script. Also verified for
+real: a live dev server + Playwright session logged in as an admin,
+seeded a fake update and a "Never checked" Upstream Sync row, confirmed
+the banner renders only on Site Settings (not the dashboard), and
+clicked "Check now" - it made a real HTTP request to GitHub's API (got a
+403 in this sandboxed environment, no outbound internet access, but that
+proved the full round-trip works) and the badge flipped from "Never
+checked" to "Unreachable" in place, exactly the fix this phase set out
+to make.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
