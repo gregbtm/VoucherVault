@@ -14,22 +14,41 @@ CACHE_DAYS = 30
 FAILURE_RETRY_DAYS = 1
 FETCH_TIMEOUT = 5
 
-# Clearbit first (real brand logos), Google favicons as a fallback (near
-# 100% hit rate but often just a generic favicon, sometimes a blank/default
-# globe icon for domains that don't exist). Both requested at a large size -
-# Google in particular serves whatever native resolution a domain's favicon
-# actually has, capped at this; a small `sz` here used to mean even a
-# perfectly good higher-res favicon got capped down to 64px before it ever
-# reached us, then stretched blocky-huge by whatever renders it later (a
-# WhatsApp bubble, a Web Share preview). See also
-# myapp.avatar.normalize_logo_image, which smooths out whatever resolution
-# actually comes back.
-LOGO_SOURCES = [
-    'https://logo.clearbit.com/{domain}?size=256',
-    'https://www.google.com/s2/favicons?sz=256&domain={domain}',
-]
+# logo.dev first when a key is configured - a dedicated logo API that
+# returns real, consistently high-resolution brand marks (not a favicon),
+# up to the 800px max its own API supports (see
+# https://www.logo.dev/docs/logo-images/get) - webp for the best quality
+# per byte. Then Clearbit (real brand logos too, but frequently
+# unreachable/rate-limited without an account), then Google favicons as a
+# near-100%-hit-rate last resort - it serves whatever native resolution a
+# domain's favicon actually has (often just 32-48px for anything but the
+# biggest brands, sometimes even less, observed as low as 16px at a high
+# requested `sz`) regardless of what's requested, so it's requested large
+# but never relied on for quality. All three request the largest size that
+# doesn't get upscaled by the source itself; see
+# myapp.avatar.normalize_logo_image for what smooths out whatever
+# resolution actually comes back below that ceiling.
+_MAX_LOGO_SIZE = 800
 
 _NON_ALNUM_RE = re.compile(r'[^a-z0-9]')
+
+
+def _logo_sources(config=None) -> list:
+    """
+    Ordered candidate URL templates for a merchant's logo, most-preferred
+    first. Takes an optional already-loaded SiteConfiguration to avoid a
+    redundant query when the caller already has one.
+    """
+    config = config or SiteConfiguration.load()
+    sources = []
+    if config.logo_dev_api_key:
+        sources.append(
+            f'https://img.logo.dev/{{domain}}?token={config.logo_dev_api_key}'
+            f'&size={_MAX_LOGO_SIZE}&format=webp'
+        )
+    sources.append(f'https://logo.clearbit.com/{{domain}}?size={_MAX_LOGO_SIZE}')
+    sources.append(f'https://www.google.com/s2/favicons?sz={_MAX_LOGO_SIZE}&domain={{domain}}')
+    return sources
 
 
 def merchant_logos_enabled() -> bool:
@@ -99,7 +118,7 @@ def get_cached_balance_check_url(name: str):
 def fetch_merchant_logo(name: str, domain_hint: str = None) -> MerchantProfile:
     """
     Looks up (or creates) the MerchantProfile for `name` and, on a cache
-    miss or expiry, fetches a logo URL from LOGO_SOURCES. Makes real HTTP
+    miss or expiry, fetches a logo URL from _logo_sources(). Makes real HTTP
     requests — call this from a Celery task (see fetch_merchant_logo_task),
     never directly from a request/template render path.
 
@@ -136,7 +155,7 @@ def fetch_merchant_logo(name: str, domain_hint: str = None) -> MerchantProfile:
         cache_is_fresh = (timezone.now() - profile.fetched_at) < timedelta(days=cache_days)
         if cache_is_fresh and not domain_hint_changed:
             return profile  # cache hit, still fresh
-    for template in LOGO_SOURCES:
+    for template in _logo_sources():
         url = template.format(domain=domain)
         try:
             response = requests.get(url, timeout=FETCH_TIMEOUT)

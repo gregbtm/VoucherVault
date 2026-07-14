@@ -543,6 +543,13 @@ class SiteConfiguration(models.Model):
 
     # ---- Merchant logos ----
     merchant_logos_enabled = models.BooleanField(default=True)
+    logo_dev_api_key = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="Optional logo.dev publishable key (pk_...). When set, logo.dev is tried "
+                   "first for merchant logos - a dedicated logo API with consistently higher-"
+                   "resolution real brand marks than the Clearbit/Google-favicon fallbacks "
+                   "used otherwise. Get one at https://logo.dev.",
+    )
 
     # ---- Sharing ----
     share_via_smart_enabled = models.BooleanField(
@@ -600,7 +607,7 @@ class SiteConfiguration(models.Model):
     # page on every load/save.
     SECRET_FIELDS = (
         'webpush_vapid_private_key', 'anthropic_api_key', 'openai_api_key',
-        'pkpass_cert_password',
+        'pkpass_cert_password', 'logo_dev_api_key',
     )
 
     class Meta:

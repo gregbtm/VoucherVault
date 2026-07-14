@@ -315,7 +315,7 @@ class SiteConfigurationForm(forms.ModelForm):
         fields = [
             'expiry_threshold_days', 'expiry_last_notification_days', 'ntfy_default_server',
             'webpush_vapid_public_key', 'webpush_vapid_private_key', 'webpush_vapid_claims_email',
-            'merchant_logos_enabled',
+            'merchant_logos_enabled', 'logo_dev_api_key',
             'share_via_smart_enabled', 'share_link_expiry_days', 'share_link_pin_enabled',
             'ocr_backend', 'anthropic_api_key', 'anthropic_ocr_model', 'openai_api_key', 'openai_ocr_model',
             'pkpass_cert_path', 'pkpass_cert_password', 'pkpass_wwdr_cert_path',

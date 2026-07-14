@@ -73,9 +73,20 @@
 
             <div class="mb-4">
               <h6 class="text-muted mb-3"><i class="bi bi-image me-2"></i>{% trans "Merchant Logos" %}</h6>
-              <div class="form-check">
+              <div class="form-check mb-3">
                 {{ form.merchant_logos_enabled }}
                 <label class="form-check-label" for="{{ form.merchant_logos_enabled.id_for_label }}">{% trans "Auto-fetch merchant logos on item cards" %}</label>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.logo_dev_api_key.id_for_label }}" class="form-label">{% trans "logo.dev publishable key" %}</label>
+                  {{ form.logo_dev_api_key }}
+                  <small class="form-text text-muted">
+                    {% if config.logo_dev_api_key %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %}
+                    {% trans "Optional - when set, logo.dev is tried first for a higher-resolution real brand logo before falling back to Clearbit/Google favicons. Get a free key at" %}
+                    <a href="https://www.logo.dev" target="_blank" rel="noopener">logo.dev</a>.
+                  </small>
+                </div>
               </div>
             </div>
 
