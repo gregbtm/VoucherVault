@@ -29,6 +29,7 @@ FETCH_TIMEOUT = 5
 # myapp.avatar.normalize_logo_image for what smooths out whatever
 # resolution actually comes back below that ceiling.
 _MAX_LOGO_SIZE = 800
+_LOGO_DEV_PREFIX = 'https://img.logo.dev/'
 
 _NON_ALNUM_RE = re.compile(r'[^a-z0-9]')
 
@@ -137,6 +138,15 @@ def fetch_merchant_logo(name: str, domain_hint: str = None) -> MerchantProfile:
     sooner than a successful one (FAILURE_RETRY_DAYS vs CACHE_DAYS) -
     otherwise a transient network hiccup on the very first save gets
     "stuck" showing no logo for a full month.
+
+    Likewise, if a logo.dev key has just been configured (added in Site
+    Settings) since a merchant was last cached, and that cached result
+    isn't already from logo.dev, that also overrides the freshness
+    window - otherwise a merchant that was cached once via the Clearbit/
+    Google fallback (before a key existed) keeps showing that lower-
+    quality result for the full CACHE_DAYS window even after a better
+    source becomes available, which is confusing right after adding a
+    key expecting it to take effect immediately.
     """
     name = name.strip()
     # Case-insensitive get-or-create: MerchantProfile.name is exact-unique,
@@ -147,15 +157,17 @@ def fetch_merchant_logo(name: str, domain_hint: str = None) -> MerchantProfile:
     if profile is None:
         profile = MerchantProfile.objects.create(name=name)
 
+    config = SiteConfiguration.load()
     domain = domain_hint.strip().lower() if domain_hint else guess_domain(name)
 
     if profile.fetched_at:
         domain_hint_changed = bool(domain_hint) and profile.domain != domain
+        logo_dev_now_available = bool(config.logo_dev_api_key) and not (profile.logo_url or '').startswith(_LOGO_DEV_PREFIX)
         cache_days = CACHE_DAYS if profile.logo_url else FAILURE_RETRY_DAYS
         cache_is_fresh = (timezone.now() - profile.fetched_at) < timedelta(days=cache_days)
-        if cache_is_fresh and not domain_hint_changed:
+        if cache_is_fresh and not domain_hint_changed and not logo_dev_now_available:
             return profile  # cache hit, still fresh
-    for template in _logo_sources():
+    for template in _logo_sources(config):
         url = template.format(domain=domain)
         try:
             response = requests.get(url, timeout=FETCH_TIMEOUT)
