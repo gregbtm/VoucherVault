@@ -1121,6 +1121,17 @@ document.addEventListener("DOMContentLoaded", function () {
           markAutoFilled(cardNumberField);
           filled.push("{% trans 'card number' %}");
         }
+        const logoSlugField = document.getElementById('logo_slug');
+        if (data.logo_slug && logoSlugField && !logoSlugField.value) {
+          logoSlugField.value = data.logo_slug;
+          markAutoFilled(logoSlugField);
+          filled.push("{% trans 'logo' %}");
+        }
+        if (data.balance_check_url && balanceCheckField.value.trim() === '') {
+          balanceCheckField.value = data.balance_check_url;
+          markAutoFilled(balanceCheckField);
+          filled.push("{% trans 'balance check link' %}");
+        }
 
         if (filled.length) {
           statusEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> {% trans "Filled from photo:" %} ${filled.join(', ')}</span>`;

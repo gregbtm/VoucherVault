@@ -12,7 +12,7 @@ import pytesseract
 from myapp.test_utils import set_site_config
 
 from .backends import get_backend, ocr_enabled
-from .backends.base import parse_float_or_none, strip_json_fences
+from .backends.base import parse_float_or_none, sanitize_domain_slug, sanitize_url, strip_json_fences
 from .backends.claude_backend import ClaudeOCRBackend
 from .backends.openai_backend import OpenAIOCRBackend
 from .backends.tesseract import TesseractOCRBackend
@@ -258,6 +258,55 @@ class ClaudeBackendTests(TestCase):
         backend = ClaudeOCRBackend()
         self.assertEqual(backend.model, 'claude-haiku-4-5-20251001')
 
+    @patch('ocr.backends.claude_backend.anthropic.Anthropic')
+    def test_extract_parses_logo_slug_and_balance_check_url(self, mock_anthropic_cls):
+        """
+        The vision model can tell a card's actual redeemable brand apart
+        from a marketplace/reseller printed as the issuer (e.g. an "Uber
+        Eats" card issued by "Every Wish") - logo_slug should reflect the
+        brand, not the reseller.
+        """
+        set_site_config(anthropic_api_key='test-key')
+        mock_client = MagicMock()
+        mock_block = MagicMock(
+            type='text',
+            text=(
+                '{"code": "SAVE20", "code_type": null, "name": "Uber Eats", "issuer": "Every Wish", '
+                '"expiry_date": null, "pin": null, "value": null, "currency": null, "card_number": null, '
+                '"logo_slug": "uber.com", "balance_check_url": "https://example.com/balance", "confidence": 0.9}'
+            ),
+        )
+        mock_client.messages.create.return_value = MagicMock(content=[mock_block])
+        mock_anthropic_cls.return_value = mock_client
+
+        backend = ClaudeOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertEqual(result['issuer'], 'Every Wish')
+        self.assertEqual(result['logo_slug'], 'uber.com')
+        self.assertEqual(result['balance_check_url'], 'https://example.com/balance')
+
+    @patch('ocr.backends.claude_backend.anthropic.Anthropic')
+    def test_extract_discards_malformed_logo_slug_and_balance_check_url(self, mock_anthropic_cls):
+        set_site_config(anthropic_api_key='test-key')
+        mock_client = MagicMock()
+        mock_block = MagicMock(
+            type='text',
+            text=(
+                '{"code": null, "code_type": null, "name": null, "issuer": null, '
+                '"expiry_date": null, "pin": null, "value": null, "currency": null, "card_number": null, '
+                '"logo_slug": "not a domain", "balance_check_url": "not a url", "confidence": 0.0}'
+            ),
+        )
+        mock_client.messages.create.return_value = MagicMock(content=[mock_block])
+        mock_anthropic_cls.return_value = mock_client
+
+        backend = ClaudeOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertIsNone(result['logo_slug'])
+        self.assertIsNone(result['balance_check_url'])
+
 
 class OpenAIBackendTests(TestCase):
     def test_raises_without_api_key(self):
@@ -407,6 +456,69 @@ class OpenAIBackendTests(TestCase):
         backend = OpenAIOCRBackend()
         self.assertEqual(backend.model, 'gpt-4o')
 
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_extract_parses_logo_slug_and_balance_check_url(self, mock_openai_cls):
+        set_site_config(openai_api_key='test-key')
+        mock_client = MagicMock()
+        mock_message = MagicMock(
+            content=(
+                '{"code": "SAVE20", "code_type": null, "name": "Uber Eats", "issuer": "Every Wish", '
+                '"expiry_date": null, "pin": null, "value": null, "currency": null, "card_number": null, '
+                '"logo_slug": "uber.com", "balance_check_url": "https://example.com/balance", "confidence": 0.9}'
+            ),
+        )
+        mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
+        mock_openai_cls.return_value = mock_client
+
+        backend = OpenAIOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertEqual(result['issuer'], 'Every Wish')
+        self.assertEqual(result['logo_slug'], 'uber.com')
+        self.assertEqual(result['balance_check_url'], 'https://example.com/balance')
+
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_extract_discards_malformed_logo_slug_and_balance_check_url(self, mock_openai_cls):
+        set_site_config(openai_api_key='test-key')
+        mock_client = MagicMock()
+        mock_message = MagicMock(
+            content=(
+                '{"code": null, "code_type": null, "name": null, "issuer": null, '
+                '"expiry_date": null, "pin": null, "value": null, "currency": null, "card_number": null, '
+                '"logo_slug": "not a domain", "balance_check_url": "not a url", "confidence": 0.0}'
+            ),
+        )
+        mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
+        mock_openai_cls.return_value = mock_client
+
+        backend = OpenAIOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertIsNone(result['logo_slug'])
+        self.assertIsNone(result['balance_check_url'])
+
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_extract_strips_scheme_and_www_from_logo_slug(self, mock_openai_cls):
+        """A model occasionally includes a scheme/www despite instructions
+        to return a bare domain - must still be cleaned up rather than
+        discarded outright."""
+        set_site_config(openai_api_key='test-key')
+        mock_client = MagicMock()
+        mock_message = MagicMock(
+            content=(
+                '{"code": null, "code_type": null, "name": null, "issuer": null, '
+                '"expiry_date": null, "pin": null, "value": null, "currency": null, "card_number": null, '
+                '"logo_slug": "https://www.uber.com/", "balance_check_url": null, "confidence": 0.0}'
+            ),
+        )
+        mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
+        mock_openai_cls.return_value = mock_client
+
+        backend = OpenAIOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertEqual(result['logo_slug'], 'uber.com')
+
 
 class BaseHelperTests(TestCase):
     def test_strip_json_fences_removes_json_fence(self):
@@ -433,6 +545,30 @@ class BaseHelperTests(TestCase):
         self.assertIsNone(parse_float_or_none(None))
         self.assertIsNone(parse_float_or_none(''))
         self.assertIsNone(parse_float_or_none('not a number'))
+
+    def test_sanitize_domain_slug_accepts_bare_domain(self):
+        self.assertEqual(sanitize_domain_slug('uber.com'), 'uber.com')
+        self.assertEqual(sanitize_domain_slug('amazon.co.uk'), 'amazon.co.uk')
+
+    def test_sanitize_domain_slug_strips_scheme_and_www(self):
+        self.assertEqual(sanitize_domain_slug('https://www.uber.com'), 'uber.com')
+        self.assertEqual(sanitize_domain_slug('http://uber.com/gift-cards'), 'uber.com')
+
+    def test_sanitize_domain_slug_rejects_non_domains(self):
+        self.assertIsNone(sanitize_domain_slug('Uber'))
+        self.assertIsNone(sanitize_domain_slug('not a domain'))
+        self.assertIsNone(sanitize_domain_slug(''))
+        self.assertIsNone(sanitize_domain_slug(None))
+
+    def test_sanitize_url_accepts_valid_http_url(self):
+        self.assertEqual(sanitize_url('https://example.com/balance'), 'https://example.com/balance')
+        self.assertEqual(sanitize_url('http://example.com'), 'http://example.com')
+
+    def test_sanitize_url_rejects_non_urls(self):
+        self.assertIsNone(sanitize_url('not a url'))
+        self.assertIsNone(sanitize_url('ftp://example.com'))
+        self.assertIsNone(sanitize_url(''))
+        self.assertIsNone(sanitize_url(None))
 
 
 class TesseractPinAndValueTests(TestCase):
@@ -484,3 +620,19 @@ class TesseractPinAndValueTests(TestCase):
         self.assertEqual(result['value'], 50.0)
         self.assertEqual(result['currency'], 'GBP')
         self.assertIsNone(result['card_number'])
+        self.assertIsNone(result['logo_slug'])
+
+    @patch('ocr.backends.tesseract.pytesseract.get_tesseract_version')
+    def test_guesses_balance_check_url_from_printed_link(self, mock_version):
+        backend = TesseractOCRBackend()
+        self.assertEqual(
+            backend._guess_balance_check_url('Check your balance at https://example.com/balance today'),
+            'https://example.com/balance',
+        )
+
+    @patch('ocr.backends.tesseract.pytesseract.get_tesseract_version')
+    def test_no_balance_check_url_without_a_scheme(self, mock_version):
+        # Bare domains are deliberately not guessed from plain OCR text -
+        # too noisy to be reliable without a vision model's layout sense.
+        backend = TesseractOCRBackend()
+        self.assertIsNone(backend._guess_balance_check_url('Check your balance at example.com/balance'))

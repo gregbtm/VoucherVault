@@ -2700,6 +2700,59 @@ confirmed outside-click and Escape both close the sheet, and clicked
 Archive/Unarchive twice in a row to confirm the toggle's POST handler
 still round-trips correctly end-to-end against the real database.
 
+## Phase 50 — OCR: brand-aware logo slug + printed balance-check URL
+
+A follow-up report on a real gift card exposed a gap left over from the
+Phase 46 OCR overhaul: scanning an "Uber Eats" card sold through a
+marketplace called "Every Wish" correctly filled in Name ("Uber Eats")
+and Issuer ("Every Wish"), but left "Logo Slug" empty - and if a user
+filled it in themselves using the issuer, they'd get "everywish.com"
+instead of the actual brand's logo.
+
+### What changed
+
+Both vision backends (OpenAI, Claude) now also extract:
+
+- `logo_slug` - the actual redeemable brand's bare domain (e.g.
+  "uber.com") for the `img.logo.dev` lookup `view-item.html`/
+  `inventory.html` already use, explicitly prompted to prefer the real
+  brand over a marketplace/reseller when the two differ. Sanitized
+  through a new `sanitize_domain_slug()` (`ocr/backends/base.py`): strips
+  a stray scheme/`www.`/path the model sometimes includes despite being
+  told not to, then discards the result entirely unless what's left
+  actually matches a domain shape - never feeds an arbitrary string into
+  an `<img src>`.
+- `balance_check_url` - a balance/validity-check URL, only if one is
+  visibly printed on the card itself (never invented). Sanitized through
+  `sanitize_url()`: discarded unless it parses as a well-formed http(s)
+  URL.
+
+The Tesseract (local/free) backend has no vision understanding, so it
+still can't identify a brand from a logo - `logo_slug` stays `None`
+there - but it can cheaply regex-match a literal `https://` URL already
+sitting in the OCR'd text, so it now guesses `balance_check_url` too
+(deliberately requires the scheme; guessing a bare domain out of noisy
+OCR text was judged too unreliable without a vision model's layout
+sense).
+
+`create-item.html` and `edit-item.html`'s AI-scan handler fills both new
+fields the same way `pin`/`value`/`card_number` already were - only into
+a field that's currently empty - and reports them in the "Filled from
+photo: ..." summary as "logo" and "balance check link".
+
+### Tests
+
+10 new tests across `ocr/tests.py`: `sanitize_domain_slug`/`sanitize_url`
+unit coverage (accepts a clean domain/URL, strips a stray scheme/`www.`,
+rejects garbage), both vision backends parsing the new fields correctly
+including discarding a malformed guess, and Tesseract's URL regex guess
+(with and without a scheme). Also verified live: a Playwright session
+intercepted the real `/api/v1/ocr/extract/` call on the running dev
+server with a synthetic response reproducing the exact reported scenario
+("Uber Eats" name, "Every Wish" issuer, "uber.com" logo_slug) and
+confirmed the create-item form filled Logo Slug with "uber.com" - not
+"everywish.com" - screenshot-verified.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

@@ -5,7 +5,7 @@ from datetime import datetime
 import pytesseract
 from PIL import Image
 
-from .base import OCRBackend
+from .base import OCRBackend, sanitize_url
 
 # Candidate redeem-code tokens: 5-20 chars, letters/digits/hyphens, at least
 # one digit (filters out plain English words picked up from surrounding
@@ -34,16 +34,25 @@ _VALUE_RE = re.compile(
 )
 _CURRENCY_SYMBOL_MAP = {'£': 'GBP', '$': 'USD', '€': 'EUR'}
 _CURRENCY_RE = re.compile(r'[£$€]|\b(?:GBP|USD|EUR)\b', re.IGNORECASE)
+# A literal http(s) URL in the OCR'd text - some cards print their own
+# balance-check link. Deliberately requires the scheme rather than
+# guessing at a bare domain: OCR noise makes bare-domain guessing on
+# plain text far less reliable than it is for a vision model that can
+# actually see the card's layout.
+_URL_RE = re.compile(r'https?://\S+', re.IGNORECASE)
 
 
 class TesseractOCRBackend(OCRBackend):
     """
     Local, free OCR via the tesseract binary. Best-effort regex guesses
     against the raw recognized text for the redeem code, expiry date, PIN,
-    and value/currency (when a label or currency symbol sits right next to
-    them) - no vision understanding, so "merchant name" and "issuer"
-    always come back None, and card_number is never guessed (nothing
-    reliably distinguishes it from the redeem code in plain OCR text).
+    value/currency (when a label or currency symbol sits right next to
+    them), and a balance-check URL (when a literal http(s):// link is
+    printed on the card) - no vision understanding, so "merchant name"
+    and "issuer" always come back None, card_number is never guessed
+    (nothing reliably distinguishes it from the redeem code in plain OCR
+    text), and logo_slug is never guessed either (identifying a brand
+    from its logo needs actual vision, not just text recognition).
     """
 
     def __init__(self):
@@ -74,6 +83,7 @@ class TesseractOCRBackend(OCRBackend):
         expiry_date = self._guess_expiry_date(full_text)
         pin = self._guess_pin(full_text, code)
         value, currency = self._guess_value_and_currency(full_text)
+        balance_check_url = self._guess_balance_check_url(full_text)
         confidence = (sum(confidences) / len(confidences) / 100) if confidences else 0.0
 
         return {
@@ -86,6 +96,8 @@ class TesseractOCRBackend(OCRBackend):
             'value': value,
             'currency': currency,
             'card_number': None,
+            'logo_slug': None,
+            'balance_check_url': balance_check_url,
             'confidence': round(confidence, 2) if code else 0.0,
         }
 
@@ -160,3 +172,10 @@ class TesseractOCRBackend(OCRBackend):
             token = symbol_match.group(0).upper()
             currency = _CURRENCY_SYMBOL_MAP.get(symbol_match.group(0), token if token in ('GBP', 'USD', 'EUR') else None)
         return value, currency
+
+    def _guess_balance_check_url(self, text: str) -> str | None:
+        """The first http(s) URL found in the OCR'd text, if any - tesseract
+        sometimes splits a URL across word boundaries with stray spaces,
+        so this is a best-effort match rather than a guarantee."""
+        match = _URL_RE.search(text)
+        return sanitize_url(match.group(0)) if match else None
