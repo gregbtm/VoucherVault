@@ -159,6 +159,32 @@
   min-height: 100px;
 }
 
+/* Swap Name/Issuer */
+.swap-fields-row {
+  display: flex;
+  justify-content: center;
+  margin: -0.5rem 0 0.75rem;
+}
+
+.swap-fields-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border-color, #dee2e6);
+  border-radius: 20px;
+  background: var(--field-bg, #f8f9fa);
+  color: var(--text-color, #495057);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.swap-fields-btn:hover {
+  background: var(--hover-bg, #e9ecef);
+  color: var(--primary-color, #4154f1);
+}
+
 /* Input with Addon */
 .input-with-addon {
   display: flex;
@@ -441,6 +467,16 @@ body.dark-mode .input-addon-btn:hover {
   background: #3a3a3a;
 }
 
+body.dark-mode .swap-fields-btn {
+  background: #333;
+  border-color: #444;
+  color: #ccc;
+}
+
+body.dark-mode .swap-fields-btn:hover {
+  background: #3a3a3a;
+}
+
 body.dark-mode .color-picker {
   background: #2a2a2a;
   border-color: #444;
@@ -618,11 +654,17 @@ body.dark-mode .error-alert {
             
             <div class="form-group">
               <label class="form-label" for="name">{% trans "Name" %} <span class="required">*</span></label>
-              <input type="text" class="modern-input" id="name" name="name" 
-                     placeholder="{% trans 'The name of the item' %}" 
+              <input type="text" class="modern-input" id="name" name="name"
+                     placeholder="{% trans 'The name of the item' %}"
                      value='{{ form.name.value|default_if_none:"" }}' required>
             </div>
-            
+
+            <div class="swap-fields-row">
+              <button type="button" class="swap-fields-btn" id="swapNameIssuer" title="{% trans 'Swap Name and Issuer' %}">
+                <i class="bi bi-arrow-down-up"></i> {% trans "Swap Name / Issuer" %}
+              </button>
+            </div>
+
             <div class="form-group">
               <label class="form-label" for="issuer">{% trans "Issuer" %} <span class="required">*</span></label>
               <input type="text" class="modern-input" id="issuer" name="issuer" list="issuerDatalist"
@@ -902,8 +944,15 @@ document.addEventListener("DOMContentLoaded", function () {
   const typeField = document.getElementById('type');
   const pinField = document.getElementById('pin');
   const valueField = document.getElementById('value');
+  const nameField = document.getElementById('name');
   const issuerCodeField = document.getElementById('issuer');
   const redeemCodeField = document.getElementById('redeem_code');
+
+  document.getElementById('swapNameIssuer').addEventListener('click', function () {
+    const tmp = nameField.value;
+    nameField.value = issuerCodeField.value;
+    issuerCodeField.value = tmp;
+  });
   const pinFieldContainer = pinField.closest('.form-group');
   const valueFieldContainer = valueField.closest('.form-section');
   const issuerLabel = document.querySelector('label[for="issuer"]');

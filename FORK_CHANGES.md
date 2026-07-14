@@ -76,6 +76,8 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 39 — API write-endpoint rate limiting](#phase-39--api-write-endpoint-rate-limiting)
 - [Phase 40 — tile_color regression tests](#phase-40--tile_color-regression-tests)
 - [Phase 41 — Upstream sync management](#phase-41--upstream-sync-management)
+- [Phase 57 — logo.dev key added but existing merchants didn't pick it up](#phase-57--logodev-key-added-but-existing-merchants-didnt-pick-it-up)
+- [Phase 58 — Swap Name/Issuer button + fix the long-broken SAST CI gate](#phase-58--swap-nameissuer-button--fix-the-long-broken-sast-ci-gate)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -3226,6 +3228,64 @@ public share logo endpoint directly and confirmed `fetched_at` advanced
 (the refetch was genuinely triggered, correctly trying logo.dev first
 per the request log) rather than sitting untouched on the pre-existing
 cache entry as it would have before this fix.
+
+## Phase 58 — Swap Name/Issuer button + fix the long-broken SAST CI gate
+
+Two independent fixes from the same bug report: a Sainsbury's gift card
+whose public share page showed "Life:Style" bold at the top and
+"Sainsburys" as the subtitle underneath - backwards from what the user
+expected (and from this app's own convention, since the bold field also
+drives merchant-logo lookup - see Phase 6/53-57).
+
+Root cause on the display side: the template itself is correct - it
+bolds `item.issuer` (the actual merchant, matched against a logo) and
+subtitles `item.name` (the item's own descriptive name) for every
+correctly-entered item in the app. This one item's `issuer`/`name`
+values were entered (or OCR-extracted) swapped. Globally reversing the
+template would have fixed this one item while breaking the bold/logo
+match for every correctly-entered item app-wide, so instead:
+
+- **New "Swap Name / Issuer" button** on both the create-item and
+  edit-item forms, directly between the two fields. One click swaps
+  whatever's currently typed into them (client-side, no page reload) so
+  a mis-extracted or mis-typed pair like this can be fixed in-place
+  before saving, without touching how the fields are displayed anywhere
+  else.
+
+Separately, the CI screenshot in the same report showed Bandit and
+Semgrep failing on every push to `main` - confirmed via the Actions
+history (`conclusion: failure` on the last 8+ runs) and called out by an
+existing code comment in the workflow acknowledging exactly this, which
+is why `release`/`deploy` were already decoupled from the security gate
+(Phase 25). Investigated both jobs directly (ran Bandit locally, pulled
+Semgrep's Dockerfile ruleset) rather than just suppressing the failure:
+
+- **Bandit**: 179 of 182 findings were `B106`/`B105` (Low severity)
+  firing on literal test-fixture passwords in `myapp/tests.py` (e.g.
+  `'pw12345!'`) - not real credentials. Added `-ll` (Medium+ severity
+  only) to the workflow's Bandit invocation instead of touching 179
+  individual test lines. The two real findings left:
+  - `myapp/avatar.py`'s `hashlib.md5()` (used only for a deterministic
+    palette-index hash, not security) now passes `usedforsecurity=False`.
+  - `myapp/views.py`'s `mark_safe()` call on `tag_query_params` (already
+    commented as safe - `tag_ids` is validated digit-only above it) got
+    a `# nosec` - it was already accompanied by a justification comment,
+    it just wasn't suppressing the finding.
+- **Semgrep**: one finding, `dockerfile.security.missing-user` on
+  `mcp_server/Dockerfile` - no `USER` directive, so the MCP server
+  container ran as root. Added `USER www-data` (matching the existing
+  `docker/Dockerfile` convention) with a matching `chown`.
+
+Bandit and Semgrep now both exit 0 - the security gate that's been
+failing since (at least) Phase 25 is green again.
+
+### Tests
+
+Ran the full suite (unchanged) plus manual verification: `bandit -r
+myapp myproject -ll` exits 0 with "No issues identified"; `semgrep scan
+--config p/dockerfile` against both Dockerfiles reports 0 findings.
+Manually exercised the new swap button in both create-item and edit-item
+forms in light and dark mode.
 
 ## New environment variables
 

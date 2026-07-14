@@ -11,6 +11,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY client.py server.py /opt/mcp/
 
+RUN chown -R www-data:www-data /opt/mcp
+
+# run container as low privileged user
+USER www-data
+
 EXPOSE 8100
 
 CMD ["python", "server.py"]
