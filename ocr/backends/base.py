@@ -2,7 +2,7 @@ import re
 from abc import ABC, abstractmethod
 from urllib.parse import urlparse
 
-from myapp.models import CURRENCY_CHOICES
+from myapp.models import CURRENCY_CHOICES, Item
 
 # Kept in sync with the <select id="code_type"> options in
 # create-item.html/edit-item.html. A vision backend's code_type guess is
@@ -19,6 +19,9 @@ VALID_CODE_TYPES = {
 # guess is only useful to the frontend if it's a code the <select> actually
 # offers.
 VALID_CURRENCIES = {code for code, _ in CURRENCY_CHOICES}
+
+# Kept in sync with Item.type's choices - same reasoning as VALID_CODE_TYPES.
+VALID_ITEM_TYPES = {code for code, _ in Item.ITEM_TYPES}
 
 _JSON_FENCE_RE = re.compile(r'^\s*```[a-zA-Z]*\s*\n?|\n?\s*```\s*$')
 
@@ -82,6 +85,49 @@ def sanitize_url(value) -> str | None:
     return value if parsed.scheme in ('http', 'https') and parsed.netloc else None
 
 
+def sanitize_free_text(value, max_length: int) -> str | None:
+    """
+    Best-effort cleanup for a vision model's free-text guess (description/
+    notes) - truncates rather than discards a too-long response, since an
+    over-length but otherwise-good answer is still useful with the excess
+    trimmed, unlike a malformed domain/URL where partial data is useless.
+    """
+    if not value or not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text[:max_length] if text else None
+
+
+_MAX_SUGGESTED_TAGS = 4
+_MAX_TAG_LENGTH = 30
+
+
+def sanitize_tag_suggestions(value) -> list[str]:
+    """
+    Best-effort cleanup for a vision model's "tags" guess - a JSON array
+    of short category-like strings (e.g. ["Restaurant", "Food Delivery"]).
+    Drops anything that isn't a short plain string, dedupes case-
+    insensitively, and caps the count - this feeds directly into checking
+    boxes / prefilling a text field client-side, so garbage here would be
+    directly user-visible rather than just silently wrong.
+    """
+    if not isinstance(value, list):
+        return []
+    seen = set()
+    tags = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        tag = item.strip()
+        if not tag or len(tag) > _MAX_TAG_LENGTH or tag.lower() in seen:
+            continue
+        seen.add(tag.lower())
+        tags.append(tag)
+        if len(tags) >= _MAX_SUGGESTED_TAGS:
+            break
+    return tags
+
+
 class OCRBackend(ABC):
     """
     Extracts a redeem code (and, where possible, other item fields) from a
@@ -96,14 +142,20 @@ class OCRBackend(ABC):
         """
         Returns a dict with keys: code, code_type, name, issuer,
         expiry_date (ISO 8601 string or None), pin, value (float or None),
-        currency, card_number, logo_slug, balance_check_url,
-        confidence (0.0-1.0). code_type is one of VALID_CODE_TYPES or None
-        if the backend can't or didn't try to determine the barcode
-        symbology. currency is one of VALID_CURRENCIES or None. logo_slug
-        is a bare domain (e.g. "uber.com") for the actual redeemable
-        brand - which a vision backend may distinguish from "issuer" when
-        the card was sold through a marketplace/reseller - or None.
-        balance_check_url is a full http(s) URL if one is visibly printed
-        on the card, else None.
+        currency, card_number, logo_slug, balance_check_url, type,
+        description, notes, tags (list of str), confidence (0.0-1.0).
+        code_type is one of VALID_CODE_TYPES or None if the backend can't
+        or didn't try to determine the barcode symbology. currency is one
+        of VALID_CURRENCIES or None. logo_slug is a bare domain (e.g.
+        "uber.com") for the actual redeemable brand - which a vision
+        backend may distinguish from "issuer" when the card was sold
+        through a marketplace/reseller - or None. balance_check_url is a
+        full http(s) URL if one is visibly printed on the card, else
+        None. type is one of VALID_ITEM_TYPES or None. description is a
+        short factual one-liner or None. notes is redemption
+        instructions/terms if visibly printed on the card, else None -
+        never invented. tags is a list of 0-4 short suggested category
+        names (e.g. ["Restaurant"]) for the frontend to match against the
+        user's existing tags or suggest as new ones.
         """
         ...

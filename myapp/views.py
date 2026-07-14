@@ -559,6 +559,38 @@ def lookup_merchant_balance_url(request):
 
 @require_GET
 @login_required
+def check_duplicate_code(request):
+    """
+    Read-only AJAX helper for the create/edit item forms: warns (never
+    blocks - some duplicates are intentional, e.g. a re-issued loyalty
+    card) when the redeem code just typed or scanned matches an active
+    item the user already has access to. Scoped the same way show_items'
+    "owned or shared-wallet" query is - a duplicate on someone else's
+    item you can't see isn't actionable.
+    """
+    code = request.GET.get('code', '').strip()
+    if not code:
+        return JsonResponse({'duplicate': False})
+
+    items = Item.objects.filter(
+        Q(user=request.user) | Q(wallet__shared_with=request.user),
+        redeem_code=code, is_used=False, is_archived=False,
+    ).distinct()
+    exclude_id = request.GET.get('exclude', '')
+    if exclude_id:
+        items = items.exclude(id=exclude_id)
+
+    match = items.first()
+    if not match:
+        return JsonResponse({'duplicate': False})
+    return JsonResponse({
+        'duplicate': True,
+        'item_name': match.name,
+        'item_url': reverse('view_item', kwargs={'item_uuid': match.id}),
+    })
+
+@require_GET
+@login_required
 def duplicate_item(request, item_uuid):
     original_item = get_object_or_404(Item, id=item_uuid, user=request.user)
 

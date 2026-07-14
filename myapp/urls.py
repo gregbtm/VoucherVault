@@ -13,6 +13,7 @@ urlpatterns = (
     path('ping/', views.ping, name='ping'),
     path('items/create/', views.create_item, name='create_item'),
     path('items/lookup-merchant-balance-url/', views.lookup_merchant_balance_url, name='lookup_merchant_balance_url'),
+    path('items/check-duplicate/', views.check_duplicate_code, name='check_duplicate_code'),
     path('items/view/<uuid:item_uuid>', views.view_item, name='view_item'),
     path('items/edit/<uuid:item_uuid>', views.edit_item, name='edit_item'),
     path('items/duplicate/<uuid:item_uuid>', views.duplicate_item, name='duplicate_item'),

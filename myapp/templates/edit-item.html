@@ -682,6 +682,7 @@ body.dark-mode .error-alert {
                 </button>
                 <input type="file" id="fileInput" accept="image/*" style="display: none;">
               </div>
+              <small class="form-text text-warning" id="duplicate-code-warning" style="display:none;"></small>
             </div>
 
             <div class="form-group">
@@ -876,7 +877,10 @@ body.dark-mode .error-alert {
             
             <div class="form-group">
               <label class="form-label" for="file">{% trans "Upload File" %}</label>
-              <input type="file" id="file" name="file" class="modern-input">
+              <input type="file" id="file" name="file" class="modern-input" data-has-existing-file="{% if item.file %}1{% endif %}">
+              {% if item.file %}
+              <small class="form-text text-muted">{% trans "A file is already attached. Choosing a new one replaces it." %}</small>
+              {% endif %}
             </div>
           </div>
           
@@ -1060,6 +1064,36 @@ document.addEventListener("DOMContentLoaded", function () {
     balanceCheckSuggestion.style.display = 'none';
   });
 
+  // Warns (never blocks) when the code just typed or scanned matches a
+  // *different* active item already in the user's vault - excludes this
+  // item itself, since its own current code is obviously not a duplicate.
+  const duplicateWarning = document.getElementById('duplicate-code-warning');
+  let duplicateCheckTimer = null;
+  function checkDuplicateCode() {
+    const code = redeemCodeField.value.trim();
+    if (!code) {
+      duplicateWarning.style.display = 'none';
+      return;
+    }
+    fetch('{% url "check_duplicate_code" %}?code=' + encodeURIComponent(code) + '&exclude={{ item.id }}')
+      .then(response => response.ok ? response.json() : null)
+      .then(data => {
+        if (data && data.duplicate) {
+          duplicateWarning.innerHTML = '<i class="bi bi-exclamation-triangle"></i> {% trans "You already have this: " %}' +
+            '<a href="' + data.item_url + '" target="_blank">' + data.item_name.replace(/</g, '&lt;') + '</a>';
+          duplicateWarning.style.display = '';
+        } else {
+          duplicateWarning.style.display = 'none';
+        }
+      })
+      .catch(() => {});
+  }
+  redeemCodeField.addEventListener('input', function () {
+    duplicateWarning.style.display = 'none';
+    clearTimeout(duplicateCheckTimer);
+    duplicateCheckTimer = setTimeout(checkDuplicateCode, 500);
+  });
+
   {% if ocr_enabled %}
   // AI Scan: one upload, two extractions run against the same photo -
   // a client-side barcode decode (ZXing, same as the "File Scan" button)
@@ -1073,6 +1107,7 @@ document.addEventListener("DOMContentLoaded", function () {
   document.getElementById('aiScanInput').addEventListener('change', function () {
     const file = this.files[0];
     if (!file) return;
+    attachScannedFileIfEmpty(file);
     const statusEl = document.getElementById('aiScanStatus');
     statusEl.innerHTML = '<span class="text-muted"><i class="bi bi-arrow-repeat spin"></i> {% trans "Scanning..." %}</span>';
 
@@ -1175,12 +1210,63 @@ document.addEventListener("DOMContentLoaded", function () {
           markAutoFilled(balanceCheckField);
           filled.push("{% trans 'balance check link' %}");
         }
+        // Same unconditional-overwrite treatment as currency above: type
+        // always has some option selected (there's no blank choice), so
+        // "already filled" can't be detected the way a text field can.
+        if (data.type && typeField) {
+          typeField.value = data.type;
+          markAutoFilled(typeField);
+          toggleFields();
+          filled.push("{% trans 'type' %}");
+        }
+        const descriptionField = document.getElementById('description');
+        if (data.description && descriptionField && !descriptionField.value.trim()) {
+          descriptionField.value = data.description;
+          markAutoFilled(descriptionField);
+          filled.push("{% trans 'description' %}");
+        }
+        const notesField = document.getElementById('notes');
+        if (data.notes && notesField && !notesField.value.trim()) {
+          notesField.value = data.notes;
+          markAutoFilled(notesField);
+          filled.push("{% trans 'notes' %}");
+        }
+        if (data.tags && data.tags.length) {
+          // Check an existing tag checkbox if the suggested name matches
+          // one (case-insensitively); anything left over goes into "New
+          // Tags" instead of being silently dropped.
+          const tagCheckboxes = Array.from(document.querySelectorAll('input[name="tags"]'));
+          const newTagsField = document.getElementById('new_tags');
+          const unmatched = [];
+          let matchedAny = false;
+          data.tags.forEach(function (suggested) {
+            const match = tagCheckboxes.find(function (checkbox) {
+              const label = checkbox.closest('label');
+              return label && label.textContent.trim().toLowerCase() === suggested.toLowerCase();
+            });
+            if (match) {
+              match.checked = true;
+              matchedAny = true;
+            } else {
+              unmatched.push(suggested);
+            }
+          });
+          if (matchedAny) {
+            filled.push("{% trans 'tags' %}");
+          }
+          if (unmatched.length && newTagsField && !newTagsField.value.trim()) {
+            newTagsField.value = unmatched.join(', ');
+            markAutoFilled(newTagsField);
+            filled.push("{% trans 'new tags' %}");
+          }
+        }
 
         if (filled.length) {
           statusEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> {% trans "Filled from photo:" %} ${filled.join(', ')}</span>`;
         } else {
           statusEl.innerHTML = '<span class="text-muted">{% trans "Nothing could be confidently read from that photo." %}</span>';
         }
+        checkDuplicateCode();
       })
       .catch(() => {
         statusEl.innerHTML = '<span class="text-danger">{% trans "Scan failed. Please try again." %}</span>';
