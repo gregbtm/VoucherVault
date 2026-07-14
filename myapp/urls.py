@@ -32,6 +32,7 @@ urlpatterns = (
     path('items/<uuid:item_id>/public-share/revoke/', views.revoke_public_share_link, name='revoke_public_share_link'),
     path('items/<uuid:item_id>/share-logo/', views.item_share_logo, name='item_share_logo'),
     path('s/<uuid:share_id>/', views.public_item_share, name='public_item_share'),
+    path('s/<uuid:share_id>/logo/', views.public_item_share_logo, name='public_item_share_logo'),
     path('s/<uuid:share_id>/pkpass/', views.public_item_pkpass, name='public_item_pkpass'),
     path('items/view-image/<uuid:item_id>/', views.serve_image_file, name='serve_image_file'),
     path('items/<uuid:item_uuid>/documents/upload', views.upload_document, name='upload_document'),

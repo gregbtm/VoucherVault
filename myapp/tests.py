@@ -4,16 +4,21 @@ import urllib.error
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from django_celery_beat.models import CrontabSchedule, PeriodicTask
+from PIL import Image
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 
+from .avatar import generate_initial_avatar
 from .forms import ItemForm, SiteConfigurationForm, TagForm, WalletForm
 from .merchant_logos import (
     fetch_merchant_logo,
@@ -594,6 +599,39 @@ class DashboardAnalyticsContextTests(TestCase):
         self.assertEqual(response.context['items_by_wallet'], [])
 
 
+class GenerateInitialAvatarTests(TestCase):
+    """
+    myapp.avatar.generate_initial_avatar - the fallback share/link-preview
+    image when no merchant logo is cached, so a share never falls back to
+    VoucherVault's own app icon.
+    """
+    def test_returns_valid_png_bytes(self):
+        data = generate_initial_avatar('Uber Eats')
+        self.assertTrue(data.startswith(b'\x89PNG'))
+        image = Image.open(BytesIO(data))
+        self.assertEqual(image.format, 'PNG')
+
+    def test_uses_first_letter_uppercased(self):
+        with patch('myapp.avatar.ImageDraw.ImageDraw.text') as mock_text:
+            generate_initial_avatar('every wish')
+            drawn_text = mock_text.call_args.args[1]
+            self.assertEqual(drawn_text, 'E')
+
+    def test_same_name_always_gets_the_same_color(self):
+        first = generate_initial_avatar('Amazon')
+        second = generate_initial_avatar('Amazon')
+        self.assertEqual(first, second)
+
+    def test_blank_name_does_not_crash(self):
+        data = generate_initial_avatar('')
+        self.assertTrue(data.startswith(b'\x89PNG'))
+
+    def test_custom_size_respected(self):
+        data = generate_initial_avatar('Amazon', size=128)
+        image = Image.open(BytesIO(data))
+        self.assertEqual(image.size, (128, 128))
+
+
 class MerchantLogoServiceTests(TestCase):
     def test_guess_domain_strips_non_alnum_and_lowercases(self):
         self.assertEqual(guess_domain('Amazon'), 'amazon.com')
@@ -662,6 +700,45 @@ class MerchantLogoServiceTests(TestCase):
         profile = fetch_merchant_logo('Every Wish', domain_hint='uber.com')
         self.assertEqual(profile.domain, 'uber.com')
         self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/uber.com')
+
+    @patch('myapp.merchant_logos.requests.get')
+    def test_fetch_merchant_logo_refetches_when_domain_hint_changes_despite_fresh_cache(self, mock_get):
+        MerchantProfile.objects.create(
+            name='Every Wish', domain='everywish.com', logo_url='', fetched_at=timezone.now()
+        )
+        mock_get.return_value = MagicMock(status_code=200)
+        profile = fetch_merchant_logo('Every Wish', domain_hint='uber.com')
+        self.assertEqual(profile.domain, 'uber.com')
+        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/uber.com')
+        mock_get.assert_called_once()
+
+    @patch('myapp.merchant_logos.requests.get')
+    def test_fetch_merchant_logo_skips_refetch_when_domain_hint_matches_cached_domain(self, mock_get):
+        MerchantProfile.objects.create(
+            name='Every Wish', domain='uber.com', logo_url='https://logo.clearbit.com/uber.com',
+            fetched_at=timezone.now(),
+        )
+        fetch_merchant_logo('Every Wish', domain_hint='uber.com')
+        mock_get.assert_not_called()
+
+    @patch('myapp.merchant_logos.requests.get')
+    def test_fetch_merchant_logo_retries_failed_fetch_after_a_day_not_a_month(self, mock_get):
+        MerchantProfile.objects.create(
+            name='Amazon', logo_url='', fetched_at=timezone.now() - timedelta(days=2)
+        )
+        mock_get.return_value = MagicMock(status_code=200)
+        profile = fetch_merchant_logo('Amazon')
+        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/amazon.com')
+        mock_get.assert_called_once()
+
+    @patch('myapp.merchant_logos.requests.get')
+    def test_fetch_merchant_logo_does_not_retry_successful_fetch_within_cache_period(self, mock_get):
+        MerchantProfile.objects.create(
+            name='Amazon', logo_url='https://logo.clearbit.com/amazon.com',
+            fetched_at=timezone.now() - timedelta(days=2),
+        )
+        fetch_merchant_logo('Amazon')
+        mock_get.assert_not_called()
 
 
 class BalanceCheckUrlServiceTests(TestCase):
@@ -1087,11 +1164,15 @@ class PublicShareLinkTests(TestCase):
         self.assertIn(reverse('item_share_logo', args=[item.id]), data['logo_image_url'])
         self.assertTrue(ItemPublicShare.objects.filter(item=item).exists())
 
-    def test_card_number_preferred_over_redeem_code(self):
-        item = make_item(self.alice, card_number='MEMBER-9')
+    def test_redeem_code_shared_even_when_card_number_also_set(self):
+        # card_number is a secondary "if different from the barcode" field
+        # (see Item.card_number's help_text) - the redeem code is what's
+        # actually needed to redeem the voucher, so it must never be
+        # dropped from the share payload in favour of card_number.
+        item = make_item(self.alice, card_number='MEMBER-9', redeem_code='REDEEM-1')
         response = self.client.post(reverse('get_public_share_link', args=[item.id]),
                                      HTTP_X_REQUESTED_WITH='XMLHttpRequest')
-        self.assertEqual(response.json()['code'], 'MEMBER-9')
+        self.assertEqual(response.json()['code'], 'REDEEM-1')
 
     def test_balance_included_for_giftcard_only(self):
         giftcard = make_item(self.alice, type='giftcard', redeem_code='GC1', value='25.00')
@@ -1182,6 +1263,21 @@ class PublicShareLinkTests(TestCase):
         response = self.client.get(reverse('public_item_share', args=[share_id]))
         self.assertNotContains(response, 'Secret redemption instructions')
 
+    def test_public_page_always_shows_a_merchant_logo_image_and_og_image(self):
+        # Regression test: this used to render nothing at all (an empty
+        # gap) when no merchant logo happened to be cached yet - the page
+        # must always show *something* merchant-relevant (real logo or the
+        # generated initial-avatar fallback - see public_item_share_logo),
+        # never leave the slot blank, and og:image must point at the same
+        # endpoint so link-preview crawlers see the identical image.
+        item = make_item(self.alice, issuer='Totally Unknown Merchant')
+        share_id = ItemPublicShare.objects.create(item=item, created_by=self.alice).id
+        self.client.logout()
+        response = self.client.get(reverse('public_item_share', args=[share_id]))
+        logo_url = reverse('public_item_share_logo', args=[share_id])
+        self.assertContains(response, f'src="{logo_url}"')
+        self.assertContains(response, f'og:image" content="http://testserver{logo_url}"')
+
     def test_item_detail_shows_link_management_card_to_owner(self):
         item = make_item(self.alice)
         response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
@@ -1234,30 +1330,86 @@ class ItemShareLogoViewTests(TestCase):
         self.assertEqual(response['Content-Type'], 'image/png')
         mock_get.assert_called_once_with('https://logo.clearbit.com/amazon.com', timeout=5)
 
-    def test_falls_back_to_app_icon_when_no_cached_logo(self):
+    def test_falls_back_to_generated_avatar_when_no_cached_logo(self):
         item = make_item(self.alice, issuer='Totally Unknown Merchant')
         response = self.client.get(reverse('item_share_logo', args=[item.id]))
-        self.assertEqual(response.status_code, 302)
-        self.assertIn('apple-touch-icon', response.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/png')
+        self.assertTrue(response.content.startswith(b'\x89PNG'))
 
     @patch('myapp.views.requests.get')
-    def test_falls_back_to_app_icon_when_upstream_fetch_fails(self, mock_get):
+    def test_falls_back_to_generated_avatar_when_upstream_fetch_fails(self, mock_get):
         import requests
         item = make_item(self.alice, issuer='Amazon')
         MerchantProfile.objects.create(name='Amazon', logo_url='https://logo.clearbit.com/amazon.com')
         mock_get.side_effect = requests.RequestException('boom')
         response = self.client.get(reverse('item_share_logo', args=[item.id]))
-        self.assertEqual(response.status_code, 302)
-        self.assertIn('apple-touch-icon', response.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.content.startswith(b'\x89PNG'))
 
     @patch('myapp.views.requests.get')
-    def test_falls_back_to_app_icon_when_upstream_returns_error_status(self, mock_get):
+    def test_falls_back_to_generated_avatar_when_upstream_returns_error_status(self, mock_get):
         item = make_item(self.alice, issuer='Amazon')
         MerchantProfile.objects.create(name='Amazon', logo_url='https://logo.clearbit.com/amazon.com')
         mock_get.return_value = MagicMock(status_code=404, content=b'')
         response = self.client.get(reverse('item_share_logo', args=[item.id]))
-        self.assertEqual(response.status_code, 302)
-        self.assertIn('apple-touch-icon', response.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.content.startswith(b'\x89PNG'))
+
+
+class PublicItemShareLogoViewTests(TestCase):
+    """
+    myapp.views.public_item_share_logo - the unauthenticated, share_id-
+    keyed counterpart to item_share_logo, used by public_item.html's
+    on-page <img> and og:image link-preview meta tag.
+    """
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_no_login_required(self):
+        item = make_item(self.alice, issuer='Amazon')
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
+        response = self.client.get(reverse('public_item_share_logo', args=[share.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/png')
+
+    def test_unknown_share_404s(self):
+        response = self.client.get(reverse('public_item_share_logo', args=[uuid.uuid4()]))
+        self.assertEqual(response.status_code, 404)
+
+    @patch('myapp.views.requests.get')
+    def test_proxies_cached_merchant_logo(self, mock_get):
+        item = make_item(self.alice, issuer='Amazon')
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
+        MerchantProfile.objects.create(name='Amazon', logo_url='https://logo.clearbit.com/amazon.com')
+        mock_get.return_value = MagicMock(
+            status_code=200, content=b'fake-image-bytes', headers={'Content-Type': 'image/png'}
+        )
+        response = self.client.get(reverse('public_item_share_logo', args=[share.id]))
+        self.assertEqual(response.content, b'fake-image-bytes')
+
+    def test_falls_back_to_generated_avatar_when_no_cached_logo(self):
+        item = make_item(self.alice, issuer='Totally Unknown Merchant')
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
+        response = self.client.get(reverse('public_item_share_logo', args=[share.id]))
+        self.assertTrue(response.content.startswith(b'\x89PNG'))
+
+    def test_works_even_when_share_is_expired(self):
+        # The logo image itself carries no sensitive data - exposed the
+        # same as the main page already exposes it unconditionally across
+        # every one of its states (crawler/expired/PIN-required/unlocked).
+        item = make_item(self.alice, issuer='Amazon')
+        share = ItemPublicShare.objects.create(
+            item=item, created_by=self.alice, expires_at=timezone.now() - timedelta(days=1),
+        )
+        response = self.client.get(reverse('public_item_share_logo', args=[share.id]))
+        self.assertEqual(response.status_code, 200)
+
+    def test_works_even_when_pin_locked(self):
+        item = make_item(self.alice, issuer='Amazon')
+        share = ItemPublicShare.objects.create(item=item, created_by=self.alice, access_pin='1234')
+        response = self.client.get(reverse('public_item_share_logo', args=[share.id]))
+        self.assertEqual(response.status_code, 200)
 
 
 class PublicShareSecurityTests(TestCase):
@@ -1368,14 +1520,20 @@ class PublicShareSecurityTests(TestCase):
             response = self.client.get(reverse('public_item_share', args=[share.id]))
         self.assertEqual(response.status_code, 429)
 
-    def test_og_meta_tags_use_merchant_logo_when_cached(self):
+    def test_og_meta_tags_point_at_the_same_origin_logo_endpoint(self):
+        # og:image no longer embeds a third-party logo URL directly - it
+        # points at public_item_share_logo, which resolves the cached
+        # logo (or a generated avatar fallback) server-side. See
+        # PublicItemShareLogoViewTests for coverage of that endpoint
+        # itself.
         item = make_item(self.alice, issuer='Ticketmaster')
         MerchantProfile.objects.create(name='Ticketmaster', logo_url='https://example.com/tm-logo.png')
         share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
         self.client.logout()
 
         response = self.client.get(reverse('public_item_share', args=[share.id]))
-        self.assertContains(response, 'https://example.com/tm-logo.png')
+        logo_url = reverse('public_item_share_logo', args=[share.id])
+        self.assertContains(response, f'og:image" content="http://testserver{logo_url}"')
         self.assertContains(response, 'og:title')
 
 
@@ -2162,6 +2320,61 @@ class UpdateCheckContextProcessorTests(TestCase):
         self.client.login(username='admin', password='pw12345!')
         response = self.client.get(reverse('site_settings'))
         self.assertNotContains(response, 'A newer version')
+
+
+class CreateDefaultPeriodicTasksCommandTests(TestCase):
+    """
+    myapp.management.commands.create_default_periodic_tasks - runs on every
+    container start (docker/entrypoint.sh), so it must be safe to re-run
+    against an install that already has these rows from a previous version
+    of this command.
+    """
+    def test_creates_expected_tasks(self):
+        call_command('create_default_periodic_tasks')
+        names = set(PeriodicTask.objects.values_list('name', flat=True))
+        self.assertEqual(names, {
+            'Periodic Expiry Check', 'Notification Rules Expiry Check',
+            'Update Check', 'Upstream Version Check', 'Scheduled Backup',
+        })
+
+    def test_update_check_and_upstream_check_run_hourly_not_daily(self):
+        call_command('create_default_periodic_tasks')
+        for name in ('Update Check', 'Upstream Version Check'):
+            crontab = PeriodicTask.objects.get(name=name).crontab
+            self.assertEqual(crontab.hour, '*')
+
+    def test_rerunning_does_not_create_duplicates(self):
+        call_command('create_default_periodic_tasks')
+        call_command('create_default_periodic_tasks')
+        self.assertEqual(PeriodicTask.objects.filter(name='Update Check').count(), 1)
+
+    def test_rerunning_corrects_crontab_on_an_existing_row(self):
+        # Simulates an install provisioned by an older version of this
+        # command, back when Update Check still shared the daily 9am
+        # schedule - re-running the command today should reschedule it to
+        # hourly in place, not leave it stuck on the old crontab forever.
+        stale_schedule = CrontabSchedule.objects.create(
+            minute='0', hour='9', day_of_week='*', day_of_month='*', month_of_year='*'
+        )
+        PeriodicTask.objects.create(
+            name='Update Check', task='myapp.tasks.check_for_update_task',
+            crontab=stale_schedule, enabled=True,
+        )
+        call_command('create_default_periodic_tasks')
+        task = PeriodicTask.objects.get(name='Update Check')
+        self.assertEqual(task.crontab.hour, '*')
+        self.assertEqual(PeriodicTask.objects.filter(name='Update Check').count(), 1)
+
+    def test_rerunning_preserves_an_admin_disabled_task(self):
+        call_command('create_default_periodic_tasks')
+        task = PeriodicTask.objects.get(name='Update Check')
+        task.enabled = False
+        task.save(update_fields=['enabled'])
+
+        call_command('create_default_periodic_tasks')
+        task.refresh_from_db()
+        self.assertFalse(task.enabled)
+        self.assertEqual(PeriodicTask.objects.filter(name='Update Check').count(), 1)
 
 
 @override_settings(VERSION='1.0.0', UPSTREAM_VERSION='1.29.0')

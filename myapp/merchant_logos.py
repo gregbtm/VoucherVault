@@ -11,6 +11,7 @@ from .models import MerchantProfile, SiteConfiguration
 logger = logging.getLogger(__name__)
 
 CACHE_DAYS = 30
+FAILURE_RETRY_DAYS = 1
 FETCH_TIMEOUT = 5
 
 # Clearbit first (real brand logos), Google favicons as a fallback (near
@@ -99,7 +100,17 @@ def fetch_merchant_logo(name: str, domain_hint: str = None) -> MerchantProfile:
     from `name` — e.g. an item's OCR-extracted logo_slug ("uber.com") is a
     far more reliable domain than guessing one from its issuer name
     ("Every Wish"), which is often just who resold/issued the card, not
-    who it's actually branded for.
+    who it's actually branded for. If a *different* domain_hint arrives
+    for an already-cached merchant (e.g. the first item for "Every Wish"
+    had no logo_slug and cached a wrong guessed domain, and a later item
+    for the same issuer was OCR-scanned and does have one), that overrides
+    the normal freshness window and forces a refetch - a better domain
+    hint arriving is a stronger signal than "we already looked recently".
+
+    A fetch that found nothing (logo_url left blank) is retried much
+    sooner than a successful one (FAILURE_RETRY_DAYS vs CACHE_DAYS) -
+    otherwise a transient network hiccup on the very first save gets
+    "stuck" showing no logo for a full month.
     """
     name = name.strip()
     # Case-insensitive get-or-create: MerchantProfile.name is exact-unique,
@@ -110,10 +121,14 @@ def fetch_merchant_logo(name: str, domain_hint: str = None) -> MerchantProfile:
     if profile is None:
         profile = MerchantProfile.objects.create(name=name)
 
-    if profile.fetched_at and (timezone.now() - profile.fetched_at) < timedelta(days=CACHE_DAYS):
-        return profile  # cache hit, still fresh
-
     domain = domain_hint.strip().lower() if domain_hint else guess_domain(name)
+
+    if profile.fetched_at:
+        domain_hint_changed = bool(domain_hint) and profile.domain != domain
+        cache_days = CACHE_DAYS if profile.logo_url else FAILURE_RETRY_DAYS
+        cache_is_fresh = (timezone.now() - profile.fetched_at) < timedelta(days=cache_days)
+        if cache_is_fresh and not domain_hint_changed:
+            return profile  # cache hit, still fresh
     for template in LOGO_SOURCES:
         url = template.format(domain=domain)
         try:

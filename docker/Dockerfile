@@ -12,6 +12,7 @@ ENV PYTHONUNBUFFERED=1
 # update and install software + create necessary dirs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cron \
+    fonts-dejavu-core \
     ghostscript \
     gcc \
     libc6-dev \
