@@ -7,8 +7,9 @@ from openai import OpenAI
 from myapp.models import SiteConfiguration
 
 from .base import (
-    OCRBackend, VALID_CODE_TYPES, VALID_CURRENCIES, parse_float_or_none,
-    sanitize_domain_slug, sanitize_url, strip_json_fences,
+    OCRBackend, VALID_CODE_TYPES, VALID_CURRENCIES, VALID_ITEM_TYPES,
+    parse_float_or_none, sanitize_domain_slug, sanitize_free_text,
+    sanitize_tag_suggestions, sanitize_url, strip_json_fences,
 )
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = 'gpt-4o-mini'
 
 _CODE_TYPE_OPTIONS = ', '.join(sorted(VALID_CODE_TYPES - {'none'}))
+_ITEM_TYPE_OPTIONS = ', '.join(sorted(VALID_ITEM_TYPES))
+_MAX_DESCRIPTION_LENGTH = 300
+_MAX_NOTES_LENGTH = 1000
 
 _PROMPT = (
     'This image shows a voucher, coupon, gift card, or loyalty card - it '
@@ -35,12 +39,20 @@ _PROMPT = (
     'sold by "Every Wish" or a similar gift-card marketplace), use the '
     'actual redeemable brand\'s domain, not the reseller\'s. Also extract '
     'a balance or validity check URL if one is visibly printed on the '
-    'card itself. Respond with ONLY a JSON object, no other text and no '
-    'markdown code fences, in exactly this shape:\n'
+    'card itself. Also classify what kind of item this is, write a short '
+    'one-sentence factual description of it (e.g. "£50 gift card for '
+    'Uber and Uber Eats"), extract any redemption instructions or terms '
+    'that are visibly printed on the card itself (e.g. expiry '
+    'conditions, where it can be used, exclusions) - never invented, '
+    'only if actually printed - and suggest up to 4 short category tags '
+    'for organizing it (e.g. "Restaurant", "Food Delivery", "Retail", '
+    '"Travel", "Coffee"). Respond with ONLY a JSON object, no other text '
+    'and no markdown code fences, in exactly this shape:\n'
     '{"code": "...", "code_type": "...", "name": "...", "issuer": "...", '
     '"expiry_date": "YYYY-MM-DD", "pin": "...", "value": 0.00, '
     '"currency": "...", "card_number": "...", "logo_slug": "...", '
-    '"balance_check_url": "...", "confidence": 0.0}\n'
+    '"balance_check_url": "...", "type": "...", "description": "...", '
+    '"notes": "...", "tags": ["...", "..."], "confidence": 0.0}\n'
     f'"code_type" must be exactly one of: {_CODE_TYPE_OPTIONS}, "none" '
     '(if the code is a plain printed number with no separate scannable '
     'barcode at all), or null (if you cannot tell). "currency" must be a '
@@ -49,10 +61,14 @@ _PROMPT = (
     '"uber.com"), or null if you cannot confidently tell. '
     '"balance_check_url" must be a full URL including "https://", or '
     'null - never a URL you are guessing at, only one actually printed '
-    'on the card. Use null for any other field you cannot confidently '
-    'determine, or that is genuinely blank on the card itself (e.g. an '
-    'empty PIN box) - never invent a value. "confidence" is your own '
-    'estimate (0.0-1.0) of how reliable the "code" extraction is.'
+    f'on the card. "type" must be exactly one of: {_ITEM_TYPE_OPTIONS}, '
+    'or null. "tags" must be a JSON array of short strings (an empty '
+    'array if nothing fits) - never invent brand names as tags, only '
+    'general categories. Use null for any other field you cannot '
+    'confidently determine, or that is genuinely blank on the card '
+    'itself (e.g. an empty PIN box) - never invent a value. "confidence" '
+    'is your own estimate (0.0-1.0) of how reliable the "code" '
+    'extraction is.'
 )
 
 
@@ -78,13 +94,14 @@ class OpenAIOCRBackend(OCRBackend):
         empty = {
             'code': None, 'code_type': None, 'name': None, 'issuer': None, 'expiry_date': None,
             'pin': None, 'value': None, 'currency': None, 'card_number': None,
-            'logo_slug': None, 'balance_check_url': None, 'confidence': 0.0,
+            'logo_slug': None, 'balance_check_url': None, 'type': None,
+            'description': None, 'notes': None, 'tags': [], 'confidence': 0.0,
         }
 
         image_b64 = base64.standard_b64encode(image_bytes).decode()
         response = self.client.chat.completions.create(
             model=self.model,
-            max_tokens=400,
+            max_tokens=600,
             timeout=20,
             # Guarantees the response is valid JSON - the prior prompt-only
             # instruction ("respond with ONLY a JSON object") wasn't
@@ -125,6 +142,10 @@ class OpenAIOCRBackend(OCRBackend):
         if currency not in VALID_CURRENCIES:
             currency = None
 
+        item_type = result.get('type') or None
+        if item_type not in VALID_ITEM_TYPES:
+            item_type = None
+
         return {
             'code': result.get('code') or None,
             'code_type': code_type,
@@ -137,5 +158,9 @@ class OpenAIOCRBackend(OCRBackend):
             'card_number': result.get('card_number') or None,
             'logo_slug': sanitize_domain_slug(result.get('logo_slug')),
             'balance_check_url': sanitize_url(result.get('balance_check_url')),
+            'type': item_type,
+            'description': sanitize_free_text(result.get('description'), _MAX_DESCRIPTION_LENGTH),
+            'notes': sanitize_free_text(result.get('notes'), _MAX_NOTES_LENGTH),
+            'tags': sanitize_tag_suggestions(result.get('tags')),
             'confidence': float(result.get('confidence') or 0.0),
         }

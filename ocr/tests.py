@@ -12,7 +12,10 @@ import pytesseract
 from myapp.test_utils import set_site_config
 
 from .backends import get_backend, ocr_enabled
-from .backends.base import parse_float_or_none, sanitize_domain_slug, sanitize_url, strip_json_fences
+from .backends.base import (
+    parse_float_or_none, sanitize_domain_slug, sanitize_free_text,
+    sanitize_tag_suggestions, sanitize_url, strip_json_fences,
+)
 from .backends.claude_backend import ClaudeOCRBackend
 from .backends.openai_backend import OpenAIOCRBackend
 from .backends.tesseract import TesseractOCRBackend
@@ -307,6 +310,70 @@ class ClaudeBackendTests(TestCase):
         self.assertIsNone(result['logo_slug'])
         self.assertIsNone(result['balance_check_url'])
 
+    @patch('ocr.backends.claude_backend.anthropic.Anthropic')
+    def test_extract_parses_type_description_notes_and_tags(self, mock_anthropic_cls):
+        set_site_config(anthropic_api_key='test-key')
+        mock_client = MagicMock()
+        mock_block = MagicMock(
+            type='text',
+            text=(
+                '{"code": null, "code_type": null, "name": "Uber Eats", "issuer": "Every Wish", '
+                '"expiry_date": null, "pin": null, "value": 50.0, "currency": "GBP", "card_number": null, '
+                '"logo_slug": null, "balance_check_url": null, "type": "giftcard", '
+                '"description": "£50 gift card for Uber and Uber Eats", '
+                '"notes": "Valid in the UK only.", "tags": ["Restaurant", "Food Delivery"], "confidence": 0.9}'
+            ),
+        )
+        mock_client.messages.create.return_value = MagicMock(content=[mock_block])
+        mock_anthropic_cls.return_value = mock_client
+
+        backend = ClaudeOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertEqual(result['type'], 'giftcard')
+        self.assertEqual(result['description'], '£50 gift card for Uber and Uber Eats')
+        self.assertEqual(result['notes'], 'Valid in the UK only.')
+        self.assertEqual(result['tags'], ['Restaurant', 'Food Delivery'])
+
+    @patch('ocr.backends.claude_backend.anthropic.Anthropic')
+    def test_extract_discards_hallucinated_type(self, mock_anthropic_cls):
+        set_site_config(anthropic_api_key='test-key')
+        mock_client = MagicMock()
+        mock_block = MagicMock(
+            type='text',
+            text='{"code": null, "code_type": null, "name": null, "issuer": null, "expiry_date": null, '
+                 '"type": "not-a-real-type", "confidence": 0.0}',
+        )
+        mock_client.messages.create.return_value = MagicMock(content=[mock_block])
+        mock_anthropic_cls.return_value = mock_client
+
+        backend = ClaudeOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertIsNone(result['type'])
+
+    @patch('ocr.backends.claude_backend.anthropic.Anthropic')
+    def test_extract_missing_new_fields_default_sensibly(self, mock_anthropic_cls):
+        """A response that predates these fields (or a model that omits
+        them) must not error out - missing keys default the same as an
+        explicit null/empty array would."""
+        set_site_config(anthropic_api_key='test-key')
+        mock_client = MagicMock()
+        mock_block = MagicMock(
+            type='text',
+            text='{"code": "SAVE20", "confidence": 0.5}',
+        )
+        mock_client.messages.create.return_value = MagicMock(content=[mock_block])
+        mock_anthropic_cls.return_value = mock_client
+
+        backend = ClaudeOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertIsNone(result['type'])
+        self.assertIsNone(result['description'])
+        self.assertIsNone(result['notes'])
+        self.assertEqual(result['tags'], [])
+
 
 class OpenAIBackendTests(TestCase):
     def test_raises_without_api_key(self):
@@ -519,6 +586,46 @@ class OpenAIBackendTests(TestCase):
 
         self.assertEqual(result['logo_slug'], 'uber.com')
 
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_extract_parses_type_description_notes_and_tags(self, mock_openai_cls):
+        set_site_config(openai_api_key='test-key')
+        mock_client = MagicMock()
+        mock_message = MagicMock(
+            content=(
+                '{"code": null, "code_type": null, "name": "Uber Eats", "issuer": "Every Wish", '
+                '"expiry_date": null, "pin": null, "value": 50.0, "currency": "GBP", "card_number": null, '
+                '"logo_slug": null, "balance_check_url": null, "type": "giftcard", '
+                '"description": "£50 gift card for Uber and Uber Eats", '
+                '"notes": "Valid in the UK only.", "tags": ["Restaurant", "Food Delivery"], "confidence": 0.9}'
+            ),
+        )
+        mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
+        mock_openai_cls.return_value = mock_client
+
+        backend = OpenAIOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertEqual(result['type'], 'giftcard')
+        self.assertEqual(result['description'], '£50 gift card for Uber and Uber Eats')
+        self.assertEqual(result['notes'], 'Valid in the UK only.')
+        self.assertEqual(result['tags'], ['Restaurant', 'Food Delivery'])
+
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_extract_discards_hallucinated_type(self, mock_openai_cls):
+        set_site_config(openai_api_key='test-key')
+        mock_client = MagicMock()
+        mock_message = MagicMock(
+            content='{"code": null, "code_type": null, "name": null, "issuer": null, "expiry_date": null, '
+                    '"type": "not-a-real-type", "confidence": 0.0}',
+        )
+        mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
+        mock_openai_cls.return_value = mock_client
+
+        backend = OpenAIOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertIsNone(result['type'])
+
 
 class BaseHelperTests(TestCase):
     def test_strip_json_fences_removes_json_fence(self):
@@ -569,6 +676,37 @@ class BaseHelperTests(TestCase):
         self.assertIsNone(sanitize_url('ftp://example.com'))
         self.assertIsNone(sanitize_url(''))
         self.assertIsNone(sanitize_url(None))
+
+    def test_sanitize_free_text_strips_and_passes_through(self):
+        self.assertEqual(sanitize_free_text('  £50 gift card  ', 300), '£50 gift card')
+
+    def test_sanitize_free_text_truncates_overlong_response(self):
+        text = 'x' * 500
+        self.assertEqual(sanitize_free_text(text, 300), 'x' * 300)
+
+    def test_sanitize_free_text_rejects_junk(self):
+        self.assertIsNone(sanitize_free_text('', 300))
+        self.assertIsNone(sanitize_free_text(None, 300))
+        self.assertIsNone(sanitize_free_text(123, 300))
+
+    def test_sanitize_tag_suggestions_accepts_clean_list(self):
+        self.assertEqual(sanitize_tag_suggestions(['Restaurant', 'Food Delivery']), ['Restaurant', 'Food Delivery'])
+
+    def test_sanitize_tag_suggestions_dedupes_case_insensitively(self):
+        self.assertEqual(sanitize_tag_suggestions(['Restaurant', 'restaurant', 'RESTAURANT']), ['Restaurant'])
+
+    def test_sanitize_tag_suggestions_drops_non_strings_and_overlong_entries(self):
+        self.assertEqual(sanitize_tag_suggestions(['Restaurant', 123, None, 'x' * 40]), ['Restaurant'])
+
+    def test_sanitize_tag_suggestions_caps_at_four(self):
+        self.assertEqual(
+            sanitize_tag_suggestions(['A', 'B', 'C', 'D', 'E', 'F']),
+            ['A', 'B', 'C', 'D'],
+        )
+
+    def test_sanitize_tag_suggestions_rejects_non_list(self):
+        self.assertEqual(sanitize_tag_suggestions('Restaurant'), [])
+        self.assertEqual(sanitize_tag_suggestions(None), [])
 
 
 class TesseractPinAndValueTests(TestCase):
@@ -621,6 +759,10 @@ class TesseractPinAndValueTests(TestCase):
         self.assertEqual(result['currency'], 'GBP')
         self.assertIsNone(result['card_number'])
         self.assertIsNone(result['logo_slug'])
+        self.assertIsNone(result['type'])
+        self.assertIsNone(result['description'])
+        self.assertIsNone(result['notes'])
+        self.assertEqual(result['tags'], [])
 
     @patch('ocr.backends.tesseract.pytesseract.get_tesseract_version')
     def test_guesses_balance_check_url_from_printed_link(self, mock_version):

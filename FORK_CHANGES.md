@@ -2753,6 +2753,103 @@ server with a synthetic response reproducing the exact reported scenario
 confirmed the create-item form filled Logo Slug with "uber.com" - not
 "everywish.com" - screenshot-verified.
 
+## Phase 51 — AI scan gets smarter, plus duplicate detection, auto-attached scans, and a UI fix
+
+A follow-up request asked to push the AI photo-scan flow further
+(description/notes/tag suggestions - "make this smarter"), plus three
+independently scoped items: duplicate prevention, keeping the scanned
+photo as an attached file, and an Unshare button layout fix.
+
+### AI scan: type, description, notes, and suggested tags
+
+Both vision backends (OpenAI, Claude) now also extract:
+
+- `type` - one of `Item.ITEM_TYPES`, validated the same way `code_type`/
+  `currency` already are. Unconditionally overwrites the `<select>` on
+  both create/edit pages (same treatment as `currency`/`expiry_date` -
+  there's no "empty" state a `<select>` can be in to gate on).
+- `description` - a short one-sentence factual summary (e.g. "£50 gift
+  card for Uber and Uber Eats"). Only fills an empty field.
+- `notes` - redemption instructions/terms, but *only* if actually
+  printed on the card - the prompt is explicit that this must never be
+  invented, distinguishing it from `description` (which is the AI's own
+  factual summary and is allowed to be synthesized).
+- `tags` - up to 4 short suggested category names (e.g. "Restaurant",
+  "Food Delivery"). The frontend matches each suggestion case-
+  insensitively against the user's *existing* tag checkboxes and checks
+  the box if one matches; anything left over goes into the "New Tags"
+  text field instead of being silently dropped. No backend change was
+  needed to make this "smart" about existing tags - the matching happens
+  entirely client-side against the checkboxes already rendered on the
+  page, so the OCR request itself doesn't need to know the user's tag
+  list.
+
+New `sanitize_free_text()` (truncates rather than discards an over-long
+answer) and `sanitize_tag_suggestions()` (drops non-strings/overlong/
+duplicate entries, caps at 4) in `ocr/backends/base.py`. Tesseract still
+can't guess any of these four fields - they need scene/layout
+understanding a plain-text OCR pass doesn't have - so they stay `None`/
+`[]` there, matching the existing `logo_slug` limitation.
+
+### Duplicate detection (warn, never block)
+
+New `check_duplicate_code` view/endpoint: given a redeem code, checks
+whether the user already has an *active* (not used, not archived) item
+with that exact code - scoped the same way `show_items` is (owned +
+shared-wallet items). Deliberately a warning, not a validation error:
+some duplicates are intentional (a re-issued loyalty card), so this
+never blocks form submission, just shows a dismissable-by-editing amber
+notice with a link to the existing item. Wired into both create/edit
+item forms, triggered by manual typing (debounced) and by a successful
+scan (camera, file, or AI) - scanner.js's three barcode-success sites
+now dispatch a synthetic `input` event after setting the code field,
+since a plain `.value` assignment doesn't fire one on its own, which is
+what the debounced listener needs to pick up a scan-filled code the
+same way it picks up typing.
+
+### Scanned photo becomes the item's attached file
+
+Whatever image was used for a barcode/AI scan - camera, "File Scan", or
+"Scan with AI" - now also populates the item's `file` field (the same
+field the "Upload File" button targets), via the standard `DataTransfer`
+technique for programmatically setting a file input's `FileList`. Only
+when that field is still empty: on the edit page specifically, a
+`data-has-existing-file` attribute (set server-side from `item.file`)
+prevents a re-scan-to-refresh-other-fields action from silently
+replacing an already-attached original scan. Implemented once in
+`scanner.js` (shared by both create/edit item forms) rather than
+duplicated per-template.
+
+### Unshare button layout
+
+`.shared-users-card .shared-user-item` (scoped to the Shared With
+section specifically - the visually identical Documents list reuses the
+same base classes and keeps its existing inline layout) now stacks
+vertically instead of side-by-side, so the Unshare button sits below the
+shared person's name/email instead of squeezed onto the same line -
+was cramped or overflowing for longer usernames/emails, especially on
+narrow screens.
+
+### Tests
+
+23 new tests: `sanitize_free_text`/`sanitize_tag_suggestions` unit
+coverage, both vision backends parsing/discarding the four new fields
+(including a "response predates these fields" default-safety test), a
+Tesseract assertion that all four still come back empty, and a full
+`CheckDuplicateCodeTests` class (own items, used/archived exclusion,
+other users' items, the edit-page `exclude` param, shared-wallet items).
+Full suite green.
+
+Also verified live: a Playwright session on the running dev server
+reproduced the exact "Uber Eats via Every Wish" scenario end-to-end -
+intercepted the OCR call with a synthetic response and confirmed the
+create-item form filled type, description, notes, checked the existing
+"Restaurant" tag, put "Food Delivery" into New Tags, and attached the
+scanned photo as the item's file, all in one pass; separately confirmed
+the duplicate-code warning appears when typing a code that matches an
+existing item, and screenshotted the Shared With section to confirm the
+Unshare button now renders beneath the shared user's info.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

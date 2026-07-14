@@ -17,6 +17,19 @@ const cancelCropBtn = document.getElementById('cancelCropBtn');
 const resetSelectionBtn = document.getElementById('resetSelectionBtn');
 const cropPreviewSection = document.getElementById('cropPreviewSection');
 const cropPreviewCanvas = document.getElementById('cropPreviewCanvas');
+const attachFileField = document.getElementById('file');
+
+// Whatever photo was used for this barcode scan becomes the item's
+// attached file too, unless one is already set (edit-item.html marks
+// that via data-has-existing-file) or the user already picked one
+// manually. Same behavior as the AI-scan handlers in create-item.html/
+// edit-item.html, just reachable from the plain "File Scan" button too.
+function attachScannedFileIfEmpty(file) {
+    if (!attachFileField || !file || attachFileField.files.length || attachFileField.dataset.hasExistingFile) return;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    attachFileField.files = dt.files;
+}
 
 let videoStream;
 const codeReader = new ZXing.BrowserMultiFormatReader();
@@ -241,6 +254,11 @@ function startScanning() {
         if (result) {
             redeemCodeField.value = result.text;
             markAutoFilled(redeemCodeField);
+            // A plain .value assignment doesn't fire 'input' on its own -
+            // dispatch one so create-item.html/edit-item.html's duplicate-
+            // code check (listening for 'input' on this field) runs after
+            // a scan, not just after manual typing.
+            redeemCodeField.dispatchEvent(new Event('input'));
             applyDetectedFormat(barcodeFormatMap[barcodeFormats[result.format]], 'camera scan');
             redeemCodeField.focus();
             stopStream();
@@ -345,6 +363,7 @@ if (scanFromFileButton && fileInput) {
     fileInput.addEventListener("change", async function (event) {
         const file = event.target.files?.[0];
         if (!file) return;
+        attachScannedFileIfEmpty(file);
 
         if (isDecoding) {
             return;
@@ -370,6 +389,11 @@ if (scanFromFileButton && fileInput) {
             // Success! Set the barcode value and type
             redeemCodeField.value = decoded.text;
             markAutoFilled(redeemCodeField);
+            // A plain .value assignment doesn't fire 'input' on its own -
+            // dispatch one so create-item.html/edit-item.html's duplicate-
+            // code check (listening for 'input' on this field) runs after
+            // a scan, not just after manual typing.
+            redeemCodeField.dispatchEvent(new Event('input'));
             applyDetectedFormat(decoded.formatValue, 'uploaded image');
 
             redeemCodeField.focus();
@@ -624,6 +648,11 @@ if (scanCroppedBtn) {
             // Success!
             redeemCodeField.value = result.text;
             markAutoFilled(redeemCodeField);
+            // A plain .value assignment doesn't fire 'input' on its own -
+            // dispatch one so create-item.html/edit-item.html's duplicate-
+            // code check (listening for 'input' on this field) runs after
+            // a scan, not just after manual typing.
+            redeemCodeField.dispatchEvent(new Event('input'));
 
             if (result.format !== undefined) {
                 applyDetectedFormat(barcodeFormatMap[barcodeFormats[result.format]], 'cropped selection');

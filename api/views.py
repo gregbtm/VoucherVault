@@ -435,9 +435,10 @@ class OCRExtractView(APIView):
     POST a photo of a physical voucher/coupon/loyalty card, get back a
     best-guess redeem code (and, with a vision backend, merchant name/
     issuer/expiry date/PIN/value/currency/card number/logo domain/balance
-    check URL) to pre-fill the item form with. Processes the image
-    synchronously — no ImportJob-style polling needed for a single image.
-    Disabled (501) unless OCR_BACKEND is set.
+    check URL/item type/description/notes/suggested tags) to pre-fill the
+    item form with. Processes the image synchronously — no ImportJob-style
+    polling needed for a single image. Disabled (501) unless OCR_BACKEND
+    is set.
     """
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -458,6 +459,10 @@ class OCRExtractView(APIView):
                 'card_number': serializers.CharField(allow_null=True),
                 'logo_slug': serializers.CharField(allow_null=True),
                 'balance_check_url': serializers.CharField(allow_null=True),
+                'type': serializers.CharField(allow_null=True),
+                'description': serializers.CharField(allow_null=True),
+                'notes': serializers.CharField(allow_null=True),
+                'tags': serializers.ListField(child=serializers.CharField()),
                 'confidence': serializers.FloatField(),
             },
         ),

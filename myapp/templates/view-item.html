@@ -879,6 +879,22 @@ body.dark-mode a.more-action-row-danger:hover {
   color: var(--text-color, #1e1e1e);
 }
 
+/* Shared With rows specifically stack the Unshare button beneath the
+   shared person's name/email rather than beside it - a long username +
+   email left little room for the button on the same line, especially on
+   narrow screens. Scoped to .shared-users-card only so the visually
+   identical Documents list (which reuses .shared-user-item/.unshare-btn)
+   keeps its existing inline layout. */
+.shared-users-card .shared-user-item {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.shared-users-card .shared-user-item form {
+  align-self: flex-end;
+}
+
 .unshare-btn {
   padding: 0.35rem 0.75rem;
   font-size: 0.75rem;

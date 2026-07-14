@@ -1753,6 +1753,67 @@ class BalanceCheckUrlWiringTests(TestCase):
         self.assertNotContains(response, 'Check Balance')
 
 
+class CheckDuplicateCodeTests(TestCase):
+    """
+    myapp.views.check_duplicate_code - the create/edit item forms' warn-
+    not-block duplicate-code nudge.
+    """
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.other_user = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('check_duplicate_code'), {'code': 'ABC123'})
+        self.assertEqual(response.status_code, 302)
+
+    def test_blank_code_returns_not_duplicate(self):
+        response = self.client.get(reverse('check_duplicate_code'), {'code': ''})
+        self.assertEqual(response.json(), {'duplicate': False})
+
+    def test_no_match_returns_not_duplicate(self):
+        response = self.client.get(reverse('check_duplicate_code'), {'code': 'NOTHING'})
+        self.assertEqual(response.json(), {'duplicate': False})
+
+    def test_matches_own_active_item(self):
+        item = make_item(self.user, name='Existing Card', redeem_code='DUP123')
+        response = self.client.get(reverse('check_duplicate_code'), {'code': 'DUP123'})
+        payload = response.json()
+        self.assertTrue(payload['duplicate'])
+        self.assertEqual(payload['item_name'], 'Existing Card')
+        self.assertEqual(payload['item_url'], reverse('view_item', kwargs={'item_uuid': item.id}))
+
+    def test_ignores_used_items(self):
+        make_item(self.user, redeem_code='DUP123', is_used=True)
+        response = self.client.get(reverse('check_duplicate_code'), {'code': 'DUP123'})
+        self.assertEqual(response.json(), {'duplicate': False})
+
+    def test_ignores_archived_items(self):
+        make_item(self.user, redeem_code='DUP123', is_archived=True)
+        response = self.client.get(reverse('check_duplicate_code'), {'code': 'DUP123'})
+        self.assertEqual(response.json(), {'duplicate': False})
+
+    def test_ignores_other_users_items(self):
+        make_item(self.other_user, redeem_code='DUP123')
+        response = self.client.get(reverse('check_duplicate_code'), {'code': 'DUP123'})
+        self.assertEqual(response.json(), {'duplicate': False})
+
+    def test_exclude_param_omits_the_item_being_edited(self):
+        item = make_item(self.user, redeem_code='DUP123')
+        response = self.client.get(reverse('check_duplicate_code'), {'code': 'DUP123', 'exclude': str(item.id)})
+        self.assertEqual(response.json(), {'duplicate': False})
+
+    def test_matches_item_in_a_wallet_shared_with_the_user(self):
+        wallet = Wallet.objects.create(user=self.other_user, name='Shared Wallet')
+        wallet.shared_with.add(self.user)
+        item = make_item(self.other_user, name='Shared Card', redeem_code='DUP123', wallet=wallet)
+        response = self.client.get(reverse('check_duplicate_code'), {'code': 'DUP123'})
+        payload = response.json()
+        self.assertTrue(payload['duplicate'])
+        self.assertEqual(payload['item_url'], reverse('view_item', kwargs={'item_uuid': item.id}))
+
+
 class LastUsedTrackingTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')

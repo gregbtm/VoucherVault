@@ -51,8 +51,11 @@ class TesseractOCRBackend(OCRBackend):
     printed on the card) - no vision understanding, so "merchant name"
     and "issuer" always come back None, card_number is never guessed
     (nothing reliably distinguishes it from the redeem code in plain OCR
-    text), and logo_slug is never guessed either (identifying a brand
-    from its logo needs actual vision, not just text recognition).
+    text), and logo_slug/type/description/notes/tags are never guessed
+    either - all of those need actual scene/layout understanding (what
+    kind of card this is, what it's for, how it's organized), not just
+    raw text recognition, and guessing them from noisy OCR text alone
+    would risk being confidently wrong rather than usefully absent.
     """
 
     def __init__(self):
@@ -98,6 +101,10 @@ class TesseractOCRBackend(OCRBackend):
             'card_number': None,
             'logo_slug': None,
             'balance_check_url': balance_check_url,
+            'type': None,
+            'description': None,
+            'notes': None,
+            'tags': [],
             'confidence': round(confidence, 2) if code else 0.0,
         }
 
