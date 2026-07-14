@@ -20,7 +20,7 @@ def _color_for(name: str) -> str:
     return _PALETTE[int(digest, 16) % len(_PALETTE)]
 
 
-def generate_initial_avatar(name: str, size: int = 512) -> bytes:
+def generate_initial_avatar(name: str, size: int = 800) -> bytes:
     """
     Renders a circular "initial" avatar (first letter of `name`, on a
     colour deterministic for that name) as PNG bytes. Falls back to PIL's
@@ -52,7 +52,7 @@ def generate_initial_avatar(name: str, size: int = 512) -> bytes:
     return buffer.getvalue()
 
 
-def normalize_logo_image(content: bytes, size: int = 256) -> bytes:
+def normalize_logo_image(content: bytes, size: int = 800) -> bytes:
     """
     Re-encodes a fetched merchant logo/favicon to a consistently-sized PNG
     using smooth (Lanczos) resampling. Some sources (Google's favicon

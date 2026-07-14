@@ -21,6 +21,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from .avatar import generate_initial_avatar, normalize_logo_image
 from .forms import ItemForm, SiteConfigurationForm, TagForm, WalletForm
 from .merchant_logos import (
+    _logo_sources,
     fetch_merchant_logo,
     get_cached_balance_check_url,
     get_cached_logo,
@@ -684,6 +685,26 @@ class MerchantLogoServiceTests(TestCase):
         self.assertEqual(guess_domain('Amazon'), 'amazon.com')
         self.assertEqual(guess_domain("Trader Joe's"), 'traderjoes.com')
 
+    def test_logo_sources_without_a_key_skips_logo_dev(self):
+        sources = _logo_sources()
+        self.assertEqual(len(sources), 2)
+        self.assertTrue(sources[0].startswith('https://logo.clearbit.com/'))
+        self.assertTrue(sources[1].startswith('https://www.google.com/s2/favicons'))
+
+    def test_logo_sources_with_a_key_puts_logo_dev_first(self):
+        set_site_config(logo_dev_api_key='pk_test_123')
+        sources = _logo_sources()
+        self.assertEqual(len(sources), 3)
+        self.assertTrue(sources[0].startswith('https://img.logo.dev/'))
+        self.assertIn('token=pk_test_123', sources[0])
+        self.assertIn('size=800', sources[0])
+        self.assertIn('format=webp', sources[0])
+
+    def test_all_logo_sources_request_800px(self):
+        set_site_config(logo_dev_api_key='pk_test_123')
+        for source in _logo_sources():
+            self.assertTrue('800' in source, source)
+
     def test_get_cached_logo_never_hits_network(self):
         with patch('myapp.merchant_logos.requests.get') as mock_get:
             self.assertIsNone(get_cached_logo('Amazon'))
@@ -706,16 +727,33 @@ class MerchantLogoServiceTests(TestCase):
     def test_fetch_merchant_logo_uses_first_successful_source(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200)
         profile = fetch_merchant_logo('Amazon')
-        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/amazon.com?size=256')
+        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/amazon.com?size=800')
         self.assertEqual(profile.domain, 'amazon.com')
         self.assertIsNotNone(profile.fetched_at)
         mock_get.assert_called_once()
 
     @patch('myapp.merchant_logos.requests.get')
+    def test_fetch_merchant_logo_prefers_logo_dev_when_key_configured(self, mock_get):
+        set_site_config(logo_dev_api_key='pk_test_123')
+        mock_get.return_value = MagicMock(status_code=200)
+        profile = fetch_merchant_logo('Amazon')
+        self.assertTrue(profile.logo_url.startswith('https://img.logo.dev/amazon.com'))
+        self.assertIn('token=pk_test_123', profile.logo_url)
+        mock_get.assert_called_once()
+
+    @patch('myapp.merchant_logos.requests.get')
+    def test_fetch_merchant_logo_falls_back_from_logo_dev_when_it_fails(self, mock_get):
+        set_site_config(logo_dev_api_key='pk_test_123')
+        mock_get.side_effect = [MagicMock(status_code=404), MagicMock(status_code=200)]
+        profile = fetch_merchant_logo('Amazon')
+        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/amazon.com?size=800')
+        self.assertEqual(mock_get.call_count, 2)
+
+    @patch('myapp.merchant_logos.requests.get')
     def test_fetch_merchant_logo_falls_back_to_second_source(self, mock_get):
         mock_get.side_effect = [MagicMock(status_code=404), MagicMock(status_code=200)]
         profile = fetch_merchant_logo('Amazon')
-        self.assertEqual(profile.logo_url, 'https://www.google.com/s2/favicons?sz=256&domain=amazon.com')
+        self.assertEqual(profile.logo_url, 'https://www.google.com/s2/favicons?sz=800&domain=amazon.com')
         self.assertEqual(mock_get.call_count, 2)
 
     @patch('myapp.merchant_logos.requests.get')
@@ -746,7 +784,7 @@ class MerchantLogoServiceTests(TestCase):
         mock_get.return_value = MagicMock(status_code=200)
         profile = fetch_merchant_logo('Every Wish', domain_hint='uber.com')
         self.assertEqual(profile.domain, 'uber.com')
-        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/uber.com?size=256')
+        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/uber.com?size=800')
 
     @patch('myapp.merchant_logos.requests.get')
     def test_fetch_merchant_logo_refetches_when_domain_hint_changes_despite_fresh_cache(self, mock_get):
@@ -756,13 +794,13 @@ class MerchantLogoServiceTests(TestCase):
         mock_get.return_value = MagicMock(status_code=200)
         profile = fetch_merchant_logo('Every Wish', domain_hint='uber.com')
         self.assertEqual(profile.domain, 'uber.com')
-        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/uber.com?size=256')
+        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/uber.com?size=800')
         mock_get.assert_called_once()
 
     @patch('myapp.merchant_logos.requests.get')
     def test_fetch_merchant_logo_skips_refetch_when_domain_hint_matches_cached_domain(self, mock_get):
         MerchantProfile.objects.create(
-            name='Every Wish', domain='uber.com', logo_url='https://logo.clearbit.com/uber.com?size=256',
+            name='Every Wish', domain='uber.com', logo_url='https://logo.clearbit.com/uber.com?size=800',
             fetched_at=timezone.now(),
         )
         fetch_merchant_logo('Every Wish', domain_hint='uber.com')
@@ -775,7 +813,7 @@ class MerchantLogoServiceTests(TestCase):
         )
         mock_get.return_value = MagicMock(status_code=200)
         profile = fetch_merchant_logo('Amazon')
-        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/amazon.com?size=256')
+        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/amazon.com?size=800')
         mock_get.assert_called_once()
 
     @patch('myapp.merchant_logos.requests.get')
@@ -2726,6 +2764,20 @@ class SiteConfigurationFormTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         saved = form.save()
         self.assertEqual(saved.anthropic_api_key, 'sk-ant-new-secret')
+
+    def test_blank_logo_dev_key_preserves_existing_value(self):
+        self.config.logo_dev_api_key = 'pk_existing'
+        self.config.save()
+        form = SiteConfigurationForm(data=_site_config_form_data(logo_dev_api_key=''), instance=self.config)
+        self.assertTrue(form.is_valid(), form.errors)
+        saved = form.save()
+        self.assertEqual(saved.logo_dev_api_key, 'pk_existing')
+
+    def test_non_blank_logo_dev_key_updates_value(self):
+        form = SiteConfigurationForm(data=_site_config_form_data(logo_dev_api_key='pk_new'), instance=self.config)
+        self.assertTrue(form.is_valid(), form.errors)
+        saved = form.save()
+        self.assertEqual(saved.logo_dev_api_key, 'pk_new')
 
     def test_non_secret_fields_save_normally(self):
         form = SiteConfigurationForm(data=_site_config_form_data(expiry_threshold_days=45, ocr_backend='tesseract'), instance=self.config)

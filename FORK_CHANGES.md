@@ -3109,6 +3109,59 @@ regression test and confirmed a 256x256 PNG comes back now instead of
 64x64, and that it renders as a crisp, properly composed Uber icon
 rather than a pixelated smear.
 
+## Phase 56 — logo.dev support: an actual fix for pixelated logos, not just a bigger request
+
+Follow-up bug report: the previous 800px/`normalize_logo_image` change
+didn't actually fix the pixelation - the image just appeared bigger and
+still blurry. Root cause this time: requesting a bigger size from
+Clearbit/Google doesn't help when their *source* favicon for a given
+domain genuinely only has, say, 16-32px of real detail to begin with -
+Google was observed returning as little as 16x16 for `uber.com` at a
+high requested `sz` in testing, and Clearbit similarly thin for many
+domains. Smoothly upscaling that to 800px (or 256px, or any size) can
+only make a small blocky image into a small *blurry* one - there's no
+missing detail to recover client-side, no matter how good the resampling
+algorithm is.
+
+The user pointed at [logo.dev](https://www.logo.dev/docs/logo-images/get)
+- a dedicated logo API purpose-built to return real, consistently
+high-resolution brand marks rather than a favicon scraped off the
+domain's own site. It requires a publishable API key (`token=pk_...`)
+per request - there's no free/keyless tier, confirmed by both the docs
+and a live `401` from `img.logo.dev` without one.
+
+- New `SiteConfiguration.logo_dev_api_key` (optional, treated as a
+  secret field like the existing OCR API keys - blank-preserving on
+  save, password input in Site Settings) with a new "logo.dev
+  publishable key" field under the existing "Merchant Logos" section,
+  linking to logo.dev to get a free key.
+- `merchant_logos.py`'s previously-static `LOGO_SOURCES` list is now
+  `_logo_sources()`, computed per-call from the current
+  `SiteConfiguration`: logo.dev first (`size=800&format=webp` - webp for
+  the best quality-per-byte, per logo.dev's own format options) when a
+  key is configured, then Clearbit, then Google favicons as before - all
+  three still requested at 800px, so a genuinely high-resolution source
+  (logo.dev, once configured) isn't artificially capped.
+- Without a key configured, behaviour is unchanged (Clearbit → Google,
+  same as Phase 55) - this is purely additive.
+
+### Tests
+
+7 new tests: `_logo_sources()` puts logo.dev first only when a key is
+configured and includes `token`/`size=800`/`format=webp`, `fetch_
+merchant_logo` actually prefers it and falls back to Clearbit when it
+fails, all sources still request 800px, and the `SiteConfigurationForm`
+blank-preserves/updates the new key like the existing secret fields.
+Full suite (666 tests) green.
+
+Also verified live: confirmed `img.logo.dev` returns `401` without a
+token (matches the docs - there's no keyless tier), and that an invalid/
+fake key correctly falls through to Clearbit rather than serving nothing.
+**A real key still needs to be added in Site Settings for the actual
+quality fix to take effect** - Clearbit/Google's own source resolution
+is outside this app's control, and no amount of resizing fixes a source
+that's genuinely low-res to begin with.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
