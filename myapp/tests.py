@@ -750,6 +750,34 @@ class MerchantLogoServiceTests(TestCase):
         self.assertEqual(mock_get.call_count, 2)
 
     @patch('myapp.merchant_logos.requests.get')
+    def test_fetch_merchant_logo_refetches_when_a_logo_dev_key_is_newly_added(self, mock_get):
+        # Regression test for the exact reported bug: a merchant that was
+        # already successfully cached via Clearbit/Google (before a
+        # logo.dev key existed) must pick up logo.dev on the very next
+        # fetch once a key is added, not sit on the old lower-quality
+        # result for the rest of the normal 30-day freshness window.
+        MerchantProfile.objects.create(
+            name='Amazon', domain='amazon.com',
+            logo_url='https://logo.clearbit.com/amazon.com?size=800', fetched_at=timezone.now(),
+        )
+        set_site_config(logo_dev_api_key='pk_test_123')
+        mock_get.return_value = MagicMock(status_code=200)
+        profile = fetch_merchant_logo('Amazon')
+        self.assertTrue(profile.logo_url.startswith('https://img.logo.dev/amazon.com'))
+        mock_get.assert_called_once()
+
+    @patch('myapp.merchant_logos.requests.get')
+    def test_fetch_merchant_logo_skips_refetch_when_already_using_logo_dev(self, mock_get):
+        set_site_config(logo_dev_api_key='pk_test_123')
+        MerchantProfile.objects.create(
+            name='Amazon', domain='amazon.com',
+            logo_url='https://img.logo.dev/amazon.com?token=pk_test_123&size=800&format=webp',
+            fetched_at=timezone.now(),
+        )
+        fetch_merchant_logo('Amazon')
+        mock_get.assert_not_called()
+
+    @patch('myapp.merchant_logos.requests.get')
     def test_fetch_merchant_logo_falls_back_to_second_source(self, mock_get):
         mock_get.side_effect = [MagicMock(status_code=404), MagicMock(status_code=200)]
         profile = fetch_merchant_logo('Amazon')
@@ -1405,7 +1433,12 @@ class ItemShareLogoViewTests(TestCase):
     @patch('myapp.views.requests.get')
     def test_proxies_cached_merchant_logo(self, mock_get):
         item = make_item(self.alice, issuer='Amazon')
-        MerchantProfile.objects.create(name='Amazon', logo_url='https://logo.clearbit.com/amazon.com')
+        # fetched_at set - an already-fresh cache, so the synchronous
+        # refresh in _resolve_merchant_share_image is a no-op and the
+        # only requests.get call is the proxy fetch this test is about.
+        MerchantProfile.objects.create(
+            name='Amazon', logo_url='https://logo.clearbit.com/amazon.com', fetched_at=timezone.now(),
+        )
         mock_get.return_value = MagicMock(
             status_code=200, content=b'fake-image-bytes', headers={'Content-Type': 'image/png'}
         )
@@ -1459,7 +1492,10 @@ class ItemShareLogoViewTests(TestCase):
         mock_fetch.assert_not_called()
         self.assertEqual(response.status_code, 200)
 
-    def test_falls_back_to_generated_avatar_when_no_cached_logo(self):
+    @patch('myapp.views.requests.get')
+    def test_falls_back_to_generated_avatar_when_no_cached_logo(self, mock_get):
+        import requests
+        mock_get.side_effect = requests.RequestException('no network in tests')
         item = make_item(self.alice, issuer='Totally Unknown Merchant')
         response = self.client.get(reverse('item_share_logo', args=[item.id]))
         self.assertEqual(response.status_code, 200)
@@ -1470,7 +1506,9 @@ class ItemShareLogoViewTests(TestCase):
     def test_falls_back_to_generated_avatar_when_upstream_fetch_fails(self, mock_get):
         import requests
         item = make_item(self.alice, issuer='Amazon')
-        MerchantProfile.objects.create(name='Amazon', logo_url='https://logo.clearbit.com/amazon.com')
+        MerchantProfile.objects.create(
+            name='Amazon', logo_url='https://logo.clearbit.com/amazon.com', fetched_at=timezone.now(),
+        )
         mock_get.side_effect = requests.RequestException('boom')
         response = self.client.get(reverse('item_share_logo', args=[item.id]))
         self.assertEqual(response.status_code, 200)
@@ -1479,7 +1517,9 @@ class ItemShareLogoViewTests(TestCase):
     @patch('myapp.views.requests.get')
     def test_falls_back_to_generated_avatar_when_upstream_returns_error_status(self, mock_get):
         item = make_item(self.alice, issuer='Amazon')
-        MerchantProfile.objects.create(name='Amazon', logo_url='https://logo.clearbit.com/amazon.com')
+        MerchantProfile.objects.create(
+            name='Amazon', logo_url='https://logo.clearbit.com/amazon.com', fetched_at=timezone.now(),
+        )
         mock_get.return_value = MagicMock(status_code=404, content=b'')
         response = self.client.get(reverse('item_share_logo', args=[item.id]))
         self.assertEqual(response.status_code, 200)
@@ -1495,7 +1535,9 @@ class PublicItemShareLogoViewTests(TestCase):
     def setUp(self):
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
 
-    def test_no_login_required(self):
+    @patch('myapp.views.requests.get')
+    def test_no_login_required(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, content=b'x', headers={})
         item = make_item(self.alice, issuer='Amazon')
         share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
         response = self.client.get(reverse('public_item_share_logo', args=[share.id]))
@@ -1510,23 +1552,33 @@ class PublicItemShareLogoViewTests(TestCase):
     def test_proxies_cached_merchant_logo(self, mock_get):
         item = make_item(self.alice, issuer='Amazon')
         share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
-        MerchantProfile.objects.create(name='Amazon', logo_url='https://logo.clearbit.com/amazon.com')
+        # fetched_at set - an already-fresh cache, so the synchronous
+        # refresh in _resolve_merchant_share_image is a no-op and the
+        # only requests.get call is the proxy fetch this test is about.
+        MerchantProfile.objects.create(
+            name='Amazon', logo_url='https://logo.clearbit.com/amazon.com', fetched_at=timezone.now(),
+        )
         mock_get.return_value = MagicMock(
             status_code=200, content=b'fake-image-bytes', headers={'Content-Type': 'image/png'}
         )
         response = self.client.get(reverse('public_item_share_logo', args=[share.id]))
         self.assertEqual(response.content, b'fake-image-bytes')
 
-    def test_falls_back_to_generated_avatar_when_no_cached_logo(self):
+    @patch('myapp.views.requests.get')
+    def test_falls_back_to_generated_avatar_when_no_cached_logo(self, mock_get):
+        import requests
+        mock_get.side_effect = requests.RequestException('no network in tests')
         item = make_item(self.alice, issuer='Totally Unknown Merchant')
         share = ItemPublicShare.objects.create(item=item, created_by=self.alice)
         response = self.client.get(reverse('public_item_share_logo', args=[share.id]))
         self.assertTrue(response.content.startswith(b'\x89PNG'))
 
-    def test_works_even_when_share_is_expired(self):
+    @patch('myapp.views.requests.get')
+    def test_works_even_when_share_is_expired(self, mock_get):
         # The logo image itself carries no sensitive data - exposed the
         # same as the main page already exposes it unconditionally across
         # every one of its states (crawler/expired/PIN-required/unlocked).
+        mock_get.return_value = MagicMock(status_code=200, content=b'x', headers={})
         item = make_item(self.alice, issuer='Amazon')
         share = ItemPublicShare.objects.create(
             item=item, created_by=self.alice, expires_at=timezone.now() - timedelta(days=1),
@@ -1534,7 +1586,9 @@ class PublicItemShareLogoViewTests(TestCase):
         response = self.client.get(reverse('public_item_share_logo', args=[share.id]))
         self.assertEqual(response.status_code, 200)
 
-    def test_works_even_when_pin_locked(self):
+    @patch('myapp.views.requests.get')
+    def test_works_even_when_pin_locked(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, content=b'x', headers={})
         item = make_item(self.alice, issuer='Amazon')
         share = ItemPublicShare.objects.create(item=item, created_by=self.alice, access_pin='1234')
         response = self.client.get(reverse('public_item_share_logo', args=[share.id]))

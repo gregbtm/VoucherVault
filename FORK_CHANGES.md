@@ -3162,6 +3162,71 @@ quality fix to take effect** - Clearbit/Google's own source resolution
 is outside this app's control, and no amount of resizing fixes a source
 that's genuinely low-res to begin with.
 
+## Phase 57 — logo.dev key added but existing merchants didn't pick it up
+
+Follow-up: the user added a real logo.dev key and confirmed it worked
+for the inventory/item pages, but the "Share via..." flow and public
+share page kept showing the old, lower-quality Clearbit/Google image for
+a merchant that had already been cached *before* the key existed.
+
+Root cause: `fetch_merchant_logo()`'s freshness gate only forced a
+refetch when the domain_hint changed (Phase 53/54) - it had no way to
+know "a better source just became configured" for a merchant that was
+already successfully cached. A merchant fetched once via Clearbit/Google
+(logo_url set, so a "success") stayed "fresh" for the full 30-day
+`CACHE_DAYS` window regardless of a logo.dev key appearing in the
+meantime - only a *new* item for that same issuer, or 30 days passing,
+would ever trigger a re-check.
+
+- Added a third freshness-override condition alongside the existing
+  domain-hint-changed one: if a logo.dev key is now configured and the
+  cached `logo_url` doesn't already start with `https://img.logo.dev/`,
+  that also forces an immediate refetch - one that (per the existing
+  no-network-call-when-nothing-needs-to-change design) costs nothing
+  once every affected merchant has picked up logo.dev, same as the
+  domain-hint case before it.
+- `_resolve_merchant_share_image()` now always calls `fetch_merchant_logo()`
+  synchronously (previously only when `item.logo_slug` was set) - a
+  merchant with no OCR-extracted domain hint at all still needs this same
+  "did a better source just appear" check, not just the domain-hint one.
+- Reduced `item_share_logo`/`public_item_share_logo`'s `Cache-Control`
+  from a day to 5 minutes - a merchant's resolved image can change
+  server-side without the URL itself changing, and a day-long client
+  cache would otherwise keep serving pre-fix bytes for the rest of that
+  window even after the server-side fix above kicks in. Note this only
+  governs *our* response caching - it has no effect on a chat app's own
+  separate link-preview cache (WhatsApp in particular can keep showing a
+  preview it already scraped for a previously-sent link; sending the
+  link again, or a freshly-regenerated one, is what picks up a corrected
+  image there).
+
+Also confirmed the 800px request size the user asked to "heighten" was
+already in place from the previous phase - `_MAX_LOGO_SIZE = 800` is
+logo.dev's own documented maximum (per their docs), so there's no higher
+size available to request; the actual problem was the cache-staleness
+bug above, not the requested resolution.
+
+### Tests
+
+2 new tests (`fetch_merchant_logo` refetches a merchant already cached
+via Clearbit/Google once a logo.dev key appears; skips refetching a
+merchant that's already using logo.dev), plus mocking added to several
+existing share-logo tests that previously relied on the old
+`item.logo_slug`-gated behavior to avoid a live network call (now that
+the synchronous check is unconditional, every test hitting these
+endpoints needs a deterministic `requests.get` mock or a pre-seeded
+`fetched_at` rather than depending on a real network attempt failing
+gracefully). Full suite (668 tests) green.
+
+Also verified live: reproduced the exact reported scenario - a
+`MerchantProfile` for "Every Wish" pre-cached via Google favicons with a
+fresh `fetched_at` (simulating "was cached before the key existed"),
+then a logo.dev key added afterward with no re-save of the item. Hit the
+public share logo endpoint directly and confirmed `fetched_at` advanced
+(the refetch was genuinely triggered, correctly trying logo.dev first
+per the request log) rather than sitting untouched on the pre-existing
+cache entry as it would have before this fix.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

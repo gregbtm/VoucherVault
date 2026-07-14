@@ -1249,17 +1249,19 @@ def _resolve_merchant_share_image(item):
     (public_item_share_logo) endpoints so they can't drift into different
     fallback behaviour.
 
-    When the item has a logo_slug (an OCR-extracted domain - e.g.
-    "uber.com" for an "Every Wish" gift card that's actually branded Uber
-    Eats), that's resolved synchronously here rather than only relying on
-    the async fetch_merchant_logo_task queued on save: that task may
-    never have had a chance to run (no worker, or the item predates this
-    field), or may have run once with a worse guess before logo_slug
-    existed and never been re-triggered since a save is the only thing
-    that queues it again. fetch_merchant_logo() already skips its own
-    network call when its cache is fresh and the domain hasn't changed,
-    so this only actually hits the network on a genuine cache miss or a
-    newly-arrived/changed domain, not on every share.
+    This always calls fetch_merchant_logo() synchronously (item.logo_slug,
+    an OCR-extracted domain, is passed through as a hint when present)
+    rather than only relying on the async fetch_merchant_logo_task queued
+    on save: that task may never have had a chance to run (no worker, or
+    the item predates logo_slug), may have run once with a worse guess
+    before logo_slug existed and never been re-triggered since a save is
+    the only thing that queues it again, or may have cached a result from
+    the Clearbit/Google fallback before a logo.dev key was configured -
+    none of which self-correct until something re-saves the item.
+    fetch_merchant_logo() already skips its own network call when its
+    cache is fresh, the domain hasn't changed, and no better source has
+    newly become available, so this only actually hits the network on a
+    genuine cache miss or one of those signals - not on every share.
 
     Deliberately never falls back to VoucherVault's own app icon - a
     share/link-preview showing our own branding in place of a specific
@@ -1271,9 +1273,9 @@ def _resolve_merchant_share_image(item):
     often just 32-48px, which looks blockily pixelated once stretched to
     fill a chat bubble or share preview otherwise.
     """
-    if item.logo_slug and merchant_logos_enabled():
+    if merchant_logos_enabled():
         try:
-            fetch_merchant_logo(item.issuer, domain_hint=item.logo_slug)
+            fetch_merchant_logo(item.issuer, domain_hint=item.logo_slug or None)
         except Exception:
             logger.warning('Synchronous merchant logo refresh failed for item %s', item.id, exc_info=True)
 
@@ -1309,7 +1311,12 @@ def item_share_logo(request, item_id):
 
     content, content_type = _resolve_merchant_share_image(item)
     response = HttpResponse(content, content_type=content_type)
-    response['Cache-Control'] = 'private, max-age=86400'
+    # Short-lived on purpose (not the usual day-long asset cache) - a
+    # merchant's resolved image can change on its own (a logo.dev key
+    # gets added, a stale wrong-domain guess gets corrected) without the
+    # URL itself changing, and a long client-side cache would keep
+    # serving the pre-fix bytes for the rest of that window regardless.
+    response['Cache-Control'] = 'private, max-age=300'
     return response
 
 @require_GET
@@ -1330,7 +1337,14 @@ def public_item_share_logo(request, share_id):
 
     content, content_type = _resolve_merchant_share_image(share.item)
     response = HttpResponse(content, content_type=content_type)
-    response['Cache-Control'] = 'public, max-age=86400'
+    # See item_share_logo above for why this is short-lived rather than a
+    # long asset cache. Note this only governs *our own* response caching
+    # - it has no effect on a chat app's own separate server-side link-
+    # preview cache (WhatsApp in particular can keep showing a preview it
+    # already scraped for a previously-sent link regardless of this
+    # header; sending the link again, or a freshly-regenerated one, is
+    # what picks up a corrected image there).
+    response['Cache-Control'] = 'public, max-age=300'
     return response
 
 def _wants_json(request):
