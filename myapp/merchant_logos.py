@@ -88,12 +88,18 @@ def get_cached_balance_check_url(name: str):
     return profile.balance_check_url if profile else ''
 
 
-def fetch_merchant_logo(name: str) -> MerchantProfile:
+def fetch_merchant_logo(name: str, domain_hint: str = None) -> MerchantProfile:
     """
     Looks up (or creates) the MerchantProfile for `name` and, on a cache
     miss or expiry, fetches a logo URL from LOGO_SOURCES. Makes real HTTP
     requests — call this from a Celery task (see fetch_merchant_logo_task),
     never directly from a request/template render path.
+
+    domain_hint, when given, is used as the domain instead of guessing one
+    from `name` — e.g. an item's OCR-extracted logo_slug ("uber.com") is a
+    far more reliable domain than guessing one from its issuer name
+    ("Every Wish"), which is often just who resold/issued the card, not
+    who it's actually branded for.
     """
     name = name.strip()
     # Case-insensitive get-or-create: MerchantProfile.name is exact-unique,
@@ -107,7 +113,7 @@ def fetch_merchant_logo(name: str) -> MerchantProfile:
     if profile.fetched_at and (timezone.now() - profile.fetched_at) < timedelta(days=CACHE_DAYS):
         return profile  # cache hit, still fresh
 
-    domain = guess_domain(name)
+    domain = domain_hint.strip().lower() if domain_hint else guess_domain(name)
     for template in LOGO_SOURCES:
         url = template.format(domain=domain)
         try:

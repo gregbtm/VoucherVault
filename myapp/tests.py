@@ -656,6 +656,13 @@ class MerchantLogoServiceTests(TestCase):
         fetch_merchant_logo('Amazon')
         mock_get.assert_not_called()
 
+    @patch('myapp.merchant_logos.requests.get')
+    def test_fetch_merchant_logo_prefers_domain_hint_over_guessed_domain(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200)
+        profile = fetch_merchant_logo('Every Wish', domain_hint='uber.com')
+        self.assertEqual(profile.domain, 'uber.com')
+        self.assertEqual(profile.logo_url, 'https://logo.clearbit.com/uber.com')
+
 
 class BalanceCheckUrlServiceTests(TestCase):
     def test_get_cached_balance_check_url_when_unknown(self):
@@ -689,7 +696,13 @@ class MerchantLogoTaskTests(TestCase):
     def test_task_calls_service_when_enabled(self, mock_fetch):
         set_site_config(merchant_logos_enabled=True)
         fetch_merchant_logo_task('Amazon')
-        mock_fetch.assert_called_once_with('Amazon')
+        mock_fetch.assert_called_once_with('Amazon', domain_hint=None)
+
+    @patch('myapp.tasks.fetch_merchant_logo')
+    def test_task_passes_domain_hint_through(self, mock_fetch):
+        set_site_config(merchant_logos_enabled=True)
+        fetch_merchant_logo_task('Every Wish', 'uber.com')
+        mock_fetch.assert_called_once_with('Every Wish', domain_hint='uber.com')
 
     @patch('myapp.tasks.fetch_merchant_logo')
     def test_task_noop_when_disabled(self, mock_fetch):
@@ -716,7 +729,7 @@ class MerchantLogoViewIntegrationTests(TestCase):
             'issue_date': date.today().isoformat(),
         })
         self.assertRedirects(response, reverse('show_items'))
-        mock_delay.assert_called_once_with('Airline')
+        mock_delay.assert_called_once_with('Airline', None)
 
     @patch('myapp.views.fetch_merchant_logo_task.delay', side_effect=RuntimeError('broker down'))
     def test_create_item_survives_broker_outage(self, mock_delay):
@@ -737,7 +750,7 @@ class MerchantLogoViewIntegrationTests(TestCase):
             'issue_date': date.today().isoformat(), 'expiry_date': (date.today() + timedelta(days=30)).isoformat(),
         })
         self.assertRedirects(response, reverse('view_item', kwargs={'item_uuid': item.id}))
-        mock_delay.assert_called_once_with('New Issuer')
+        mock_delay.assert_called_once_with('New Issuer', None)
 
     def test_show_items_includes_cached_merchant_logo(self):
         make_item(self.user, name='Amazon Voucher', issuer='Amazon')
@@ -1071,6 +1084,7 @@ class PublicShareLinkTests(TestCase):
         self.assertEqual(data['merchant'], item.issuer)
         self.assertEqual(data['code'], item.redeem_code)
         self.assertEqual(data['pin'], '4321')
+        self.assertIn(reverse('item_share_logo', args=[item.id]), data['logo_image_url'])
         self.assertTrue(ItemPublicShare.objects.filter(item=item).exists())
 
     def test_card_number_preferred_over_redeem_code(self):
@@ -1181,6 +1195,69 @@ class PublicShareLinkTests(TestCase):
         response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
         self.assertContains(response, 'Opened 1 time')
         self.assertContains(response, f'/s/{share.id}/')
+
+
+class ItemShareLogoViewTests(TestCase):
+    """
+    myapp.views.item_share_logo - the same-origin proxy the "Share via..."
+    chooser's image+details option fetches to attach the merchant's logo as
+    a real shared image file (see voucher-share.js).
+    """
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_requires_login(self):
+        item = make_item(self.alice)
+        self.client.logout()
+        response = self.client.get(reverse('item_share_logo', args=[item.id]))
+        self.assertNotEqual(response.status_code, 200)
+
+    def test_non_collaborator_denied(self):
+        item = make_item(self.alice)
+        self.client.logout()
+        self.client.login(username='bob', password='pw12345!')
+        response = self.client.get(reverse('item_share_logo', args=[item.id]))
+        self.assertEqual(response.status_code, 403)
+
+    @patch('myapp.views.requests.get')
+    def test_proxies_cached_merchant_logo(self, mock_get):
+        item = make_item(self.alice, issuer='Amazon')
+        MerchantProfile.objects.create(name='Amazon', logo_url='https://logo.clearbit.com/amazon.com')
+        mock_get.return_value = MagicMock(
+            status_code=200, content=b'fake-image-bytes', headers={'Content-Type': 'image/png'}
+        )
+        response = self.client.get(reverse('item_share_logo', args=[item.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b'fake-image-bytes')
+        self.assertEqual(response['Content-Type'], 'image/png')
+        mock_get.assert_called_once_with('https://logo.clearbit.com/amazon.com', timeout=5)
+
+    def test_falls_back_to_app_icon_when_no_cached_logo(self):
+        item = make_item(self.alice, issuer='Totally Unknown Merchant')
+        response = self.client.get(reverse('item_share_logo', args=[item.id]))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('apple-touch-icon', response.url)
+
+    @patch('myapp.views.requests.get')
+    def test_falls_back_to_app_icon_when_upstream_fetch_fails(self, mock_get):
+        import requests
+        item = make_item(self.alice, issuer='Amazon')
+        MerchantProfile.objects.create(name='Amazon', logo_url='https://logo.clearbit.com/amazon.com')
+        mock_get.side_effect = requests.RequestException('boom')
+        response = self.client.get(reverse('item_share_logo', args=[item.id]))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('apple-touch-icon', response.url)
+
+    @patch('myapp.views.requests.get')
+    def test_falls_back_to_app_icon_when_upstream_returns_error_status(self, mock_get):
+        item = make_item(self.alice, issuer='Amazon')
+        MerchantProfile.objects.create(name='Amazon', logo_url='https://logo.clearbit.com/amazon.com')
+        mock_get.return_value = MagicMock(status_code=404, content=b'')
+        response = self.client.get(reverse('item_share_logo', args=[item.id]))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('apple-touch-icon', response.url)
 
 
 class PublicShareSecurityTests(TestCase):

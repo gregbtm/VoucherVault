@@ -6,6 +6,8 @@ import unicodedata
 import mimetypes
 import uuid
 import datetime as dt
+import requests
+from django.templatetags.static import static
 from django.db import IntegrityError
 from django.db.models import Q
 from django.utils.safestring import mark_safe
@@ -464,7 +466,7 @@ def create_item(request):
 
             if item.issuer:
                 try:
-                    fetch_merchant_logo_task.delay(item.issuer)
+                    fetch_merchant_logo_task.delay(item.issuer, item.logo_slug)
                 except Exception:
                     # Best-effort: a broker outage shouldn't block saving the item.
                     logger.warning('Could not queue merchant logo fetch for %r', item.issuer, exc_info=True)
@@ -532,7 +534,7 @@ def edit_item(request, item_uuid):
 
             if item.issuer:
                 try:
-                    fetch_merchant_logo_task.delay(item.issuer)
+                    fetch_merchant_logo_task.delay(item.issuer, item.logo_slug)
                 except Exception:
                     # Best-effort: a broker outage shouldn't block saving the item.
                     logger.warning('Could not queue merchant logo fetch for %r', item.issuer, exc_info=True)
@@ -1227,7 +1229,42 @@ def _public_share_payload(request, item, share):
         'pin': item.pin or '',
         'balance': str(item.get_current_balance()) if item.type == 'giftcard' else None,
         'currency': item.currency,
+        'logo_image_url': request.build_absolute_uri(reverse('item_share_logo', args=[item.id])),
     }
+
+@require_GET
+@login_required
+def item_share_logo(request, item_id):
+    """
+    Proxies the merchant's logo image same-origin, for the "Share via..."
+    chooser's image+details option (voucher-share.js) to fetch() into a
+    Blob and attach as a real image file via the Web Share API - going
+    straight to logo.clearbit.com/Google favicons from the browser risks a
+    silent CORS failure depending on that host's response headers, and
+    proxying it here also means it's gated by the same has_item_access
+    check as everything else about this item. Falls back to the app's own
+    icon when no merchant logo is cached, so the caller always gets back
+    something shareable rather than having to handle a missing-image case.
+    """
+    item = get_object_or_404(Item, id=item_id)
+    if not has_item_access(item, request.user):
+        return HttpResponse("Unauthorized", status=403)
+
+    cached_merchant = get_cached_logo(item.issuer)
+    logo_url = cached_merchant.logo_url if cached_merchant else None
+
+    if logo_url:
+        try:
+            response = requests.get(logo_url, timeout=5)
+            if response.status_code == 200 and response.content:
+                content_type = response.headers.get('Content-Type', 'image/png')
+                proxied = HttpResponse(response.content, content_type=content_type)
+                proxied['Cache-Control'] = 'private, max-age=86400'
+                return proxied
+        except requests.RequestException:
+            logger.warning('Share-logo proxy fetch failed for item %s via %s', item_id, logo_url, exc_info=True)
+
+    return redirect(static('assets/img/apple-touch-icon.png'))
 
 def _wants_json(request):
     """

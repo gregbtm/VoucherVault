@@ -2850,6 +2850,75 @@ the duplicate-code warning appears when typing a code that matches an
 existing item, and screenshotted the Shared With section to confirm the
 Unshare button now renders beneath the shared user's info.
 
+## Phase 52 — Share flow: merchant-logo images, accurate logo domains, and cleaner text
+
+Follow-up to the "Share via..." chooser (Phase 10.3/29): the shared
+message looked sparse (no blank-line separation between fields) and, for
+merchants whose issuer name doesn't match their brand (an "Every Wish"
+card that's actually for Uber Eats), the link-preview card that chat
+apps generate from the shared URL fell back to VoucherVault's own ticket
+icon instead of the merchant's logo - because the logo-fetch pipeline
+had no way to know "Every Wish" meant `uber.com`.
+
+### Merchant logo fetch now prefers the item's OCR-extracted domain
+
+`fetch_merchant_logo()`/`fetch_merchant_logo_task()` (`myapp/
+merchant_logos.py`, `myapp/tasks.py`) take an optional `domain_hint`,
+used instead of guessing a domain from the issuer name when given.
+`create_item`/`edit_item` now pass `item.logo_slug` (the domain OCR
+already extracts for the balance-check-URL feature, e.g. "uber.com") as
+that hint. This is the root-cause fix for the "Every Wish" case above -
+guessing a domain from the issuer name alone was never going to find
+Uber's logo, no matter how the share message itself was built.
+
+### New share option: details with the merchant's logo as the image
+
+A third "Share details with logo image" option in the chooser
+(`voucher-share.js`) attaches the merchant's actual logo as a real
+shared image file via the Web Share API's `files` support, alongside
+the same formatted text as "Share details" - so sharing an Uber gift
+card shows Uber's logo as the share image, not a generic link-preview
+icon. New `item_share_logo` view/endpoint (`myapp/views.py`) proxies the
+cached `MerchantProfile.logo_url` image same-origin (falling back to the
+app's own icon if no merchant logo is cached) rather than fetching the
+third-party logo host straight from the browser, which risks a silent
+CORS failure depending on that host's response headers. The frontend
+feature-detects with `navigator.canShare({ title, text, files })` before
+attempting the files+text share, and falls back to the existing text-only
+share (which itself falls back further to a clipboard copy) if the
+browser can't do files, if fetching the logo fails, or if the share call
+itself throws for a reason other than the user cancelling.
+
+### Cleaner text formatting
+
+Every "Share via..." flavour now composes its own fully self-contained
+message (merchant/name header, blank line, code/PIN/balance fields, blank
+line, "View voucher: <link>") instead of relying on the browser to
+tack the link onto the end of `text` via a separate `url` field, which
+gave no control over spacing and produced a cramped, un-separated wall
+of text. `buildVoucherShareText()` is now the one place that formats a
+details share, shared between the text-only and image+text options.
+
+### Tests
+
+11 new tests: `fetch_merchant_logo`/`fetch_merchant_logo_task`
+domain-hint coverage, a new `ItemShareLogoViewTests` class (login/access
+gating, proxies cached-logo bytes with the right content type, falls
+back to the app icon on no-cached-logo/fetch-failure/non-200 upstream
+response), and a `logo_image_url` assertion on the existing public-share
+payload test. Full suite green.
+
+Also verified live: seeded an item shaped exactly like the reported
+"Every Wish - Uber Eats" gift card (`logo_slug="uber.com"`, issuer
+"Every Wish") on the running dev server, stubbed `navigator.share`/
+`canShare` in a Playwright session, and confirmed both new-format text
+(blank-line-separated, ending in "View voucher: <link>") and a real
+`~94KB` `image/png` file named `every-wish-logo.png` (fetched through
+the merchant's actual `logo.clearbit.com/uber.com` logo, resolved via
+the `logo_slug` domain hint) got attached to the share call - not the
+generic ticket icon. Screenshotted the share chooser to confirm all
+three options render correctly with their icons.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
