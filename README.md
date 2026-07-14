@@ -56,6 +56,7 @@
 
 - [Features](#-features)
   - [New in this fork](#-new-in-this-fork)
+- [The VoucherVault Plus+ Story — Every Feature, Fix & Polish](#-the-vouchervault-plus-story--every-feature-fix--polish)
 - [Screenshots](#-screenshots)
 - [Usage](#-usage)
 - [Environment Variables](#-environment-variables)
@@ -115,6 +116,152 @@
 - 💷 **GBP as the default currency** — new items and user preferences default to GBP instead of EUR; a one-time migration relabelled every pre-existing item and saved preference from EUR to GBP as well (a relabel only, not a currency conversion — amounts are untouched).
 - 🤖 **MCP server** — an optional standalone service exposing VoucherVault as tools for Claude Desktop, Claude Code, and other MCP clients (search items, check what's expiring, log a gift-card spend, create an item — all through your existing API token). Runs as its own container, off by default; see the [setup guide](docs/MCP_SERVER_SETUP.md).
 - 🔗 **Gift card balance-check link** — no gift card provider exposes a public API for balance/validity checks, so this is a bookmarked link you (or a teammate) provide once per merchant; it's remembered and auto-suggested on future gift cards from the same issuer, with a one-tap "Check Balance" button on the item page.
+
+## 🎉 The VoucherVault Plus+ Story — Every Feature, Fix & Polish
+
+The bullet list above is the highlight reel. This is the receipts — **every
+single feature, fix, and polish pass** across 58 rounds of work since this
+fork branched off upstream, nothing left out. If it shipped, it's below.
+Full engineering detail (root causes, code, tests) for all of it lives in
+[`FORK_CHANGES.md`](FORK_CHANGES.md); this is the highlight-reel version,
+organized by theme instead of chronology so it's actually readable.
+
+<details open>
+<summary><strong>🔌 Platform, API & AI Integrations</strong></summary>
+
+- 🚀 Full token-authenticated **REST API** with interactive Swagger docs
+- 🤖 A standalone **MCP server** so Claude Desktop, Claude Code, and any other MCP-compatible AI assistant can search, log spend, and create items in your vault
+- 🔧 A **zero-code n8n integration** via the existing OpenAPI schema
+- 🪝 **Webhook lifecycle events** — created, used, archived, balance changed, shared — for wiring VoucherVault into anything
+- 🧮 A ledger balance refactor that killed six duplicate/drifting balance calculations across the codebase, replaced with one source of truth
+- ⚡ Rate limiting on every API write endpoint, so nothing can hammer the app
+
+</details>
+
+<details open>
+<summary><strong>🤖 AI-Powered Scanning ("Scan with AI")</strong></summary>
+
+- 📸 Snap a photo *or* upload a screenshot — one upload does a real client-side barcode decode **and** AI text extraction in the same pass
+- 🧠 Three interchangeable OCR backends: Claude, OpenAI, or fully free/local Tesseract
+- 💷 Extracts PIN, value, currency and card number too, not just the code
+- 🏷️ Brand-aware **logo slug** extraction — a reseller card gets the *actual* brand's logo, not the reseller's
+- 🔗 Pulls a printed balance-check URL straight off the card if there is one
+- 📝 Suggests type, description, redemption notes, and up to 4 matching tags
+- 🔁 Live **duplicate-code detection** as you scan or type — a friendly warning, never a hard block
+- 📎 The scanned photo auto-attaches itself as the item's file
+- ✨ Every auto-filled field gets a subtle highlight until you've reviewed it
+- 🐛 Fixed a silent OCR failure mode where a fenced JSON response from gpt-4o-mini was indistinguishable from "couldn't read this at all"
+- ✍️ Issuer autocomplete so "Amazon" never silently becomes "Amazom" on card two
+- 🔄 A one-click **Swap Name/Issuer** button for when a scan gets the two backwards
+
+</details>
+
+<details>
+<summary><strong>🗂️ Organization — Wallets, Tags, Notes & Search</strong></summary>
+
+- 📁 **Wallets** — named folders for grouping items ("Travel", "Groceries")
+- 🏷️ Colour-coded **Tags**, with a clickable filter chip row (live counts!) right on the Inventory page
+- 📝 Free-text **Notes** on every item
+- 🤝 **Shared wallets** — invite another user, they get full read/write, no admin access needed
+- 🗄️ **Archiving** — retire an item without deleting it
+- 🕐 **Last-used tracking** — a real "most recently used" sort, not guesswork
+- ☑️ **Bulk actions** on Inventory — archive, tag, move, or delete several items in one sweep
+- 🆔 Card number vs. barcode payload split — a printed member number can differ from what's actually encoded
+- 🔗 A rememberable **gift-card balance-check link** per merchant, auto-suggested on future cards
+
+</details>
+
+<details>
+<summary><strong>🔔 Notifications & Automation</strong></summary>
+
+- 🔔 A full **rules-based notification engine** — ntfy, generic webhooks, Apprise, and native browser **Web Push**
+- ⏰ Per-item expiry thresholds, plus a final reminder as the deadline gets close
+- 📜 A complete delivery log so you can see exactly what fired and when
+- 🎯 Rules can fire on creation, use, archiving, sharing, or a transaction — not just expiry
+
+</details>
+
+<details>
+<summary><strong>🍏🟢 Digital Wallet Passes</strong></summary>
+
+- 🍏 **Apple Wallet** export (signed `.pkpass`) *and* import — pre-fill a new item by uploading an existing pass
+- 🟢 **Google Wallet** export — one-tap "Add to Google Wallet"
+- 📱 The item page shows the right button automatically for your device — Apple, Google, or neither — never a dead link
+
+</details>
+
+<details>
+<summary><strong>📤 Sharing, Public Links & Merchant Branding</strong></summary>
+
+- 🔗 **Native OS/browser sharing** — hands off to your device's real share sheet, with a smart choice between a bare link or one that includes the code/PIN/balance
+- 🌐 A read-only, **no-login-required public link** — works for someone with zero VoucherVault account, with view tracking and regenerate/revoke controls
+- ⏳ Links auto-expire, rate-limit repeat requests, and can require an access PIN
+- 🖼️ Real **merchant brand logos** in link previews on WhatsApp/iMessage/Slack — not a generic icon — without ever leaking the code/PIN to that app's preview crawler
+- 🎯 Multiple rounds chasing down and fixing exactly *which* logo shows: trusting the item's own scanned brand hint immediately, sharper image quality (no more pixelated favicons), and eventually first-class **logo.dev** support for genuinely high-res brand marks
+- 🐛 Root-caused and fixed a share-button failure going all the way down to a POST-to-GET downgrade on an i18n redirect — the kind of bug that's invisible until you actually add production logging (which this fork also added)
+
+</details>
+
+<details>
+<summary><strong>📊 Analytics & Insights</strong></summary>
+
+- 📈 KPI tiles, an expiry calendar heatmap, and a live "value at risk" figure
+- 🕐 Fixed a timezone bug where "days left" was quietly wrong for part of every day
+- 💷 Fixed currency-blind stats that summed mixed-currency totals as if they were the same currency
+
+</details>
+
+<details>
+<summary><strong>💾 Backup, Import & Export</strong></summary>
+
+- 📥 Bulk **import** from a Catima CSV export or this app's own CSV/JSON
+- 📤 **Export** everything back out, background-processed with per-row error reporting
+- 🗜️ A **Full Backup** zip format — files, transaction history, and settings, not just the raw data
+- 🌙 **Nightly scheduled backups** with automatic rotation
+- 📅 A subscribe-able **.ics calendar feed** of expiry dates
+
+</details>
+
+<details>
+<summary><strong>🎨 Design, Themes & UX Polish</strong></summary>
+
+- 🌓 A true-black **OLED dark theme** on top of the regular light/dark toggle
+- 🔍 Client-side **barcode zoom** for codes that scan poorly at default size
+- 🧠 **Smart barcode type detection** across 16 symbologies
+- 🔓 A configurable code-blur toggle for privacy in public
+- 💡 Screen **wake lock** while a barcode is on screen — no more it going dark mid-scan
+- 🧰 Item detail page visual pass: a semantic 3-tier button system, unified card styling, and a fix for two barcode-looking things that confused everyone
+- 🧰 A second item-detail redesign — a compact action toolbar plus a "More actions" sheet that scales better as features get added
+- 🍞 **Floating toast messages** instead of a page-top banner
+- 🌗 Multiple dark-mode sweeps — the share chooser popup, overlays, a touch-target bug, uniform tap targets everywhere
+- 🎨 A full **"VoucherVault Plus+" branding pass**
+
+</details>
+
+<details>
+<summary><strong>🛡️ Security, Reliability & Behind-the-Scenes Fixes</strong></summary>
+
+- 🔒 A full **public share link security overhaul**
+- 🕵️ Added actual production error logging — unhandled exceptions used to vanish into the void with `DEBUG=False`
+- 🐛 Fixed a **PWA cache leak** where one user's cached data could bleed into another's session
+- ✅ Site Settings gained real field validation
+- 🔑 **OIDC discovery URL** support — auto-populate SSO endpoints instead of configuring each one by hand
+- 🧪 A dedicated code-review pass across five prior phases to catch what shipped too fast
+- 🛠️ Fixed the SAST security-scan pipeline (Bandit + Semgrep) that had been silently failing on *every single push* — now genuinely green
+
+</details>
+
+<details>
+<summary><strong>⚙️ DevOps, Admin Tools & Site Settings</strong></summary>
+
+- ⚙️ An in-app **Site Settings** page — every app-level setting editable without touching Portainer env vars, changes apply instantly
+- ❓ In-app **help buttons** linking straight to the relevant setup guide
+- 🆙 An **update-available banner** with a one-click **"Redeploy now"** button, plus a GitHub Action that can trigger the same webhook automatically
+- 🔄 **Upstream Sync** management — track and manually check for upstream releases
+- 💾 Autosave on Site Settings — no more losing a change to a missed "Save" click
+- 🌍 Centralized every env var into `settings.py` for one source of truth
+
+</details>
 
 ## 📷 Screenshots
 
