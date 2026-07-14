@@ -10,10 +10,10 @@ def run_expiration_check():
     call_command('check_expiration')
 
 @shared_task
-def fetch_merchant_logo_task(name):
+def fetch_merchant_logo_task(name, domain_hint=None):
     if not name or not merchant_logos_enabled():
         return
-    fetch_merchant_logo(name)
+    fetch_merchant_logo(name, domain_hint=domain_hint)
 
 @shared_task
 def check_for_update_task():

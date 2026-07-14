@@ -25,8 +25,12 @@ async function shareVoucher(shareData) {
       }
     }
   } else {
+    // No files in the clipboard fallback - writeText only ever handles the
+    // caption/link, and every caller composes a self-contained text (the
+    // link is embedded in it, not left to a separate `.url` field) so this
+    // is never missing anything a share-sheet share would have shown.
     try {
-      await navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`);
+      await navigator.clipboard.writeText(shareData.text || '');
       alert('Voucher link copied to clipboard!');
     } catch (err) {
       console.error('Failed to copy to clipboard', err);
@@ -34,11 +38,26 @@ async function shareVoucher(shareData) {
   }
 }
 
+// Shared body for every "share details" flavour (text-only or with an
+// attached logo image) - one consistently-formatted message instead of
+// each call site hand-rolling its own \n joins, so a future field addition
+// only needs to change one place.
+function buildVoucherShareText(info) {
+  const lines = [`${info.merchant} - ${info.name}`, '', `Code: ${info.code}`];
+  if (info.pin) {
+    lines.push(`PIN: ${info.pin}`);
+  }
+  if (info.balance !== null && info.balance !== undefined) {
+    lines.push(`Remaining balance: ${info.balance} ${info.currency}`);
+  }
+  lines.push('', `View voucher: ${info.url}`);
+  return lines.join('\n');
+}
+
 function shareClassic(btn) {
   shareVoucher({
     title: `${btn.dataset.merchant} Voucher`,
-    text: `Here is my ${btn.dataset.title} for ${btn.dataset.merchant}.`,
-    url: btn.dataset.url,
+    text: `Here is my ${btn.dataset.title} for ${btn.dataset.merchant}.\n\n${btn.dataset.url}`,
   });
 }
 
@@ -81,8 +100,7 @@ async function shareViaLink(btn) {
     const info = await fetchPublicShareInfo(btn);
     shareVoucher({
       title: `${info.merchant} Voucher`,
-      text: `Here is my ${info.name} for ${info.merchant}.`,
-      url: info.url,
+      text: `Here is my ${info.name} for ${info.merchant}.\n\n${info.url}`,
     });
   } catch (err) {
     console.error('Could not create a public share link, falling back to the item page link', err);
@@ -93,22 +111,67 @@ async function shareViaLink(btn) {
 async function shareViaDetails(btn) {
   try {
     const info = await fetchPublicShareInfo(btn);
-    let text = `${info.merchant} - ${info.name}\nCode: ${info.code}`;
-    if (info.pin) {
-      text += `\nPIN: ${info.pin}`;
-    }
-    if (info.balance !== null && info.balance !== undefined) {
-      text += `\nRemaining balance: ${info.balance} ${info.currency}`;
-    }
     shareVoucher({
       title: `${info.merchant} Voucher`,
-      text,
-      url: info.url,
+      text: buildVoucherShareText(info),
     });
   } catch (err) {
     console.error('Could not create a public share link', err);
     alert('Could not create a share link right now. Please try again.');
   }
+}
+
+// Fetches the merchant's logo through our own same-origin proxy (see
+// item_share_logo in myapp/views.py - going straight to the third-party
+// logo host from here risks a silent CORS failure) and turns it into a
+// File the Web Share API can attach alongside the text, so e.g. an Uber
+// gift card shares with Uber's own logo as the image instead of the
+// generic VoucherVault ticket icon a link-preview card falls back to.
+async function fetchLogoAsFile(info) {
+  const response = await fetch(info.logo_image_url);
+  if (!response.ok) return null;
+  const blob = await response.blob();
+  const extension = (blob.type.split('/')[1] || 'png').split('+')[0];
+  const safeMerchant = (info.merchant || 'voucher').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  return new File([blob], `${safeMerchant}-logo.${extension}`, { type: blob.type });
+}
+
+async function shareViaImageAndDetails(btn) {
+  let info;
+  try {
+    info = await fetchPublicShareInfo(btn);
+  } catch (err) {
+    console.error('Could not create a public share link', err);
+    alert('Could not create a share link right now. Please try again.');
+    return;
+  }
+
+  const title = `${info.merchant} Voucher`;
+  const text = buildVoucherShareText(info);
+
+  let file = null;
+  try {
+    file = await fetchLogoAsFile(info);
+  } catch (err) {
+    console.warn('Could not fetch merchant logo image, sharing text only', err);
+  }
+
+  // Only attempt the files+text share if the browser says it can actually
+  // handle that combination - some Web Share implementations support text
+  // shares and file shares individually but not together. If it can't (or
+  // the share() call itself fails for a reason other than the user just
+  // cancelling), fall through to the plain text share below rather than
+  // leaving the user with nothing.
+  if (file && navigator.share && navigator.canShare && navigator.canShare({ title, text, files: [file] })) {
+    try {
+      await navigator.share({ title, text, files: [file] });
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      console.error('Error sharing with image, falling back to text-only', err);
+    }
+  }
+  shareVoucher({ title, text });
 }
 
 let vvShareChooserEl = null;
@@ -139,6 +202,9 @@ function openShareChooser(btn) {
     <button type="button" class="vv-share-option" data-action="details">
       <i class="bi bi-card-text"></i> Share details (code, PIN, balance)
     </button>
+    <button type="button" class="vv-share-option" data-action="image-details">
+      <i class="bi bi-image"></i> Share details with logo image
+    </button>
   `;
   document.body.appendChild(menu);
   vvShareChooserEl = menu;
@@ -157,6 +223,10 @@ function openShareChooser(btn) {
   menu.querySelector('[data-action="details"]').addEventListener('click', () => {
     closeShareChooser();
     shareViaDetails(btn);
+  });
+  menu.querySelector('[data-action="image-details"]').addEventListener('click', () => {
+    closeShareChooser();
+    shareViaImageAndDetails(btn);
   });
 
   setTimeout(() => document.addEventListener('click', handleOutsideChooserClick, true), 0);
