@@ -7,7 +7,6 @@ import mimetypes
 import uuid
 import datetime as dt
 import requests
-from django.templatetags.static import static
 from django.db import IntegrityError
 from django.db.models import Q
 from django.utils.safestring import mark_safe
@@ -31,6 +30,7 @@ from django.utils.timezone import now
 from django.utils.http import url_has_allowed_host_and_scheme
 from .decorators import require_authorization_header_with_api_token
 from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items_by_wallet
+from .avatar import generate_initial_avatar
 from .merchant_logos import get_cached_balance_check_url, get_cached_logo, get_cached_logos_for_issuers, remember_balance_check_url
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .update_check import _is_newer, check_for_update, check_upstream_version
@@ -1225,46 +1225,89 @@ def _public_share_payload(request, item, share):
         'url': request.build_absolute_uri(reverse('public_item_share', args=[share.id])),
         'merchant': item.issuer,
         'name': item.name,
-        'code': item.card_number or item.redeem_code,
+        # Always the redeem code, never card_number - card_number is a
+        # secondary "printed member/account number, if different" field
+        # (see Item.card_number's help_text) that's already visible on the
+        # item's own page and the public share link; the code actually
+        # needed to redeem the voucher must never be the one silently
+        # dropped from the shared text.
+        'code': item.redeem_code,
         'pin': item.pin or '',
         'balance': str(item.get_current_balance()) if item.type == 'giftcard' else None,
         'currency': item.currency,
         'logo_image_url': request.build_absolute_uri(reverse('item_share_logo', args=[item.id])),
     }
 
-@require_GET
-@login_required
-def item_share_logo(request, item_id):
+def _resolve_merchant_share_image(issuer):
     """
-    Proxies the merchant's logo image same-origin, for the "Share via..."
-    chooser's image+details option (voucher-share.js) to fetch() into a
-    Blob and attach as a real image file via the Web Share API - going
-    straight to logo.clearbit.com/Google favicons from the browser risks a
-    silent CORS failure depending on that host's response headers, and
-    proxying it here also means it's gated by the same has_item_access
-    check as everything else about this item. Falls back to the app's own
-    icon when no merchant logo is cached, so the caller always gets back
-    something shareable rather than having to handle a missing-image case.
-    """
-    item = get_object_or_404(Item, id=item_id)
-    if not has_item_access(item, request.user):
-        return HttpResponse("Unauthorized", status=403)
+    Returns (content_bytes, content_type) for whichever of these is
+    available: the merchant's real cached logo (fetched here rather than
+    handed to the caller as a bare third-party URL - see item_share_logo/
+    public_item_share_logo below for why), or, if nothing is cached
+    successfully, a generated initial-letter avatar for `issuer`. Shared by
+    both the authenticated (item_share_logo) and public
+    (public_item_share_logo) endpoints so they can't drift into different
+    fallback behaviour.
 
-    cached_merchant = get_cached_logo(item.issuer)
+    Deliberately never falls back to VoucherVault's own app icon - a
+    share/link-preview showing our own branding in place of a specific
+    merchant's would misrepresent whose voucher is being shared.
+    """
+    cached_merchant = get_cached_logo(issuer)
     logo_url = cached_merchant.logo_url if cached_merchant else None
 
     if logo_url:
         try:
             response = requests.get(logo_url, timeout=5)
             if response.status_code == 200 and response.content:
-                content_type = response.headers.get('Content-Type', 'image/png')
-                proxied = HttpResponse(response.content, content_type=content_type)
-                proxied['Cache-Control'] = 'private, max-age=86400'
-                return proxied
+                return response.content, response.headers.get('Content-Type', 'image/png')
         except requests.RequestException:
-            logger.warning('Share-logo proxy fetch failed for item %s via %s', item_id, logo_url, exc_info=True)
+            logger.warning('Merchant logo proxy fetch failed for %r via %s', issuer, logo_url, exc_info=True)
 
-    return redirect(static('assets/img/apple-touch-icon.png'))
+    return generate_initial_avatar(issuer), 'image/png'
+
+@require_GET
+@login_required
+def item_share_logo(request, item_id):
+    """
+    Proxies the merchant's logo image (or a generated fallback avatar)
+    same-origin, for the "Share via..." chooser's image+details option
+    (voucher-share.js) to fetch() into a Blob and attach as a real image
+    file via the Web Share API - going straight to logo.clearbit.com/
+    Google favicons from the browser risks a silent CORS failure depending
+    on that host's response headers, and proxying it here also means it's
+    gated by the same has_item_access check as everything else about this
+    item.
+    """
+    item = get_object_or_404(Item, id=item_id)
+    if not has_item_access(item, request.user):
+        return HttpResponse("Unauthorized", status=403)
+
+    content, content_type = _resolve_merchant_share_image(item.issuer)
+    response = HttpResponse(content, content_type=content_type)
+    response['Cache-Control'] = 'private, max-age=86400'
+    return response
+
+@require_GET
+def public_item_share_logo(request, share_id):
+    """
+    Same image as item_share_logo above, but reachable without login and
+    keyed by share_id - this is what public_item.html's on-page <img> and
+    og:image link-preview meta tag both point at, so an anonymous WhatsApp/
+    Slack crawler (which never has a session) and the page itself always
+    show the same merchant-relevant image. No PIN/expiry gate: the main
+    public_item_share view already exposes this same image unconditionally
+    across every one of its states (crawler preview, expired, PIN-required,
+    unlocked) since it carries no sensitive data, just a brand image.
+    """
+    share = get_object_or_404(ItemPublicShare.objects.select_related('item'), id=share_id)
+    if view_rate_limited(request, share.id):
+        return HttpResponse('Too many requests', status=429)
+
+    content, content_type = _resolve_merchant_share_image(share.item.issuer)
+    response = HttpResponse(content, content_type=content_type)
+    response['Cache-Control'] = 'public, max-age=86400'
+    return response
 
 def _wants_json(request):
     """
@@ -1404,17 +1447,15 @@ def public_item_share(request, share_id):
     """
     share = get_object_or_404(ItemPublicShare.objects.select_related('item'), id=share_id)
     item = share.item
-    cached_merchant = get_cached_logo(item.issuer)
-    merchant_logo_url = cached_merchant.logo_url if cached_merchant else None
 
     if is_link_preview_bot(request.META.get('HTTP_USER_AGENT', '')):
         return render(request, 'public_item.html', {
-            'item': item, 'crawler_preview': True, 'merchant_logo_url': merchant_logo_url,
+            'item': item, 'crawler_preview': True, 'share_id': share.id,
         })
 
     if share.is_expired():
         return render(request, 'public_item.html', {
-            'item': item, 'expired': True, 'merchant_logo_url': merchant_logo_url,
+            'item': item, 'expired': True, 'share_id': share.id,
         })
 
     unlock_key = f'unlocked_share_{share.id}'
@@ -1433,7 +1474,7 @@ def public_item_share(request, share_id):
         if not request.session.get(unlock_key):
             return render(request, 'public_item.html', {
                 'item': item, 'pin_required': True, 'pin_error': pin_error,
-                'merchant_logo_url': merchant_logo_url,
+                'share_id': share.id,
             })
 
     if view_rate_limited(request, share.id):
@@ -1452,7 +1493,6 @@ def public_item_share(request, share_id):
         'share_id': share.id,
         'current_balance': item.get_current_balance(),
         'show_balance': item.type == 'giftcard',
-        'merchant_logo_url': merchant_logo_url,
         'pkpass_enabled': pkpass_enabled(),
         'google_wallet_save_url': google_wallet_save_url,
     })

@@ -2919,6 +2919,108 @@ the `logo_slug` domain hint) got attached to the share call - not the
 generic ticket icon. Screenshotted the share chooser to confirm all
 three options render correctly with their icons.
 
+## Phase 53 — Share flow fixes: real merchant branding everywhere, redeem code restored, version-check staleness
+
+Follow-up bug reports from live testing of Phase 52's share improvements:
+the shared image was *still* showing VoucherVault's own app icon instead
+of the merchant's logo (across all three share options, and on the public
+share page itself, which had no image at all), the redeem code had gone
+missing from the shared text while the card number took its place, and
+Site Settings' version check kept showing the installed version as
+*ahead* of the "latest known" one.
+
+### Root cause of the still-generic branding: two separate bugs
+
+1. `fetch_merchant_logo()`'s cache-freshness check had no way to notice
+   a better `domain_hint` had become available for an already-cached
+   merchant - an item saved before OCR ever populated `logo_slug` (or a
+   manually-typed issuer name) would cache a wrong guessed domain and
+   then sit "fresh" for the full 30-day window, ignoring a domain hint
+   from a later item for the same issuer entirely. Now a domain_hint
+   that differs from what's cached forces an immediate refetch. A
+   fetch that found *nothing* is also now retried after 1 day instead
+   of the full 30 - a transient network blip on the very first save no
+   longer gets "stuck" showing no logo for a month.
+2. The fallback when no logo is cached at all used to be VoucherVault's
+   own app icon - technically "always shows something", but exactly
+   the bug being reported: a share showing our branding instead of the
+   merchant's. New `myapp/avatar.py::generate_initial_avatar()` renders
+   a circular "initial" avatar (Gmail/Slack contact-avatar style - first
+   letter of the merchant's name, a colour deterministic per name) as
+   the fallback instead, so a share never shows anything that isn't
+   about the specific merchant. `docker/Dockerfile` now installs
+   `fonts-dejavu-core` for this.
+
+### One image-resolution path for every share surface
+
+New `_resolve_merchant_share_image(issuer)` helper (real cached logo,
+else generated avatar) shared by both the authenticated `item_share_logo`
+endpoint (the "Share details with logo image" Web Share attachment) and
+a new public, login-free `public_item_share_logo` endpoint keyed by
+`share_id`. `public_item.html` now always renders `<img class=
+"merchant-logo" src="{% url 'public_item_share_logo' share_id %}">`
+unconditionally instead of the old `{% if merchant_logo_url %}` gate that
+left an empty gap when nothing was cached yet, and `og:image` points at
+the same endpoint - so the on-page logo, the WhatsApp/Slack link-preview
+image, and the Web Share file attachment are now guaranteed to show the
+identical image rather than three independently-computed ones that could
+drift (which is exactly how "Share link"/"Share details" kept showing the
+app icon even after Phase 52's fix to the file-attachment option alone).
+
+### Redeem code was being silently dropped from the shared text
+
+`_public_share_payload()`'s `code` field was `item.card_number or
+item.redeem_code` - preferring `card_number` whenever both were set. Per
+`Item.card_number`'s own help_text ("Printed member/account number, *if
+different from the barcode's encoded value*"), the redeem code is the
+one actually needed to redeem the voucher; card_number is a secondary
+field already visible on the item's own page and the public share link.
+Now always `item.redeem_code`.
+
+### Update-check staleness
+
+`check_for_update_task`/`check_upstream_version_task` shared the same
+once-daily (9am) crontab as the expiry/notification checks. This repo
+ships several releases a day during active work, so "installed version
+ahead of the last known latest" was the *constant* normal state, not a
+signal of anything wrong - the daily check was almost always stale by
+the time anyone looked at it. Gave these two tasks their own hourly
+`CrontabSchedule` in `create_default_periodic_tasks.py`, and fixed that
+command to correct an existing task's crontab in place on every rerun
+(it runs on every container start) instead of creating a duplicate row
+under the old lookup-by-crontab `get_or_create` - which also means an
+admin's manual "disable this task" in Django admin now survives a
+restart, since `enabled` is only set on first creation.
+
+### Tests
+
+27 new/updated tests: `fetch_merchant_logo` domain-hint-override and
+failure-retry-window coverage, `generate_initial_avatar` (valid PNG,
+deterministic colour, size respected, blank-name safety),
+`PublicItemShareLogoViewTests` (no-login, 404 on unknown share, proxies
+cached logo, avatar fallback, works even on an expired/PIN-locked share -
+this sub-resource carries no sensitive data so it isn't gated the way the
+main page's content is), the existing `ItemShareLogoViewTests` fallback
+cases updated for the new 200-PNG behaviour (was a 302 redirect to the
+app icon), `_public_share_payload`'s redeem-code-over-card-number fix,
+and a new `CreateDefaultPeriodicTasksCommandTests` class (creates the
+expected tasks, hourly schedule on the two version-check tasks, re-running
+doesn't duplicate rows, re-running corrects a stale crontab in place,
+re-running preserves an admin-disabled task). Full suite (651 tests)
+green.
+
+Also verified live: seeded three items on a running dev server (an
+"Every Wish"/Uber Eats card with `logo_slug=uber.com`, a Ticketmaster
+card with no logo_slug, and a card for a nonexistent merchant), confirmed
+the public share page now shows the real Uber logo instead of a blank
+gap, confirmed the nonexistent-merchant page shows a clean orange "Z"
+avatar instead of the VoucherVault ticket icon, confirmed
+`og:image` points at the new endpoint, and confirmed via a stubbed
+`navigator.share` Playwright session that "Share details with logo
+image" now attaches the actual ~750-byte Uber PNG (not the app icon) and
+that the shared text reads "Code: 0010372571404729899" (the redeem code)
+rather than the card number.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
