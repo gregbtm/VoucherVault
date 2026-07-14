@@ -2632,6 +2632,74 @@ proved the full round-trip works) and the badge flipped from "Never
 checked" to "Unreachable" in place, exactly the fix this phase set out
 to make.
 
+## Phase 49 — Item detail action buttons: toolbar + "More actions" sheet redesign
+
+A high-fidelity design handoff replaced the item detail page's 2×2 grid of
+mixed solid/outline buttons with a compact icon toolbar (Edit/Duplicate/
+Share/More) plus an expandable "More actions" sheet for the rest -
+option "1c" from three layouts explored in the handoff, chosen for
+scaling better as more actions get added later without the button grid
+growing unbounded.
+
+### What changed
+
+`view-item.html`'s action button block (owner/collaborator view only -
+the read-only shared-viewer's single "Share via..." button is unchanged)
+was rebuilt as two stacked cards:
+
+- **Toolbar** (`.item-actions-toolbar`): Edit (primary, indigo `#5b5bf0`),
+  Duplicate, Share, More - four equal-width buttons, icon over label.
+- **"More actions" sheet** (`.more-actions-sheet`, hidden by default,
+  toggled by the More button): Share with Users, Add to Apple/Google
+  Wallet, Check Balance, Mark Used/Available, Archive/Unarchive, Delete -
+  full-width rows, colored by intent (amber for Mark Used, green for
+  Mark Available, red for Delete, neutral grey otherwise).
+
+The design handoff only specified 7 actions (Edit, Duplicate, Share,
+Share with Users, Mark Used, Archive, Delete); this app also has three
+conditional actions the handoff didn't cover (Add to Apple Wallet, Add
+to Google Wallet, Check Balance) - folded into the "More actions" sheet
+alongside the other secondary actions, keeping their existing
+device-detection JS (`device-detect.js` toggles `#apple-wallet-btn`/
+`#google-wallet-btn` visibility by id, unchanged and unaffected by where
+in the DOM those ids now live) and conditional-rendering logic intact.
+
+Every action still fires the exact handler it did before - same URLs,
+same POST forms with CSRF tokens, same `share-voucher-btn` class/data
+attributes for the existing share-sheet JS, same delete confirmation
+prompt. Nothing about *what* the buttons do changed, only their layout
+and styling.
+
+### Interaction
+
+New vanilla-JS toggle (`view-item.html`, gated behind `{% if can_edit %}`
+alongside the redesigned block itself): click More to open/close the
+sheet, click anywhere outside it (or press Escape) to close - matching
+the outside-click-to-close behavior the profile dropdown elsewhere in
+the app already has, per the design handoff's suggestion to add it "if
+consistent with the rest of the app."
+
+### Dark mode
+
+Not covered by the design handoff (which only specified a light,
+`#eeece6`-background mockup), so extended using this file's own existing
+dark-mode conventions (`#2a2a2a` card background, `#444` borders, muted
+text tones) rather than inventing a new palette.
+
+### Tests
+
+2 new tests (`test_view_item_renders_action_toolbar_and_more_sheet`,
+`test_view_item_mark_used_toggle_uses_success_row_when_already_used`) -
+the latter needed care: class names like `more-action-row-warning` also
+appear unconditionally in the page's own `<style>` block, so a bare
+substring match would pass regardless of which button variant actually
+rendered; asserted on the full `class="..."` attribute instead. Full
+suite green. Also verified live: a Playwright session screenshotted the
+collapsed toolbar, the expanded sheet in both light and dark mode,
+confirmed outside-click and Escape both close the sheet, and clicked
+Archive/Unarchive twice in a row to confirm the toggle's POST handler
+still round-trips correctly end-to-end against the real database.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
