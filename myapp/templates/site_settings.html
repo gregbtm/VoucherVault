@@ -230,6 +230,21 @@
                 <i class="bi bi-arrow-repeat me-2"></i>{% trans "Update Check" %}
                 <a href="{% url 'view_doc' 'auto-deploy' %}" target="_blank" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
               </h6>
+              {% if update_check_available %}
+                <div class="alert alert-info alert-dismissible shadow-sm rounded-3 p-3 mb-3" role="alert" id="update-banner">
+                  <strong class="me-2">ℹ️</strong>
+                  {% blocktrans with version=update_check.latest_version %}A newer version ({{ version }}) is available.{% endblocktrans %}
+                  <a href="{{ update_check.latest_release_url }}" target="_blank" rel="noopener">{% trans "View release" %}</a>
+                  {% if portainer_redeploy_configured %}
+                    <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="redeploy-btn" data-url="{% url 'trigger_portainer_redeploy' %}">{% trans "Redeploy now" %}</button>
+                    <div id="redeploy-progress" class="mt-2" style="display:none;">
+                      <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                      <span id="redeploy-progress-text">{% trans "Redeploying - this can take a couple of minutes. The app will be briefly unavailable, then this page will reload automatically." %}</span>
+                    </div>
+                  {% endif %}
+                  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+              {% endif %}
               <div class="form-check mb-2">
                 {{ form.update_check_enabled }}
                 <label class="form-check-label" for="{{ form.update_check_enabled.id_for_label }}">{% trans "Check GitHub Releases and show an update banner to admins" %}</label>
@@ -293,14 +308,14 @@
                 </div>
                 <div class="col-md-4">
                   <div class="text-muted small text-uppercase" style="letter-spacing:.03em;">{% trans "Latest upstream version" %}</div>
-                  <div>
+                  <div id="upstream-check-latest">
                     {{ upstream_sync_status.latest_version|default:"—" }}
                     {% if upstream_behind %}<span class="badge bg-warning text-dark ms-1">{% trans "Sync available" %}</span>{% endif %}
                   </div>
                 </div>
                 <div class="col-md-4">
                   <div class="text-muted small text-uppercase" style="letter-spacing:.03em;">{% trans "GitHub connectivity" %}</div>
-                  <div>
+                  <div id="upstream-check-connectivity">
                     {% if not upstream_sync_status.checked_at %}
                       <span class="badge bg-secondary">{% trans "Never checked" %}</span>
                     {% elif upstream_sync_status.last_check_error %}
@@ -311,11 +326,20 @@
                   </div>
                 </div>
               </div>
-              {% if upstream_sync_status.latest_release_url %}
-              <p class="text-muted small mb-0">
+              <p class="text-muted small mb-2" id="upstream-check-last-checked">
+                {% if upstream_sync_status.checked_at %}
+                  {% blocktrans with checked=upstream_sync_status.checked_at|date:"Y-m-d H:i" %}Last checked {{ checked }}.{% endblocktrans %}
+                  {% if upstream_sync_status.last_check_error %}{{ upstream_sync_status.last_check_error }}{% endif %}
+                {% else %}
+                  {% trans "Never checked yet." %}
+                {% endif %}
+              </p>
+              <p class="text-muted small mb-2" id="upstream-check-release-link" {% if not upstream_sync_status.latest_release_url %}style="display:none;"{% endif %}>
                 <a href="{{ upstream_sync_status.latest_release_url }}" target="_blank" rel="noopener"><i class="bi bi-file-earmark-diff me-1"></i>{% trans "View latest upstream release" %}</a>
               </p>
-              {% endif %}
+              <button type="button" id="check-upstream-btn" class="btn btn-sm btn-outline-secondary" data-url="{% url 'trigger_upstream_check' %}">
+                {% trans "Check now" %}
+              </button>
             </div>
 
             <div class="mb-4">
@@ -465,6 +489,69 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  // "Redeploy now" on the update-available banner triggers the Portainer
+  // webhook, then polls this page until it's back up and reloads. A plain
+  // button + fetch, not a <form>, since this banner now lives inside
+  // #site-settings-form - a nested <form> here would hit the exact bug
+  // test_check_updates_control_is_not_a_nested_form guards against below.
+  var redeployBtn = document.getElementById('redeploy-btn');
+  if (redeployBtn) {
+    redeployBtn.addEventListener('click', function () {
+      if (!confirm('{% trans "This rebuilds and restarts the app container now. Continue?" %}')) return;
+
+      var csrfInput = document.querySelector('input[name=csrfmiddlewaretoken]');
+      var progress = document.getElementById('redeploy-progress');
+      var progressText = document.getElementById('redeploy-progress-text');
+      redeployBtn.disabled = true;
+      redeployBtn.style.display = 'none';
+      progress.style.display = '';
+
+      fetch(redeployBtn.dataset.url, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfInput.value, 'X-Requested-With': 'XMLHttpRequest' },
+      })
+        .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
+        .then(function (result) {
+          if (!result.ok) {
+            progress.style.display = 'none';
+            redeployBtn.disabled = false;
+            redeployBtn.style.display = '';
+            window.showToast(result.data.error || '{% trans "Redeploy request failed." %}', 'danger');
+            return;
+          }
+          // The webhook call itself completed (Portainer will pull/recreate
+          // the container asynchronously from here) - now poll the current
+          // page until we've seen it actually go down and come back up,
+          // then reload automatically instead of leaving the admin to
+          // guess when it's safe to refresh.
+          var attempts = 0;
+          var sawFailure = false;
+          var maxAttempts = 60; // ~5 minutes at 5s intervals
+          var poll = setInterval(function () {
+            attempts += 1;
+            fetch(window.location.href, { method: 'GET', cache: 'no-store' })
+              .then(function (response) {
+                if (sawFailure && response.ok) {
+                  clearInterval(poll);
+                  window.location.reload();
+                }
+              })
+              .catch(function () { sawFailure = true; });
+            if (attempts >= maxAttempts) {
+              clearInterval(poll);
+              progressText.textContent = '{% trans "Still not back after a few minutes - check Portainer, or refresh this page manually." %}';
+            }
+          }, 5000);
+        })
+        .catch(function () {
+          progress.style.display = 'none';
+          redeployBtn.disabled = false;
+          redeployBtn.style.display = '';
+          window.showToast('{% trans "Could not reach the server to trigger the redeploy - check Portainer directly." %}', 'danger');
+        });
+    });
+  }
+
   // "Check for updates now" hits GitHub Releases and updates the version/
   // connectivity display in place via fetch - no page reload, matching
   // the rest of this page's autosave-and-toast behavior.
@@ -515,6 +602,69 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .catch(function () {
           checkUpdatesBtn.disabled = false;
+          window.showToast('{% trans "Check failed - could not reach the server." %}', 'danger');
+        });
+    });
+  }
+
+  // "Check now" on the Upstream Sync card - same pattern as "Check for
+  // updates now" above, and exists for the same reason: without a manual
+  // fallback here, this card's connectivity badge had no way to recover
+  // from a periodic task that silently never ran.
+  var checkUpstreamBtn = document.getElementById('check-upstream-btn');
+  if (checkUpstreamBtn) {
+    checkUpstreamBtn.addEventListener('click', function () {
+      var csrfInput = document.querySelector('input[name=csrfmiddlewaretoken]');
+      checkUpstreamBtn.disabled = true;
+      fetch(checkUpstreamBtn.dataset.url, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfInput.value, 'X-Requested-With': 'XMLHttpRequest' },
+      })
+        .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
+        .then(function (result) {
+          checkUpstreamBtn.disabled = false;
+          if (!result.ok) {
+            window.showToast(result.data.error || '{% trans "Check failed." %}', 'danger');
+            return;
+          }
+          var data = result.data;
+          var latestEl = document.getElementById('upstream-check-latest');
+          latestEl.textContent = data.latest_version || '—';
+          if (data.upstream_behind) {
+            var syncBadge = document.createElement('span');
+            syncBadge.className = 'badge bg-warning text-dark ms-1';
+            syncBadge.textContent = '{% trans "Sync available" %}';
+            latestEl.appendChild(document.createTextNode(' '));
+            latestEl.appendChild(syncBadge);
+          }
+
+          var connectivityEl = document.getElementById('upstream-check-connectivity');
+          if (data.last_check_error) {
+            connectivityEl.innerHTML = '<span class="badge bg-danger" title="' + data.last_check_error.replace(/"/g, '&quot;') + '"><i class="bi bi-x-circle me-1"></i>{% trans "Unreachable" %}</span>';
+          } else {
+            connectivityEl.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>{% trans "Connected" %}</span>';
+          }
+
+          var lastCheckedEl = document.getElementById('upstream-check-last-checked');
+          if (data.checked_at) {
+            var checkedDate = new Date(data.checked_at);
+            var formatted = checkedDate.getFullYear() + '-' + String(checkedDate.getMonth() + 1).padStart(2, '0') + '-' + String(checkedDate.getDate()).padStart(2, '0')
+              + ' ' + String(checkedDate.getHours()).padStart(2, '0') + ':' + String(checkedDate.getMinutes()).padStart(2, '0');
+            lastCheckedEl.textContent = '{% trans "Last checked" %} ' + formatted + '.' + (data.last_check_error ? ' ' + data.last_check_error : '');
+          }
+
+          var releaseLinkEl = document.getElementById('upstream-check-release-link');
+          if (data.latest_release_url) {
+            releaseLinkEl.querySelector('a').href = data.latest_release_url;
+            releaseLinkEl.style.display = '';
+          } else {
+            releaseLinkEl.style.display = 'none';
+          }
+
+          window.showToast(data.message, 'success');
+        })
+        .catch(function () {
+          checkUpstreamBtn.disabled = false;
           window.showToast('{% trans "Check failed - could not reach the server." %}', 'danger');
         });
     });
