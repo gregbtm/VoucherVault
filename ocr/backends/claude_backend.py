@@ -6,7 +6,10 @@ import anthropic
 
 from myapp.models import SiteConfiguration
 
-from .base import OCRBackend, VALID_CODE_TYPES, VALID_CURRENCIES, parse_float_or_none, strip_json_fences
+from .base import (
+    OCRBackend, VALID_CODE_TYPES, VALID_CURRENCIES, parse_float_or_none,
+    sanitize_domain_slug, sanitize_url, strip_json_fences,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,19 +28,31 @@ _PROMPT = (
     'merchant or brand name, the issuer (if different from the merchant), '
     'the monetary value and its currency, and the expiry date. If a '
     'barcode or QR code is visible next to the code, also identify its '
-    'symbology. Respond with ONLY a JSON object, no other text and no '
+    'symbology. Also try to identify the actual redeemable brand\'s '
+    'website domain for logo lookup purposes - this is often the same as '
+    'the issuer, but if the card was sold through a marketplace or '
+    'reseller (e.g. a card usable at "Uber" or "Uber Eats" but issued/'
+    'sold by "Every Wish" or a similar gift-card marketplace), use the '
+    'actual redeemable brand\'s domain, not the reseller\'s. Also extract '
+    'a balance or validity check URL if one is visibly printed on the '
+    'card itself. Respond with ONLY a JSON object, no other text and no '
     'markdown code fences, in exactly this shape:\n'
     '{"code": "...", "code_type": "...", "name": "...", "issuer": "...", '
     '"expiry_date": "YYYY-MM-DD", "pin": "...", "value": 0.00, '
-    '"currency": "...", "card_number": "...", "confidence": 0.0}\n'
+    '"currency": "...", "card_number": "...", "logo_slug": "...", '
+    '"balance_check_url": "...", "confidence": 0.0}\n'
     f'"code_type" must be exactly one of: {_CODE_TYPE_OPTIONS}, "none" '
     '(if the code is a plain printed number with no separate scannable '
     'barcode at all), or null (if you cannot tell). "currency" must be a '
-    'three-letter ISO 4217 code (e.g. "GBP", "USD", "EUR") or null. Use '
-    'null for any other field you cannot confidently determine, or that '
-    'is genuinely blank on the card itself (e.g. an empty PIN box) - '
-    'never invent a value. "confidence" is your own estimate (0.0-1.0) of '
-    'how reliable the "code" extraction is.'
+    'three-letter ISO 4217 code (e.g. "GBP", "USD", "EUR") or null. '
+    '"logo_slug" must be a bare domain with no scheme or "www." (e.g. '
+    '"uber.com"), or null if you cannot confidently tell. '
+    '"balance_check_url" must be a full URL including "https://", or '
+    'null - never a URL you are guessing at, only one actually printed '
+    'on the card. Use null for any other field you cannot confidently '
+    'determine, or that is genuinely blank on the card itself (e.g. an '
+    'empty PIN box) - never invent a value. "confidence" is your own '
+    'estimate (0.0-1.0) of how reliable the "code" extraction is.'
 )
 
 
@@ -62,7 +77,8 @@ class ClaudeOCRBackend(OCRBackend):
     def extract(self, image_bytes: bytes, media_type: str) -> dict:
         empty = {
             'code': None, 'code_type': None, 'name': None, 'issuer': None, 'expiry_date': None,
-            'pin': None, 'value': None, 'currency': None, 'card_number': None, 'confidence': 0.0,
+            'pin': None, 'value': None, 'currency': None, 'card_number': None,
+            'logo_slug': None, 'balance_check_url': None, 'confidence': 0.0,
         }
 
         image_b64 = base64.standard_b64encode(image_bytes).decode()
@@ -113,5 +129,7 @@ class ClaudeOCRBackend(OCRBackend):
             'value': parse_float_or_none(result.get('value')),
             'currency': currency,
             'card_number': result.get('card_number') or None,
+            'logo_slug': sanitize_domain_slug(result.get('logo_slug')),
+            'balance_check_url': sanitize_url(result.get('balance_check_url')),
             'confidence': float(result.get('confidence') or 0.0),
         }

@@ -1,5 +1,6 @@
 import re
 from abc import ABC, abstractmethod
+from urllib.parse import urlparse
 
 from myapp.models import CURRENCY_CHOICES
 
@@ -49,6 +50,38 @@ def parse_float_or_none(value) -> float | None:
         return None
 
 
+_DOMAIN_RE = re.compile(r'^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$')
+
+
+def sanitize_domain_slug(value) -> str | None:
+    """
+    Best-effort cleanup for a vision model's "logo_slug" guess - the
+    img.logo.dev lookup this feeds (see view-item.html) wants a bare
+    domain like "uber.com", but a model occasionally includes a scheme,
+    "www.", or trailing path despite being told not to. Strips those,
+    then discards anything that still doesn't look like a real domain
+    rather than risk feeding garbage into an <img src>.
+    """
+    if not value or not isinstance(value, str):
+        return None
+    slug = value.strip().lower()
+    slug = re.sub(r'^https?://', '', slug)
+    slug = re.sub(r'^www\.', '', slug)
+    slug = slug.split('/')[0]
+    return slug if _DOMAIN_RE.match(slug) else None
+
+
+def sanitize_url(value) -> str | None:
+    """Best-effort validation for a vision model's "balance_check_url"
+    guess - only trusted if it parses as a well-formed http(s) URL, since
+    anything else would just be a dead link on the item page."""
+    if not value or not isinstance(value, str):
+        return None
+    value = value.strip()
+    parsed = urlparse(value)
+    return value if parsed.scheme in ('http', 'https') and parsed.netloc else None
+
+
 class OCRBackend(ABC):
     """
     Extracts a redeem code (and, where possible, other item fields) from a
@@ -63,9 +96,14 @@ class OCRBackend(ABC):
         """
         Returns a dict with keys: code, code_type, name, issuer,
         expiry_date (ISO 8601 string or None), pin, value (float or None),
-        currency, card_number, confidence (0.0-1.0). code_type is one of
-        VALID_CODE_TYPES or None if the backend can't or didn't try to
-        determine the barcode symbology. currency is one of
-        VALID_CURRENCIES or None.
+        currency, card_number, logo_slug, balance_check_url,
+        confidence (0.0-1.0). code_type is one of VALID_CODE_TYPES or None
+        if the backend can't or didn't try to determine the barcode
+        symbology. currency is one of VALID_CURRENCIES or None. logo_slug
+        is a bare domain (e.g. "uber.com") for the actual redeemable
+        brand - which a vision backend may distinguish from "issuer" when
+        the card was sold through a marketplace/reseller - or None.
+        balance_check_url is a full http(s) URL if one is visibly printed
+        on the card, else None.
         """
         ...
