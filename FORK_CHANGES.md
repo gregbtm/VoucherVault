@@ -96,6 +96,8 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 63 — New logo, wired in everywhere](#phase-63--new-logo-wired-in-everywhere)
 - [Phase 64 — Refresh the README screenshots for the new logo](#phase-64--refresh-the-readme-screenshots-for-the-new-logo)
 - [Phase 65 — Fix the logo not showing on the live site + trim verbose copy](#phase-65--fix-the-logo-not-showing-on-the-live-site--trim-verbose-copy)
+- [Phase 66 — Full GitHub-facing documentation review](#phase-66--full-github-facing-documentation-review)
+- [Phase 67 — Automate wiki updates via a sync workflow](#phase-67--automate-wiki-updates-via-a-sync-workflow)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -3599,6 +3601,113 @@ the app (Site Settings' intro, the OCR upload hints on create/edit item,
 the Google Wallet import note, the offline page, and the logo.dev/
 upstream-sync notes on Site Settings) down to one concise sentence each
 - same information, without reading as a wall of text.
+
+## Phase 66 — Full GitHub-facing documentation review
+
+A full pass over every doc a visitor actually sees: the README, this
+fork's own wiki, and `.github/`. Goal was three things - no duplication,
+no confusing/stale information, nothing that reads like a personal
+developer diary rather than user-facing documentation.
+
+**README.md** had the same feature set described in full three separate
+times before a reader got to the screenshots: the intro note re-listed
+nearly every feature in prose, a flat "New in this fork" bullet list
+covered the same ground again, and a themed "Story" section below that
+covered most of it a third time - while also mixing in retrospective
+bug-fix narration ("fixed a silent OCR failure mode where...", "root-
+caused a share-button failure going all the way down to a POST-to-GET
+downgrade...") that belongs in a technical changelog, not a feature
+README. Consolidated into one canonical, well-organized ("What's New in
+This Fork", grouped by theme in collapsible sections) feature reference -
+merged in several features that existed only in the "Story" section and
+nowhere else (photo-hash/fuzzy duplicate detection, OCR confidence
+warnings, brand-aware logo extraction), dropped the bug-fix diary
+entries entirely (that detail already lives in this file), and trimmed
+the intro note down to a short pitch instead of a third full listing.
+
+Also fixed two real accuracy bugs found along the way:
+- The "Usage" section's DockerHub tip ("pin a minor version series tag
+  such as `1.29.x`... this is safer for automatic upgrades") was
+  unedited leftover upstream advice about pinning a published Docker
+  Hub image tag - this fork doesn't publish one (see Phase 62), so the
+  entire tip no longer applied. Replaced with accurate guidance for how
+  this fork is actually deployed (a git-based Portainer stack building
+  from source, tracked via the existing update-available banner).
+- The "About This Fork" section's closing paragraph read as a personal,
+  first-person note ("the plan... was mine, worked out phase by phase
+  before a line of code was written") rather than project documentation.
+  Trimmed to a plain, factual attribution note plus an issue-tracker
+  pointer for feature requests.
+
+**This fork's own wiki** (separate from upstream's, two pages) had the
+exact same duplication problem in miniature, plus staleness from having
+no automated link to the README: its "New Features" page still said
+"twenty-two rounds" against the README's 65+, and the wiki home page
+linked to a page slug (`New-Features-in-This-Fork`) that didn't match
+the actual page's name (`New-Features-🤩`) - a genuinely broken link on
+the wiki's own front door. Fixed the broken link, synced the phase
+count, trimmed "New Features" from a full duplicate feature list down to
+a short highlights tour that points at the README as the single source
+of truth (rather than a second copy that will only go stale again the
+same way), and removed a "Built with Claude, scoped and directed by a
+human" section from the wiki home page - accurate, but meta-commentary
+about the fork's own AI-assisted development process that reads as
+personal-project narration rather than documentation someone installing
+the app actually needs.
+
+Audited every markdown doc in the repo (`README.md`, `FORK_CHANGES.md`,
+`docs/*.md`, `.github/ISSUE_TEMPLATE/*.md`) for real personal
+information (email addresses, IPs, names) - found none; the "personal
+information" issue turned out to be entirely about first-person
+developer-diary tone and duplicated content, not literal data leakage.
+`docs/*.md` setup guides and `FORK_CHANGES.md` itself were reviewed and
+left as-is - each already stays scoped to its actual job (a task-focused
+how-to, or a factual technical changelog) without the tone problems
+found in the README and wiki.
+
+**Known limitation, resolved in Phase 67:** this session's GitHub access
+doesn't include wiki write permission (`git push` to the wiki's own repo
+returns a 403, even though the same session pushes to the main repo
+without issue) - the corrected wiki page content had to be handed off
+for manual paste-in rather than pushed directly. See Phase 67 for the
+permanent fix.
+
+## Phase 67 — Automate wiki updates via a sync workflow
+
+Phase 66 hit a hard wall: this environment's GitHub access is scoped to
+the main repository only, and a GitHub wiki is a separate git repo
+(`owner/repo.wiki.git`) that needs its own authorization - confirmed two
+ways, both denied identically: a direct `git push` to the wiki repo
+returned a 403 with `"Not authorized to access repository
+gregbtm/vouchervault.wiki"`, and attempting to add the wiki as its own
+tracked repository hit the same authorization check. Not a transient
+failure or a git configuration issue - a real permission boundary with
+no client-side workaround.
+
+The actual fix doesn't route around the permission boundary - it moves
+the wiki out of the one place this session's credentials can't reach,
+into the one place they always could: this repository. Added a `wiki/`
+directory as the new source of truth for wiki content (currently the
+same two pages: the wiki home page and the New Features tour, both
+already rewritten and de-duplicated against the README in Phase 66),
+plus `.github/workflows/sync-wiki.yml`, which clones the wiki repo and
+mirrors `wiki/`'s contents into it (`rsync --delete`, so a page removed
+from `wiki/` is removed from the live wiki too) on every push to `main`
+that touches that directory.
+
+This needed one thing no session's GitHub App permissions can grant:
+GitHub's own auto-generated `GITHUB_TOKEN` used by Actions runners
+cannot push to a repository's wiki, full stop, regardless of the
+workflow's declared `permissions:` block - only a Personal Access Token
+can. So the workflow reads a `WIKI_DEPLOY_TOKEN` repository secret (a
+classic PAT with the `repo` scope) instead - a one-time setup only the
+repo owner can do (Settings -> Secrets and variables -> Actions), and
+the very last manual step wiki edits should ever need again. Future
+wiki changes are now an ordinary pull request against `wiki/`, reviewed
+and merged exactly like every other doc change in this fork - no more
+separate, easy-to-forget, un-diffable edits through the wiki's own web
+UI, which is likely exactly how it drifted to "twenty-two rounds" while
+the rest of the fork moved on to sixty-five in the first place.
 
 ## New environment variables
 
