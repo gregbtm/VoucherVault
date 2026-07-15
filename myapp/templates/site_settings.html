@@ -23,8 +23,7 @@
         <div class="card-body">
           <h5 class="card-title">{% trans "Configure Site Settings" %}</h5>
           <p class="text-muted small">
-            {% trans "These used to be Portainer environment variables. Changes here take effect immediately - no redeploy needed - and are stored in the database, so they survive redeploys too. Bootstrap settings a container needs before it can even reach the database (domain, database connection, secret key, sessions, SSO) still live in Portainer; everything below doesn't." %}
-            {% trans "Every field below saves itself the moment you change it - no separate save step." %}
+            {% trans "Saves instantly as you change it - no redeploy needed. Bootstrap settings (domain, database, secret key, SSO) still live in Portainer; everything else is here." %}
           </p>
 
           <form method="POST" action="" id="site-settings-form">
@@ -83,7 +82,7 @@
                   {{ form.logo_dev_api_key }}
                   <small class="form-text text-muted">
                     {% if config.logo_dev_api_key %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %}
-                    {% trans "Optional - when set, logo.dev is tried first for a higher-resolution real brand logo before falling back to Clearbit/Google favicons. Get a free key at" %}
+                    {% trans "Optional - gives higher-resolution logos. Free key at" %}
                     <a href="https://www.logo.dev" target="_blank" rel="noopener">logo.dev</a>.
                   </small>
                 </div>
@@ -310,7 +309,7 @@
                 <a href="{% url 'view_doc' 'upstream-sync' %}" target="_blank" class="help-link" title="{% trans 'How upstream sync works' %}"><i class="bi bi-question-circle"></i></a>
               </h6>
               <p class="text-muted small mb-2">
-                {% trans "This fork tracks l4rm4nd/VoucherVault upstream. This section is purely informational - it doesn't affect this app's own behaviour." %}
+                {% trans "Informational only - tracks the upstream project this fork is based on. Doesn't affect this app's behaviour." %}
               </p>
               <div class="row mb-2">
                 <div class="col-md-4">

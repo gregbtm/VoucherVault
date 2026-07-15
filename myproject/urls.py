@@ -18,6 +18,7 @@ from django.urls import include, path
 from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.i18n import i18n_patterns
+from myapp import views as myapp_views
 
 urlpatterns = i18n_patterns(
     path('admin/', admin.site.urls),
@@ -28,6 +29,11 @@ urlpatterns = i18n_patterns(
     path("i18n/", include("django.conf.urls.i18n")),
 )
 
+# Overrides django-pwa's serviceworker.js route with a version-stamped one -
+# must stay outside i18n_patterns and ahead of the pwa.urls include below
+# (Django resolves in order) so the service worker keeps its required
+# root-scoped, non-prefixed URL.
+urlpatterns.append(path("serviceworker.js", myapp_views.service_worker, name="serviceworker"))
 urlpatterns.append(path("", include("pwa.urls")))
 urlpatterns.append(path("api/v1/", include("api.urls")))
 

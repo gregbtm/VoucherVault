@@ -95,6 +95,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 62 — Refocus the repo on this fork, not upstream's own promotion](#phase-62--refocus-the-repo-on-this-fork-not-upstreams-own-promotion)
 - [Phase 63 — New logo, wired in everywhere](#phase-63--new-logo-wired-in-everywhere)
 - [Phase 64 — Refresh the README screenshots for the new logo](#phase-64--refresh-the-readme-screenshots-for-the-new-logo)
+- [Phase 65 — Fix the logo not showing on the live site + trim verbose copy](#phase-65--fix-the-logo-not-showing-on-the-live-site--trim-verbose-copy)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -3549,6 +3550,55 @@ Import/Export, Wallets, and the Sharing Center. Each now shows the new
 mark (full-color on light surfaces, mono-white on the OLED dark theme)
 and the corrected "Developed by Greg / Based on VoucherVault by LRVT"
 footer credits from Phase 63.
+
+## Phase 65 — Fix the logo not showing on the live site + trim verbose copy
+
+A user reported the new Phase 63 logo was missing on every page of the
+live deployed instance - just blank space between the hamburger menu and
+the dark-mode toggle. Two separate bugs, both real:
+
+1. **The logo rendered at 0x0.** `logo.svg` and `logo-mono-white.svg`
+   (and every other SVG in the Phase 63 brand package) declared only a
+   `viewBox`, no explicit `width`/`height` attributes on the `<svg>`
+   root. The header CSS only constrains `max-height: 26px` on `.logo
+   img` (relying on the browser to derive width from intrinsic aspect
+   ratio) inside a flex container (`.logo` is `d-flex`) - a combination
+   that a handful of browsers happily give a genuine natural size to
+   (`naturalWidth`/`naturalHeight` both reported non-zero) but then
+   still lay out at a computed `0x0` box, because flex sizing needs an
+   explicit intrinsic size, not just a ratio, to resolve a max-height-only
+   constraint. Confirmed via a fresh, cache-free browser context - this
+   had nothing to do with deployment or caching, it was broken from the
+   moment Phase 63 shipped. Fixed by adding `width`/`height` attributes
+   matching each file's `viewBox` to all nine SVGs in
+   `myapp/static/assets/img/brand/` plus the two derived files actually
+   referenced by the app (`logo.svg`, `logo-mono-white.svg`) - purely
+   additive metadata, confirmed byte-for-byte identical rasterized
+   output before/after.
+2. **A real, separate, latent bug that would have hidden every future
+   CSS/asset change too.** The PWA service worker (`serviceworker.js`)
+   caches CSS/logo/pages with a cache-first strategy under a cache name
+   keyed off a hardcoded `VERSION = "v2.0.0"` constant that nobody had
+   ever touched or bumped. Browsers only re-run a service worker's
+   install/activate cycle (which is what busts old caches) when the
+   worker script's own bytes change - since this file is never edited by
+   feature work, already-installed clients would silently keep serving
+   whatever CSS/logo/pages were cached from their very first visit,
+   forever, regardless of how many times the app gets redeployed. Fixed
+   at the root: `serviceworker.js`'s `VERSION` is now the placeholder
+   `__APP_VERSION__`, interpolated at request time (in a new
+   `myapp.views.service_worker` view, wired ahead of django-pwa's own
+   route in `myproject/urls.py`, mirroring the existing `offline/`
+   override) with `settings.VERSION` - the same value CI already bumps
+   on every merge to main. Every future deploy now automatically busts
+   PWA caches for returning users; no more manual version bumps, and
+   this bug class can't recur.
+
+Also trimmed several of the longest paragraph-style help texts across
+the app (Site Settings' intro, the OCR upload hints on create/edit item,
+the Google Wallet import note, the offline page, and the logo.dev/
+upstream-sync notes on Site Settings) down to one concise sentence each
+- same information, without reading as a wall of text.
 
 ## New environment variables
 

@@ -81,6 +81,20 @@ def offline(request):
     return render(request, 'offline.html')
 
 @require_GET
+def service_worker(request):
+    """
+    Overrides django-pwa's serviceworker view, which serves the file
+    byte-for-byte with no templating. Interpolating settings.VERSION here
+    ties the SW's cache name to the app version that CI already bumps on
+    every merge, so a stale cache-first install always detects a changed
+    script and rebuilds its caches on the next deploy instead of serving
+    old CSS/logo/pages forever.
+    """
+    with open(settings.PWA_SERVICE_WORKER_PATH) as f:
+        content = f.read().replace('__APP_VERSION__', settings.VERSION)
+    return HttpResponse(content, content_type='application/javascript')
+
+@require_GET
 def ping(request):
     return HttpResponse('', status=204)
 
