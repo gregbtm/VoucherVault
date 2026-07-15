@@ -19,9 +19,9 @@ accounts for) don't need a Google Cloud account, don't need to be
 The one thing to know up front: a brand-new Google Wallet Issuer account
 starts in **demo mode**, which only lets you issue passes to Google
 accounts you've explicitly listed (see the "Demo mode" section further
-down) — for a personal/family NAS deployment like this fork is designed
-for, that's usually all you need, and you can skip the "request publishing
-access" step entirely.
+down) — for a small-scale self-hosted deployment (a household, a team, a
+club), that's usually all you need, and you can skip the "request
+publishing access" step entirely.
 
 ## What you'll need to get
 
@@ -81,7 +81,7 @@ This is what lets the JSON key from Step 2 actually create passes under
 your Issuer ID — without this step, VoucherVault's requests will be
 rejected even with a valid key.
 
-## Demo mode — the part that matters for personal use
+## Demo mode — the part that matters for small-scale deployments
 
 Every new Issuer account starts in demo mode: you can create and issue
 passes, but **only** to Google accounts that are either the Admin/Developer

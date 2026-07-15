@@ -86,8 +86,8 @@ from the public internet - GitHub Actions runs on GitHub's own cloud
 infrastructure and cannot reach an address that only resolves on your
 home network. If your Portainer instance isn't exposed at all, skip this
 step and stick to the in-app button, or trigger the webhook by hand /
-from your own network (e.g. a cron job on the NAS itself, or a phone
-shortcut on your home Wi-Fi).
+from your own network (e.g. a cron job on the Docker host itself, or a
+phone shortcut on your home Wi-Fi).
 
 If you do want this:
 

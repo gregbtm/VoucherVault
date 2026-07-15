@@ -61,13 +61,13 @@ route it through your reverse proxy).
 The server speaks MCP over Streamable HTTP at:
 
 ```
-http://<your-nas-host>:8100/mcp
+http://<your-docker-host>:8100/mcp
 ```
 
 For Claude Code, add it with:
 
 ```bash
-claude mcp add --transport http vouchervault http://<your-nas-host>:8100/mcp
+claude mcp add --transport http vouchervault http://<your-docker-host>:8100/mcp
 ```
 
 For Claude Desktop, add an entry to your MCP config pointing at that same
