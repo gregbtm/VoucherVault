@@ -3287,6 +3287,34 @@ myapp myproject -ll` exits 0 with "No issues identified"; `semgrep scan
 Manually exercised the new swap button in both create-item and edit-item
 forms in light and dark mode.
 
+## Phase 59 — Duplicate-code detection missed case/whitespace differences
+
+Reported live: adding a second gift card with what the user was certain
+was the exact same redeem code as an existing active item didn't trigger
+the "You already have this" warning built in Phase 51.
+
+`check_duplicate_code` (`myapp/views.py`) compared codes with a plain
+`redeem_code=code` exact-string filter — case-sensitive on both SQLite
+and Postgres. A code typed by hand and the same code read back by an AI
+OCR scan (or two separate scans of the same physical card) can easily
+come back with different casing despite being identical to a human, and
+an exact match silently misses that — no error, just no warning, which
+is indistinguishable from "genuinely not a duplicate" from the user's
+side.
+
+Now normalizes both sides before comparing: `Item.objects.annotate(
+redeem_code_normalized=Lower(Trim('redeem_code')))` filtered against
+`code.lower()`, so a case difference (or stray leading/trailing
+whitespace on either side) no longer defeats the match. Still a single
+query, no schema change, and the used/archived/other-user exclusions
+from Phase 51 are unchanged — this only widens what counts as "the same
+code," not which items are eligible to be flagged.
+
+### Tests
+
+2 new tests: matches regardless of case, matches despite whitespace
+around the *stored* code. Full suite green.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

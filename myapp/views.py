@@ -42,7 +42,7 @@ from imports.exporters.pkpass import generate_pkpass, pkpass_enabled
 from notify.tasks import notify_balance_changed, notify_item_archived, notify_item_created, notify_item_shared, notify_item_used
 from ocr.backends import ocr_enabled
 from django.db.models import Count, Sum, Q
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, Lower, Trim
 from django.db.models import Value
 from django.utils.text import get_valid_filename
 
@@ -574,9 +574,15 @@ def check_duplicate_code(request):
     if not code:
         return JsonResponse({'duplicate': False})
 
-    items = Item.objects.filter(
+    # Case/whitespace-normalized comparison - a code typed by hand and one
+    # OCR-scanned off the same physical card can legitimately come back
+    # with different casing (or stray whitespace) despite being the exact
+    # same code, and an exact-string match would silently miss that.
+    items = Item.objects.annotate(
+        redeem_code_normalized=Lower(Trim('redeem_code')),
+    ).filter(
         Q(user=request.user) | Q(wallet__shared_with=request.user),
-        redeem_code=code, is_used=False, is_archived=False,
+        redeem_code_normalized=code.lower(), is_used=False, is_archived=False,
     ).distinct()
     exclude_id = request.GET.get('exclude', '')
     if exclude_id:
