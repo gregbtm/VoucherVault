@@ -183,6 +183,33 @@ class ClaudeBackendTests(TestCase):
         mock_client.messages.create.assert_called_once()
 
     @patch('ocr.backends.claude_backend.anthropic.Anthropic')
+    def test_extract_requests_zero_temperature(self, mock_anthropic_cls):
+        """
+        Regression test: a real-world report of the same physical card,
+        scanned twice from the exact same photo, extracting a different
+        redeem code each time - which broke duplicate-code detection since
+        the two "identical" scans genuinely produced different strings.
+        The API default (1.0) samples; 0 asks for the single most likely
+        reading at each token instead.
+        """
+        set_site_config(anthropic_api_key='test-key')
+        mock_client = MagicMock()
+        mock_block = MagicMock(
+            type='text',
+            text='{"code": null, "code_type": null, "name": null, "issuer": null, '
+                 '"expiry_date": null, "pin": null, "value": null, "currency": null, '
+                 '"card_number": null, "confidence": 0.0}',
+        )
+        mock_client.messages.create.return_value = MagicMock(content=[mock_block])
+        mock_anthropic_cls.return_value = mock_client
+
+        backend = ClaudeOCRBackend()
+        backend.extract(b'fake-bytes', 'image/jpeg')
+
+        _, kwargs = mock_client.messages.create.call_args
+        self.assertEqual(kwargs.get('temperature'), 0)
+
+    @patch('ocr.backends.claude_backend.anthropic.Anthropic')
     def test_extract_strips_markdown_fence_before_parsing(self, mock_anthropic_cls):
         """
         Claude generally obeys "respond with ONLY JSON", but this backend
@@ -433,6 +460,30 @@ class OpenAIBackendTests(TestCase):
 
         _, kwargs = mock_client.chat.completions.create.call_args
         self.assertEqual(kwargs.get('response_format'), {'type': 'json_object'})
+
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_extract_requests_zero_temperature(self, mock_openai_cls):
+        """
+        Regression test: a real-world report of the same physical card,
+        scanned twice from the exact same photo, extracting a different
+        redeem code each time - which broke duplicate-code detection since
+        the two "identical" scans genuinely produced different strings.
+        The API default (1.0) samples; 0 asks for the single most likely
+        reading at each token instead.
+        """
+        set_site_config(openai_api_key='test-key')
+        mock_client = MagicMock()
+        mock_message = MagicMock(content='{"code": null, "code_type": null, "name": null, "issuer": null, '
+                                          '"expiry_date": null, "pin": null, "value": null, "currency": null, '
+                                          '"card_number": null, "confidence": 0.0}')
+        mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
+        mock_openai_cls.return_value = mock_client
+
+        backend = OpenAIOCRBackend()
+        backend.extract(b'fake-bytes', 'image/jpeg')
+
+        _, kwargs = mock_client.chat.completions.create.call_args
+        self.assertEqual(kwargs.get('temperature'), 0)
 
     @patch('ocr.backends.openai_backend.OpenAI')
     def test_extract_strips_markdown_fence_before_parsing(self, mock_openai_cls):

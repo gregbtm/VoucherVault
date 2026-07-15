@@ -3315,6 +3315,45 @@ code," not which items are eligible to be flagged.
 2 new tests: matches regardless of case, matches despite whitespace
 around the *stored* code. Full suite green.
 
+## Phase 60 — OCR non-determinism: same photo, different code, no duplicate warning
+
+Immediate follow-up to Phase 59: the user re-tested with the exact same
+physical card and photo and still saw no duplicate warning, despite (in
+their words) the two entries being identical. That ruled out Phase 59's
+case/whitespace theory - the actual root cause was one level up.
+
+Neither vision OCR backend (`ocr/backends/claude_backend.py`,
+`ocr/backends/openai_backend.py`) set a `temperature` on its API call, so
+both defaulted to the provider's standard sampling temperature (1.0 for
+both Anthropic and OpenAI) - fine for open-ended, creative generation,
+wrong for reading an exact string off a photo. Re-uploading the *same*
+image bytes to the *same* model can still sample a different token at an
+ambiguous character (an "S" that could plausibly continue several ways,
+a run of similar-looking glyphs in a dense alphanumeric code), so two
+"identical" scans of one card can legitimately extract two different
+strings. This is invisible on cards with a real barcode (the client-side
+decode always wins over the AI's text guess - see Phase 46), but this
+specific card is `code_type: none` ("No Barcode") with nothing to
+cross-check the OCR read against, so a one-character sampling drift went
+straight through as the saved code, and no amount of string-normalization
+in `check_duplicate_code` (Phase 59) can catch two codes that are
+genuinely different strings.
+
+Fixed by adding `temperature=0` to both backends' API calls - asks the
+model for the single most likely token at each step instead of sampling,
+which is the standard fix for analytical/extraction tasks as opposed to
+creative ones. Doesn't guarantee bit-for-bit determinism (both providers'
+docs note temperature 0 reduces but doesn't fully eliminate variance at
+their infrastructure level), but removes the actual variable that was
+deliberately introducing randomness into an exact-text-reading task.
+
+### Tests
+
+2 new tests (one per backend) asserting `temperature=0` is actually sent
+on the API call, mirroring the existing `response_format` regression test
+this bug class was already being guarded against on the OpenAI side.
+Full suite green.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

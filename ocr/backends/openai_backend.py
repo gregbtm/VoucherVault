@@ -110,6 +110,14 @@ class OpenAIOCRBackend(OCRBackend):
             # failing json.loads() below and looking identical to the model
             # genuinely finding nothing on the card.
             response_format={'type': 'json_object'},
+            # Reading an exact code off a photo is an analytical task, not
+            # a creative one - the API default (1.0) samples enough that
+            # re-scanning the same image can misread a character
+            # differently each time, which broke duplicate-code detection
+            # for a "no barcode" card with no independent decode to check
+            # the OCR read against. 0 asks for the single most likely
+            # token at each step instead.
+            temperature=0,
             messages=[{
                 'role': 'user',
                 'content': [
