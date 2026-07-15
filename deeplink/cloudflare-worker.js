@@ -499,7 +499,7 @@ export default {
 
     <div class="header">
       <div class="logo-wrap">
-        <img src="https://raw.githubusercontent.com/l4rm4nd/VoucherVault/refs/heads/main/myapp/static/assets/img/logo.svg" alt="" />
+        <img src="https://raw.githubusercontent.com/gregbtm/VoucherVault/refs/heads/main/myapp/static/assets/img/logo.svg" alt="" />
       </div>
       <h1>VoucherVault Import</h1>
       <p>Deep-link importer for self-hosted instances</p>
@@ -593,7 +593,7 @@ export default {
     </div>
 
     <div class="footer">
-      Powered by <a href="https://github.com/l4rm4nd/VoucherVault" target="_blank" rel="noopener">VoucherVault</a>
+      Powered by <a href="https://github.com/gregbtm/VoucherVault" target="_blank" rel="noopener">VoucherVault Plus+</a>
       &mdash; open-source self-hosted voucher manager
     </div>
   </div>

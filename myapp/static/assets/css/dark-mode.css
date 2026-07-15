@@ -260,6 +260,18 @@ body.dark-mode .logo span {
   color: #e0e6eb;
 }
 
+.logo-dark {
+  display: none;
+}
+
+body.dark-mode .logo-light {
+  display: none;
+}
+
+body.dark-mode .logo-dark {
+  display: inline-block;
+}
+
 body.dark-mode .footer .copyright {
   text-align: center;
   color: #012970;
