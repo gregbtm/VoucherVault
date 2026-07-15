@@ -97,6 +97,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 64 — Refresh the README screenshots for the new logo](#phase-64--refresh-the-readme-screenshots-for-the-new-logo)
 - [Phase 65 — Fix the logo not showing on the live site + trim verbose copy](#phase-65--fix-the-logo-not-showing-on-the-live-site--trim-verbose-copy)
 - [Phase 66 — Full GitHub-facing documentation review](#phase-66--full-github-facing-documentation-review)
+- [Phase 67 — Automate wiki updates via a sync workflow](#phase-67--automate-wiki-updates-via-a-sync-workflow)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -3664,11 +3665,49 @@ left as-is - each already stays scoped to its actual job (a task-focused
 how-to, or a factual technical changelog) without the tone problems
 found in the README and wiki.
 
-**Known limitation:** this session's GitHub access doesn't include wiki
-write permission (`git push` to the wiki's own repo returns a 403, even
-though the same session pushes to the main repo without issue) - the
-corrected wiki page content had to be handed off for manual paste-in
-rather than pushed directly.
+**Known limitation, resolved in Phase 67:** this session's GitHub access
+doesn't include wiki write permission (`git push` to the wiki's own repo
+returns a 403, even though the same session pushes to the main repo
+without issue) - the corrected wiki page content had to be handed off
+for manual paste-in rather than pushed directly. See Phase 67 for the
+permanent fix.
+
+## Phase 67 — Automate wiki updates via a sync workflow
+
+Phase 66 hit a hard wall: this environment's GitHub access is scoped to
+the main repository only, and a GitHub wiki is a separate git repo
+(`owner/repo.wiki.git`) that needs its own authorization - confirmed two
+ways, both denied identically: a direct `git push` to the wiki repo
+returned a 403 with `"Not authorized to access repository
+gregbtm/vouchervault.wiki"`, and attempting to add the wiki as its own
+tracked repository hit the same authorization check. Not a transient
+failure or a git configuration issue - a real permission boundary with
+no client-side workaround.
+
+The actual fix doesn't route around the permission boundary - it moves
+the wiki out of the one place this session's credentials can't reach,
+into the one place they always could: this repository. Added a `wiki/`
+directory as the new source of truth for wiki content (currently the
+same two pages: the wiki home page and the New Features tour, both
+already rewritten and de-duplicated against the README in Phase 66),
+plus `.github/workflows/sync-wiki.yml`, which clones the wiki repo and
+mirrors `wiki/`'s contents into it (`rsync --delete`, so a page removed
+from `wiki/` is removed from the live wiki too) on every push to `main`
+that touches that directory.
+
+This needed one thing no session's GitHub App permissions can grant:
+GitHub's own auto-generated `GITHUB_TOKEN` used by Actions runners
+cannot push to a repository's wiki, full stop, regardless of the
+workflow's declared `permissions:` block - only a Personal Access Token
+can. So the workflow reads a `WIKI_DEPLOY_TOKEN` repository secret (a
+classic PAT with the `repo` scope) instead - a one-time setup only the
+repo owner can do (Settings -> Secrets and variables -> Actions), and
+the very last manual step wiki edits should ever need again. Future
+wiki changes are now an ordinary pull request against `wiki/`, reviewed
+and merged exactly like every other doc change in this fork - no more
+separate, easy-to-forget, un-diffable edits through the wiki's own web
+UI, which is likely exactly how it drifted to "twenty-two rounds" while
+the rest of the fork moved on to sixty-five in the first place.
 
 ## New environment variables
 
