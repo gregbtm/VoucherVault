@@ -93,6 +93,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 60 — OCR non-determinism: same photo, different code, no duplicate warning](#phase-60--ocr-non-determinism-same-photo-different-code-no-duplicate-warning)
 - [Phase 61 — Belt-and-braces duplicate detection: five layers, not one](#phase-61--belt-and-braces-duplicate-detection-five-layers-not-one)
 - [Phase 62 — Refocus the repo on this fork, not upstream's own promotion](#phase-62--refocus-the-repo-on-this-fork-not-upstreams-own-promotion)
+- [Phase 63 — New logo, wired in everywhere](#phase-63--new-logo-wired-in-everywhere)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -3482,6 +3483,53 @@ intro both still said "seventeen"/"forty-one rounds", years out of date;
 and `FORK_CHANGES.md`'s table of contents was missing entries for Phases
 42 through 61 entirely (a `git log`-style gap from whenever it was last
 hand-updated) - added all of them.
+
+## Phase 63 — New logo, wired in everywhere
+
+Replaced the original placeholder ticket-icon logo with a custom mark
+designed for this fork: five bars of ascending/descending height reading
+as a "V" (an abstracted barcode, nodding to redeem codes), with one bar
+in a warm gold accent to signal "Plus+" against the indigo brand color
+already used throughout the UI (`PWA_APP_THEME_COLOR`).
+
+- Added the full source package to `myapp/static/assets/img/brand/`
+  (color mark, mono-white, mono-black, favicon, light/dark app-icon,
+  and light/dark lockups as SVGs) with a README documenting color
+  tokens, cropping/usage rules, and exactly which derived asset each
+  source file produces.
+- Regenerated every derived asset the app actually serves from those
+  sources via `cairosvg`: `logo.svg`, `logo.png`, `favicon.ico`
+  (multi-size 16/32/48), `apple-icon-180.png`, `apple-touch-icon.png`,
+  and all four PWA manifest icons (192/512, `any` and `maskable`
+  variants - the maskable pair strip the mark's corner rounding to a
+  full-bleed square, since the OS applies its own mask shape rather
+  than expecting a pre-rounded icon).
+- Fixed a latent bug found in the process: `apple-touch-icon.png` was
+  1162x1096 (a stray copy of the full unrounded logo) instead of a
+  proper 180x180 touch icon - now correct as a side effect of
+  regenerating everything from the new source at the right sizes.
+- Wired dark-mode awareness into the places that need it: the app
+  header (`base.html`) now swaps between the full-color mark and the
+  mono-white mark via a `.logo-light`/`.logo-dark` CSS toggle keyed off
+  the existing `body.dark-mode` class (`dark-mode.css`), matching the
+  pattern already used for other dark-mode color overrides. The login
+  and post-logout pages have a fixed dark card background regardless of
+  the app's theme toggle, so those went straight to the mono-white mark
+  for guaranteed contrast rather than the toggle.
+- Verified all three states live via a seeded dev server + Playwright
+  screenshots: login page (mono-white on dark), dashboard header in
+  light mode (full-color), dashboard header in dark mode (swapped to
+  mono-white).
+- While verifying, noticed the app footer's "Developed by LRVT" credit
+  (linking to the upstream maintainer's GitHub profile, on every page of
+  the running app) had been missed by Phase 62's GitHub-pages-only pass.
+  Same fix applied here: "Developed by" now credits this fork's own
+  maintainer, with a small muted "Based on VoucherVault by LRVT" line
+  underneath instead of a prominent upstream link - same brief-attribution
+  approach as the README, still a real link, just not top billing.
+  "Designed by BootstrapMade" was left untouched, since that credit is a
+  license condition of the underlying free admin-panel template,
+  unrelated to the upstream fork relationship.
 
 ## New environment variables
 
