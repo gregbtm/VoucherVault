@@ -2202,6 +2202,18 @@ class CheckDuplicateCodeTests(TestCase):
         self.assertEqual(payload['item_name'], 'Existing Card')
         self.assertEqual(payload['item_url'], reverse('view_item', kwargs={'item_uuid': item.id}))
 
+    def test_matches_regardless_of_case(self):
+        # A code typed by hand and one OCR-scanned off the same physical
+        # card can come back with different casing despite being identical.
+        make_item(self.user, redeem_code='DUP123')
+        response = self.client.get(reverse('check_duplicate_code'), {'code': 'dup123'})
+        self.assertTrue(response.json()['duplicate'])
+
+    def test_matches_despite_stray_whitespace_on_the_stored_code(self):
+        make_item(self.user, redeem_code=' DUP123 ')
+        response = self.client.get(reverse('check_duplicate_code'), {'code': 'DUP123'})
+        self.assertTrue(response.json()['duplicate'])
+
     def test_ignores_used_items(self):
         make_item(self.user, redeem_code='DUP123', is_used=True)
         response = self.client.get(reverse('check_duplicate_code'), {'code': 'DUP123'})
