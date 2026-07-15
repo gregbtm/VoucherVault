@@ -94,6 +94,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 61 — Belt-and-braces duplicate detection: five layers, not one](#phase-61--belt-and-braces-duplicate-detection-five-layers-not-one)
 - [Phase 62 — Refocus the repo on this fork, not upstream's own promotion](#phase-62--refocus-the-repo-on-this-fork-not-upstreams-own-promotion)
 - [Phase 63 — New logo, wired in everywhere](#phase-63--new-logo-wired-in-everywhere)
+- [Phase 64 — Refresh the README screenshots for the new logo](#phase-64--refresh-the-readme-screenshots-for-the-new-logo)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -3530,6 +3531,24 @@ already used throughout the UI (`PWA_APP_THEME_COLOR`).
   "Designed by BootstrapMade" was left untouched, since that credit is a
   license condition of the underlying free admin-panel template,
   unrelated to the upstream fork relationship.
+
+## Phase 64 — Refresh the README screenshots for the new logo
+
+The nine screenshots embedded in the README's "Screenshots" section
+(`screenshots/*.png`) were all captured before Phase 63's logo change, so
+every one of them still showed the old placeholder ticket-icon logo and
+the pre-Phase-63 footer credits in the header/footer of every image -
+inconsistent with the new SVG logo shown at the very top of the same
+README.
+
+Reseeded the demo dataset, drove the app end to end with Playwright
+against a fresh build of `main`, and recaptured all nine: Dashboard,
+Inventory with a tag filter active, Inventory bulk-actions/select mode,
+Item Details, the true-black OLED dark theme, Notification Rules,
+Import/Export, Wallets, and the Sharing Center. Each now shows the new
+mark (full-color on light surfaces, mono-white on the OLED dark theme)
+and the corrected "Developed by Greg / Based on VoucherVault by LRVT"
+footer credits from Phase 63.
 
 ## New environment variables
 
