@@ -18,6 +18,7 @@ const resetSelectionBtn = document.getElementById('resetSelectionBtn');
 const cropPreviewSection = document.getElementById('cropPreviewSection');
 const cropPreviewCanvas = document.getElementById('cropPreviewCanvas');
 const attachFileField = document.getElementById('file');
+const duplicateImageWarning = document.getElementById('duplicate-image-warning');
 
 // Whatever photo was used for this barcode scan becomes the item's
 // attached file too, unless one is already set (edit-item.html marks
@@ -29,6 +30,56 @@ function attachScannedFileIfEmpty(file) {
     const dt = new DataTransfer();
     dt.items.add(file);
     attachFileField.files = dt.files;
+    // Assigning .files programmatically doesn't fire a native 'change'
+    // event, unlike a real user file-picker interaction - call directly.
+    checkDuplicateImage(file);
+}
+
+// Belt-and-braces companion to the redeem-code duplicate check: warns
+// when the photo itself looks like one already attached to an active
+// item, independent of what the OCR text extraction reads off it - the
+// same physical card scanned twice can genuinely produce two different
+// codes if a character gets misread (see the OCR-non-determinism fix in
+// FORK_CHANGES.md), which a text-only comparison can never catch. Wired
+// to fire from every path that can populate #file: the AI-scan and File
+// Scan buttons (via attachScannedFileIfEmpty above) and a direct manual
+// pick (via the change listener below) alike.
+function checkDuplicateImage(file) {
+    if (!duplicateImageWarning || !file) return;
+    const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (!csrfInput) return;
+
+    const baseUrl = attachFileField.dataset.checkDuplicateImageUrl;
+    if (!baseUrl) return;
+
+    const formData = new FormData();
+    formData.append('image', file);
+    const itemId = attachFileField.dataset.itemId;
+    const url = baseUrl + (itemId ? '?exclude=' + encodeURIComponent(itemId) : '');
+
+    fetch(url, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfInput.value },
+        body: formData,
+    })
+        .then(response => response.ok ? response.json() : null)
+        .then(data => {
+            if (data && data.duplicate) {
+                duplicateImageWarning.innerHTML = '<i class="bi bi-exclamation-triangle"></i> This photo looks like one you\'ve already uploaded: ' +
+                    '<a href="' + data.item_url + '" target="_blank">' + data.item_name.replace(/</g, '&lt;') + '</a>';
+                duplicateImageWarning.style.display = '';
+            } else {
+                duplicateImageWarning.style.display = 'none';
+            }
+        })
+        .catch(() => {});
+}
+
+if (attachFileField) {
+    attachFileField.addEventListener('change', function () {
+        const file = this.files?.[0];
+        if (file) checkDuplicateImage(file);
+    });
 }
 
 let videoStream;

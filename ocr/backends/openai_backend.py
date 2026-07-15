@@ -66,9 +66,17 @@ _PROMPT = (
     'array if nothing fits) - never invent brand names as tags, only '
     'general categories. Use null for any other field you cannot '
     'confidently determine, or that is genuinely blank on the card '
-    'itself (e.g. an empty PIN box) - never invent a value. "confidence" '
-    'is your own estimate (0.0-1.0) of how reliable the "code" '
-    'extraction is.'
+    'itself (e.g. an empty PIN box) - never invent a value. Before '
+    'answering, re-read the "code" character by character as a separate '
+    'pass and confirm it against your first read - this is the single '
+    'most important field, since it is what actually redeems the card, '
+    'and a one-character misread (e.g. "O" vs "0", "1" vs "I" vs "l", '
+    '"S" vs "5", "B" vs "8") produces a wrong code that still looks '
+    'plausible. If the two reads disagree, or any character is genuinely '
+    'ambiguous at the image\'s resolution, prefer the reading you are '
+    'more confident in and reflect that uncertainty in "confidence" '
+    'rather than silently picking one. "confidence" is your own estimate '
+    '(0.0-1.0) of how reliable the "code" extraction specifically is.'
 )
 
 

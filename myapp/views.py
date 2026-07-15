@@ -13,7 +13,8 @@ from django.utils.safestring import mark_safe
 from .forms import *
 from .ics_calendar import build_ics_calendar
 from .models import *
-from .utils import generate_code_image_base64, get_fixer_rates, convert_currency
+from .utils import generate_code_image_base64, get_fixer_rates, convert_currency, levenshtein_distance
+from .imagehash import compute_dhash, hamming_distance, DUPLICATE_THRESHOLD
 from django.db.models import Sum
 from django.utils import timezone
 from django.http import Http404, JsonResponse
@@ -589,12 +590,105 @@ def check_duplicate_code(request):
         items = items.exclude(id=exclude_id)
 
     match = items.first()
-    if not match:
+    if match:
+        return JsonResponse({
+            'duplicate': True,
+            'item_name': match.name,
+            'item_url': reverse('view_item', kwargs={'item_uuid': match.id}),
+        })
+
+    # No exact match - a softer "possible duplicate" nudge for a code
+    # that's suspiciously close to one already in the vault (edit
+    # distance <=2), the kind of gap an exact/normalized match can't
+    # catch: two scans of the same physical card that land on genuinely
+    # different strings because of a single misread character. Distance
+    # threshold is intentionally tight (2, not more) and length-gated to
+    # avoid flagging two legitimately different short/similar codes.
+    candidates = Item.objects.filter(
+        Q(user=request.user) | Q(wallet__shared_with=request.user),
+        is_used=False, is_archived=False,
+    ).distinct()
+    if exclude_id:
+        candidates = candidates.exclude(id=exclude_id)
+
+    code_lower = code.lower()
+    near_match = None
+    near_distance = None
+    for candidate in candidates.only('id', 'name', 'redeem_code'):
+        candidate_code = candidate.redeem_code.strip().lower()
+        if abs(len(candidate_code) - len(code_lower)) > 2:
+            continue
+        distance = levenshtein_distance(code_lower, candidate_code)
+        if distance and distance <= 2 and (near_distance is None or distance < near_distance):
+            near_match, near_distance = candidate, distance
+
+    if near_match:
+        return JsonResponse({
+            'duplicate': False,
+            'near_duplicate': True,
+            'item_name': near_match.name,
+            'item_url': reverse('view_item', kwargs={'item_uuid': near_match.id}),
+        })
+    return JsonResponse({'duplicate': False})
+
+
+@require_POST
+@login_required
+def check_duplicate_image(request):
+    """
+    AJAX helper mirroring check_duplicate_code, but for the photo itself
+    rather than the extracted text: warns when the uploaded image looks
+    like one already attached to an active item the user has access to.
+    Catches the case an OCR-text comparison structurally can't - the same
+    physical card re-scanned from the same photo, where the AI extraction
+    itself misread a character and produced a genuinely different code
+    each time (see FORK_CHANGES.md's OCR non-determinism fix).
+    """
+    upload = request.FILES.get('image')
+    if not upload:
+        return JsonResponse({'duplicate': False})
+
+    new_hash = compute_dhash(upload.read())
+    if not new_hash:
+        return JsonResponse({'duplicate': False})
+
+    items = Item.objects.filter(
+        Q(user=request.user) | Q(wallet__shared_with=request.user),
+        is_used=False, is_archived=False,
+    ).exclude(file='').distinct()
+    exclude_id = request.GET.get('exclude', '')
+    if exclude_id:
+        items = items.exclude(id=exclude_id)
+
+    best_match = None
+    best_distance = None
+    for item in items:
+        item_hash = item.image_phash
+        if not item_hash:
+            # Backfill lazily rather than via a bulk migration - a
+            # heavy one-time read-every-file-in-storage pass is more
+            # failure-prone than computing it the first time it's
+            # actually needed for a comparison, and it's a no-op on
+            # every subsequent check once every active item has one.
+            try:
+                item.file.open('rb')
+                item_hash = compute_dhash(item.file.read())
+                item.file.close()
+            except Exception:
+                continue
+            if item_hash:
+                item.image_phash = item_hash
+                item.save(update_fields=['image_phash'])
+        distance = hamming_distance(new_hash, item_hash)
+        if distance <= DUPLICATE_THRESHOLD and (best_distance is None or distance < best_distance):
+            best_match, best_distance = item, distance
+
+    if not best_match:
         return JsonResponse({'duplicate': False})
     return JsonResponse({
         'duplicate': True,
-        'item_name': match.name,
-        'item_url': reverse('view_item', kwargs={'item_uuid': match.id}),
+        'item_name': best_match.name,
+        'item_url': reverse('view_item', kwargs={'item_uuid': best_match.id}),
     })
 
 @require_GET

@@ -58,6 +58,32 @@ def fetch_oidc_discovery(discovery_url):
         return {}
 
 
+def levenshtein_distance(a: str, b: str) -> int:
+    """
+    Classic edit-distance DP, no external dependency - redeem codes are
+    short (tens of characters), so an O(len(a)*len(b)) table is trivial
+    cost. Used to flag a "possible OCR misread of an existing code"
+    duplicate warning that an exact-match comparison can't catch.
+    """
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+
+    previous_row = list(range(len(b) + 1))
+    for i, char_a in enumerate(a, start=1):
+        current_row = [i]
+        for j, char_b in enumerate(b, start=1):
+            insert_cost = current_row[j - 1] + 1
+            delete_cost = previous_row[j] + 1
+            substitute_cost = previous_row[j - 1] + (char_a != char_b)
+            current_row.append(min(insert_cost, delete_cost, substitute_cost))
+        previous_row = current_row
+    return previous_row[-1]
+
+
 def _calculate_ean13_check_digit(code):
     sum_odd = sum(int(code[i]) for i in range(0, 12, 2))
     sum_even = sum(int(code[i]) for i in range(1, 12, 2))
