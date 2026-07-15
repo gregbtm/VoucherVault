@@ -14,6 +14,7 @@
       <a target="_blank" href="https://github.com/gregbtm/VoucherVault/network/members"><img src="https://img.shields.io/github/forks/gregbtm/VoucherVault?style=flat-square&color=4154f1" alt="Forks"></a>
     </p>
     <p>
+      <img src="https://img.shields.io/badge/323%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="323 features and fixes added on top of upstream">
       <img src="https://img.shields.io/badge/PWA-installable-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="Installable PWA">
       <img src="https://img.shields.io/badge/AI--assisted-scanning-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="AI-assisted scanning">
       <img src="https://img.shields.io/badge/REST-API-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="REST API">
@@ -30,10 +31,11 @@
 > multi-user login with OIDC SSO, and Apprise expiry notifications out of
 > the box (see [Features](#-features) for the complete original list).
 >
-> This fork is a strict superset: 65+ rounds of additive features layered
-> on top without touching a line of upstream's own code, from a full REST
-> API and AI-assisted scanning to shared wallets, digital wallet passes,
-> and a rules-based notification engine. See
+> This fork is a strict superset: **68 rounds of work adding 323
+> individual features and fixes** on top of upstream's own image, from a
+> full REST API and AI-assisted scanning to shared wallets, digital
+> wallet passes, and a rules-based notification engine — without
+> touching a line of upstream's own code. See
 > [What's New in This Fork](#-whats-new-in-this-fork) for the complete
 > list, or jump to a [setup guide](#-setup-guides) for a specific
 > integration.
@@ -433,7 +435,11 @@ Feature requests and bug reports are welcome — open an
 
 If this fork has been useful to you, tips are always appreciated:
 
-https://www.paypal.com/donate/?business=MKWLBLPGMVLY4&no_recurring=1&item_name=If+these+new+features+or+additions+have+brightened+your+day+-+feel+free+to+donate.+I+do+this+for+fun+and+anything+helps%21+Thx+%21%21&currency_code=GBP
+<p>
+  <a href="https://www.paypal.com/donate/?business=MKWLBLPGMVLY4&no_recurring=1&item_name=If+these+new+features+or+additions+have+brightened+your+day+-+feel+free+to+donate.+I+do+this+for+fun+and+anything+helps%21+Thx+%21%21&currency_code=GBP" target="_blank">
+    <img src="https://img.shields.io/badge/Donate-PayPal-003087?style=for-the-badge&logo=paypal&logoColor=white" alt="Donate via PayPal">
+  </a>
+</p>
 
 ## 🤖 Repo Statistics
 ![Alt](https://repobeats.axiom.co/api/embed/a8e369506f50bb08a3295b495639d42f7e20d1ba.svg "Repobeats analytics image")
