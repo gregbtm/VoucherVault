@@ -99,6 +99,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 66 — Full GitHub-facing documentation review](#phase-66--full-github-facing-documentation-review)
 - [Phase 67 — Automate wiki updates via a sync workflow](#phase-67--automate-wiki-updates-via-a-sync-workflow)
 - [Phase 68 — README visual pass: quicker to scan, less wall-of-text](#phase-68--readme-visual-pass-quicker-to-scan-less-wall-of-text)
+- [Phase 69 — An honest feature count, and a real donate button](#phase-69--an-honest-feature-count-and-a-real-donate-button)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -3749,6 +3750,23 @@ different visual styles.
 No wording or factual content changed in this pass - Phase 66 already
 covered accuracy and duplication. This one is purely "does the page
 look inviting to scroll through," not "is it correct."
+
+## Phase 69 — An honest feature count, and a real donate button
+
+- **Replaced the "65+ rounds" / "60+ features" approximations with an
+  actual count.** Counted directly from this changelog rather than
+  guessed: `grep -oE "^## Phase [0-9]+"` for the phase total, and a
+  `- ` bullet count over the changelog body (excluding the table of
+  contents and reference tables) for the feature/fix total - **68
+  phases, 323 individual features and fixes** on top of upstream. Both
+  the intro note and a new stat badge in the "at a glance" pill row now
+  show this figure instead of a round number.
+- **The PayPal donate link is now a real button, not a bare URL.** The
+  "About This Fork & Support" section previously linked the raw
+  `paypal.com/donate/?...` query string as plain text; replaced with a
+  `style=for-the-badge` shields.io button (deliberately larger than the
+  status badges above it, so it reads as a call to action rather than
+  another piece of metadata) linking to the same PayPal donation page.
 
 ## New environment variables
 
