@@ -597,7 +597,7 @@ body.dark-mode .error-alert {
               {% trans "Scan with AI" %}
             </div>
             <p style="color: #6c757d; margin-bottom: 0.75rem; font-size: 0.85rem;">
-              {% trans "Upload a photo of a physical card, or a screenshot - an emailed gift card, an app screen, anything showing the code - and we'll try to pre-fill the fields below." %}
+              {% trans "Upload a photo or screenshot of the card and we'll pre-fill the fields below." %}
             </p>
             <input type="file" id="aiScanInput" accept="image/jpeg,image/png,image/webp" class="modern-input">
             <div id="aiScanStatus" style="margin-top: 0.75rem; font-size: 0.85rem;"></div>
@@ -618,7 +618,7 @@ body.dark-mode .error-alert {
             <div id="pkpassImportStatus" style="margin-top: 0.75rem; font-size: 0.85rem;"></div>
             <p style="color: #6c757d; margin-top: 0.75rem; margin-bottom: 0; font-size: 0.8rem;">
               <i class="bi bi-info-circle"></i>
-              {% trans "There's no equivalent import from Google Wallet - Google doesn't let you export or download a saved pass, so there's nothing for an app to import. Google Wallet items are still fully supported for export (see the Google Wallet button on the item detail page)." %}
+              {% trans "Google Wallet doesn't support exporting saved passes, so there's nothing to import - export to Google Wallet is still fully supported." %}
             </p>
           </div>
 

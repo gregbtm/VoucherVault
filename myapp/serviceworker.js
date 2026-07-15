@@ -1,4 +1,4 @@
-const VERSION = "v2.0.0";
+const VERSION = "__APP_VERSION__";
 const CACHE_NAME = `vouchervault-${VERSION}`;
 const RUNTIME_CACHE = `vouchervault-runtime-${VERSION}`;
 const DATA_CACHE = `vouchervault-data-${VERSION}`;
