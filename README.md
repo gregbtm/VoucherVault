@@ -1,15 +1,25 @@
 <div align="center" width="100%">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="myapp/static/assets/img/logo-mono-white.svg">
+      <img width="72" src="myapp/static/assets/img/logo.svg" alt="VoucherVault Plus+ logo">
+    </picture>
     <h1>VoucherVault Plus+</h1>
-    <img width="150px" src="myapp/static/assets/img/logo.svg">
-    <p>Django web application to store and manage vouchers, coupons, loyalty and gift cards digitally</p><p>
-    <a target="_blank" href="https://github.com/PyCQA/bandit"><img src="https://img.shields.io/badge/security-bandit-yellow.svg"/></a>
-    <a target="_blank" href="https://github.com/gregbtm/VoucherVault/blob/main/LICENSE.md"><img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg"/></a><br>
-    <a target="_blank" href="https://GitHub.com/gregbtm/VoucherVault/commits/"><img src="https://img.shields.io/github/last-commit/gregbtm/VoucherVault.svg" /></a>
-    <a target="_blank" href="https://GitHub.com/gregbtm/VoucherVault/issues/"><img src="https://img.shields.io/github/issues/gregbtm/VoucherVault.svg" /></a>
-    <a target="_blank" href="https://github.com/gregbtm/VoucherVault/issues?q=is%3Aissue+is%3Aclosed"><img src="https://img.shields.io/github/issues-closed/gregbtm/VoucherVault.svg" /></a><br>
-    <a target="_blank" href="https://github.com/gregbtm/VoucherVault/stargazers"><img src="https://img.shields.io/github/stars/gregbtm/VoucherVault.svg?style=social&label=Star" /></a>
-    <a target="_blank" href="https://github.com/gregbtm/VoucherVault/network/members"><img src="https://img.shields.io/github/forks/gregbtm/VoucherVault.svg?style=social&label=Fork" /></a>
-    <a target="_blank" href="https://github.com/gregbtm/VoucherVault/watchers"><img src="https://img.shields.io/github/watchers/gregbtm/VoucherVault.svg?style=social&label=Watch" /></a>
+    <p><strong>Store and manage vouchers, coupons, loyalty and gift cards — digitally, privately, on your own server.</strong></p>
+    <p>
+      <a target="_blank" href="https://github.com/gregbtm/VoucherVault/blob/main/LICENSE.md"><img src="https://img.shields.io/badge/license-GPL--3.0-4154f1?style=flat-square" alt="License: GPL-3.0"></a>
+      <a target="_blank" href="https://github.com/PyCQA/bandit"><img src="https://img.shields.io/badge/security-bandit-4154f1?style=flat-square" alt="Security scanned with bandit"></a>
+      <a target="_blank" href="https://github.com/gregbtm/VoucherVault/commits/"><img src="https://img.shields.io/github/last-commit/gregbtm/VoucherVault?style=flat-square&color=4154f1" alt="Last commit"></a>
+      <a target="_blank" href="https://github.com/gregbtm/VoucherVault/issues"><img src="https://img.shields.io/github/issues/gregbtm/VoucherVault?style=flat-square&color=4154f1" alt="Open issues"></a>
+      <a target="_blank" href="https://github.com/gregbtm/VoucherVault/stargazers"><img src="https://img.shields.io/github/stars/gregbtm/VoucherVault?style=flat-square&color=4154f1" alt="Stars"></a>
+      <a target="_blank" href="https://github.com/gregbtm/VoucherVault/network/members"><img src="https://img.shields.io/github/forks/gregbtm/VoucherVault?style=flat-square&color=4154f1" alt="Forks"></a>
+    </p>
+    <p>
+      <img src="https://img.shields.io/badge/PWA-installable-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="Installable PWA">
+      <img src="https://img.shields.io/badge/AI--assisted-scanning-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="AI-assisted scanning">
+      <img src="https://img.shields.io/badge/REST-API-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="REST API">
+      <img src="https://img.shields.io/badge/OIDC-SSO-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="OIDC SSO">
+      <img src="https://img.shields.io/badge/multi--user-✓-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="Multi-user">
+    </p>
 </div>
 
 > [!NOTE]
@@ -63,11 +73,12 @@
 
 Everything below is additive — nothing upstream was rewritten, so this
 fork stays a strict superset and can be rebased against upstream at any
-time. Grouped by theme so it's actually readable; the full phase-by-phase
-technical changelog (root causes, code, tests, commit links) lives in
-[`FORK_CHANGES.md`](FORK_CHANGES.md) if you want the deep dive.
+time. **9 categories, 60+ features** — click a section to expand it; the
+full phase-by-phase technical changelog (root causes, code, tests,
+commit links) lives in [`FORK_CHANGES.md`](FORK_CHANGES.md) if you want
+the deep dive.
 
-<details open>
+<details>
 <summary><strong>🔌 API, Integrations & AI Assistants</strong></summary>
 
 - **Full REST API** — token-authenticated CRUD for items, wallets, tags, and transactions, every endpoint scoped to the authenticated user. Interactive Swagger/OpenAPI docs live at `/api/v1/docs/` — browse and try every endpoint from your browser, no Postman required. Great for a Home Assistant sensor, a personal dashboard, or your own automation.
@@ -78,7 +89,7 @@ technical changelog (root causes, code, tests, commit links) lives in
 
 </details>
 
-<details open>
+<details>
 <summary><strong>🤖 AI-Assisted "Scan with AI" & Smart Barcode Detection</strong></summary>
 
 Stop retyping redeem codes off a photo. Upload a picture of a physical
@@ -294,6 +305,9 @@ and are stored in the database rather than the container's environment.
 The env vars below are what a fresh install starts from; once you've
 edited a setting in Site Settings, that's the value that's actually used.
 
+<details>
+<summary><strong>Show all environment variables</strong> (55 total — domain/database/session/SSO plus every app-level default)</summary>
+
 | Variable                         | Description                                                                                                     | Default                    | Optional/Mandatory  |
 |----------------------------------|-----------------------------------------------------------------------------------------------------------------|----------------------------|---------------------|
 | `DOMAIN`                         | Your Fully Qualified Domain Name (FQDN) or IP address. Used to define `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` for the Django framework. May define multiple ones by using a comma as delimiter. | `localhost` | Mandatory           |
@@ -351,6 +365,8 @@ edited a setting in Site Settings, that's the value that's actually used.
 | `UPDATE_CHECK_REPO`               | `owner/repo` to check for releases. Only change this if you're running a fork of this fork.                    | `gregbtm/VoucherVault`     | Optional            |
 | `VERSION`                         | Overrides the version shown in the footer. Normally unset - the `VERSION` file baked into the image is the source of truth. | `<VERSION file>` | Optional |
 | `PORTAINER_WEBHOOK_URL`           | Your Portainer stack's redeploy webhook URL. Adds a "Redeploy now" button to the update banner for superusers, and enables the companion GitHub Action to auto-redeploy on every push to `main`. See [`docs/AUTO_DEPLOY.md`](docs/AUTO_DEPLOY.md). | `None` | Optional |
+
+</details>
 
 You can find detailed instructions on how to setup OIDC SSO in the [wiki](https://github.com/l4rm4nd/VoucherVault/wiki/02-%E2%80%90-Authentication#oidc-authentication).
 

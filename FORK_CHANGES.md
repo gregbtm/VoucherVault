@@ -98,6 +98,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 65 — Fix the logo not showing on the live site + trim verbose copy](#phase-65--fix-the-logo-not-showing-on-the-live-site--trim-verbose-copy)
 - [Phase 66 — Full GitHub-facing documentation review](#phase-66--full-github-facing-documentation-review)
 - [Phase 67 — Automate wiki updates via a sync workflow](#phase-67--automate-wiki-updates-via-a-sync-workflow)
+- [Phase 68 — README visual pass: quicker to scan, less wall-of-text](#phase-68--readme-visual-pass-quicker-to-scan-less-wall-of-text)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -3708,6 +3709,46 @@ and merged exactly like every other doc change in this fork - no more
 separate, easy-to-forget, un-diffable edits through the wiki's own web
 UI, which is likely exactly how it drifted to "twenty-two rounds" while
 the rest of the fork moved on to sixty-five in the first place.
+
+## Phase 68 — README visual pass: quicker to scan, less wall-of-text
+
+A follow-up to Phase 66's content review, this time on presentation
+rather than wording - three things: the README read as too many
+features at once, several blocks of text felt dense, and the badge row
+looked dated and scattered across three separate lines with three
+different visual styles.
+
+- **Dark/light-responsive logo** - the header now uses a `<picture>`
+  element that swaps to the mono-white mark in a dark GitHub theme and
+  the full-colour mark in light, instead of one fixed image that has to
+  compromise between the two.
+- **One cohesive badge row** instead of three mismatched ones - dropped
+  the `style=social` badges (GitHub's own busy button-plus-counter look)
+  in favour of a single flat, brand-coloured (`#4154f1`) style across
+  license, security, last-commit, issues, stars, and forks. Added a
+  second row of small "at a glance" pills (PWA, AI-assisted, REST API,
+  OIDC SSO, multi-user) so a visitor gets the gist in two seconds
+  without reading a word of prose.
+- **"9 categories, 60+ features"** - a one-line count added right above
+  the feature list, both to set expectations and to make the sheer
+  breadth read as a selling point ("comprehensive, browse what you
+  need") rather than as an overwhelming wall of bullets.
+- **All nine feature categories now collapsed by default** - two were
+  previously forced open (`<details open>`), which meant the page
+  showed a large chunk of expanded content immediately on load whether
+  or not that was what the visitor was there for. Collapsed to match
+  the other seven, so the whole section renders as a short, scannable
+  list of headings first.
+- **The 55-row Environment Variables table is now behind a `<details>`
+  toggle** - by far the single largest contributor to the README
+  feeling like a wall of text (previously always fully rendered,
+  pushing everything below it - Notifications, Multi-User Setup,
+  Backups, About - much further down the page). The explanatory text
+  above it stays visible; only the table itself is collapsed.
+
+No wording or factual content changed in this pass - Phase 66 already
+covered accuracy and duplication. This one is purely "does the page
+look inviting to scroll through," not "is it correct."
 
 ## New environment variables
 
