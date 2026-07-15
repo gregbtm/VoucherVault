@@ -1,25 +1,30 @@
 <div align="center" width="100%">
-    <h1>VoucherVault</h1>
+    <h1>VoucherVault Plus+</h1>
     <img width="150px" src="myapp/static/assets/img/logo.svg">
     <p>Django web application to store and manage vouchers, coupons, loyalty and gift cards digitally</p><p>
-    <a target="_blank" href="https://github.com/l4rm4nd"><img src="https://img.shields.io/badge/maintainer-LRVT-orange" /></a>
-    <a target="_blank" href="https://GitHub.com/l4rm4nd/VoucherVault/graphs/contributors/"><img src="https://img.shields.io/github/contributors/l4rm4nd/VoucherVault.svg" /></a>
-    <a target="_blank" href="https://github.com/PyCQA/bandit"><img src="https://img.shields.io/badge/security-bandit-yellow.svg"/></a><br>
-    <a target="_blank" href="https://GitHub.com/l4rm4nd/VoucherVault/commits/"><img src="https://img.shields.io/github/last-commit/l4rm4nd/VoucherVault.svg" /></a>
-    <a target="_blank" href="https://GitHub.com/l4rm4nd/VoucherVault/issues/"><img src="https://img.shields.io/github/issues/l4rm4nd/VoucherVault.svg" /></a>
-    <a target="_blank" href="https://github.com/l4rm4nd/VoucherVault/issues?q=is%3Aissue+is%3Aclosed"><img src="https://img.shields.io/github/issues-closed/l4rm4nd/VoucherVault.svg" /></a><br>
-        <a target="_blank" href="https://github.com/l4rm4nd/VoucherVault/stargazers"><img src="https://img.shields.io/github/stars/l4rm4nd/VoucherVault.svg?style=social&label=Star" /></a>
-    <a target="_blank" href="https://github.com/l4rm4nd/VoucherVault/network/members"><img src="https://img.shields.io/github/forks/l4rm4nd/VoucherVault.svg?style=social&label=Fork" /></a>
-    <a target="_blank" href="https://github.com/l4rm4nd/VoucherVault/watchers"><img src="https://img.shields.io/github/watchers/l4rm4nd/VoucherVault.svg?style=social&label=Watch" /></a><br>
-    <a target="_blank" href="https://hub.docker.com/r/l4rm4nd/vouchervault"><img src="https://badgen.net/badge/icon/l4rm4nd%2Fvouchervault:latest?icon=docker&label" /></a><br><p>
-    <a href="https://www.buymeacoffee.com/LRVT" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" style="height: 41px !important;width: 174px !important;box-shadow: 0px 3px 2px 0px rgba(190, 190, 190, 0.5) !important;-webkit-box-shadow: 0px 3px 2px 0px rgba(190, 190, 190, 0.5) !important;" ></a>
+    <a target="_blank" href="https://github.com/PyCQA/bandit"><img src="https://img.shields.io/badge/security-bandit-yellow.svg"/></a>
+    <a target="_blank" href="https://github.com/gregbtm/VoucherVault/blob/main/LICENSE.md"><img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg"/></a><br>
+    <a target="_blank" href="https://GitHub.com/gregbtm/VoucherVault/commits/"><img src="https://img.shields.io/github/last-commit/gregbtm/VoucherVault.svg" /></a>
+    <a target="_blank" href="https://GitHub.com/gregbtm/VoucherVault/issues/"><img src="https://img.shields.io/github/issues/gregbtm/VoucherVault.svg" /></a>
+    <a target="_blank" href="https://github.com/gregbtm/VoucherVault/issues?q=is%3Aissue+is%3Aclosed"><img src="https://img.shields.io/github/issues-closed/gregbtm/VoucherVault.svg" /></a><br>
+    <a target="_blank" href="https://github.com/gregbtm/VoucherVault/stargazers"><img src="https://img.shields.io/github/stars/gregbtm/VoucherVault.svg?style=social&label=Star" /></a>
+    <a target="_blank" href="https://github.com/gregbtm/VoucherVault/network/members"><img src="https://img.shields.io/github/forks/gregbtm/VoucherVault.svg?style=social&label=Fork" /></a>
+    <a target="_blank" href="https://github.com/gregbtm/VoucherVault/watchers"><img src="https://img.shields.io/github/watchers/gregbtm/VoucherVault.svg?style=social&label=Watch" /></a>
 </div>
 
 > [!NOTE]
-> This is [gregbtm](https://github.com/gregbtm)'s fork of the upstream
-> [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault) project.
-> Forty-one rounds of additive features have been layered on top without
-> touching upstream's own code: a full **REST API**, **Wallets/Tags/Notes**,
+> **VoucherVault Plus+** is [gregbtm](https://github.com/gregbtm)'s fork of
+> [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault), which
+> originally provided the core voucher/coupon/gift-card manager this fork
+> is built on: a mobile-optimized PWA with offline caching, light/dark
+> themes, QR/barcode display and client-side scanning, Apprise expiry
+> notifications, multi-user support with OIDC SSO, and multi-currency/
+> multi-language support (the full original list is under
+> [Features](#-features) below).
+>
+> Everything past that point is this fork's own work - sixty-plus rounds
+> of additive features layered on top without touching upstream's own
+> code: a full **REST API**, **Wallets/Tags/Notes**,
 > a rules-based **notification engine** (ntfy, webhook, Apprise, and native
 > **Web Push**) covering the full item lifecycle, bulk **Import/Export**
 > plus a full-fidelity **zip backup/restore** format, an **Analytics
@@ -148,6 +153,9 @@ organized by theme instead of chronology so it's actually readable.
 - 🔗 Pulls a printed balance-check URL straight off the card if there is one
 - 📝 Suggests type, description, redemption notes, and up to 4 matching tags
 - 🔁 Live **duplicate-code detection** as you scan or type — a friendly warning, never a hard block
+- 🖼️ **Photo-hash duplicate detection** — catches "I scanned this exact card twice" even when OCR reads the code slightly differently each time
+- 🤏 **Fuzzy near-match warnings** for a code that's suspiciously close (but not identical) to one you already have — a likely misread, not a coincidence
+- 🎯 The AI is asked to re-verify its own code read character-by-character before answering, and a low-confidence read (or an easily-confused character like 0/O or 1/I/l) now shows a visible "double-check this" warning
 - 📎 The scanned photo auto-attaches itself as the item's file
 - ✨ Every auto-filled field gets a subtle highlight until you've reviewed it
 - 🐛 Fixed a silent OCR failure mode where a fenced JSON response from gpt-4o-mini was indistinguishable from "couldn't read this at all"
@@ -461,8 +469,10 @@ its backups otherwise sit on the same volume.
 
 ## 💛 About This Fork & Support
 
-All seventeen feature phases (plus several smaller standalone additions) in
-this fork ([`FORK_CHANGES.md`](FORK_CHANGES.md)) were implemented with
+VoucherVault Plus+ is built on top of [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault),
+which provides the original core app (see the note at the top of this
+page for what that covers). All sixty-plus feature phases on top of it
+([`FORK_CHANGES.md`](FORK_CHANGES.md)) were implemented with
 [Claude](https://claude.com/claude-code) — but every plan, feature scope,
 and priority behind them was mine, worked out phase by phase before a line
 of code was written. If there's something you'd like to see added — an
@@ -472,10 +482,6 @@ issue and I'm happy to help scope and build it out.
 If this fork has been useful to you, tips are always appreciated:
 
 https://www.paypal.com/donate/?business=MKWLBLPGMVLY4&no_recurring=1&item_name=If+these+new+features+or+additions+have+brightened+your+day+-+feel+free+to+donate.+I+do+this+for+fun+and+anything+helps%21+Thx+%21%21&currency_code=GBP
-
-And don't forget the original upstream maintainer, whose project this fork is built on:
-
-<a href="https://www.buymeacoffee.com/LRVT" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" style="height: 41px !important;width: 174px !important;" ></a>
 
 ## 🤖 Repo Statistics
 ![Alt](https://repobeats.axiom.co/api/embed/a8e369506f50bb08a3295b495639d42f7e20d1ba.svg "Repobeats analytics image")
