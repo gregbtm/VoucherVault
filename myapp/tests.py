@@ -30,12 +30,13 @@ from .merchant_logos import (
     remember_balance_check_url,
 )
 from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
+from .imagehash import compute_dhash, hamming_distance, DUPLICATE_THRESHOLD
 from .models import AppSettings, Document, Item, ItemPublicShare, MerchantProfile, SiteConfiguration, Tag, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, Wallet
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .test_utils import set_site_config
 from .tasks import check_for_update_task, check_upstream_version_task, fetch_merchant_logo_task
 from .update_check import _is_newer, _parse_version, check_for_update, check_upstream_version
-from .utils import fetch_oidc_discovery, generate_code_image_base64
+from .utils import fetch_oidc_discovery, generate_code_image_base64, levenshtein_distance
 from .views import _integration_status
 
 
@@ -2242,6 +2243,233 @@ class CheckDuplicateCodeTests(TestCase):
         payload = response.json()
         self.assertTrue(payload['duplicate'])
         self.assertEqual(payload['item_url'], reverse('view_item', kwargs={'item_uuid': item.id}))
+
+    def test_near_duplicate_flags_a_one_character_difference(self):
+        # The exact failure mode this exists for: two scans of the same
+        # physical card, one character misread by OCR each time.
+        item = make_item(self.user, name='Existing Card', redeem_code='NABWRSZYCP8J8US')
+        response = self.client.get(reverse('check_duplicate_code'), {'code': 'NABWRSZYCPSJ8US'})
+        payload = response.json()
+        self.assertFalse(payload['duplicate'])
+        self.assertTrue(payload['near_duplicate'])
+        self.assertEqual(payload['item_name'], 'Existing Card')
+        self.assertEqual(payload['item_url'], reverse('view_item', kwargs={'item_uuid': item.id}))
+
+    def test_near_duplicate_does_not_fire_for_very_different_codes(self):
+        make_item(self.user, redeem_code='DUP123')
+        response = self.client.get(reverse('check_duplicate_code'), {'code': 'TOTALLYDIFFERENTCODE'})
+        payload = response.json()
+        self.assertFalse(payload['duplicate'])
+        self.assertNotIn('near_duplicate', payload)
+
+    def test_near_duplicate_prefers_exact_match_when_both_exist(self):
+        exact = make_item(self.user, name='Exact', redeem_code='DUP123')
+        make_item(self.user, name='Close', redeem_code='DUP124')
+        response = self.client.get(reverse('check_duplicate_code'), {'code': 'DUP123'})
+        payload = response.json()
+        self.assertTrue(payload['duplicate'])
+        self.assertEqual(payload['item_url'], reverse('view_item', kwargs={'item_uuid': exact.id}))
+
+    def test_near_duplicate_respects_exclude_param(self):
+        item = make_item(self.user, redeem_code='DUP123')
+        response = self.client.get(reverse('check_duplicate_code'), {'code': 'DUP124', 'exclude': str(item.id)})
+        payload = response.json()
+        self.assertFalse(payload['duplicate'])
+        self.assertNotIn('near_duplicate', payload)
+
+
+_TEST_IMAGE_PALETTES = {
+    'red': [(200, 30, 30), (30, 30, 200), (30, 200, 30), (200, 200, 30)],
+    'blue': [(30, 30, 200), (200, 30, 30), (200, 200, 30), (30, 200, 30)],
+    'green': [(30, 200, 30), (200, 200, 30), (30, 30, 200), (200, 30, 30)],
+    'purple': [(120, 30, 160), (30, 160, 120), (200, 200, 200), (60, 60, 60)],
+    'orange': [(220, 130, 20), (20, 130, 220), (20, 220, 130), (130, 20, 220)],
+}
+
+
+def _make_test_image(variant, size=(64, 64), fmt='PNG'):
+    """
+    A quadrant-patterned test image, not a flat color - a dHash on a
+    perfectly flat-color image is degenerate (every pixel equals its
+    neighbour, so the hash is always all-zero regardless of *which*
+    color), which would make "different photo" tests pass for the wrong
+    reason. Each named variant maps to a distinct 4-quadrant colour
+    pattern so genuinely different variants produce genuinely different
+    hashes, while re-encoding the same variant (PNG vs JPEG) stays close.
+    """
+    palette = _TEST_IMAGE_PALETTES[variant]
+    width, height = size
+    half_w, half_h = width // 2, height // 2
+    image = Image.new('RGB', size)
+    for i, box in enumerate([
+        (0, 0, half_w, half_h), (half_w, 0, width, half_h),
+        (0, half_h, half_w, height), (half_w, half_h, width, height),
+    ]):
+        quadrant = Image.new('RGB', (box[2] - box[0], box[3] - box[1]), color=palette[i])
+        image.paste(quadrant, (box[0], box[1]))
+    buffer = BytesIO()
+    image.save(buffer, format=fmt)
+    return buffer.getvalue()
+
+
+class LevenshteinDistanceTests(TestCase):
+    """myapp.utils.levenshtein_distance - the fuzzy-match core of the near-duplicate check."""
+
+    def test_identical_strings_have_zero_distance(self):
+        self.assertEqual(levenshtein_distance('ABC123', 'ABC123'), 0)
+
+    def test_single_substitution(self):
+        self.assertEqual(levenshtein_distance('ABC123', 'ABC124'), 1)
+
+    def test_single_insertion(self):
+        self.assertEqual(levenshtein_distance('ABC123', 'ABC1234'), 1)
+
+    def test_single_deletion(self):
+        self.assertEqual(levenshtein_distance('ABC1234', 'ABC123'), 1)
+
+    def test_empty_string_distance_equals_other_length(self):
+        self.assertEqual(levenshtein_distance('', 'ABC'), 3)
+        self.assertEqual(levenshtein_distance('ABC', ''), 3)
+
+    def test_completely_different_strings(self):
+        self.assertEqual(levenshtein_distance('ABC', 'XYZ'), 3)
+
+
+class ImageHashTests(TestCase):
+    """myapp.imagehash - the perceptual-hash core of duplicate-photo detection."""
+
+    def test_identical_images_have_zero_distance(self):
+        image_bytes = _make_test_image('red')
+        self.assertEqual(
+            hamming_distance(compute_dhash(image_bytes), compute_dhash(image_bytes)), 0,
+        )
+
+    def test_same_image_reencoded_as_jpeg_stays_within_threshold(self):
+        # Re-compression/format change is exactly the kind of incidental
+        # difference two "same photo" uploads can have.
+        png_bytes = _make_test_image('red', fmt='PNG')
+        jpeg_bytes = _make_test_image('red', fmt='JPEG')
+        distance = hamming_distance(compute_dhash(png_bytes), compute_dhash(jpeg_bytes))
+        self.assertLessEqual(distance, DUPLICATE_THRESHOLD)
+
+    def test_visually_different_images_exceed_threshold(self):
+        distance = hamming_distance(compute_dhash(_make_test_image('red')), compute_dhash(_make_test_image('orange')))
+        self.assertGreater(distance, DUPLICATE_THRESHOLD)
+
+    def test_compute_dhash_returns_empty_string_for_invalid_bytes(self):
+        self.assertEqual(compute_dhash(b'not an image'), '')
+
+    def test_hamming_distance_treats_missing_hash_as_maximally_distant(self):
+        real_hash = compute_dhash(_make_test_image('red'))
+        self.assertGreater(hamming_distance(real_hash, ''), DUPLICATE_THRESHOLD)
+        self.assertGreater(hamming_distance('', ''), DUPLICATE_THRESHOLD)
+
+
+class ItemImagePhashSaveTests(TestCase):
+    """Item.save() computes image_phash automatically for a newly-assigned file."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_new_file_gets_a_hash_on_create(self):
+        upload = SimpleUploadedFile('card.png', _make_test_image('blue'), content_type='image/png')
+        item = make_item(self.user, file=upload)
+        self.assertTrue(item.image_phash)
+        self.assertEqual(len(item.image_phash), 16)
+
+    def test_item_without_a_file_has_no_hash(self):
+        item = make_item(self.user)
+        self.assertEqual(item.image_phash, '')
+
+    def test_resaving_without_touching_the_file_keeps_the_same_hash(self):
+        upload = SimpleUploadedFile('card.png', _make_test_image('green'), content_type='image/png')
+        item = make_item(self.user, file=upload)
+        original_hash = item.image_phash
+        item.name = 'Renamed'
+        item.save()
+        item.refresh_from_db()
+        self.assertEqual(item.image_phash, original_hash)
+
+
+class CheckDuplicateImageTests(TestCase):
+    """myapp.views.check_duplicate_image - the photo-based companion to check_duplicate_code."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.other_user = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def _post_image(self, color, **params):
+        upload = SimpleUploadedFile('scan.png', _make_test_image(color), content_type='image/png')
+        url = reverse('check_duplicate_image')
+        if params:
+            url += '?' + '&'.join(f'{k}={v}' for k, v in params.items())
+        return self.client.post(url, {'image': upload})
+
+    def test_no_image_returns_not_duplicate(self):
+        response = self.client.post(reverse('check_duplicate_image'), {})
+        self.assertEqual(response.json(), {'duplicate': False})
+
+    def test_matches_the_same_photo_already_attached_to_an_active_item(self):
+        upload = SimpleUploadedFile('card.png', _make_test_image('purple'), content_type='image/png')
+        item = make_item(self.user, name='Existing Card', file=upload)
+        response = self._post_image('purple')
+        payload = response.json()
+        self.assertTrue(payload['duplicate'])
+        self.assertEqual(payload['item_name'], 'Existing Card')
+        self.assertEqual(payload['item_url'], reverse('view_item', kwargs={'item_uuid': item.id}))
+
+    def test_does_not_match_a_visually_different_photo(self):
+        upload = SimpleUploadedFile('card.png', _make_test_image('purple'), content_type='image/png')
+        make_item(self.user, file=upload)
+        response = self._post_image('orange')
+        self.assertEqual(response.json(), {'duplicate': False})
+
+    def test_ignores_used_items(self):
+        upload = SimpleUploadedFile('card.png', _make_test_image('purple'), content_type='image/png')
+        make_item(self.user, file=upload, is_used=True)
+        response = self._post_image('purple')
+        self.assertEqual(response.json(), {'duplicate': False})
+
+    def test_ignores_archived_items(self):
+        upload = SimpleUploadedFile('card.png', _make_test_image('purple'), content_type='image/png')
+        make_item(self.user, file=upload, is_archived=True)
+        response = self._post_image('purple')
+        self.assertEqual(response.json(), {'duplicate': False})
+
+    def test_ignores_other_users_items(self):
+        upload = SimpleUploadedFile('card.png', _make_test_image('purple'), content_type='image/png')
+        make_item(self.other_user, file=upload)
+        response = self._post_image('purple')
+        self.assertEqual(response.json(), {'duplicate': False})
+
+    def test_exclude_param_omits_the_item_being_edited(self):
+        upload = SimpleUploadedFile('card.png', _make_test_image('purple'), content_type='image/png')
+        item = make_item(self.user, file=upload)
+        response = self._post_image('purple', exclude=str(item.id))
+        self.assertEqual(response.json(), {'duplicate': False})
+
+    def test_matches_item_in_a_wallet_shared_with_the_user(self):
+        upload = SimpleUploadedFile('card.png', _make_test_image('purple'), content_type='image/png')
+        wallet = Wallet.objects.create(user=self.other_user, name='Shared Wallet')
+        wallet.shared_with.add(self.user)
+        item = make_item(self.other_user, name='Shared Card', file=upload, wallet=wallet)
+        response = self._post_image('purple')
+        payload = response.json()
+        self.assertTrue(payload['duplicate'])
+        self.assertEqual(payload['item_url'], reverse('view_item', kwargs={'item_uuid': item.id}))
+
+    def test_lazily_backfills_a_missing_hash_on_an_existing_item(self):
+        upload = SimpleUploadedFile('card.png', _make_test_image('purple'), content_type='image/png')
+        item = make_item(self.user, file=upload)
+        # Simulate an item saved before this feature shipped: file present,
+        # but no hash computed yet.
+        Item.objects.filter(pk=item.pk).update(image_phash='')
+
+        response = self._post_image('purple')
+        self.assertTrue(response.json()['duplicate'])
+        item.refresh_from_db()
+        self.assertTrue(item.image_phash)
 
 
 class LastUsedTrackingTests(TestCase):

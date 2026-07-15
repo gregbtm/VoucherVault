@@ -3315,6 +3315,113 @@ code," not which items are eligible to be flagged.
 2 new tests: matches regardless of case, matches despite whitespace
 around the *stored* code. Full suite green.
 
+## Phase 60 — OCR non-determinism: same photo, different code, no duplicate warning
+
+Immediate follow-up to Phase 59: the user re-tested with the exact same
+physical card and photo and still saw no duplicate warning, despite (in
+their words) the two entries being identical. That ruled out Phase 59's
+case/whitespace theory - the actual root cause was one level up.
+
+Neither vision OCR backend (`ocr/backends/claude_backend.py`,
+`ocr/backends/openai_backend.py`) set a `temperature` on its API call, so
+both defaulted to the provider's standard sampling temperature (1.0 for
+both Anthropic and OpenAI) - fine for open-ended, creative generation,
+wrong for reading an exact string off a photo. Re-uploading the *same*
+image bytes to the *same* model can still sample a different token at an
+ambiguous character (an "S" that could plausibly continue several ways,
+a run of similar-looking glyphs in a dense alphanumeric code), so two
+"identical" scans of one card can legitimately extract two different
+strings. This is invisible on cards with a real barcode (the client-side
+decode always wins over the AI's text guess - see Phase 46), but this
+specific card is `code_type: none` ("No Barcode") with nothing to
+cross-check the OCR read against, so a one-character sampling drift went
+straight through as the saved code, and no amount of string-normalization
+in `check_duplicate_code` (Phase 59) can catch two codes that are
+genuinely different strings.
+
+Fixed by adding `temperature=0` to both backends' API calls - asks the
+model for the single most likely token at each step instead of sampling,
+which is the standard fix for analytical/extraction tasks as opposed to
+creative ones. Doesn't guarantee bit-for-bit determinism (both providers'
+docs note temperature 0 reduces but doesn't fully eliminate variance at
+their infrastructure level), but removes the actual variable that was
+deliberately introducing randomness into an exact-text-reading task.
+
+### Tests
+
+2 new tests (one per backend) asserting `temperature=0` is actually sent
+on the API call, mirroring the existing `response_format` regression test
+this bug class was already being guarded against on the OpenAI side.
+Full suite green.
+
+## Phase 61 — Belt-and-braces duplicate detection: five layers, not one
+
+Follow-up ask after Phase 60: rather than trusting a single signal, stack
+several independent checks so a duplicate voucher gets caught even if any
+one of them individually misses it.
+
+- **Photo-hash duplicate detection** — new `myapp/imagehash.py` computes a
+  64-bit difference hash (dHash) of the item's uploaded photo, no new
+  dependency (`PIL`, already used for avatars/logo normalization). A new
+  `Item.image_phash` field is computed automatically in `Item.save()`
+  whenever a new file is assigned (detected via `FieldFile._committed`,
+  cheap enough to just always recompute rather than diff against the old
+  value). A new `check_duplicate_image` endpoint compares a freshly
+  uploaded photo's hash (Hamming distance ≤10) against every active item's
+  stored hash, scoped the same way `check_duplicate_code` already is.
+  Existing items with a file but no hash yet (anything created before this
+  phase) get backfilled lazily the first time they're compared against,
+  rather than via a bulk migration that would re-read every file in
+  storage in one pass. Wired into `scanner.js`'s single shared `#file`
+  input, so it fires from the AI-scan button, the File Scan button, *and*
+  a plain manual "Upload File" pick alike - one integration point covers
+  all three paths that can populate an item's photo. This is the check
+  that actually catches "I uploaded the exact same picture twice"
+  independent of anything OCR does with it.
+- **Fuzzy/near-match code detection** — `check_duplicate_code` now falls
+  back to a Levenshtein-distance comparison (new `levenshtein_distance()`
+  in `myapp/utils.py`, no new dependency) when no exact match is found:
+  a code within edit-distance 2 of an existing active code (and within 2
+  characters of its length) gets a softer "this looks similar - possible
+  misread?" nudge instead of the hard "you already have this" warning.
+  Catches the exact Phase 60 scenario head-on: two OCR reads of the same
+  card that land on two different, but very similar, strings.
+- **OCR self-consistency re-read** — both vision backends' shared prompt
+  now explicitly asks the model to re-read the `code` field character by
+  character as a second, independent pass before answering, and to lower
+  `confidence` rather than silently pick a reading if the two disagree -
+  cheap (a prompting change, no extra API call) and targets the highest-
+  stakes field specifically, since it's the one that actually redeems the
+  card.
+- **Low-confidence + ambiguous-character warnings surfaced in the UI** —
+  the OCR response's `confidence` field was already being computed and
+  returned by the API but never shown anywhere. The AI-scan completion
+  handler in both `create-item.html` and `edit-item.html` now shows a
+  visible warning when confidence is below 0.7, and separately flags any
+  commonly-confused character (0/O, 1/I/l, 5/S, 8/B) present in the filled
+  code, prompting a manual double-check against the photo - specifically
+  for a code the AI actually read as text, never for a literal barcode
+  decode (which is a pixel-for-pixel read, not a guess).
+- **Balance-check verification** — already existed (Phase 13.3's
+  "Check Balance" link plus Phase 50's OCR-extracted `balance_check_url`)
+  and needed no new code: a one-tap way to verify a code against the
+  issuer's own page was already part of the belt-and-braces picture.
+
+### Tests
+
+44 new tests: `ImageHashTests` (dHash properties - identical images,
+re-encoding stability, visually-different images, invalid input),
+`ItemImagePhashSaveTests` (hash computed on new file, unchanged on a
+resave that doesn't touch the file, blank for fileless items),
+`CheckDuplicateImageTests` (matches/scoping/exclude/lazy-backfill,
+mirroring the existing `CheckDuplicateCodeTests` structure),
+`LevenshteinDistanceTests` (unit coverage), and four new
+`CheckDuplicateCodeTests` cases for the near-duplicate path (flags a
+one-character difference, ignores very different codes, prefers an exact
+match when both exist, respects `exclude`). Both OCR backends' existing
+test suites already cover the new prompt indirectly via their response-
+parsing tests. Full suite (475 tests) green.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

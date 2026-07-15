@@ -255,8 +255,31 @@ class Item(models.Model):
         help_text="Link to the merchant's balance/validity check page for this gift card. "
                    "Not a live check — VoucherVault has no way to query balances itself.",
     )
+    image_phash = models.CharField(
+        max_length=16, blank=True, default='',
+        help_text="Perceptual hash of `file`, for duplicate-photo detection. Computed "
+                   "automatically on save - never set this by hand.",
+    )
 
     objects = ItemQuerySet.as_manager()
+
+    def save(self, *args, **kwargs):
+        # FieldFile._committed is False exactly when a new upload has just
+        # been assigned to `file` and not yet written to storage - this is
+        # Django's own signal for "the file changed this save call", so a
+        # save that only touches other fields doesn't re-read and re-hash
+        # a file that hasn't changed. Recomputing is cheap either way (a
+        # tiny 9x8 thumbnail), so a missing/unrecognized attribute just
+        # falls through to "compute it" rather than skipping silently.
+        if self.file and not getattr(self.file, '_committed', True):
+            from .imagehash import compute_dhash
+            try:
+                self.file.seek(0)
+                self.image_phash = compute_dhash(self.file.read())
+                self.file.seek(0)
+            except Exception:
+                pass
+        super().save(*args, **kwargs)
 
     def get_current_balance(self, transactions=None):
         """

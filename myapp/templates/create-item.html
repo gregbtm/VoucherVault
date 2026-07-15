@@ -700,6 +700,7 @@ body.dark-mode .error-alert {
                 <input type="file" id="fileInput" accept="image/*" style="display: none;">
               </div>
               <small class="form-text text-warning" id="duplicate-code-warning" style="display:none;"></small>
+              <small class="form-text text-warning" id="ocr-confidence-warning" style="display:none;"></small>
             </div>
 
             <div class="form-group">
@@ -895,7 +896,8 @@ body.dark-mode .error-alert {
 
             <div class="form-group">
               <label class="form-label" for="file">{% trans "Upload File" %}</label>
-              <input type="file" id="file" name="file" class="modern-input">
+              <input type="file" id="file" name="file" class="modern-input" data-check-duplicate-image-url="{% url 'check_duplicate_image' %}">
+              <small class="form-text text-warning" id="duplicate-image-warning" style="display:none;"></small>
             </div>
           </div>
 
@@ -1070,7 +1072,10 @@ document.addEventListener("DOMContentLoaded", function () {
   // Warns (never blocks) when the code just typed or scanned matches an
   // active item already in the user's vault - catches "I already added
   // this voucher" before a duplicate gets created. Debounced on manual
-  // typing; called immediately after a scan fills the field.
+  // typing; called immediately after a scan fills the field. Also flags a
+  // softer "possible duplicate" for a code that's suspiciously close
+  // (but not identical) to an existing one - the kind of gap a single
+  // misread character during OCR leaves behind.
   const duplicateWarning = document.getElementById('duplicate-code-warning');
   let duplicateCheckTimer = null;
   function checkDuplicateCode() {
@@ -1086,6 +1091,10 @@ document.addEventListener("DOMContentLoaded", function () {
           duplicateWarning.innerHTML = '<i class="bi bi-exclamation-triangle"></i> {% trans "You already have this: " %}' +
             '<a href="' + data.item_url + '" target="_blank">' + data.item_name.replace(/</g, '&lt;') + '</a>';
           duplicateWarning.style.display = '';
+        } else if (data && data.near_duplicate) {
+          duplicateWarning.innerHTML = '<i class="bi bi-question-diamond"></i> {% trans "This looks similar to an existing code - possible misread? " %}' +
+            '<a href="' + data.item_url + '" target="_blank">' + data.item_name.replace(/</g, '&lt;') + '</a>';
+          duplicateWarning.style.display = '';
         } else {
           duplicateWarning.style.display = 'none';
         }
@@ -1094,9 +1103,38 @@ document.addEventListener("DOMContentLoaded", function () {
   }
   redeemCodeField.addEventListener('input', function () {
     duplicateWarning.style.display = 'none';
+    ocrConfidenceWarning.style.display = 'none';
     clearTimeout(duplicateCheckTimer);
     duplicateCheckTimer = setTimeout(checkDuplicateCode, 500);
   });
+
+  // Belt-and-braces companion to the duplicate checks above: flags a
+  // low-confidence AI read, and/or a code containing characters that are
+  // easily confused with each other in dense alphanumeric text (0/O,
+  // 1/I/l, 5/S, 8/B) - the exact failure mode that produced two
+  // genuinely-different codes from two scans of the same physical card.
+  // Only meaningful for a code the AI actually read as text - a decoded
+  // barcode is a literal pixel-for-pixel read, never "ambiguous".
+  const ocrConfidenceWarning = document.getElementById('ocr-confidence-warning');
+  const AMBIGUOUS_CHARS = new Set(['0', 'O', '1', 'I', 'l', '5', 'S', '8', 'B']);
+  const LOW_CONFIDENCE_THRESHOLD = 0.7;
+  function showOcrConfidenceWarning(code, confidence) {
+    if (!ocrConfidenceWarning) return;
+    const messages = [];
+    if (typeof confidence === 'number' && confidence > 0 && confidence < LOW_CONFIDENCE_THRESHOLD) {
+      messages.push("{% trans 'Low-confidence AI read - double-check this code against the photo.' %}");
+    }
+    const found = [...new Set((code || '').split('').filter(ch => AMBIGUOUS_CHARS.has(ch)))];
+    if (found.length) {
+      messages.push("{% trans 'Contains easily-confused characters - verify each one against the photo:' %} " + found.join(', '));
+    }
+    if (messages.length) {
+      ocrConfidenceWarning.innerHTML = '<i class="bi bi-eye"></i> ' + messages.join(' ');
+      ocrConfidenceWarning.style.display = '';
+    } else {
+      ocrConfidenceWarning.style.display = 'none';
+    }
+  }
 
   {% if ocr_enabled %}
   // AI Scan: one upload, two extractions run against the same photo -
@@ -1142,6 +1180,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         const filled = [];
+        let codeFromAiGuess = false;
 
         // Redeem code + type: a successful barcode decode always wins, but
         // only when there was no existing code/type to protect.
@@ -1153,6 +1192,7 @@ document.addEventListener("DOMContentLoaded", function () {
           redeemCodeField.value = data.code;
           markAutoFilled(redeemCodeField);
           filled.push("{% trans 'code' %}");
+          codeFromAiGuess = true;
         }
         if (codeWasEmpty && decoded.formatValue && typeof applyDetectedFormat === 'function') {
           applyDetectedFormat(decoded.formatValue, "{% trans 'barcode in photo' %}");
@@ -1269,6 +1309,9 @@ document.addEventListener("DOMContentLoaded", function () {
           statusEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> {% trans "Filled from photo:" %} ${filled.join(', ')}</span>`;
         } else {
           statusEl.innerHTML = '<span class="text-muted">{% trans "Nothing could be confidently read from that photo." %}</span>';
+        }
+        if (codeFromAiGuess) {
+          showOcrConfidenceWarning(data.code, data.confidence);
         }
         checkDuplicateCode();
       })
