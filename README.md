@@ -139,6 +139,7 @@ lifecycle.
 - **Rules-based engine** with three extra delivery backends beyond Apprise: [ntfy](https://ntfy.sh), a generic **webhook**, and native browser/OS **Web Push** (opt-in, requires VAPID keys — generate a pair with one command, no third-party relay needed).
 - **Per-item thresholds** — one item can warn 60 days out, another only 7, plus a final reminder as the deadline gets close.
 - Rules can also fire on item created, used, archived, balance changed, or shared — not just expiry.
+- **Daily digest mode** — batch a rule's notifications into a single once-a-day summary instead of one push per event, for a rule covering a busy wallet.
 - A complete **delivery log** so you can see exactly what fired, when, and whether it succeeded.
 - Managed entirely from the web UI, no config file editing.
 
@@ -148,7 +149,7 @@ lifecycle.
 <summary><strong>🍏🟢 Digital Wallet Passes</strong></summary>
 
 - **Apple Wallet** — download a signed `.pkpass` for any item, or go the other way and pre-fill a new item by uploading an existing pass. Export needs your own Apple Developer certificate (see the [setup guide](docs/APPLE_WALLET_SETUP.md)); import needs no setup at all.
-- **Google Wallet** — a one-tap "Add to Google Wallet" link, set up once by whoever runs the container (see the [setup guide](docs/GOOGLE_WALLET_SETUP.md)).
+- **Google Wallet** — a one-tap "Add to Google Wallet" link, set up once by whoever runs the container (see the [setup guide](docs/GOOGLE_WALLET_SETUP.md)). Passes **update live** — editing the item's balance or details pushes the change straight to an already-issued pass, not just a snapshot frozen at export time.
 - The item detail page shows only the button your current device can actually use — Apple on Safari/iOS, Google on Android/Chromium — never a dead link.
 
 </details>

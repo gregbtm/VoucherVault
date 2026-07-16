@@ -13,7 +13,8 @@ README as the source of truth if the two ever disagree.
   script against your own vault, no Postman required
 - An **MCP server** so Claude Desktop, Claude Code, and other AI
   assistants can search, log spend, and create items directly
-- A **zero-code n8n integration** via the existing OpenAPI schema
+- A **zero-code n8n integration** via the existing OpenAPI schema,
+  including a ready-made recipe for syncing balances to Firefly III
 - **Webhook lifecycle events** for wiring VoucherVault into anything
 
 ## 🤖 AI-Assisted Scanning
@@ -28,20 +29,30 @@ an easily misread character.
 
 **Wallets** (named folders), colour-coded **Tags** with a clickable
 filter, free-text **Notes**, **shared wallets** for multi-user
-collaboration, **archiving**, **bulk actions**, and a remembered
-**gift-card balance-check link** per merchant.
+collaboration, **archiving**, **bulk actions**, a remembered
+**gift-card balance-check link** per merchant, and a "Next Up" widget
+that surfaces a queue of your soonest-expiring items ready to scan.
 
 ## 🔔 Notifications
 
 A rules-based engine on top of the original Apprise check — **ntfy**,
-generic **webhooks**, and native **Web Push** — with per-item thresholds
-and a full delivery log, firing on the whole item lifecycle, not just
-expiry.
+generic **webhooks**, and native **Web Push** — with per-item thresholds,
+an optional **daily digest** to batch a busy rule into one summary
+instead of one push per event, and a full delivery log, firing on the
+whole item lifecycle, not just expiry.
 
 ## 🍏🟢 Digital Wallet Passes
 
 **Apple Wallet** export and import, and **Google Wallet** export — the
-item page shows the right button automatically for your device.
+item page shows the right button automatically for your device, and a
+Google Wallet pass keeps updating live as the item changes rather than
+freezing at the moment it was issued.
+
+## 🔐 Security
+
+**Login brute-force lockout** — locks an account out after repeated
+failed attempts, by username rather than IP so one attacker on a shared
+network can't lock out everyone behind it.
 
 ## 📤 Sharing & Public Links
 
