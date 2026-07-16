@@ -100,6 +100,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 67 — Automate wiki updates via a sync workflow](#phase-67--automate-wiki-updates-via-a-sync-workflow)
 - [Phase 68 — README visual pass: quicker to scan, less wall-of-text](#phase-68--readme-visual-pass-quicker-to-scan-less-wall-of-text)
 - [Phase 69 — An honest feature count, and a real donate button](#phase-69--an-honest-feature-count-and-a-real-donate-button)
+- [Phase 70 — "Next Up" widget for the item you need right now](#phase-70--next-up-widget-for-the-item-you-need-right-now)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -3767,6 +3768,38 @@ look inviting to scroll through," not "is it correct."
   `style=for-the-badge` shields.io button (deliberately larger than the
   status badges above it, so it reads as a call to action rather than
   another piece of metadata) linking to the same PayPal donation page.
+
+## Phase 70 — "Next Up" widget for the item you need right now
+
+Prompted by a real use case: someone with a wallet full of train tickets
+(added one by one as they're bought) wanting the *next* one to use surfaced
+automatically, without hunting through Inventory - originally framed as
+"can this sync from Google Wallet?" No: Google Wallet's API is issuer-push
+only, with no read/export path for a third-party app to pull a user's
+saved passes back out (a deliberate platform boundary, not something to
+build around). The actual goal doesn't need that sync at all - it just
+needs VoucherVault to highlight the soonest-relevant item it already has.
+
+- **`UserPreference.next_up_wallet`** - a new nullable FK to `Wallet`.
+  Unset (the default) means the feature is off; set it to a wallet (e.g.
+  "Train Tickets") and Inventory highlights the soonest-expiring,
+  not-yet-used item in it. Configured from the existing Display
+  Preferences page, alongside every other per-user display setting.
+- **`get_next_up_item(wallet)`** (`myapp/analytics.py`) - the soonest
+  `expiry_date` among that wallet's active (not used, not archived,
+  not-yet-expired) items, with a `.days_left` attribute attached for the
+  "Today" / "Tomorrow" / dated label, mirroring the existing
+  `get_expiring_soon_items` pattern.
+- **A highlight card at the top of Inventory** - shows the item's
+  merchant, name, date, and its actual barcode/QR image (the same
+  pre-rendered `qr_code_base64` the item detail page uses), sized to be
+  scanned directly from the card. Tapping through still goes to the full
+  item page for zoom/wake-lock if a gate scanner needs it. Renders only
+  when a match exists - no configuration, no card; nothing to see for
+  anyone not using VoucherVault this way.
+- Scoped to a single wallet rather than "soonest across everything" so a
+  coupon expiring tomorrow can't bump a train ticket needed next week out
+  of the slot - the wallet is a deliberate choice, not a guess.
 
 ## New environment variables
 

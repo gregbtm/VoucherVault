@@ -201,6 +201,7 @@ class UserPreferenceForm(forms.ModelForm):
             'show_issue_date', 'show_expiry_date', 'show_value', 'show_description',
             'sort_by', 'sort_order', 'view_mode', 'fixer_api_key', 'default_currency',
             'keep_screen_awake', 'oled_dark_mode', 'offline_cache_enabled', 'blur_codes_enabled',
+            'next_up_wallet',
         ]
         widgets = {
             'show_issue_date': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
@@ -216,7 +217,23 @@ class UserPreferenceForm(forms.ModelForm):
             'oled_dark_mode': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'offline_cache_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'blur_codes_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'next_up_wallet': forms.Select(attrs={'class': 'form-select'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['next_up_wallet'].required = False
+        self.fields['next_up_wallet'].empty_label = _('Off')
+        # Scoped to wallets the user can actually see (own or shared with
+        # them) - the instance always has a user by the time this form is
+        # built (update_user_preferences creates the UserPreference first).
+        user = self.instance.user if self.instance and self.instance.pk else None
+        if user is not None:
+            self.fields['next_up_wallet'].queryset = Wallet.objects.filter(
+                Q(user=user) | Q(shared_with=user)
+            ).distinct()
+        else:
+            self.fields['next_up_wallet'].queryset = Wallet.objects.none()
 
 class DocumentForm(forms.ModelForm):
     class Meta:

@@ -479,6 +479,49 @@ class ShowItemsTagFilterTests(TestCase):
         self.assertNotIn('Bob Tag', tag_names)
 
 
+class ShowItemsNextUpWidgetTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+        self.wallet = Wallet.objects.create(user=self.user, name='Train Tickets')
+
+    def test_no_widget_when_preference_unset(self):
+        make_item(self.user, wallet=self.wallet, expiry_date=date.today() + timedelta(days=1))
+        response = self.client.get(reverse('show_items'))
+        self.assertIsNone(response.context['next_up_item'])
+
+    def test_widget_shows_soonest_item_from_configured_wallet(self):
+        preferences, _ = UserPreference.objects.get_or_create(user=self.user)
+        preferences.next_up_wallet = self.wallet
+        preferences.save()
+        soonest = make_item(self.user, name='Soonest', redeem_code='S1', wallet=self.wallet,
+                             expiry_date=date.today() + timedelta(days=1))
+        make_item(self.user, name='Later', redeem_code='L1', wallet=self.wallet,
+                  expiry_date=date.today() + timedelta(days=5))
+
+        response = self.client.get(reverse('show_items'))
+        self.assertEqual(response.context['next_up_item'].id, soonest.id)
+
+    def test_other_users_wallet_not_leaked_as_next_up(self):
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        bob_wallet = Wallet.objects.create(user=bob, name='Bob Wallet')
+        make_item(bob, wallet=bob_wallet, expiry_date=date.today() + timedelta(days=1))
+
+        preferences, _ = UserPreference.objects.get_or_create(user=self.user)
+        preferences.next_up_wallet = self.wallet
+        preferences.save()
+
+        response = self.client.get(reverse('show_items'))
+        self.assertIsNone(response.context['next_up_item'])
+
+    def test_preference_form_scopes_wallet_choices_to_owner(self):
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        Wallet.objects.create(user=bob, name='Bob Wallet')
+        response = self.client.get(reverse('update_user_preferences'))
+        wallet_names = {w.name for w in response.context['form'].fields['next_up_wallet'].queryset}
+        self.assertEqual(wallet_names, {'Train Tickets'})
+
+
 class AnalyticsHelperTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')
@@ -575,6 +618,47 @@ class AnalyticsHelperTests(TestCase):
         self.assertIn(key, timeline)
         self.assertEqual(timeline[key][0]['id'], str(item.id))
         self.assertEqual(timeline[key][0]['name'], 'Grouped')
+
+    def test_get_next_up_item_returns_none_when_wallet_unset(self):
+        from .analytics import get_next_up_item
+
+        make_item(self.user, wallet=self.wallet, expiry_date=date.today() + timedelta(days=1))
+        self.assertIsNone(get_next_up_item(None))
+
+    def test_get_next_up_item_picks_soonest_and_attaches_days_left(self):
+        from .analytics import get_next_up_item
+
+        soonest = make_item(self.user, name='Soonest', redeem_code='S1', wallet=self.wallet,
+                             expiry_date=date.today() + timedelta(days=2))
+        make_item(self.user, name='Later', redeem_code='L1', wallet=self.wallet,
+                  expiry_date=date.today() + timedelta(days=10))
+
+        result = get_next_up_item(self.wallet)
+        self.assertEqual(result.id, soonest.id)
+        self.assertEqual(result.days_left, 2)
+
+    def test_get_next_up_item_excludes_other_wallet_used_archived_and_past(self):
+        from .analytics import get_next_up_item
+
+        other_wallet = Wallet.objects.create(user=self.user, name='Other')
+        make_item(self.user, name='OtherWallet', redeem_code='OW1', wallet=other_wallet,
+                  expiry_date=date.today() + timedelta(days=1))
+        make_item(self.user, name='Used', redeem_code='U1', wallet=self.wallet, is_used=True,
+                  expiry_date=date.today() + timedelta(days=1))
+        make_item(self.user, name='Archived', redeem_code='A1', wallet=self.wallet, is_archived=True,
+                  expiry_date=date.today() + timedelta(days=1))
+        make_item(self.user, name='Past', redeem_code='P1', wallet=self.wallet,
+                  expiry_date=date.today() - timedelta(days=1))
+
+        self.assertIsNone(get_next_up_item(self.wallet))
+
+    def test_get_next_up_item_today_has_zero_days_left(self):
+        from .analytics import get_next_up_item
+
+        item = make_item(self.user, wallet=self.wallet, expiry_date=date.today())
+        result = get_next_up_item(self.wallet)
+        self.assertEqual(result.id, item.id)
+        self.assertEqual(result.days_left, 0)
 
 
 class DashboardAnalyticsContextTests(TestCase):
