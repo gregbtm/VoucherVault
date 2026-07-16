@@ -16,7 +16,7 @@ from django.urls import reverse
 from py_vapid import Vapid02
 from pywebpush import webpush as real_webpush
 
-from myapp.models import Item, Transaction
+from myapp.models import Item, Transaction, UserPreference, Wallet
 from myapp.test_utils import set_site_config
 
 from .backends import get_backend
@@ -28,6 +28,7 @@ from .forms import NotificationRuleForm
 from .models import NotificationLog, NotificationRule, WebPushSubscription
 from .tasks import (
     check_and_notify_expiry,
+    check_next_up_reminders,
     fire_notifications,
     notify_balance_changed,
     notify_item_archived,
@@ -521,6 +522,60 @@ class CheckAndNotifyExpiryTaskTests(TestCase):
         make_item(self.user, expiry_date=date.today() + timedelta(days=1))
         check_and_notify_expiry()  # should not raise, and log nothing
         self.assertEqual(NotificationLog.objects.count(), 0)
+
+
+class CheckNextUpRemindersTaskTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.wallet = Wallet.objects.create(user=self.user, name='Train Tickets')
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_fires_for_item_due_today_in_a_next_up_wallet(self, mock_send):
+        make_rule(self.user, event_types=['next_up_reminder'])
+        preferences, _ = UserPreference.objects.get_or_create(user=self.user)
+        preferences.next_up_wallets.add(self.wallet)
+        item = make_item(self.user, wallet=self.wallet, expiry_date=date.today())
+
+        check_next_up_reminders()
+
+        self.assertTrue(NotificationLog.objects.filter(item=item, event_type='next_up_reminder', success=True).exists())
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_does_not_fire_for_item_not_due_today(self, mock_send):
+        make_rule(self.user, event_types=['next_up_reminder'])
+        preferences, _ = UserPreference.objects.get_or_create(user=self.user)
+        preferences.next_up_wallets.add(self.wallet)
+        item = make_item(self.user, wallet=self.wallet, expiry_date=date.today() + timedelta(days=1))
+
+        check_next_up_reminders()
+
+        self.assertFalse(NotificationLog.objects.filter(item=item, event_type='next_up_reminder').exists())
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_does_not_fire_for_item_in_unwatched_wallet(self, mock_send):
+        make_rule(self.user, event_types=['next_up_reminder'])
+        other_wallet = Wallet.objects.create(user=self.user, name='Other')
+        item = make_item(self.user, wallet=other_wallet, expiry_date=date.today())
+
+        check_next_up_reminders()
+
+        self.assertFalse(NotificationLog.objects.filter(item=item, event_type='next_up_reminder').exists())
+
+    def test_noop_when_no_user_has_a_next_up_wallet_configured(self):
+        item = make_item(self.user, wallet=self.wallet, expiry_date=date.today())
+        check_next_up_reminders()  # should not raise, and log nothing
+        self.assertFalse(NotificationLog.objects.filter(item=item).exists())
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_rule_without_the_event_type_does_not_fire(self, mock_send):
+        make_rule(self.user, event_types=['expiry_warning'])  # not subscribed to next_up_reminder
+        preferences, _ = UserPreference.objects.get_or_create(user=self.user)
+        preferences.next_up_wallets.add(self.wallet)
+        item = make_item(self.user, wallet=self.wallet, expiry_date=date.today())
+
+        check_next_up_reminders()
+
+        self.assertFalse(NotificationLog.objects.filter(item=item, event_type='next_up_reminder').exists())
 
 
 class SendTestNotificationTests(TestCase):

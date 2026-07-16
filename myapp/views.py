@@ -30,7 +30,7 @@ from django.contrib import messages
 from django.utils.timezone import now
 from django.utils.http import url_has_allowed_host_and_scheme
 from .decorators import require_authorization_header_with_api_token
-from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items_by_wallet, get_next_up_item
+from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items_by_wallet, get_next_up_items
 from .avatar import generate_initial_avatar, normalize_logo_image
 from .merchant_logos import fetch_merchant_logo, get_cached_balance_check_url, get_cached_logo, get_cached_logos_for_issuers, merchant_logos_enabled, remember_balance_check_url
 from .portainer import PortainerRedeployError, trigger_redeploy
@@ -233,7 +233,7 @@ def show_items(request):
     # Retrieve or create user preferences (only once)
     preferences, _ = UserPreference.objects.get_or_create(user=user)
 
-    next_up_item = get_next_up_item(preferences.next_up_wallet)
+    next_up_items = get_next_up_items(preferences.next_up_wallets.all(), preferences.next_up_max_items)
 
     # Calculate counts for filters (owned items plus items in wallets shared with the
     # user; archived items are hidden from every default view/count, only reachable
@@ -313,8 +313,7 @@ def show_items(request):
 
     items_with_qr = []
     issuers = [i.issuer for i in items]
-    if next_up_item is not None:
-        issuers.append(next_up_item.issuer)
+    issuers.extend(i.issuer for i in next_up_items)
     merchant_logos = get_cached_logos_for_issuers(issuers)
 
     for item in items:
@@ -325,12 +324,14 @@ def show_items(request):
             'merchant_logo_url': merchant_logos.get(item.issuer.strip().lower()),
         })
 
-    next_up_logo_url = merchant_logos.get(next_up_item.issuer.strip().lower()) if next_up_item else None
+    next_up_with_logos = [
+        {'item': item, 'merchant_logo_url': merchant_logos.get(item.issuer.strip().lower())}
+        for item in next_up_items
+    ]
 
     context = {
         'items_with_qr': items_with_qr,
-        'next_up_item': next_up_item,
-        'next_up_logo_url': next_up_logo_url,
+        'next_up_items': next_up_with_logos,
         'item_type': item_type,  # Add the item_type to the context
         'item_status': filter_value,  # Reuse item_status to hold the combined filter value
         'search_query': search_query,
@@ -893,6 +894,9 @@ def toggle_item_status(request, item_id):
         notify_item_used(item)
 
     item.save()
+    next_url = request.POST.get('next') or request.GET.get('next')
+    if next_url:
+        return redirect(next_url)
     return redirect('view_item', item_uuid=item.id)
 
 @login_required
