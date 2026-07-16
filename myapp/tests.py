@@ -4093,3 +4093,61 @@ class BulkActionsTests(TestCase):
     def test_bulk_actions_require_post(self):
         response = self.client.get(reverse('bulk_archive_items'))
         self.assertEqual(response.status_code, 405)
+
+
+@override_settings(AXES_ENABLED=True, AXES_FAILURE_LIMIT=3)
+class LoginLockoutTests(TestCase):
+    """
+    django-axes brute-force protection on the login form (myproject/
+    settings.py) - locked to a low failure limit here so the tests don't
+    need to actually make 5 requests to prove the behaviour. AXES_ENABLED
+    is forced back on since settings.py disables it by default under the
+    test runner (see the comment there) for compatibility with
+    django.test.Client.login(), which every other test in this app uses.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='correct-horse-battery-staple')
+
+    def _attempt(self, password):
+        return self.client.post(reverse('login'), {'username': 'alice', 'password': password})
+
+    def test_correct_password_succeeds_under_the_limit(self):
+        response = self._attempt('correct-horse-battery-staple')
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
+
+    def test_locked_out_after_failure_limit(self):
+        for _ in range(3):
+            self._attempt('wrong-password')
+
+        # Even the correct password is now rejected - that's the point.
+        response = self._attempt('correct-horse-battery-staple')
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
+
+    def test_not_locked_out_below_the_limit(self):
+        for _ in range(2):
+            self._attempt('wrong-password')
+
+        response = self._attempt('correct-horse-battery-staple')
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
+
+    def test_successful_login_resets_the_failure_count(self):
+        """AXES_RESET_ON_SUCCESS: two failures, then a success, then two
+        more failures should NOT reach the limit (3), since the first two
+        don't carry over past the successful login in between."""
+        self._attempt('wrong-password')
+        self._attempt('wrong-password')
+        self._attempt('correct-horse-battery-staple')
+        self.client.logout()
+
+        self._attempt('wrong-password')
+        response = self._attempt('correct-horse-battery-staple')
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
+
+    def test_lockout_is_per_username_not_shared_across_users(self):
+        User.objects.create_user(username='bob', password='bobs-password')
+        for _ in range(3):
+            self._attempt('wrong-password')  # locks out alice
+
+        response = self.client.post(reverse('login'), {'username': 'bob', 'password': 'bobs-password'})
+        self.assertTrue(response.wsgi_request.user.is_authenticated)

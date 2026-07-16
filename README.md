@@ -14,7 +14,7 @@
       <a target="_blank" href="https://github.com/gregbtm/VoucherVault/network/members"><img src="https://img.shields.io/github/forks/gregbtm/VoucherVault?style=flat-square&color=4154f1" alt="Forks"></a>
     </p>
     <p>
-      <img src="https://img.shields.io/badge/353%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="353 features and fixes added on top of upstream">
+      <img src="https://img.shields.io/badge/360%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="360 features and fixes added on top of upstream">
       <img src="https://img.shields.io/badge/PWA-installable-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="Installable PWA">
       <img src="https://img.shields.io/badge/AI--assisted-scanning-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="AI-assisted scanning">
       <img src="https://img.shields.io/badge/REST-API-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="REST API">
@@ -31,7 +31,7 @@
 > multi-user login with OIDC SSO, and Apprise expiry notifications out of
 > the box (see [Features](#-features) for the complete original list).
 >
-> This fork is a strict superset: **76 rounds of work adding 353
+> This fork is a strict superset: **77 rounds of work adding 360
 > individual features and fixes** on top of upstream's own image, from a
 > full REST API and AI-assisted scanning to shared wallets, digital
 > wallet passes, and a rules-based notification engine — without
@@ -193,6 +193,7 @@ lifecycle.
 - **Upstream sync tracking** — see how far behind upstream's latest release this install is, right from Site Settings.
 - Production error logging, so an unhandled exception doesn't just vanish silently.
 - GBP as the default currency for new items and preferences.
+- **Login brute-force lockout** — locks an account out after repeated failed login attempts ([django-axes](https://github.com/jazzband/django-axes)), configurable via `AXES_FAILURE_LIMIT`/`AXES_COOLOFF_TIME_HOURS`. Locks by username rather than IP, so one attacker on a shared/CGNAT network can't lock out everyone behind the same address.
 
 </details>
 
