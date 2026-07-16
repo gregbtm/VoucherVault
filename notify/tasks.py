@@ -1,4 +1,6 @@
+import itertools
 from datetime import date
+from operator import attrgetter
 
 from celery import shared_task
 
@@ -220,11 +222,11 @@ def send_daily_digests():
     a failed send, so holding a failed digest's entries for tomorrow
     would just silently double it up rather than actually recover it.
     """
-    rule_ids = DigestEntry.objects.values_list('rule_id', flat=True).distinct()
-    for rule_id in rule_ids:
-        entries = list(DigestEntry.objects.filter(rule_id=rule_id).select_related('rule'))
-        if not entries:
-            continue
+    all_entries = DigestEntry.objects.select_related('rule').order_by('rule_id')
+    processed_ids = []
+    for _rule_id, group in itertools.groupby(all_entries, key=attrgetter('rule_id')):
+        entries = list(group)
+        processed_ids.extend(e.id for e in entries)
         rule = entries[0].rule
         if rule.enabled:
             count = len(entries)
@@ -235,4 +237,5 @@ def send_daily_digests():
                 user=rule.user, rule=rule, item=None, event_type='daily_digest',
                 success=success, detail=detail,
             )
-        DigestEntry.objects.filter(rule_id=rule_id).delete()
+    if processed_ids:
+        DigestEntry.objects.filter(id__in=processed_ids).delete()
