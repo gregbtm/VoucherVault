@@ -519,6 +519,23 @@ AXES_RESET_ON_SUCCESS = True
 # to the real login view instead of using client.login(), and re-enable axes
 # via @override_settings(AXES_ENABLED=True) for just that test class.
 AXES_ENABLED = 'test' not in sys.argv
+
+if 'test' in sys.argv:
+    # In-memory Celery broker + no result backend: .delay() calls succeed
+    # instantly instead of blocking on a doomed Redis connection retry loop
+    # (the real cause of most of the suite's runtime) - and since nothing
+    # ever starts a worker during `manage.py test`, queued tasks just sit
+    # unconsumed, exactly matching every existing test's implicit
+    # assumption that a task's body never actually runs. Deliberately NOT
+    # CELERY_TASK_ALWAYS_EAGER=True - that runs task bodies for real
+    # (including their network calls), which is a behavior change the
+    # existing tests were never written to expect.
+    CELERY_BROKER_URL = 'memory://'
+    CELERY_RESULT_BACKEND = None
+    CELERY_TASK_IGNORE_RESULT = True
+    CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}
+    PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
+
 # axes.W006 warns that username-only lockout lets an attacker bypass the
 # limit by rotating IPs - true, but the alternative (IP-based) risks locking
 # out every legitimate user behind the same NAT/VPN/CGNAT address because of
