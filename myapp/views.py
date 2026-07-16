@@ -1011,7 +1011,7 @@ def verify_apprise_urls(request):
 @login_required
 def download_ics(request):
     """One-off .ics download for the logged-in user's active items."""
-    calendar = build_ics_calendar(request.user)
+    calendar = build_ics_calendar(request.user, request)
     response = HttpResponse(calendar, content_type='text/calendar; charset=utf-8')
     response['Content-Disposition'] = 'attachment; filename="vouchervault.ics"'
     return response
@@ -1023,7 +1023,7 @@ def ics_feed(request, token):
     refresh schedule. No login_required by design.
     """
     profile = get_object_or_404(UserProfile, ics_token=token)
-    calendar = build_ics_calendar(profile.user)
+    calendar = build_ics_calendar(profile.user, request)
     response = HttpResponse(calendar, content_type='text/calendar; charset=utf-8')
     response['Content-Disposition'] = 'inline; filename="vouchervault.ics"'
     return response

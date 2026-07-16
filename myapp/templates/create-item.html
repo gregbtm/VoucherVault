@@ -958,6 +958,8 @@ function resetTileColor() {
   const tileColorInput = document.getElementById('tile_color');
   const isDarkMode = localStorage.getItem('darkMode') !== 'disabled';
   tileColorInput.value = isDarkMode ? "#1e1e1e" : "#f3f3f3";
+  // Lets the color-picker.js swatch/hex preview pick up the change too.
+  tileColorInput.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 document.addEventListener("DOMContentLoaded", function () {

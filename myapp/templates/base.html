@@ -59,7 +59,8 @@
 
   <!-- Template Main CSS File -->
   <link href="{% static 'assets/css/style.css' %}" rel="stylesheet">
-  <link href="{% static 'assets/css/dark-mode.css' %}" rel="stylesheet">  
+  <link href="{% static 'assets/css/dark-mode.css' %}" rel="stylesheet">
+  <link href="{% static 'assets/css/color-picker.css' %}" rel="stylesheet">
 
   <style>
     /* Network status indicator styles */
@@ -528,6 +529,9 @@
   <!-- Native Web Share -->
   <script>window.VV_SHARE_SMART_ENABLED = {{ share_via_smart_enabled|yesno:"true,false" }};</script>
   <script src="{% static 'assets/js/voucher-share.js' %}"></script>
+
+  <!-- Modern color picker (replaces the native <input type="color"> UI) -->
+  <script src="{% static 'assets/js/color-picker.js' %}"></script>
 
   <script>
     document.getElementById('languageSelect').addEventListener('change', function() {

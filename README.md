@@ -14,7 +14,7 @@
       <a target="_blank" href="https://github.com/gregbtm/VoucherVault/network/members"><img src="https://img.shields.io/github/forks/gregbtm/VoucherVault?style=flat-square&color=4154f1" alt="Forks"></a>
     </p>
     <p>
-      <img src="https://img.shields.io/badge/370%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="370 features and fixes added on top of upstream">
+      <img src="https://img.shields.io/badge/373%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="373 features and fixes added on top of upstream">
       <img src="https://img.shields.io/badge/PWA-installable-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="Installable PWA">
       <img src="https://img.shields.io/badge/AI--assisted-scanning-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="AI-assisted scanning">
       <img src="https://img.shields.io/badge/REST-API-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="REST API">
@@ -31,7 +31,7 @@
 > multi-user login with OIDC SSO, and Apprise expiry notifications out of
 > the box (see [Features](#-features) for the complete original list).
 >
-> This fork is a strict superset: **79 rounds of work adding 370
+> This fork is a strict superset: **80 rounds of work adding 373
 > individual features and fixes** on top of upstream's own image, from a
 > full REST API and AI-assisted scanning to shared wallets, digital
 > wallet passes, and a rules-based notification engine — without
@@ -173,7 +173,7 @@ lifecycle.
 - **Import** from a [Catima](https://catima.app/) CSV export, an existing Apple Wallet `.pkpass`, or this app's own CSV/JSON — background-processed with per-row error reporting, so one bad row doesn't sink the rest.
 - **Export** to CSV/JSON any time, or a **Full Backup (with files)** — a `.zip` bundling every item, its attached files, transaction history, and account settings, for a restore that doesn't lose anything the text-only formats can't carry.
 - A **nightly scheduled backup** (opt-out) runs the same Full Backup format automatically with rotation. See [`docs/BACKUP_RESTORE.md`](docs/BACKUP_RESTORE.md).
-- A subscribe-able **.ics calendar feed** of your active items' expiry dates for Google Calendar, Apple Calendar, etc.
+- A subscribe-able **.ics calendar feed** of your active items' expiry dates for Google Calendar, Apple Calendar, etc. — each event carries the wallet as its location, tags as categories, a link back to the item, and a built-in reminder alarm matching your notification threshold. Never includes the redeem code, PIN, or card number, since a subscribed feed typically syncs to your calendar provider's own cloud.
 
 </details>
 
@@ -185,6 +185,7 @@ lifecycle.
 - **Screen wake lock** — the screen stays on while a barcode is shown to a cashier.
 - A configurable **code-blur toggle** for privacy in public.
 - Floating toast messages instead of a page-top banner.
+- **A modern color picker** for wallet, tag, and item-tile colours — a curated swatch grid plus a hex field, replacing the jarring native browser/OS colour picker `<input type="color">` otherwise falls back to.
 
 </details>
 
