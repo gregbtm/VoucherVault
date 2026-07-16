@@ -11,6 +11,7 @@ from myapp.models import Item, SiteConfiguration, Tag, Wallet
 from myapp.utils import generate_code_image_base64
 
 from .exporters.full_backup import export_full_backup
+from .exporters.google_wallet import update_google_wallet_object
 from .models import ImportJob
 from .parsers import get_parser
 
@@ -182,3 +183,21 @@ def run_scheduled_backups():
             backup_user(user)
         except Exception as exc:
             logger.error('Scheduled backup failed for user %s: %s', user.username, exc)
+
+
+@shared_task
+def update_google_wallet_pass_task(item_id):
+    """
+    Best-effort push of an item's current state to its already-issued
+    Google Wallet object (see update_google_wallet_object). Queued
+    fire-and-forget from views.py wherever a saved item's balance,
+    expiry, name or used/archived state changes.
+    """
+    try:
+        item = Item.objects.get(pk=item_id)
+    except Item.DoesNotExist:
+        return
+    try:
+        update_google_wallet_object(item)
+    except Exception as exc:
+        logger.warning('Google Wallet update failed for item %s: %s', item_id, exc, exc_info=True)

@@ -2284,6 +2284,58 @@ class WebhookEventWiringTests(TestCase):
         mock_notify.assert_not_called()
 
 
+class GoogleWalletUpdateWiringTests(TestCase):
+    """
+    Confirms every place an item's balance/expiry/name/used/archived state
+    can change also queues a Google Wallet push (see
+    _queue_google_wallet_update) - mirrors WebhookEventWiringTests' pattern
+    of checking wiring, not the update logic itself (that's covered in
+    imports/tests.py::GoogleWalletExporterTests).
+    """
+
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    @patch('myapp.views._queue_google_wallet_update')
+    def test_toggle_item_status_queues_update_both_directions(self, mock_queue):
+        item = make_item(self.alice)
+        self.client.post(reverse('toggle_item_status', args=[item.id]))
+        mock_queue.assert_called_once()
+
+        mock_queue.reset_mock()
+        self.client.post(reverse('toggle_item_status', args=[item.id]))
+        mock_queue.assert_called_once()
+
+    @patch('myapp.views._queue_google_wallet_update')
+    def test_toggle_archive_queues_update_both_directions(self, mock_queue):
+        item = make_item(self.alice)
+        self.client.post(reverse('toggle_archive_item', args=[item.id]))
+        mock_queue.assert_called_once()
+
+        mock_queue.reset_mock()
+        self.client.post(reverse('toggle_archive_item', args=[item.id]))
+        mock_queue.assert_called_once()
+
+    @patch('myapp.views._queue_google_wallet_update')
+    def test_adding_transaction_queues_update(self, mock_queue):
+        item = make_item(self.alice, type='giftcard', value='20.00')
+        self.client.post(reverse('view_item', kwargs={'item_uuid': item.id}), {
+            'description': 'Coffee', 'value': '-5.00',
+        })
+        mock_queue.assert_called_once_with(item)
+
+    @patch('myapp.views._queue_google_wallet_update')
+    def test_editing_item_queues_update(self, mock_queue):
+        item = make_item(self.alice, type='giftcard', name='Old Name', value='20.00')
+        self.client.post(reverse('edit_item', args=[item.id]), {
+            'type': 'giftcard', 'name': 'New Name', 'issuer': item.issuer or '', 'redeem_code': item.redeem_code,
+            'value': '20.00', 'currency': 'GBP', 'code_type': 'qrcode', 'value_type': 'money',
+            'issue_date': date.today().isoformat(),
+        })
+        mock_queue.assert_called_once()
+
+
 class BalanceCheckUrlWiringTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')

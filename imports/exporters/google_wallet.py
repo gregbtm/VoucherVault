@@ -1,14 +1,21 @@
 import base64
 import json
+import logging
 import os
 import time
 
+import requests
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
 from myapp.models import SiteConfiguration
 
+logger = logging.getLogger(__name__)
+
 SAVE_URL_PREFIX = 'https://pay.google.com/gp/v/save/'
+OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token'
+OAUTH_SCOPE = 'https://www.googleapis.com/auth/wallet_object.issuer'
+WALLET_OBJECTS_URL = 'https://walletobjects.googleapis.com/walletobjects/v1/genericObject'
 
 # Google Wallet's Generic pass type covers loyalty cards, gift cards and
 # vouchers alike with a single class, so the issuer only registers once
@@ -106,7 +113,7 @@ def _build_generic_object(item, issuer_id: str, class_id: str) -> dict:
         'id': f'{issuer_id}.item-{item.id}',
         'classId': class_id,
         'genericType': GENERIC_TYPE_MAP.get(item.type, DEFAULT_GENERIC_TYPE),
-        'state': 'ACTIVE',
+        'state': 'COMPLETED' if (item.is_used or item.is_archived) else 'ACTIVE',
         'header': _localized(item.name),
         'cardTitle': _localized(item.issuer or 'VoucherVault Plus+'),
         'subheader': _localized(item.get_type_display()),
@@ -156,3 +163,63 @@ def generate_google_wallet_save_url(item) -> str:
     }
     token = _sign_jwt(payload, private_key)
     return f'{SAVE_URL_PREFIX}{token}'
+
+
+def _get_access_token(client_email: str, private_key) -> str:
+    """
+    Exchanges the service account's signed JWT assertion for a short-lived
+    OAuth2 access token (the standard Google service-account "JWT bearer"
+    flow), scoped to the Wallet Objects issuer API only.
+    """
+    now = int(time.time())
+    assertion = _sign_jwt({
+        'iss': client_email,
+        'scope': OAUTH_SCOPE,
+        'aud': OAUTH_TOKEN_URL,
+        'iat': now,
+        'exp': now + 3600,
+    }, private_key)
+    response = requests.post(OAUTH_TOKEN_URL, data={
+        'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        'assertion': assertion,
+    }, timeout=10)
+    response.raise_for_status()
+    return response.json()['access_token']
+
+
+def update_google_wallet_object(item) -> bool:
+    """
+    Pushes the item's current state to an already-issued Google Wallet
+    object, so a balance/expiry/name change is reflected in a pass a user
+    has already saved — without this, generate_google_wallet_save_url()
+    only ever affects the *next* time someone follows the save link.
+
+    Google gives no signal for whether a given item's pass was ever
+    actually saved (the save link can be regenerated on every page view
+    without the user clicking it), so this doesn't track that itself -
+    it just attempts the update and treats "object doesn't exist yet"
+    (404) as an expected no-op rather than an error. Returns True only on
+    a confirmed update; callers should treat False as "nothing to do or
+    it failed" and not surface it as a hard error.
+    """
+    if not google_wallet_enabled():
+        return False
+
+    config = SiteConfiguration.load()
+    client_email, private_key = _load_service_account(config)
+    issuer_id = _require_setting(config, 'google_wallet_issuer_id', 'GOOGLE_WALLET_ISSUER_ID')
+    class_id = config.google_wallet_class_id or f'{issuer_id}.vouchervault_generic'
+    object_id = f'{issuer_id}.item-{item.id}'
+
+    access_token = _get_access_token(client_email, private_key)
+    response = requests.patch(
+        f'{WALLET_OBJECTS_URL}/{object_id}',
+        headers={'Authorization': f'Bearer {access_token}'},
+        json=_build_generic_object(item, issuer_id, class_id),
+        timeout=10,
+    )
+    if response.status_code == 404:
+        logger.info('Google Wallet object %s not found (never saved) - skipping update', object_id)
+        return False
+    response.raise_for_status()
+    return True
