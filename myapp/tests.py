@@ -2899,6 +2899,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
         names = set(PeriodicTask.objects.values_list('name', flat=True))
         self.assertEqual(names, {
             'Periodic Expiry Check', 'Notification Rules Expiry Check',
+            'Next Up Reminder Check',
             'Update Check', 'Upstream Version Check', 'Scheduled Backup',
         })
 
@@ -3556,7 +3557,7 @@ class OfflineCacheTogglePreferenceTests(TestCase):
     def test_save_redirects_with_prefs_saved_signal(self):
         response = self.client.post(reverse('update_user_preferences'), data={
             'show_expiry_date': 'on', 'show_value': 'on', 'show_description': 'on',
-            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact',
+            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact', 'next_up_max_items': '1',
             'default_currency': 'GBP', 'keep_screen_awake': 'on', 'offline_cache_enabled': 'on',
         })
         self.assertRedirects(response, reverse('show_items') + '?prefs_saved=1')
@@ -3568,7 +3569,7 @@ class OfflineCacheTogglePreferenceTests(TestCase):
 
         response = self.client.post(reverse('update_user_preferences'), data={
             'show_expiry_date': 'on', 'show_value': 'on', 'show_description': 'on',
-            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact',
+            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact', 'next_up_max_items': '1',
             'default_currency': 'GBP', 'keep_screen_awake': 'on',
             # offline_cache_enabled omitted -> unchecked checkbox -> False
         })
@@ -3583,7 +3584,7 @@ class OfflineCacheTogglePreferenceTests(TestCase):
 
         response = self.client.post(reverse('update_user_preferences'), data={
             'show_expiry_date': 'on', 'show_value': 'on', 'show_description': 'on',
-            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact',
+            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact', 'next_up_max_items': '1',
             'default_currency': 'GBP', 'keep_screen_awake': 'on',
             # still leaving offline_cache_enabled off - no transition, no purge needed
         })
@@ -3625,7 +3626,7 @@ class BlurCodesTogglePreferenceTests(TestCase):
     def test_toggle_off_saves_via_preferences_form(self):
         response = self.client.post(reverse('update_user_preferences'), data={
             'show_expiry_date': 'on', 'show_value': 'on', 'show_description': 'on',
-            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact',
+            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact', 'next_up_max_items': '1',
             'default_currency': 'GBP', 'keep_screen_awake': 'on', 'offline_cache_enabled': 'on',
             # blur_codes_enabled omitted -> unchecked checkbox -> False
         })
