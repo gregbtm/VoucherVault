@@ -107,6 +107,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 74 — Google Wallet passes now update live, not just at save time](#phase-74--google-wallet-passes-now-update-live-not-just-at-save-time)
 - [Phase 75 — Firefly III balance sync recipe](#phase-75--firefly-iii-balance-sync-recipe)
 - [Phase 76 — Daily digest mode for notification rules](#phase-76--daily-digest-mode-for-notification-rules)
+- [Phase 77 — Login brute-force lockout](#phase-77--login-brute-force-lockout)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4036,6 +4037,55 @@ noisy for anyone with enough items that several fire the same day.
   new field (same pattern as every previous required-field addition in
   this changelog).
 
+## Phase 77 — Login brute-force lockout
+
+Last of the batch, and the smallest deliberate slice of a bigger
+"security cluster" ask (2FA, login lockout, field-level encryption at
+rest). Login lockout was picked first: small, no data migration, no new
+user-facing enrollment flow - unlike 2FA (needs an enrollment/recovery
+UX decision) or encryption at rest (needs a migration re-encrypting
+every existing item plus a key-management story), both left for a
+follow-up given they're genuinely bigger, harder-to-reverse changes.
+
+- **[django-axes](https://github.com/jazzband/django-axes)** wired into
+  the login form: `AxesBackend` first in `AUTHENTICATION_BACKENDS`
+  (ahead of `ModelBackend` and, when enabled, the OIDC backend),
+  `AxesMiddleware` after Django's own auth middleware.
+- **Locks by username, not IP** (`AXES_LOCKOUT_PARAMETERS =
+  ['username']`) - deliberately accepts axes.W006's warning (silenced,
+  with the reasoning left in a comment in `settings.py`) that an
+  attacker could rotate IPs to bypass the limit, because the
+  alternative - IP-based lockout - risks locking out every legitimate
+  user behind the same NAT/VPN/CGNAT address because of one attacker.
+  The worse failure mode for a small self-hosted app is different from
+  a public-facing SaaS.
+- **Database-backed, not cache-backed** (`AxesDatabaseHandler`, the
+  library default) - doesn't add a Redis dependency for something this
+  small, and self-hosters running without Celery/Redis configured still
+  get the protection.
+- Two new env vars, `AXES_FAILURE_LIMIT` (default 5) and
+  `AXES_COOLOFF_TIME_HOURS` (default 1) - kept as env vars rather than
+  new `SiteConfiguration` fields, since this is auth/infra wiring
+  (alongside `SECRET_KEY`, session cookie settings) rather than
+  day-to-day operational content.
+- `AXES_RESET_ON_SUCCESS = True` - a successful login clears the
+  failure count, so a genuine user who mistypes their password a couple
+  of times isn't left one attempt away from a lockout indefinitely.
+- 5 new tests (`myapp/tests.py::LoginLockoutTests`, run at a lowered
+  `AXES_FAILURE_LIMIT=3` so they don't need 5 real requests): correct
+  password succeeds under the limit, locked out (even with the correct
+  password) at the limit, not locked out below it, a successful login
+  resets the count, and lockout is per-username rather than global.
+- **Caught by the full suite before shipping**: `django.test.Client.
+  login()` - the shortcut hundreds of existing tests across this app use
+  to log a test user in - doesn't pass a `request` into `authenticate()`,
+  which `AxesBackend` requires once enabled. A known django-axes/Django
+  test-client incompatibility, not a bug in either. Fixed by defaulting
+  `AXES_ENABLED = 'test' not in sys.argv` (disabled under `manage.py
+  test`), with `LoginLockoutTests` itself re-enabling it via
+  `@override_settings(AXES_ENABLED=True)` since it POSTs to the real
+  login view instead of using the `client.login()` shortcut.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
@@ -4070,6 +4120,8 @@ On top of everything documented in the README, this fork adds:
 | `OIDC_DISCOVERY_URL` | Auto-populate `OIDC_OP_*_ENDPOINT` from a provider's `.well-known/openid-configuration` document. Any endpoint set explicitly via its own env var still wins. | `None` |
 | `API_WRITE_RATE_LIMIT` | Rate limit on REST API write requests (POST/PUT/PATCH/DELETE); reads are never throttled. | `60/minute` |
 | `LOG_LEVEL` | Console log verbosity (`DEBUG`/`INFO`/`WARNING`/`ERROR`). Server errors and denied-access warnings always log regardless. | `INFO` |
+| `AXES_FAILURE_LIMIT` | Failed login attempts before an account is locked out. | `5` |
+| `AXES_COOLOFF_TIME_HOURS` | How many hours a lockout lasts before the account can try again. | `1` |
 
 See `docker/env.example` for the full, commented list.
 

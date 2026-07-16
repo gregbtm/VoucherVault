@@ -11,6 +11,9 @@ django-http-referrer-policy==1.1.1
 django-csp==4.0
 django-pwa==2.0.1
 
+# AUTH / LOGIN BRUTE-FORCE PROTECTION
+django-axes==8.3.1
+
 # APP SPECIFIC
 qrcode==8.2
 apprise==1.9.9

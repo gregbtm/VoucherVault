@@ -16,6 +16,7 @@ import logging
 import os
 import pytz
 import secrets
+import sys
 from django.utils.html import escape
 from django.utils.translation import gettext_lazy as _
 from csp.constants import NONE, SELF, UNSAFE_INLINE, UNSAFE_EVAL
@@ -124,6 +125,7 @@ INSTALLED_APPS = [
     'imports',
     'ocr',
     'django_celery_beat',
+    'axes',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -146,6 +148,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'axes.middleware.AxesMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django_http_referrer_policy.middleware.ReferrerPolicyMiddleware',
     'csp.middleware.CSPMiddleware',
@@ -494,6 +497,34 @@ LOGOUT_REDIRECT_URL = '/post-logout/'
 
 WSGI_APPLICATION = 'myproject.wsgi.application'
 
+# django-axes: locks out further login attempts against a username/IP after
+# too many failures, so the login form can't be brute-forced. AxesBackend
+# must be first in AUTHENTICATION_BACKENDS - it short-circuits authentication
+# entirely once a user/IP is locked out, before ModelBackend (or OIDC, below)
+# ever gets a chance to check the password.
+AUTHENTICATION_BACKENDS = [
+    'axes.backends.AxesBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+AXES_FAILURE_LIMIT = int(os.environ.get('AXES_FAILURE_LIMIT', '5'))
+AXES_COOLOFF_TIME = int(os.environ.get('AXES_COOLOFF_TIME_HOURS', '1'))
+AXES_LOCKOUT_PARAMETERS = ['username']  # lock the account, not the visiting IP - fair on shared/CGNAT networks
+AXES_RESET_ON_SUCCESS = True
+# django.test.Client.login() doesn't pass a request into authenticate(),
+# which AxesBackend requires once enabled - it's a well-known incompatibility
+# between django-axes and Django's test client shortcut, not something wrong
+# with either. The hundreds of existing tests across this app all use that
+# shortcut, so axes is disabled under the test runner by default; tests that
+# specifically exercise lockout behavior (myapp.tests.LoginLockoutTests) POST
+# to the real login view instead of using client.login(), and re-enable axes
+# via @override_settings(AXES_ENABLED=True) for just that test class.
+AXES_ENABLED = 'test' not in sys.argv
+# axes.W006 warns that username-only lockout lets an attacker bypass the
+# limit by rotating IPs - true, but the alternative (IP-based) risks locking
+# out every legitimate user behind the same NAT/VPN/CGNAT address because of
+# one attacker, which is the worse failure mode for a small self-hosted app.
+SILENCED_SYSTEM_CHECKS = ['axes.W006']
+
 # check if oidc is enabled
 OIDC_ENABLED = os.environ.get('OIDC_ENABLED', 'False').lower() in ['true']
 OIDC_AUTOLOGIN = os.environ.get('OIDC_AUTOLOGIN', 'False').lower() in ['true']
@@ -539,11 +570,10 @@ if OIDC_ENABLED:
     # Add 'mozilla_django_oidc.middleware.SessionRefresh' to INSTALLED_APPS
     INSTALLED_APPS.append('mozilla_django_oidc')
     
-    # Add 'mozilla_django_oidc' authentication backend
-    AUTHENTICATION_BACKENDS = (
-        'django.contrib.auth.backends.ModelBackend',
-        'mozilla_django_oidc.auth.OIDCAuthenticationBackend',
-    )
+    # Add 'mozilla_django_oidc' authentication backend - appended, not
+    # replacing the axes.backends.AxesBackend + ModelBackend pair set above,
+    # since AxesBackend must stay first for lockouts to apply to OIDC logins too.
+    AUTHENTICATION_BACKENDS.append('mozilla_django_oidc.auth.OIDCAuthenticationBackend')
 
     # Add 'mozilla_django_oidc.middleware.SessionRefresh' to MIDDLEWARE
     # https://mozilla-django-oidc.readthedocs.io/en/stable/installation.html#validate-id-tokens-by-renewing-them
