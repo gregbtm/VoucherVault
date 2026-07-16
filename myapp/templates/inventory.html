@@ -920,6 +920,50 @@ body.dark-mode .next-up-card {
 </div>
 
 <section class="section">
+  {% if active_today_item %}
+  <!-- Active Today Widget -->
+  <div class="next-up-queue">
+    <div class="next-up-label"><i class="bi bi-train-front"></i> {% trans "Active Today" %}</div>
+    <div class="next-up-card-wrapper">
+      <a href="{% url 'view_item' item_uuid=active_today_item.item.id %}" class="next-up-card">
+        <div class="next-up-body">
+          <div class="next-up-info">
+            {% if active_today_item.item.logo_slug and logo_dev_api_key %}
+            <img class="next-up-logo"
+                 src="https://img.logo.dev/{{ active_today_item.item.logo_slug }}?token={{ logo_dev_api_key }}"
+                 alt="{{ active_today_item.item.issuer }}"
+                 onerror="this.style.display='none';">
+            {% elif active_today_item.merchant_logo_url %}
+            <img class="next-up-logo" src="{{ active_today_item.merchant_logo_url }}" alt="{{ active_today_item.item.issuer }}"
+                 onerror="this.style.display='none';">
+            {% endif %}
+            <div>
+              <div class="next-up-issuer">{{ active_today_item.item.issuer }}</div>
+              <h3 class="next-up-name">{{ active_today_item.item.journey_origin }} &rarr; {{ active_today_item.item.journey_destination }}</h3>
+              <div class="next-up-date">{{ active_today_item.item.name }}</div>
+            </div>
+          </div>
+          <div class="next-up-code">
+            {% if active_today_item.item.code_type != "none" %}
+            <img src="data:image/png;base64,{{ active_today_item.item.qr_code_base64 }}" alt="{% trans 'Barcode' %}" class="next-up-barcode-img">
+            {% else %}
+            <div class="next-up-redeem-code">{{ active_today_item.item.redeem_code }}</div>
+            {% endif %}
+          </div>
+        </div>
+      </a>
+      <form class="next-up-mark-used-form" method="post" action="{% url 'toggle_item_status' active_today_item.item.id %}"
+            onsubmit="return confirm('{% trans "Mark this item as used?" %}');">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{% url 'show_items' %}">
+        <button type="submit" class="next-up-mark-used-btn" title="{% trans 'Mark as used' %}" aria-label="{% trans 'Mark as used' %}">
+          <i class="bi bi-check2"></i>
+        </button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
   {% if next_up_items %}
   <!-- Next Up Widget -->
   <div class="next-up-queue">

@@ -30,8 +30,13 @@ an easily misread character.
 **Wallets** (named folders), colour-coded **Tags** with a clickable
 filter, free-text **Notes**, **shared wallets** for multi-user
 collaboration, **archiving**, **bulk actions**, a remembered
-**gift-card balance-check link** per merchant, and a "Next Up" widget
-that surfaces a queue of your soonest-expiring items ready to scan.
+**gift-card balance-check link** per merchant, a "Next Up" widget
+that surfaces a queue of your soonest-expiring items ready to scan, and
+an "Active Today" widget built for a daily round-trip commute ticket -
+shows the outward leg in the morning, switches to the return leg after
+your cutoff time. New items can also **auto-file into a wallet by
+issuer** (e.g. all "National Rail" tickets straight into "Train
+Tickets").
 
 ## 🔔 Notifications
 

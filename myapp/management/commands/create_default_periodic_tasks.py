@@ -61,6 +61,11 @@ class Command(BaseCommand):
             # Sends one combined message per rule set to "Daily Digest", batching whatever
             # fired that day; a no-op until a user opts a rule into digest delivery.
             {'name': 'Daily Notification Digest', 'task': 'notify.tasks.send_daily_digests', 'crontab': crontab_schedule, 'enabled': True},
+            # Marks today's outward commute ticket used once a user's configured Active
+            # Today cutoff passes; a no-op until a user enables the widget and sets a
+            # home station. Reuses the hourly schedule - this is bookkeeping the widget's
+            # own live read doesn't depend on, so within-the-hour timing is fine.
+            {'name': 'Active Today Outward-Leg Cleanup', 'task': 'myapp.tasks.mark_expired_commute_outward_tickets', 'crontab': hourly_schedule, 'enabled': True},
             # Add more tasks as needed
         ]
 

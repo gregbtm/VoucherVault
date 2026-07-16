@@ -109,6 +109,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 76 — Daily digest mode for notification rules](#phase-76--daily-digest-mode-for-notification-rules)
 - [Phase 77 — Login brute-force lockout](#phase-77--login-brute-force-lockout)
 - [Phase 78 — Fix wallet filter reset getting stuck at zero results](#phase-78--fix-wallet-filter-reset-getting-stuck-at-zero-results)
+- [Phase 79 — Active Today widget for round-trip commute tickets + auto-wallet-assignment](#phase-79--active-today-widget-for-round-trip-commute-tickets--auto-wallet-assignment)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4122,6 +4123,62 @@ zeroing every result regardless of the wallet selected.
   `value="None"`) when no type filter is active, and a behavioral
   companion confirming every item reappears once the wallet filter is
   cleared back to "All Wallets".
+
+## Phase 79 — Active Today widget for round-trip commute tickets + auto-wallet-assignment
+
+User-driven request from a daily rail commuter: a same-day-only widget
+that picks out whichever leg of a round-trip ticket (outward in the
+morning, return in the evening) is actually relevant right now, instead
+of Next Up's multi-day queue. Generalized past the single reported route
+so it works for anyone's commute, not just one hardcoded station pair.
+
+- **`Item.journey_origin`/`journey_destination`** - two new optional
+  text fields for a point-to-point travel ticket's departure/arrival
+  station, e.g. "Hatfield Peverel" and "London Terminals". Blank for
+  every other item type; exposed on the create/edit item forms under a
+  "Journey From"/"Journey To" pair.
+- **`UserPreference.active_today_enabled`, `commute_home_station`,
+  `active_today_cutoff_time`** - opt-in (off by default, matching Next
+  Up's own pattern), a home station matched case-insensitively against
+  a ticket's journey fields to tell an outward leg from a return leg,
+  and a per-user switchover time (default 12:00) rather than a hardcoded
+  midday - configurable in Preferences.
+- **`myapp.analytics.get_active_today_item()`** - a pure read, safe on
+  every page load: before the cutoff, shows today's outward-leg ticket
+  (home station as origin), falling back to the return leg if only that
+  was bought; from the cutoff on, shows only the return leg. Only ever
+  considers a ticket whose `expiry_date` is exactly today - a ticket for
+  tomorrow or yesterday never appears, regardless of what's still
+  unused.
+- **`myapp.tasks.mark_expired_commute_outward_tickets`** (new hourly
+  Celery Beat task) - a bookkeeping companion, not the widget's source
+  of truth: once a user's cutoff passes, marks their outward ticket
+  `is_used=True` so it stops counting as available elsewhere in the app
+  (Inventory counts, Next Up). The widget's own read never depends on
+  this having run yet - it decides what to display directly from the
+  current time vs the configured cutoff every time, so a delay in the
+  task never leaves it showing something stale.
+- **General issuer→wallet auto-assignment** - rather than hardcoding
+  "train ticket → Train Tickets wallet" as a special case, added
+  `Wallet.auto_assign_issuer_match` (a plain text field editable on any
+  wallet's create/edit form) and `Wallet.match_for_issuer()`: a new
+  item whose issuer contains a wallet's configured match text (case-
+  insensitive) is auto-filed into that wallet on creation, unless a
+  wallet was already explicitly chosen. Setting a "Train Tickets"
+  wallet's match text to "National Rail" is just the first use of a
+  mechanism that works for any issuer/wallet pairing.
+- **Both AI OCR backends** (Claude, OpenAI - Tesseract stays local-text-
+  only and always returns both fields as `null`) taught to extract
+  `journey_origin`/`journey_destination` from a point-to-point travel
+  ticket scan, so the two new item fields and the wallet auto-assignment
+  above both work straight from a photo, not just manual entry.
+- 25 new tests: `Wallet.match_for_issuer` matching/scoping/case-
+  insensitivity, the `create_item` auto-assign hook (including "never
+  overrides an explicit wallet choice"), `get_active_today_item`'s full
+  pre/post-cutoff/no-return-leg/used/archived/case-insensitive-station
+  matrix, the `show_items` view wiring, the cleanup task's flip-and-
+  no-op-before-cutoff behavior, and OCR journey-field passthrough for
+  both AI backends.
 
 ## New environment variables
 

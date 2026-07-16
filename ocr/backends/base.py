@@ -143,7 +143,8 @@ class OCRBackend(ABC):
         Returns a dict with keys: code, code_type, name, issuer,
         expiry_date (ISO 8601 string or None), pin, value (float or None),
         currency, card_number, logo_slug, balance_check_url, type,
-        description, notes, tags (list of str), confidence (0.0-1.0).
+        description, notes, tags (list of str), journey_origin,
+        journey_destination, confidence (0.0-1.0).
         code_type is one of VALID_CODE_TYPES or None if the backend can't
         or didn't try to determine the barcode symbology. currency is one
         of VALID_CURRENCIES or None. logo_slug is a bare domain (e.g.
@@ -156,6 +157,10 @@ class OCRBackend(ABC):
         instructions/terms if visibly printed on the card, else None -
         never invented. tags is a list of 0-4 short suggested category
         names (e.g. ["Restaurant"]) for the frontend to match against the
-        user's existing tags or suggest as new ones.
+        user's existing tags or suggest as new ones. journey_origin and
+        journey_destination are the departure/arrival station or stop for
+        a point-to-point travel ticket (e.g. "Hatfield Peverel"/"HAP" and
+        "London Terminals"/"LON"), used by the Active Today widget - both
+        None for anything that isn't that kind of ticket.
         """
         ...

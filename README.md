@@ -14,7 +14,7 @@
       <a target="_blank" href="https://github.com/gregbtm/VoucherVault/network/members"><img src="https://img.shields.io/github/forks/gregbtm/VoucherVault?style=flat-square&color=4154f1" alt="Forks"></a>
     </p>
     <p>
-      <img src="https://img.shields.io/badge/363%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="363 features and fixes added on top of upstream">
+      <img src="https://img.shields.io/badge/370%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="370 features and fixes added on top of upstream">
       <img src="https://img.shields.io/badge/PWA-installable-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="Installable PWA">
       <img src="https://img.shields.io/badge/AI--assisted-scanning-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="AI-assisted scanning">
       <img src="https://img.shields.io/badge/REST-API-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="REST API">
@@ -31,7 +31,7 @@
 > multi-user login with OIDC SSO, and Apprise expiry notifications out of
 > the box (see [Features](#-features) for the complete original list).
 >
-> This fork is a strict superset: **78 rounds of work adding 363
+> This fork is a strict superset: **79 rounds of work adding 370
 > individual features and fixes** on top of upstream's own image, from a
 > full REST API and AI-assisted scanning to shared wallets, digital
 > wallet passes, and a rules-based notification engine — without
@@ -126,6 +126,8 @@ available.
 - **Card number vs. barcode payload** — a separate field for when a printed member number differs from what's actually encoded in the barcode.
 - **Gift-card balance-check link** — a bookmarked link per merchant, remembered and auto-suggested on future cards from the same issuer, with a one-tap "Check Balance" button.
 - **"Next Up" widget** — point it at one or more wallets (e.g. "Train Tickets") and Inventory highlights a queue of the soonest-expiring items across them (up to 3, configurable), barcode included, ready to scan, with a one-tap "mark as used" on each card. Off by default; opt in from Preferences. Pair it with a "Next Up Item Due Today" notification rule for a same-day reminder.
+- **"Active Today" widget** — built for a daily round-trip ticket (e.g. a train commute): before your configured cutoff time it shows today's outward leg, then automatically switches to the return leg after it, only ever on the day the ticket is actually valid for. Set a home station in Preferences and tag a ticket's Journey From/To fields (auto-filled by "Scan with AI" for a photographed train ticket) to use it. Off by default.
+- **Auto-assign new items to a wallet by issuer** — set a wallet's "auto-assign" match text (e.g. "National Rail") and any new item whose issuer contains it — scanned or typed — is filed straight into that wallet unless you pick one yourself.
 
 </details>
 

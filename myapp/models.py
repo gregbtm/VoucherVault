@@ -1,3 +1,4 @@
+from datetime import time
 from decimal import Decimal
 
 from django.db import models
@@ -95,6 +96,24 @@ class UserPreference(models.Model):
         validators=[MinValueValidator(1), MaxValueValidator(3)],
         help_text="How many upcoming items to show in the Next Up widget, soonest first (1-3).",
     )
+    active_today_enabled = models.BooleanField(
+        default=False,
+        help_text="Show the Active Today widget - surfaces today's outward or return leg of a "
+                   "round-trip ticket (e.g. a daily commute), switching over at the cutoff time "
+                   "below. Requires a home station to be set.",
+    )
+    commute_home_station = models.CharField(
+        max_length=100, blank=True, default='',
+        help_text="Your home station/stop. Matched case-insensitively against a ticket's journey "
+                   "origin/destination to tell an outward leg from a return leg, e.g. \"Hatfield "
+                   "Peverel\" or \"HAP\" - use whatever your tickets actually print.",
+    )
+    active_today_cutoff_time = models.TimeField(
+        default=time(12, 0),
+        help_text="Before this time, Active Today shows today's outward leg (home station as "
+                   "origin). From this time on, the outward leg is marked used and the return "
+                   "leg (home station as destination) is shown instead.",
+    )
 
 class Wallet(models.Model):
     """
@@ -118,6 +137,12 @@ class Wallet(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    auto_assign_issuer_match = models.CharField(
+        max_length=100, blank=True, default='',
+        help_text="New items whose issuer contains this text (case-insensitive) are automatically "
+                   "placed in this wallet, unless a wallet was already chosen. E.g. \"National "
+                   "Rail\" to route scanned train tickets straight into a \"Train Tickets\" wallet.",
+    )
 
     class Meta:
         ordering = ['name']
@@ -125,6 +150,21 @@ class Wallet(models.Model):
 
     def __str__(self):
         return self.name
+
+    @classmethod
+    def match_for_issuer(cls, user, issuer):
+        """
+        Returns the first of `user`'s wallets whose `auto_assign_issuer_match`
+        is a case-insensitive substring of `issuer`, or None. Used to
+        auto-file a newly created item (e.g. a scanned train ticket) into
+        the right wallet without the user having to pick one by hand.
+        """
+        if not issuer:
+            return None
+        for wallet in cls.objects.filter(user=user).exclude(auto_assign_issuer_match='').order_by('name'):
+            if wallet.auto_assign_issuer_match.lower() in issuer.lower():
+                return wallet
+        return None
 
 
 class Tag(models.Model):
@@ -269,6 +309,17 @@ class Item(models.Model):
         max_length=16, blank=True, default='',
         help_text="Perceptual hash of `file`, for duplicate-photo detection. Computed "
                    "automatically on save - never set this by hand.",
+    )
+    journey_origin = models.CharField(
+        max_length=100, blank=True, default='',
+        help_text="Departure station/stop for a train or transport ticket, e.g. \"Hatfield "
+                   "Peverel\" or \"HAP\". Powers the Active Today widget - leave blank for "
+                   "anything that isn't a point-to-point travel ticket.",
+    )
+    journey_destination = models.CharField(
+        max_length=100, blank=True, default='',
+        help_text="Arrival station/stop for a train or transport ticket, e.g. \"London "
+                   "Terminals\" or \"LON\".",
     )
 
     objects = ItemQuerySet.as_manager()

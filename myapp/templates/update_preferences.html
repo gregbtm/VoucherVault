@@ -199,6 +199,39 @@
               </p>
             </div>
 
+            <!-- Active Today Widget Section -->
+            <div class="mb-4">
+              <h6 class="text-muted mb-3"><i class="bi bi-train-front me-2"></i>{% trans "Active Today Widget" %}</h6>
+              <p class="text-muted small">{% trans "For a daily round-trip ticket (e.g. a train commute): shows today's outward leg before your cutoff time, then switches to the return leg after it - only ever on the day the ticket is actually valid for. Set your home station below and tag your tickets' Journey From/To fields when creating them." %}</p>
+              {% for field in form %}
+                {% if field.name == "active_today_enabled" %}
+                  <div class="form-check mb-3">
+                    {{ field }}
+                    <label class="form-check-label" for="{{ field.id_for_label }}">{% trans "Enable Active Today widget" %}</label>
+                  </div>
+                {% endif %}
+                {% if field.name == "commute_home_station" %}
+                  <div class="mb-3">
+                    <label for="{{ field.id_for_label }}" class="form-label">{% trans "Home station" %}</label>
+                    {{ field }}
+                    <small class="form-text text-muted">{% trans "Matched against a ticket's Journey From/To - must match what's on your tickets, e.g. \"Hatfield Peverel\" or \"HAP\"." %}</small>
+                    {% if field.errors %}
+                      <div class="text-danger small">{{ field.errors }}</div>
+                    {% endif %}
+                  </div>
+                {% endif %}
+                {% if field.name == "active_today_cutoff_time" %}
+                  <div class="mb-3" style="max-width: 200px;">
+                    <label for="{{ field.id_for_label }}" class="form-label">{% trans "Switchover time" %}</label>
+                    {{ field }}
+                    {% if field.errors %}
+                      <div class="text-danger small">{{ field.errors }}</div>
+                    {% endif %}
+                  </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+
             <div class="mt-4">
               <button type="submit" class="btn btn-primary">
                 <i class="bi bi-check-circle me-1"></i>{% trans "Update Preferences" %}

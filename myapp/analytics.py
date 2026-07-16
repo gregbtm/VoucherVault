@@ -175,6 +175,44 @@ def get_next_up_items(wallets, limit=1):
     return items
 
 
+def get_active_today_item(user, enabled, home_station, cutoff_time):
+    """
+    Picks out today's outward or return leg of a round-trip ticket (e.g. a
+    daily commute) for the "Active Today" widget, purely a read - it never
+    mutates anything, so it's safe to call on every page load regardless of
+    whether the cutoff has passed. `home_station` is matched case-
+    insensitively against Item.journey_origin/journey_destination: the
+    "outward" leg is whichever candidate departs from home, the "return"
+    leg is whichever arrives back at home.
+
+    Before `cutoff_time`, the outward leg is shown (falling back to the
+    return leg if only that was bought). From `cutoff_time` on, only the
+    return leg is shown — the outward leg is assumed done for the day (see
+    myapp.tasks.mark_expired_commute_outward_tickets, which flips its
+    is_used flag around the same cutoff for bookkeeping; this function
+    doesn't depend on that having run yet).
+
+    Returns None if the widget is off, no home station is configured, or
+    there's no unused, non-archived ticket valid today with both journey
+    fields set.
+    """
+    if not enabled or not home_station:
+        return None
+    today = timezone.localtime().date()
+    home = home_station.strip().lower()
+    candidates = list(
+        Item.objects.filter(user=user, is_archived=False, is_used=False, expiry_date=today)
+        .exclude(journey_origin='').exclude(journey_destination='')
+    )
+    if not candidates:
+        return None
+    outward = next((i for i in candidates if i.journey_origin.strip().lower() == home), None)
+    return_leg = next((i for i in candidates if i.journey_destination.strip().lower() == home), None)
+    if timezone.localtime().time() < cutoff_time:
+        return outward or return_leg
+    return return_leg
+
+
 def build_expiry_calendar(user, months_ahead=None):
     """
     Returns a list of `months_ahead` month dicts (starting this month) for a
