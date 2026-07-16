@@ -25,6 +25,7 @@ class NotificationRule(models.Model):
         ('item_archived', 'Item Archived'),
         ('balance_changed', 'Balance Changed'),
         ('item_shared', 'Item Shared'),
+        ('next_up_reminder', 'Next Up Item Due Today'),
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notification_rules')

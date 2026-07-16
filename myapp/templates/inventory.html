@@ -740,12 +740,37 @@ body.dark-mode .mobile-filter-select {
 .items-grid .item-card:nth-child(6) { animation-delay: 0.12s; }
 
 /* Next Up Widget */
+.next-up-queue {
+  margin-bottom: 1.5rem;
+}
+
+.next-up-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-color, #495057);
+  opacity: 0.7;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.next-up-card-wrapper {
+  position: relative;
+  margin-bottom: 0.6rem;
+}
+
+.next-up-queue .next-up-card-wrapper:last-child {
+  margin-bottom: 0;
+}
+
 .next-up-card {
   display: block;
   background: linear-gradient(135deg, var(--primary-color, #4154f1), #6c7ff2);
   border-radius: 14px;
-  padding: 1.25rem;
-  margin-bottom: 1.5rem;
+  padding: 1.1rem;
   color: #fff;
   text-decoration: none;
   box-shadow: 0 4px 14px rgba(65, 84, 241, 0.25);
@@ -757,24 +782,13 @@ body.dark-mode .mobile-filter-select {
   color: #fff;
 }
 
-.next-up-label {
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  opacity: 0.85;
-  margin-bottom: 0.75rem;
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
 .next-up-body {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
+  padding-right: 2rem;
 }
 
 .next-up-info {
@@ -785,9 +799,9 @@ body.dark-mode .mobile-filter-select {
 }
 
 .next-up-logo {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
   object-fit: contain;
   background: #fff;
   padding: 4px;
@@ -795,22 +809,22 @@ body.dark-mode .mobile-filter-select {
 }
 
 .next-up-issuer {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   opacity: 0.85;
 }
 
 .next-up-name {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 600;
   margin: 0.1rem 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 60vw;
+  max-width: 55vw;
 }
 
 .next-up-date {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 600;
   opacity: 0.9;
 }
@@ -819,7 +833,7 @@ body.dark-mode .mobile-filter-select {
   flex-shrink: 0;
   background: #fff;
   border-radius: 10px;
-  padding: 0.5rem;
+  padding: 0.4rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -827,7 +841,7 @@ body.dark-mode .mobile-filter-select {
 
 .next-up-barcode-img {
   display: block;
-  width: 160px;
+  width: 120px;
   max-width: 100%;
   height: auto;
 }
@@ -836,9 +850,33 @@ body.dark-mode .mobile-filter-select {
   color: #1a1a2e;
   font-weight: 700;
   font-family: monospace;
-  font-size: 1rem;
-  padding: 0.5rem 0.75rem;
+  font-size: 0.95rem;
+  padding: 0.4rem 0.65rem;
   letter-spacing: 0.05em;
+}
+
+.next-up-mark-used-form {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+}
+
+.next-up-mark-used-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.next-up-mark-used-btn:hover {
+  background: rgba(255, 255, 255, 0.35);
 }
 
 @media (max-width: 480px) {
@@ -882,41 +920,55 @@ body.dark-mode .next-up-card {
 </div>
 
 <section class="section">
-  {% if next_up_item %}
+  {% if next_up_items %}
   <!-- Next Up Widget -->
-  <a href="{% url 'view_item' item_uuid=next_up_item.id %}" class="next-up-card">
+  <div class="next-up-queue">
     <div class="next-up-label"><i class="bi bi-pin-angle-fill"></i> {% trans "Next Up" %}</div>
-    <div class="next-up-body">
-      <div class="next-up-info">
-        {% if next_up_item.logo_slug %}
-        <img class="next-up-logo"
-             src="https://img.logo.dev/{{ next_up_item.logo_slug }}?token=pk_NaUHDkw4SSeHCapveLJtjg"
-             alt="{{ next_up_item.issuer }}"
-             onerror="this.style.display='none';">
-        {% elif next_up_logo_url %}
-        <img class="next-up-logo" src="{{ next_up_logo_url }}" alt="{{ next_up_item.issuer }}"
-             onerror="this.style.display='none';">
-        {% endif %}
-        <div>
-          <div class="next-up-issuer">{{ next_up_item.issuer }}</div>
-          <h3 class="next-up-name">{{ next_up_item.name }}</h3>
-          <div class="next-up-date">
-            {% if next_up_item.days_left == 0 %}{% trans "Today" %}
-            {% elif next_up_item.days_left == 1 %}{% trans "Tomorrow" %}
-            {% else %}{{ next_up_item.expiry_date|date:"D, d M" }}
+    {% for entry in next_up_items %}
+    <div class="next-up-card-wrapper">
+      <a href="{% url 'view_item' item_uuid=entry.item.id %}" class="next-up-card">
+        <div class="next-up-body">
+          <div class="next-up-info">
+            {% if entry.item.logo_slug %}
+            <img class="next-up-logo"
+                 src="https://img.logo.dev/{{ entry.item.logo_slug }}?token=pk_NaUHDkw4SSeHCapveLJtjg"
+                 alt="{{ entry.item.issuer }}"
+                 onerror="this.style.display='none';">
+            {% elif entry.merchant_logo_url %}
+            <img class="next-up-logo" src="{{ entry.merchant_logo_url }}" alt="{{ entry.item.issuer }}"
+                 onerror="this.style.display='none';">
+            {% endif %}
+            <div>
+              <div class="next-up-issuer">{{ entry.item.issuer }}</div>
+              <h3 class="next-up-name">{{ entry.item.name }}</h3>
+              <div class="next-up-date">
+                {% if entry.item.days_left == 0 %}{% trans "Today" %}
+                {% elif entry.item.days_left == 1 %}{% trans "Tomorrow" %}
+                {% else %}{{ entry.item.expiry_date|date:"D, d M" }}
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="next-up-code">
+            {% if entry.item.code_type != "none" %}
+            <img src="data:image/png;base64,{{ entry.item.qr_code_base64 }}" alt="{% trans 'Barcode' %}" class="next-up-barcode-img">
+            {% else %}
+            <div class="next-up-redeem-code">{{ entry.item.redeem_code }}</div>
             {% endif %}
           </div>
         </div>
-      </div>
-      <div class="next-up-code">
-        {% if next_up_item.code_type != "none" %}
-        <img src="data:image/png;base64,{{ next_up_item.qr_code_base64 }}" alt="{% trans 'Barcode' %}" class="next-up-barcode-img">
-        {% else %}
-        <div class="next-up-redeem-code">{{ next_up_item.redeem_code }}</div>
-        {% endif %}
-      </div>
+      </a>
+      <form class="next-up-mark-used-form" method="post" action="{% url 'toggle_item_status' entry.item.id %}"
+            onsubmit="return confirm('{% trans "Mark this item as used?" %}');">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{% url 'show_items' %}">
+        <button type="submit" class="next-up-mark-used-btn" title="{% trans 'Mark as used' %}" aria-label="{% trans 'Mark as used' %}">
+          <i class="bi bi-check2"></i>
+        </button>
+      </form>
     </div>
-  </a>
+    {% endfor %}
+  </div>
   {% endif %}
 
   <!-- Filter Bar -->

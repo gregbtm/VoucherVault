@@ -101,6 +101,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 68 — README visual pass: quicker to scan, less wall-of-text](#phase-68--readme-visual-pass-quicker-to-scan-less-wall-of-text)
 - [Phase 69 — An honest feature count, and a real donate button](#phase-69--an-honest-feature-count-and-a-real-donate-button)
 - [Phase 70 — "Next Up" widget for the item you need right now](#phase-70--next-up-widget-for-the-item-you-need-right-now)
+- [Phase 71 — Next Up: multi-wallet queue, mark-used, day-of reminder](#phase-71--next-up-multi-wallet-queue-mark-used-day-of-reminder)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -3800,6 +3801,51 @@ needs VoucherVault to highlight the soonest-relevant item it already has.
 - Scoped to a single wallet rather than "soonest across everything" so a
   coupon expiring tomorrow can't bump a train ticket needed next week out
   of the slot - the wallet is a deliberate choice, not a guess.
+
+## Phase 71 — Next Up: multi-wallet queue, mark-used, day-of reminder
+
+A direct follow-up to Phase 70, expanding the single-wallet single-item
+widget into a small queue, plus closing two loops it left open: no way to
+dismiss a used ticket without leaving Inventory, and no reminder if you
+didn't happen to open the app that day.
+
+- **`UserPreference.next_up_wallet` (FK) → `next_up_wallets` (M2M)** -
+  point the widget at more than one wallet (e.g. "Train Tickets" and
+  "Flights") and items from all of them are interleaved into one queue,
+  soonest date first, regardless of which wallet each came from. A data
+  migration carries over anyone's existing single-wallet choice before
+  dropping the old column - nothing to reconfigure.
+- **`UserPreference.next_up_max_items`** - how many items the queue shows,
+  1-3 (new field, default 1 - the same single-card behaviour as before
+  unless you turn it up). `get_next_up_item()` became `get_next_up_items()`
+  accordingly, capping the merged, date-sorted result at this count.
+- **Mark as used, right from the widget** - each queued card now has a
+  small confirm-gated button that calls the existing `toggle_item_status`
+  view (same one the item detail page already used to zero out the
+  balance and fire the `item_used` event) and redirects back to Inventory
+  instead of the item page, so working through several due-today items
+  doesn't mean bouncing in and out of Inventory each time.
+- **A "Next Up Item Due Today" notification event** - added to
+  `NotificationRule.EVENT_CHOICES`, the same generic per-user event-type
+  list every other notification (expiry warnings, item used, item shared,
+  ...) already runs through. No new model, no new toggle: subscribe an
+  existing ntfy/webhook/webpush/Apprise rule to it from the Notification
+  Rules page like any other event. A new daily Celery task,
+  `check_next_up_reminders` (same 9am schedule as the existing expiry
+  check), fires it for every item due today in one of a user's configured
+  Next Up wallets - deliberately not capped by `next_up_max_items`, since
+  that field only limits what the widget displays, not which items are
+  worth a reminder.
+- **Settings-architecture review** (asked for, not just assumed): the
+  existing three-way split - `SiteConfiguration` (singleton, admin-only,
+  app-wide operational settings), `UserPreference` (per-user display and
+  behaviour), `NotificationRule` (per-user notification delivery channels
+  and event subscriptions) - covers this phase's additions cleanly with no
+  new model needed. The one thing that *was* out of date: the Preferences
+  page was still titled "Display Preferences" despite already holding
+  non-display settings (screen wake, offline caching, and now Next Up) -
+  renamed to plain "Preferences" (page heading, breadcrumb, sidebar link,
+  and the one other page that referenced it by name).
 
 ## New environment variables
 

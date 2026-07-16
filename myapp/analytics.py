@@ -133,25 +133,27 @@ def get_expiring_soon_items(user, days=EXPIRING_SOON_DAYS, limit=EXPIRING_SOON_L
     return items
 
 
-def get_next_up_item(wallet):
+def get_next_up_items(wallets, limit=1):
     """
-    Soonest-expiring active item in `wallet`, for the Inventory page's
-    "Next Up" highlight card. `wallet` is the user's configured
-    UserPreference.next_up_wallet - None means the feature is off, and
-    None is returned unchanged so callers don't need to check first.
+    Soonest-expiring active items across `wallets` (any iterable/queryset
+    of Wallet), for the Inventory page's "Next Up" widget - up to `limit`
+    items, soonest first, interleaved by date across every wallet rather
+    than grouped per wallet. `wallets` empty means the feature is off, and
+    an empty list is returned unchanged so callers don't need to check
+    first. Each item gets a `.days_left` attribute attached for display.
     """
-    if wallet is None:
-        return None
+    wallet_ids = [w.id for w in wallets]
+    if not wallet_ids:
+        return []
     today = timezone.localtime().date()
-    item = (
-        Item.objects.filter(wallet=wallet, is_used=False, is_archived=False, expiry_date__gte=today)
+    items = list(
+        Item.objects.filter(wallet_id__in=wallet_ids, is_used=False, is_archived=False, expiry_date__gte=today)
         .select_related('wallet')
-        .order_by('expiry_date', 'issue_date')
-        .first()
+        .order_by('expiry_date', 'issue_date')[:limit]
     )
-    if item is not None:
+    for item in items:
         item.days_left = (item.expiry_date - today).days
-    return item
+    return items
 
 
 def build_expiry_calendar(user, months_ahead=CALENDAR_MONTHS_AHEAD):

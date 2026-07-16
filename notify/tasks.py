@@ -2,7 +2,7 @@ from datetime import date
 
 from celery import shared_task
 
-from myapp.models import Item, SiteConfiguration
+from myapp.models import Item, SiteConfiguration, UserPreference
 
 from .backends import get_backend
 from .models import NotificationLog, NotificationRule
@@ -166,3 +166,31 @@ def check_and_notify_expiry():
 
         if 0 <= days_left <= final_threshold:
             fire_notifications(item, 'expiry_final', title, message)
+
+
+@shared_task
+def check_next_up_reminders():
+    """
+    Runs on the same daily schedule as check_and_notify_expiry (see
+    create_default_periodic_tasks). Fires a next_up_reminder event for
+    every active item that expires today in one of a user's configured
+    "Next Up" wallets (UserPreference.next_up_wallets) - a no-op for any
+    user who hasn't set one, and for a fresh install with none configured
+    at all. Not limited by next_up_max_items: that field only caps how
+    many items the Inventory widget displays, not which items are
+    reminder-worthy - every item due today in a watched wallet gets one.
+    """
+    today = date.today()
+
+    for preferences in UserPreference.objects.exclude(next_up_wallets=None).distinct():
+        wallet_ids = list(preferences.next_up_wallets.values_list('id', flat=True))
+        if not wallet_ids:
+            continue
+        items = Item.objects.filter(
+            wallet_id__in=wallet_ids, user=preferences.user,
+            is_used=False, is_archived=False, expiry_date=today,
+        )
+        for item in items:
+            title = f"📌 {item.name} is today"
+            message = f"Code: {item.redeem_code}\nWallet: {item.wallet.name}"
+            fire_notifications(item, 'next_up_reminder', title, message)

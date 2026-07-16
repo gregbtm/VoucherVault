@@ -484,23 +484,50 @@ class ShowItemsNextUpWidgetTests(TestCase):
         self.user = User.objects.create_user(username='alice', password='pw12345!')
         self.client.login(username='alice', password='pw12345!')
         self.wallet = Wallet.objects.create(user=self.user, name='Train Tickets')
+        self.other_wallet = Wallet.objects.create(user=self.user, name='Flights')
 
-    def test_no_widget_when_preference_unset(self):
+    def test_no_widget_when_no_wallets_configured(self):
         make_item(self.user, wallet=self.wallet, expiry_date=date.today() + timedelta(days=1))
         response = self.client.get(reverse('show_items'))
-        self.assertIsNone(response.context['next_up_item'])
+        self.assertEqual(response.context['next_up_items'], [])
 
     def test_widget_shows_soonest_item_from_configured_wallet(self):
         preferences, _ = UserPreference.objects.get_or_create(user=self.user)
-        preferences.next_up_wallet = self.wallet
-        preferences.save()
+        preferences.next_up_wallets.add(self.wallet)
         soonest = make_item(self.user, name='Soonest', redeem_code='S1', wallet=self.wallet,
                              expiry_date=date.today() + timedelta(days=1))
         make_item(self.user, name='Later', redeem_code='L1', wallet=self.wallet,
                   expiry_date=date.today() + timedelta(days=5))
 
         response = self.client.get(reverse('show_items'))
-        self.assertEqual(response.context['next_up_item'].id, soonest.id)
+        items = [e['item'] for e in response.context['next_up_items']]
+        self.assertEqual([i.id for i in items], [soonest.id])
+
+    def test_widget_interleaves_multiple_wallets_by_date(self):
+        preferences, _ = UserPreference.objects.get_or_create(user=self.user)
+        preferences.next_up_wallets.add(self.wallet, self.other_wallet)
+        preferences.next_up_max_items = 3
+        preferences.save()
+        flight = make_item(self.user, name='Flight', redeem_code='F1', wallet=self.other_wallet,
+                            expiry_date=date.today() + timedelta(days=1))
+        train = make_item(self.user, name='Train', redeem_code='T1', wallet=self.wallet,
+                           expiry_date=date.today() + timedelta(days=2))
+
+        response = self.client.get(reverse('show_items'))
+        items = [e['item'] for e in response.context['next_up_items']]
+        self.assertEqual([i.id for i in items], [flight.id, train.id])
+
+    def test_widget_capped_at_configured_max_items(self):
+        preferences, _ = UserPreference.objects.get_or_create(user=self.user)
+        preferences.next_up_wallets.add(self.wallet)
+        preferences.next_up_max_items = 2
+        preferences.save()
+        for i in range(4):
+            make_item(self.user, name=f'Item{i}', redeem_code=f'C{i}', wallet=self.wallet,
+                      expiry_date=date.today() + timedelta(days=i + 1))
+
+        response = self.client.get(reverse('show_items'))
+        self.assertEqual(len(response.context['next_up_items']), 2)
 
     def test_other_users_wallet_not_leaked_as_next_up(self):
         bob = User.objects.create_user(username='bob', password='pw12345!')
@@ -508,18 +535,27 @@ class ShowItemsNextUpWidgetTests(TestCase):
         make_item(bob, wallet=bob_wallet, expiry_date=date.today() + timedelta(days=1))
 
         preferences, _ = UserPreference.objects.get_or_create(user=self.user)
-        preferences.next_up_wallet = self.wallet
-        preferences.save()
+        preferences.next_up_wallets.add(self.wallet)
 
         response = self.client.get(reverse('show_items'))
-        self.assertIsNone(response.context['next_up_item'])
+        self.assertEqual(response.context['next_up_items'], [])
 
     def test_preference_form_scopes_wallet_choices_to_owner(self):
         bob = User.objects.create_user(username='bob', password='pw12345!')
         Wallet.objects.create(user=bob, name='Bob Wallet')
         response = self.client.get(reverse('update_user_preferences'))
-        wallet_names = {w.name for w in response.context['form'].fields['next_up_wallet'].queryset}
-        self.assertEqual(wallet_names, {'Train Tickets'})
+        wallet_names = {w.name for w in response.context['form'].fields['next_up_wallets'].queryset}
+        self.assertEqual(wallet_names, {'Train Tickets', 'Flights'})
+
+    def test_mark_used_from_widget_redirects_to_next_param(self):
+        item = make_item(self.user, wallet=self.wallet, expiry_date=date.today() + timedelta(days=1))
+        response = self.client.post(
+            reverse('toggle_item_status', args=[item.id]),
+            {'next': reverse('show_items')},
+        )
+        self.assertRedirects(response, reverse('show_items'))
+        item.refresh_from_db()
+        self.assertTrue(item.is_used)
 
 
 class AnalyticsHelperTests(TestCase):
@@ -619,26 +655,26 @@ class AnalyticsHelperTests(TestCase):
         self.assertEqual(timeline[key][0]['id'], str(item.id))
         self.assertEqual(timeline[key][0]['name'], 'Grouped')
 
-    def test_get_next_up_item_returns_none_when_wallet_unset(self):
-        from .analytics import get_next_up_item
+    def test_get_next_up_items_returns_empty_when_no_wallets(self):
+        from .analytics import get_next_up_items
 
         make_item(self.user, wallet=self.wallet, expiry_date=date.today() + timedelta(days=1))
-        self.assertIsNone(get_next_up_item(None))
+        self.assertEqual(get_next_up_items([]), [])
 
-    def test_get_next_up_item_picks_soonest_and_attaches_days_left(self):
-        from .analytics import get_next_up_item
+    def test_get_next_up_items_picks_soonest_and_attaches_days_left(self):
+        from .analytics import get_next_up_items
 
         soonest = make_item(self.user, name='Soonest', redeem_code='S1', wallet=self.wallet,
                              expiry_date=date.today() + timedelta(days=2))
         make_item(self.user, name='Later', redeem_code='L1', wallet=self.wallet,
                   expiry_date=date.today() + timedelta(days=10))
 
-        result = get_next_up_item(self.wallet)
-        self.assertEqual(result.id, soonest.id)
-        self.assertEqual(result.days_left, 2)
+        results = get_next_up_items([self.wallet])
+        self.assertEqual([r.id for r in results], [soonest.id])
+        self.assertEqual(results[0].days_left, 2)
 
-    def test_get_next_up_item_excludes_other_wallet_used_archived_and_past(self):
-        from .analytics import get_next_up_item
+    def test_get_next_up_items_excludes_other_wallet_used_archived_and_past(self):
+        from .analytics import get_next_up_items
 
         other_wallet = Wallet.objects.create(user=self.user, name='Other')
         make_item(self.user, name='OtherWallet', redeem_code='OW1', wallet=other_wallet,
@@ -650,15 +686,37 @@ class AnalyticsHelperTests(TestCase):
         make_item(self.user, name='Past', redeem_code='P1', wallet=self.wallet,
                   expiry_date=date.today() - timedelta(days=1))
 
-        self.assertIsNone(get_next_up_item(self.wallet))
+        self.assertEqual(get_next_up_items([self.wallet]), [])
 
-    def test_get_next_up_item_today_has_zero_days_left(self):
-        from .analytics import get_next_up_item
+    def test_get_next_up_items_today_has_zero_days_left(self):
+        from .analytics import get_next_up_items
 
         item = make_item(self.user, wallet=self.wallet, expiry_date=date.today())
-        result = get_next_up_item(self.wallet)
-        self.assertEqual(result.id, item.id)
-        self.assertEqual(result.days_left, 0)
+        results = get_next_up_items([self.wallet])
+        self.assertEqual(results[0].id, item.id)
+        self.assertEqual(results[0].days_left, 0)
+
+    def test_get_next_up_items_interleaves_multiple_wallets_by_date(self):
+        from .analytics import get_next_up_items
+
+        other_wallet = Wallet.objects.create(user=self.user, name='Other')
+        farther = make_item(self.user, name='Farther', redeem_code='F1', wallet=self.wallet,
+                             expiry_date=date.today() + timedelta(days=5))
+        nearer = make_item(self.user, name='Nearer', redeem_code='N1', wallet=other_wallet,
+                            expiry_date=date.today() + timedelta(days=1))
+
+        results = get_next_up_items([self.wallet, other_wallet], limit=3)
+        self.assertEqual([r.id for r in results], [nearer.id, farther.id])
+
+    def test_get_next_up_items_respects_limit(self):
+        from .analytics import get_next_up_items
+
+        for i in range(5):
+            make_item(self.user, name=f'Item{i}', redeem_code=f'L{i}', wallet=self.wallet,
+                      expiry_date=date.today() + timedelta(days=i + 1))
+
+        results = get_next_up_items([self.wallet], limit=3)
+        self.assertEqual(len(results), 3)
 
 
 class DashboardAnalyticsContextTests(TestCase):
@@ -2841,6 +2899,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
         names = set(PeriodicTask.objects.values_list('name', flat=True))
         self.assertEqual(names, {
             'Periodic Expiry Check', 'Notification Rules Expiry Check',
+            'Next Up Reminder Check',
             'Update Check', 'Upstream Version Check', 'Scheduled Backup',
         })
 
@@ -3498,7 +3557,7 @@ class OfflineCacheTogglePreferenceTests(TestCase):
     def test_save_redirects_with_prefs_saved_signal(self):
         response = self.client.post(reverse('update_user_preferences'), data={
             'show_expiry_date': 'on', 'show_value': 'on', 'show_description': 'on',
-            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact',
+            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact', 'next_up_max_items': '1',
             'default_currency': 'GBP', 'keep_screen_awake': 'on', 'offline_cache_enabled': 'on',
         })
         self.assertRedirects(response, reverse('show_items') + '?prefs_saved=1')
@@ -3510,7 +3569,7 @@ class OfflineCacheTogglePreferenceTests(TestCase):
 
         response = self.client.post(reverse('update_user_preferences'), data={
             'show_expiry_date': 'on', 'show_value': 'on', 'show_description': 'on',
-            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact',
+            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact', 'next_up_max_items': '1',
             'default_currency': 'GBP', 'keep_screen_awake': 'on',
             # offline_cache_enabled omitted -> unchecked checkbox -> False
         })
@@ -3525,7 +3584,7 @@ class OfflineCacheTogglePreferenceTests(TestCase):
 
         response = self.client.post(reverse('update_user_preferences'), data={
             'show_expiry_date': 'on', 'show_value': 'on', 'show_description': 'on',
-            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact',
+            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact', 'next_up_max_items': '1',
             'default_currency': 'GBP', 'keep_screen_awake': 'on',
             # still leaving offline_cache_enabled off - no transition, no purge needed
         })
@@ -3567,7 +3626,7 @@ class BlurCodesTogglePreferenceTests(TestCase):
     def test_toggle_off_saves_via_preferences_form(self):
         response = self.client.post(reverse('update_user_preferences'), data={
             'show_expiry_date': 'on', 'show_value': 'on', 'show_description': 'on',
-            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact',
+            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact', 'next_up_max_items': '1',
             'default_currency': 'GBP', 'keep_screen_awake': 'on', 'offline_cache_enabled': 'on',
             # blur_codes_enabled omitted -> unchecked checkbox -> False
         })

@@ -7,7 +7,7 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 import os
 import uuid
-from django.core.validators import RegexValidator
+from django.core.validators import RegexValidator, MinValueValidator, MaxValueValidator
 
 CURRENCY_CHOICES = (
     ('AED', 'AED - UAE Dirham'),
@@ -85,10 +85,15 @@ class UserPreference(models.Model):
         default=True,
         help_text="Blur barcodes and redeem codes until tapped. Turn off for faster access at point-of-sale.",
     )
-    next_up_wallet = models.ForeignKey(
-        'Wallet', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
-        help_text="Highlight the soonest-expiring item from this wallet at the top of Inventory "
-                   "(e.g. a 'Train Tickets' wallet, to always surface the next one to use). Off if unset.",
+    next_up_wallets = models.ManyToManyField(
+        'Wallet', blank=True, related_name='+',
+        help_text="Highlight the soonest-expiring items from these wallets at the top of Inventory "
+                   "(e.g. a 'Train Tickets' wallet, to always surface the next one to use). Empty means off.",
+    )
+    next_up_max_items = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(3)],
+        help_text="How many upcoming items to show in the Next Up widget, soonest first (1-3).",
     )
 
 class Wallet(models.Model):

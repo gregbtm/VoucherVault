@@ -48,6 +48,10 @@ class Command(BaseCommand):
             # A no-op until a user creates a NotificationRule, so it's safe to enable by default
             # alongside the legacy Apprise-only task above.
             {'name': 'Notification Rules Expiry Check', 'task': 'notify.tasks.check_and_notify_expiry', 'crontab': crontab_schedule, 'enabled': True},
+            # Fires a 'next_up_reminder' event for items due today in a user's configured
+            # Next Up wallet(s); a no-op until a user both sets one and has a matching
+            # NotificationRule subscribed to that event.
+            {'name': 'Next Up Reminder Check', 'task': 'notify.tasks.check_next_up_reminders', 'crontab': crontab_schedule, 'enabled': True},
             # Checks GitHub Releases for a newer version; a no-op if UPDATE_CHECK_ENABLED=False
             {'name': 'Update Check', 'task': 'myapp.tasks.check_for_update_task', 'crontab': hourly_schedule, 'enabled': True},
             # Checks l4rm4nd/VoucherVault's (upstream) latest release, purely informational
