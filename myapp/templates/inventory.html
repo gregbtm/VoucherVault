@@ -1101,8 +1101,8 @@ body.dark-mode .next-up-card {
       {% endif %}
 
       <!-- Hidden inputs for form submission -->
-      <input type="hidden" name="type" id="hiddenType" value="{{ item_type }}">
-      <input type="hidden" name="status" id="hiddenStatus" value="{{ item_status }}">
+      <input type="hidden" name="type" id="hiddenType" value="{{ item_type|default:'' }}">
+      <input type="hidden" name="status" id="hiddenStatus" value="{{ item_status|default:'' }}">
       {% for tag_id in selected_tag_ids %}
       <input type="hidden" name="tag" value="{{ tag_id }}">
       {% endfor %}

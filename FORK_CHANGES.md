@@ -108,6 +108,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 75 — Firefly III balance sync recipe](#phase-75--firefly-iii-balance-sync-recipe)
 - [Phase 76 — Daily digest mode for notification rules](#phase-76--daily-digest-mode-for-notification-rules)
 - [Phase 77 — Login brute-force lockout](#phase-77--login-brute-force-lockout)
+- [Phase 78 — Fix wallet filter reset getting stuck at zero results](#phase-78--fix-wallet-filter-reset-getting-stuck-at-zero-results)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4085,6 +4086,42 @@ follow-up given they're genuinely bigger, harder-to-reverse changes.
   test`), with `LoginLockoutTests` itself re-enabling it via
   `@override_settings(AXES_ENABLED=True)` since it POSTs to the real
   login view instead of using the `client.login()` shortcut.
+
+## Phase 78 — Fix wallet filter reset getting stuck at zero results
+
+User-reported bug on a live deployment: filtering Inventory to a wallet
+with no items correctly showed 0 results, but switching the wallet
+filter back to "All Wallets" stayed stuck at 0 instead of showing
+everything again.
+
+Root cause was a Django template footgun, not the view logic. The
+wallet `<select>` submits `#filterForm` natively on change, which
+includes two hidden inputs (`#hiddenType`, `#hiddenStatus`) that exist
+solely to smuggle the mobile status/type filters' current values along
+with it. When no type filter was active, `item_type` is Python `None`,
+and the unguarded `value="{{ item_type }}"` rendered the literal text
+`"None"` into the hidden input. The browser then submitted a real
+`type=None` query param, and `show_items()`'s `if item_type:` treated
+that non-empty string as a genuine (bogus) type filter, silently
+zeroing every result regardless of the wallet selected.
+
+- `myapp/templates/inventory.html`: guard both hidden inputs with
+  `|default:''` so `None` renders as an empty string instead of the
+  literal text `"None"`.
+- Root-caused via a live Playwright reproduction (login, switch wallet
+  filter twice) rather than static reading alone — the view logic
+  looked correct on inspection, and the smoking gun (`type=None` in
+  the URL bar) only showed up by watching the actual browser
+  round-trip. An initial hypothesis that the PWA service worker's page
+  caching was serving a stale response was ruled out: the bug
+  reproduced on a fresh database with no prior cache state, and this
+  app's automatic page caching is disabled by default in
+  `page-cache-helper.js`.
+- Two new regression tests in `myapp/tests.py::ShowItemsWalletFilterTests`:
+  one asserting the hidden `type` input renders `value=""` (not
+  `value="None"`) when no type filter is active, and a behavioral
+  companion confirming every item reappears once the wallet filter is
+  cleared back to "All Wallets".
 
 ## New environment variables
 
