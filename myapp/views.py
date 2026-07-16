@@ -417,12 +417,12 @@ def view_item(request, item_uuid):
             transaction.save()
             total_value += transaction.value
             notify_balance_changed(item, transaction)
-            _queue_google_wallet_update(item)
 
             if total_value <= 0:
                 item.is_used = True
                 item.save()
                 notify_item_used(item)
+            _queue_google_wallet_update(item)
             return redirect('view_item', item_uuid=item.id)
     else:
         form = TransactionForm(item=item)
@@ -2005,12 +2005,16 @@ def bulk_archive_items(request):
     """Same is_archived + notify_item_archived logic as toggle_archive_item, looped over a selection."""
     items, skipped, _data = _bulk_selected_items(request)
     processed = 0
+    # Checked once rather than inside the loop - google_wallet_enabled() does a
+    # SiteConfiguration lookup + filesystem stat, which can't change mid-request.
+    wallet_updates_enabled = google_wallet_enabled()
     for item in items:
         if not item.is_archived:
             item.is_archived = True
             item.save(update_fields=['is_archived'])
             notify_item_archived(item)
-            _queue_google_wallet_update(item)
+            if wallet_updates_enabled:
+                _queue_google_wallet_update(item)
             processed += 1
     return JsonResponse({'success': True, 'processed': processed, 'skipped': skipped})
 
