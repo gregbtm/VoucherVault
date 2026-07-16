@@ -431,6 +431,36 @@ class ShowItemsWalletFilterTests(TestCase):
         names = [entry['item'].name for entry in response.context['items_with_qr']]
         self.assertEqual(names, ['In Wallet'])
 
+    def test_hidden_type_field_renders_empty_not_literal_none(self):
+        """
+        Regression test: the "All Wallets" <select>'s onchange does a native
+        form submit of #filterForm, which includes a hidden `type` input
+        whose value comes from {{ item_type }} - preserving the current type
+        filter across a wallet-only change. When no type filter was active,
+        item_type is Python None, and an unguarded {{ item_type }} rendered
+        the literal string "None" into the hidden input's value attribute.
+        The browser then submitted type=None as a real query param, and
+        `if item_type:` in show_items() treated that non-empty string as a
+        genuine (nonexistent) type filter, silently zeroing every result -
+        this is exactly what a user hit switching a wallet filter back to
+        "All Wallets": the wallet filter reset correctly, but the item list
+        stayed stuck at 0 because of this stowaway `type=None`.
+        """
+        response = self.client.get(reverse('show_items'), {'status': 'all'})
+        self.assertContains(response, 'name="type" id="hiddenType" value=""')
+        self.assertNotContains(response, 'value="None"')
+
+    def test_switching_wallet_filter_back_to_all_shows_every_item_again(self):
+        """Behavioral companion to the test above: confirms show_items()
+        itself correctly returns every item once the hidden `type` input
+        actually renders empty (type='') rather than the literal "None"
+        string, i.e. the query shape the fixed template now produces."""
+        self.client.get(reverse('show_items'), {'wallet': self.wallet.id})
+
+        response = self.client.get(reverse('show_items'), {'wallet': '', 'type': '', 'status': 'available'})
+        names = {entry['item'].name for entry in response.context['items_with_qr']}
+        self.assertEqual(names, {'In Wallet', 'No Wallet'})
+
 
 class ShowItemsTagFilterTests(TestCase):
     def setUp(self):
