@@ -25,7 +25,16 @@ jobs:
       version: ${{ steps.changelog.outputs.version }}
 
     steps:
+      # fetch-depth: 0 (full history) + fetch-tags: true are required here -
+      # the default shallow 1-commit checkout leaves this action with no
+      # history and no v1.1.x tags (pushed by the `release` job below) to
+      # diff against, so every run silently computed an empty changelog and
+      # skipped the write (visible in the job's own log: "version could not
+      # be detected, using fallback... Generated changelog is empty").
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Conventional Changelog Action
         id: changelog
