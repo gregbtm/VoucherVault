@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.db import IntegrityError, transaction
-from django.test import TestCase, override_settings
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
@@ -4125,6 +4125,89 @@ class IcsCalendarBuilderTests(TestCase):
         make_item(other, name='Someone Elses Voucher')
         calendar = build_ics_calendar(self.user).decode('utf-8')
         self.assertNotIn('BEGIN:VEVENT', calendar)
+
+    def test_description_never_includes_redeem_code_pin_or_card_number(self):
+        """
+        Regression guard: this feed is meant to be subscribed to from a
+        phone's native calendar app, which typically syncs every field of
+        every event to Google/Apple/Outlook's own cloud - an actual
+        redeemable code has no business leaving VoucherVault's control
+        that way, no matter how "richer" this feed gets in the future.
+        """
+        make_item(
+            self.user, name='Secret Card', redeem_code='SUPERSECRETCODE',
+            pin='4471', card_number='4111222233334444',
+        )
+        calendar = build_ics_calendar(self.user).decode('utf-8')
+        self.assertNotIn('SUPERSECRETCODE', calendar)
+        self.assertNotIn('4471', calendar)
+        self.assertNotIn('4111222233334444', calendar)
+
+    def test_description_includes_wallet_notes_and_balance_check_url(self):
+        wallet = Wallet.objects.create(user=self.user, name='Groceries')
+        make_item(
+            self.user, name='Tesco Card', wallet=wallet, notes='Show at till',
+            balance_check_url='https://tesco.com/balance',
+        )
+        calendar = build_ics_calendar(self.user).decode('utf-8')
+        self.assertIn('Wallet: Groceries', calendar)
+        self.assertIn('Notes: Show at till', calendar)
+        self.assertIn('Balance check: https://tesco.com/balance', calendar)
+
+    def test_location_is_wallet_name(self):
+        wallet = Wallet.objects.create(user=self.user, name='Travel')
+        make_item(self.user, name='Train Ticket', wallet=wallet)
+        calendar = build_ics_calendar(self.user).decode('utf-8')
+        self.assertIn('LOCATION:Travel', calendar)
+
+    def test_no_location_without_a_wallet(self):
+        make_item(self.user, name='No Wallet Item')
+        calendar = build_ics_calendar(self.user).decode('utf-8')
+        self.assertNotIn('LOCATION:', calendar)
+
+    def test_categories_lists_tag_names(self):
+        item = make_item(self.user, name='Tagged Item')
+        item.tags.add(Tag.objects.create(user=self.user, name='discount'))
+        item.tags.add(Tag.objects.create(user=self.user, name='food'))
+        calendar = build_ics_calendar(self.user).decode('utf-8')
+        line = next(l for l in calendar.replace('\r\n ', '').split('\r\n') if l.startswith('CATEGORIES:'))
+        self.assertEqual(set(line[len('CATEGORIES:'):].split(',')), {'discount', 'food'})
+
+    def test_no_categories_without_tags(self):
+        make_item(self.user, name='Untagged Item')
+        calendar = build_ics_calendar(self.user).decode('utf-8')
+        self.assertNotIn('CATEGORIES:', calendar)
+
+    def test_url_uses_request_to_build_absolute_link_to_item(self):
+        item = make_item(self.user, name='Linked Item')
+        factory = RequestFactory()
+        request = factory.get('/en/calendar/download/')
+        calendar = build_ics_calendar(self.user, request).decode('utf-8')
+        self.assertIn(f'URL:http://testserver/en/items/view/{item.id}', calendar.replace('\r\n ', ''))
+
+    def test_no_url_without_a_request(self):
+        make_item(self.user, name='No Request Item')
+        calendar = build_ics_calendar(self.user).decode('utf-8')
+        self.assertNotIn('URL:', calendar)
+
+    def test_valarm_trigger_uses_item_notify_days_before_override(self):
+        make_item(self.user, name='Custom Threshold Item', notify_days_before=3)
+        calendar = build_ics_calendar(self.user).decode('utf-8')
+        self.assertIn('BEGIN:VALARM', calendar)
+        self.assertIn('TRIGGER:-P3D', calendar)
+
+    def test_valarm_trigger_falls_back_to_site_configured_threshold(self):
+        set_site_config(expiry_threshold_days=10)
+        make_item(self.user, name='Default Threshold Item')
+        calendar = build_ics_calendar(self.user).decode('utf-8')
+        self.assertIn('TRIGGER:-P10D', calendar)
+
+    def test_download_ics_view_includes_url_via_real_request(self):
+        self.client.login(username='alice', password='pw12345!')
+        item = make_item(self.user, name='Downloaded Item')
+        response = self.client.get(reverse('download_ics'))
+        calendar = response.content.decode('utf-8').replace('\r\n ', '')
+        self.assertIn(f'URL:http://testserver/en/items/view/{item.id}', calendar)
 
     def test_escape_text_handles_special_characters(self):
         self.assertEqual(_escape_text('A, B; C\\D\nE'), 'A\\, B\; C\\\\D\\nE')

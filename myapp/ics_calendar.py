@@ -1,6 +1,7 @@
+from django.urls import reverse
 from django.utils import timezone
 
-from .models import Item
+from .models import Item, SiteConfiguration
 
 PRODID = '-//VoucherVault Plus+//Expiry Calendar//EN'
 LINE_MAX_OCTETS = 75
@@ -35,17 +36,30 @@ def _fold_line(line: str) -> str:
     return '\r\n '.join(folded)
 
 
-def build_ics_calendar(user) -> bytes:
+def build_ics_calendar(user, request=None) -> bytes:
     """
-    A minimal, read-only expiry calendar: one all-day VEVENT per active
-    (not used, not archived) item with an expiry_date. This is intentionally
-    basic - one-way, expiry-dates-only sync. Anything richer (other fields,
-    real-time updates, two-way sync) should use the webhook system
-    (see the notify app) instead of trying to extend this feed.
+    A read-only expiry calendar: one all-day VEVENT per active (not used,
+    not archived) item with an expiry_date. One-way, real-time updates
+    only happen the next time a subscribed calendar app re-fetches the
+    feed - two-way sync should use the webhook system (see the notify
+    app) instead of trying to extend this feed.
+
+    Deliberately never includes redeem_code, pin, or card_number: this
+    feed is designed to be subscribed to from a phone's native calendar
+    app, which typically means Google/Apple/Outlook silently sync every
+    field of every event to their own cloud - putting an actual
+    redeemable code there would leak it somewhere entirely outside
+    VoucherVault's control. Everything else (issuer, value, wallet,
+    tags, notes, a link back to the item) is fair game.
+
+    `request` is optional (existing callers/tests that already have one
+    should pass it) - only used to build an absolute URL back to the
+    item; the feed is still fully valid without it, just without a URL
+    property on each event.
     """
     items = Item.objects.filter(
         user=user, is_used=False, is_archived=False, expiry_date__isnull=False,
-    ).order_by('expiry_date')
+    ).select_related('wallet').prefetch_related('tags').order_by('expiry_date')
 
     lines = [
         'BEGIN:VCALENDAR',
@@ -56,6 +70,7 @@ def build_ics_calendar(user) -> bytes:
         'X-WR-CALNAME:VoucherVault Plus+ Expiry',
     ]
 
+    default_threshold = SiteConfiguration.load().expiry_threshold_days
     now_stamp = timezone.now().strftime('%Y%m%dT%H%M%SZ')
     for item in items:
         description_parts = [item.get_type_display()]
@@ -63,6 +78,12 @@ def build_ics_calendar(user) -> bytes:
             description_parts.append(f'Issuer: {item.issuer}')
         if item.value is not None:
             description_parts.append(f'Value: {item.value} {item.currency}')
+        if item.wallet:
+            description_parts.append(f'Wallet: {item.wallet.name}')
+        if item.balance_check_url:
+            description_parts.append(f'Balance check: {item.balance_check_url}')
+        if item.notes:
+            description_parts.append(f'Notes: {item.notes}')
 
         lines.extend([
             'BEGIN:VEVENT',
@@ -71,8 +92,32 @@ def build_ics_calendar(user) -> bytes:
             f'DTSTART;VALUE=DATE:{item.expiry_date.strftime("%Y%m%d")}',
             f'SUMMARY:{_escape_text(item.name)} expires',
             f'DESCRIPTION:{_escape_text(" | ".join(description_parts))}',
-            'END:VEVENT',
         ])
+
+        if item.wallet:
+            # Not a physical place, but the closest RFC5545 property for
+            # "where this belongs" - most calendar apps surface LOCATION
+            # prominently, giving the wallet a second, glanceable home.
+            lines.append(f'LOCATION:{_escape_text(item.wallet.name)}')
+
+        tag_names = [tag.name for tag in item.tags.all()]
+        if tag_names:
+            lines.append(f'CATEGORIES:{",".join(_escape_text(name) for name in tag_names)}')
+
+        if request is not None:
+            item_url = request.build_absolute_uri(reverse('view_item', args=[item.id]))
+            lines.append(f'URL:{item_url}')
+
+        threshold = item.notify_days_before if item.notify_days_before is not None else default_threshold
+        lines.extend([
+            'BEGIN:VALARM',
+            'ACTION:DISPLAY',
+            f'DESCRIPTION:{_escape_text(item.name)} expires soon',
+            f'TRIGGER:-P{threshold}D',
+            'END:VALARM',
+        ])
+
+        lines.append('END:VEVENT')
 
     lines.append('END:VCALENDAR')
 

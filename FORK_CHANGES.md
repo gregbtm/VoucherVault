@@ -110,6 +110,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 77 — Login brute-force lockout](#phase-77--login-brute-force-lockout)
 - [Phase 78 — Fix wallet filter reset getting stuck at zero results](#phase-78--fix-wallet-filter-reset-getting-stuck-at-zero-results)
 - [Phase 79 — Active Today widget for round-trip commute tickets + auto-wallet-assignment](#phase-79--active-today-widget-for-round-trip-commute-tickets--auto-wallet-assignment)
+- [Phase 80 — Modern color picker + a richer .ics calendar feed](#phase-80--modern-color-picker--a-richer-ics-calendar-feed)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4179,6 +4180,46 @@ so it works for anyone's commute, not just one hardcoded station pair.
   matrix, the `show_items` view wiring, the cleanup task's flip-and-
   no-op-before-cutoff behavior, and OCR journey-field passthrough for
   both AI backends.
+
+## Phase 80 — Modern color picker + a richer .ics calendar feed
+
+Two small, user-reported polish fixes to existing features, from live
+screenshots of the deployed app.
+
+- **Modern color picker** - the wallet/tag/item-tile colour fields used
+  a bare `<input type="color">`, so the picker UI was whatever the
+  browser/OS felt like rendering - on Samsung Internet, a raw HSV-slider
+  dialog that looked jarring next to the rest of the app's design.
+  Replaced with a self-contained, dependency-free progressive
+  enhancement (`myapp/static/assets/js/color-picker.js` +
+  `color-picker.css`, loaded site-wide from `base.html`): a swatch-
+  preview trigger button opens a curated 18-colour palette plus a hex
+  text field for anything else. The original `<input type="color">`
+  stays in the DOM untouched (same id/name/value), so form submission
+  and existing code that reads/writes it directly (the item tile
+  colour's "reset to default" button) keep working exactly as before -
+  and if the script ever fails to load, the native picker still works
+  as a fallback. Applies everywhere a colour field already existed
+  (wallets, tags, item tiles) with zero per-template wiring, since it
+  progressively enhances any `input[type="color"]` it finds.
+- **Richer .ics calendar feed** - the original feed (Phase 14.4) was
+  deliberately minimal: one all-day event per item with a bare
+  `DESCRIPTION`. Now each event also carries the item's wallet as
+  `LOCATION`, its tags as `CATEGORIES`, a `URL` back to the item in the
+  app, and a `VALARM` reminder timed to the item's own notification
+  threshold (its per-item override, or the site's configured default) -
+  so a subscribed calendar's native reminder lines up with what
+  VoucherVault itself would have notified about. `DESCRIPTION` also
+  gained the wallet name, balance-check URL, and notes. Deliberately
+  still never includes the redeem code, PIN, or card number: a
+  subscribed feed typically means Google/Apple/Outlook silently sync
+  every field of every event to their own cloud, and an actual
+  redeemable code has no business leaving VoucherVault's control that
+  way - a dedicated regression test guards this.
+- 34 new tests (18 for the calendar enrichment, plus live Playwright
+  verification of the color picker's open/select/hex-entry/outside-
+  click-close/dark-mode behavior against a real running instance) and a
+  full-suite run: 781 tests, 0 failures, 0 errors.
 
 ## New environment variables
 

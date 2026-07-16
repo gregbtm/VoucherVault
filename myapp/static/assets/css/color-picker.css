@@ -1,0 +1,156 @@
+/* Modern replacement for the native <input type="color"> picker.
+   See myapp/static/assets/js/color-picker.js for the behavior this
+   styles - a swatch-preview trigger button that opens a curated
+   palette + custom hex popover. */
+
+.vv-cp-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.vv-cp-native-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.vv-cp-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border-color, #dee2e6);
+  border-radius: 10px;
+  background: var(--input-bg, #fff);
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-color, #495057);
+}
+
+.vv-cp-trigger:hover {
+  border-color: #4154f1;
+}
+
+.vv-cp-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+.vv-cp-hex {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  letter-spacing: 0.02em;
+}
+
+.vv-cp-trigger i {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  margin-left: 0.1rem;
+}
+
+.vv-cp-popover {
+  position: absolute;
+  z-index: 1000;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 232px;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color, #dee2e6);
+  border-radius: 12px;
+  background: var(--card-bg, #fff);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.vv-cp-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.vv-cp-option {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  padding: 0;
+  position: relative;
+}
+
+.vv-cp-option:hover {
+  transform: scale(1.1);
+}
+
+.vv-cp-option-selected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 2px #4154f1;
+}
+
+.vv-cp-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border-color, #e9ecef);
+}
+
+.vv-cp-custom-preview {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+.vv-cp-hex-input {
+  flex: 1;
+  height: 32px;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border-color, #dee2e6);
+  border-radius: 6px;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.85rem;
+  background: var(--input-bg, #fff);
+  color: var(--text-color, #495057);
+}
+
+.vv-cp-hex-input:focus {
+  outline: none;
+  border-color: #4154f1;
+}
+
+body.dark-mode .vv-cp-trigger {
+  background: #2a2a2a;
+  border-color: #444;
+  color: #ccc;
+}
+
+body.dark-mode .vv-cp-popover {
+  background: #232323;
+  border-color: #444;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+body.dark-mode .vv-cp-custom-row {
+  border-top-color: #3a3a3a;
+}
+
+body.dark-mode .vv-cp-hex-input {
+  background: #2a2a2a;
+  border-color: #444;
+  color: #ccc;
+}
+
+body.dark-mode .vv-cp-option-selected::after {
+  border-color: #2a2a2a;
+}
