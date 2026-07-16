@@ -73,6 +73,26 @@ after a successful send (dedup via NotificationLog). ntfy backend can be
 pointed at the real public `https://ntfy.sh` with a throwaway topic for a
 genuine end-to-end send (subscribe in the ntfy app/web to see it arrive).
 
+## Run the full test suite
+
+```bash
+source .venv/bin/activate
+rm -f database/db.sqlite3
+DB_ENGINE=sqlite3 python manage.py test
+```
+
+Expect **770 tests in ~14s, 0 failures, 0 errors** — a genuinely clean
+run, not "clean modulo some expected errors." `myproject/settings.py`
+gates an in-memory Celery broker + local-memory cache + a fast
+password hasher behind `if 'test' in sys.argv:` (same pattern as the
+`AXES_ENABLED` line next to it), specifically so `manage.py test`
+never touches the real Redis host this sandbox doesn't have. If a
+`redis.exceptions.ConnectionError`/`Name or service not known`
+traceback reappears in test output, that gate broke — don't treat it
+as expected noise to route around, it means the suite is back to
+silently burning ~1000s retrying a connection that was never going to
+succeed (measured before/after: 1037s → 13.6s once fixed).
+
 ## Gotchas
 
 - `LANGUAGE_CODE` is `'en'` (fixed from a latent `'en-us'` mismatch bug in
