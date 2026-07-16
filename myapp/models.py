@@ -633,6 +633,34 @@ class SiteConfiguration(models.Model):
     scheduled_backup_enabled = models.BooleanField(default=True)
     backup_retention_count = models.PositiveIntegerField(default=7)
 
+    # ---- Analytics & duplicate detection display/behaviour limits ----
+    # Previously fixed constants in myapp/analytics.py and myapp/imagehash.py -
+    # moved here after a settings-gap audit found them to be genuine
+    # user-facing behaviour rather than safety/implementation limits.
+    expiring_soon_limit = models.PositiveIntegerField(
+        default=10,
+        validators=[MinValueValidator(1), MaxValueValidator(50)],
+        help_text="Max items shown in the Dashboard's 'Expiring Soon' list.",
+    )
+    calendar_months_ahead = models.PositiveIntegerField(
+        default=3,
+        validators=[MinValueValidator(1), MaxValueValidator(12)],
+        help_text="How many months ahead the Dashboard's expiry calendar shows.",
+    )
+    wallet_chart_limit = models.PositiveIntegerField(
+        default=8,
+        validators=[MinValueValidator(1), MaxValueValidator(20)],
+        help_text="How many wallets show individually in the 'Items by Wallet' chart before folding the rest into \"Other\".",
+    )
+    duplicate_photo_threshold = models.PositiveIntegerField(
+        default=10,
+        validators=[MinValueValidator(0), MaxValueValidator(64)],
+        help_text="Hamming-distance sensitivity (out of 64 bits) for flagging two uploaded card "
+                   "photos as likely duplicates. Lower is stricter (fewer false-positive matches, "
+                   "but might miss a genuine duplicate shot at a different angle/lighting); "
+                   "higher is looser.",
+    )
+
     # Field names whose values are credentials/secrets rather than plain
     # config - the Site Settings form renders these as password inputs
     # that display blank and leave the stored value untouched when

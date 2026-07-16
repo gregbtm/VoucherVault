@@ -14,7 +14,7 @@ from .forms import *
 from .ics_calendar import build_ics_calendar
 from .models import *
 from .utils import generate_code_image_base64, get_fixer_rates, convert_currency, levenshtein_distance
-from .imagehash import compute_dhash, hamming_distance, DUPLICATE_THRESHOLD
+from .imagehash import compute_dhash, hamming_distance
 from django.db.models import Sum
 from django.utils import timezone
 from django.http import Http404, JsonResponse
@@ -685,6 +685,7 @@ def check_duplicate_image(request):
     if exclude_id:
         items = items.exclude(id=exclude_id)
 
+    duplicate_threshold = SiteConfiguration.load().duplicate_photo_threshold
     best_match = None
     best_distance = None
     for item in items:
@@ -705,7 +706,7 @@ def check_duplicate_image(request):
                 item.image_phash = item_hash
                 item.save(update_fields=['image_phash'])
         distance = hamming_distance(new_hash, item_hash)
-        if distance <= DUPLICATE_THRESHOLD and (best_distance is None or distance < best_distance):
+        if distance <= duplicate_threshold and (best_distance is None or distance < best_distance):
             best_match, best_distance = item, distance
 
     if not best_match:

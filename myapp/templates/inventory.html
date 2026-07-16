@@ -929,9 +929,9 @@ body.dark-mode .next-up-card {
       <a href="{% url 'view_item' item_uuid=entry.item.id %}" class="next-up-card">
         <div class="next-up-body">
           <div class="next-up-info">
-            {% if entry.item.logo_slug %}
+            {% if entry.item.logo_slug and logo_dev_api_key %}
             <img class="next-up-logo"
-                 src="https://img.logo.dev/{{ entry.item.logo_slug }}?token=pk_NaUHDkw4SSeHCapveLJtjg"
+                 src="https://img.logo.dev/{{ entry.item.logo_slug }}?token={{ logo_dev_api_key }}"
                  alt="{{ entry.item.issuer }}"
                  onerror="this.style.display='none';">
             {% elif entry.merchant_logo_url %}
@@ -1151,9 +1151,9 @@ body.dark-mode .next-up-card {
         <div class="item-card-content">
           <!-- Top Row: Logo + Info -->
           <div class="card-top-row">
-            {% if entry.item.logo_slug %}
+            {% if entry.item.logo_slug and logo_dev_api_key %}
             <img class="item-logo"
-                 src="https://img.logo.dev/{{ entry.item.logo_slug }}?token=pk_NaUHDkw4SSeHCapveLJtjg"
+                 src="https://img.logo.dev/{{ entry.item.logo_slug }}?token={{ logo_dev_api_key }}"
                  alt="{{ entry.item.issuer }}"
                  onerror="this.onerror=null;this.src='data:image/png;base64,{{ entry.item.qr_code_base64 }}';this.style.filter='blur(2px)';">
             {% elif entry.merchant_logo_url %}

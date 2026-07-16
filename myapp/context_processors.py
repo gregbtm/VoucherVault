@@ -63,6 +63,23 @@ def share_settings(request):
     return {'share_via_smart_enabled': SiteConfiguration.load().share_via_smart_enabled}
 
 
+def merchant_logo_settings(request):
+    """
+    Expose the logo.dev publishable key to every page that builds a direct
+    client-side `https://img.logo.dev/...?token=...` <img> URL (Inventory,
+    Sharing Center, item detail) - previously each of those templates had
+    the fork maintainer's own token hardcoded, which meant a self-hoster's
+    own logo_dev_api_key (already configurable in Site Settings, and
+    already used for the equivalent server-side fetch) was silently
+    ignored for these direct client-side requests. Templates gate the
+    logo.dev <img> on this being truthy, matching the server-side "tried
+    first only when set" behaviour instead of always attempting it.
+    """
+    if not request.user.is_authenticated:
+        return {}
+    return {'logo_dev_api_key': SiteConfiguration.load().logo_dev_api_key}
+
+
 def pwa_cache_clear_signal(request):
     """
     One-shot flag consumed here (via pop, not get) so it fires on exactly

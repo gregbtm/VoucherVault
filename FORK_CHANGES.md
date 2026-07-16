@@ -103,6 +103,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 70 — "Next Up" widget for the item you need right now](#phase-70--next-up-widget-for-the-item-you-need-right-now)
 - [Phase 71 — Next Up: multi-wallet queue, mark-used, day-of reminder](#phase-71--next-up-multi-wallet-queue-mark-used-day-of-reminder)
 - [Phase 72 — Fix Dashboard/Inventory "Expiring Soon" disagreement + settings gap audit](#phase-72--fix-dashboardinventory-expiring-soon-disagreement--settings-gap-audit)
+- [Phase 73 — Configurable dashboard limits, duplicate-photo sensitivity, and a shared logo.dev token](#phase-73--configurable-dashboard-limits-duplicate-photo-sensitivity-and-a-shared-logodev-token)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -3886,6 +3887,56 @@ for the same class of problem elsewhere.
   Settings, API docs) hit with a real session and confirmed to resolve
   correctly (the one non-200 was the expected superuser gate on Site
   Settings for a non-admin test user).
+
+## Phase 73 — Configurable dashboard limits, duplicate-photo sensitivity, and a shared logo.dev token
+
+Closes out the two open items from Phase 72's settings-gap audit: the four
+hardcoded constants and the duplicated logo.dev client token.
+
+- **Four more constants moved into Site Settings**, each following the
+  same pattern as every other `SiteConfiguration` field (bounded
+  `PositiveIntegerField` with min/max validators, matching `NumberInput`
+  widget, help text explaining what it controls):
+  - `expiring_soon_limit` (default 10, 1-50) - max items in the
+    Dashboard's "Expiring Soon" list.
+  - `calendar_months_ahead` (default 3, 1-12) - how far ahead the
+    Dashboard's expiry calendar looks.
+  - `wallet_chart_limit` (default 8, 1-20) - how many wallets show
+    individually in the "Items by Wallet" chart before the rest fold
+    into "Other".
+  - `duplicate_photo_threshold` (default 10, 0-64) - Hamming-distance
+    sensitivity for flagging two uploaded card photos as likely
+    duplicates. Lower is stricter, higher is looser.
+
+  `analytics.py`'s `get_items_by_wallet`, `get_expiry_timeline`,
+  `get_expiring_soon_items`, and `build_expiry_calendar` now resolve
+  these from `SiteConfiguration.load()` instead of a module constant
+  (same `param=None` sentinel pattern already used for
+  `expiry_threshold_days`). The duplicate-photo threshold moved to its
+  one call site in `views.py::check_duplicate_image`, since
+  `imagehash.py` can't import `SiteConfiguration` without creating a
+  circular import back through `models.py`. The one constant
+  deliberately left alone was `EXPIRING_SOON_DAYS` - it backs the
+  documented `expiring_7_days` field in the public analytics API, and
+  the day count is baked into that field's name, so changing its
+  behaviour would be an API-breaking change rather than a display
+  tweak.
+- **Fixed: self-hosters' own logo.dev key was silently ignored on four
+  pages.** The Inventory grid, Next Up widget, Sharing Center, and item
+  detail page each built their merchant-logo `<img>` URL with the fork
+  maintainer's own hardcoded logo.dev publishable token, regardless of
+  whatever `logo_dev_api_key` an admin had already configured in Site
+  Settings for the equivalent server-side lookups. A new
+  `merchant_logo_settings` context processor exposes the configured key
+  to every authenticated page, and the four templates now build the
+  `<img src>` from it - gated behind `{% if entry.item.logo_slug and
+  logo_dev_api_key %}` so a self-hoster who hasn't set a key gets the
+  existing QR/fallback behaviour instead of a broken image request.
+- **Sanity pass**: `manage.py check` and `makemigrations --check`
+  clean; targeted test classes covering the analytics helpers,
+  Dashboard context, and duplicate-photo hashing all pass; full test
+  suite re-run to confirm no regressions from the new required-field
+  additions.
 
 ## New environment variables
 

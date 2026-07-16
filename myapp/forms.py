@@ -349,6 +349,7 @@ class SiteConfigurationForm(forms.ModelForm):
             'update_check_enabled', 'update_check_repo',
             'portainer_webhook_url',
             'scheduled_backup_enabled', 'backup_retention_count',
+            'expiring_soon_limit', 'calendar_months_ahead', 'wallet_chart_limit', 'duplicate_photo_threshold',
         ]
         widgets = {
             'expiry_threshold_days': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
@@ -376,6 +377,10 @@ class SiteConfigurationForm(forms.ModelForm):
             'portainer_webhook_url': forms.TextInput(attrs={'class': 'form-control'}),
             'scheduled_backup_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'backup_retention_count': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+            'expiring_soon_limit': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 50}),
+            'calendar_months_ahead': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 12}),
+            'wallet_chart_limit': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 20}),
+            'duplicate_photo_threshold': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'max': 64}),
         }
 
     REPO_RE = re.compile(r'^[\w.-]+/[\w.-]+$')

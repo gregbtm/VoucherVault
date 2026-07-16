@@ -4,18 +4,13 @@ from PIL import Image
 
 # 8x8 -> 64 bits. Large enough to distinguish genuinely different photos,
 # small enough that ordinary re-compression/re-crop/lighting differences
-# between two photos of the same physical card still land well within
-# _DUPLICATE_THRESHOLD of each other.
-_HASH_SIZE = 8
-
-# Hamming distance (differing bits out of 64) below which two images are
-# treated as "the same photo" for duplicate-detection purposes. 0 is
-# byte-for-byte identical after resizing; low single digits is the
+# between two photos of the same physical card still land well within a
+# sane duplicate-detection threshold of each other (see
+# SiteConfiguration.duplicate_photo_threshold, checked by callers - 0 is
+# byte-for-byte identical after resizing, low single digits is the
 # conventional dHash threshold for "same picture, different compression/
-# crop/lighting" - not a scientific constant, just picked conservatively
-# to avoid two different cards from the same merchant (similar layout,
-# similar colours) matching each other.
-DUPLICATE_THRESHOLD = 10
+# crop/lighting").
+_HASH_SIZE = 8
 
 
 def compute_dhash(image_bytes: bytes) -> str:
@@ -54,8 +49,8 @@ def hamming_distance(hash_a: str, hash_b: str) -> int:
     """
     Differing bits between two hex-encoded dHash strings. Returns a
     distance larger than any real threshold (rather than raising or
-    silently matching) if either hash is missing/blank, so a caller doing
-    `distance <= DUPLICATE_THRESHOLD` never has to special-case "no hash".
+    silently matching) if either hash is missing/blank, so a caller
+    comparing against its own threshold never has to special-case "no hash".
     """
     if not hash_a or not hash_b:
         return _HASH_SIZE * _HASH_SIZE

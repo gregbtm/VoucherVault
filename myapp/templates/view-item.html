@@ -1346,9 +1346,9 @@ body.dark-mode .action-btn-danger-outline:hover {
         <div class="item-detail-content">
           <!-- Item Header -->
           <div class="item-header">
-            {% if item.logo_slug %}
+            {% if item.logo_slug and logo_dev_api_key %}
             <img class="item-logo"
-                 src="https://img.logo.dev/{{ item.logo_slug }}?token=pk_NaUHDkw4SSeHCapveLJtjg"
+                 src="https://img.logo.dev/{{ item.logo_slug }}?token={{ logo_dev_api_key }}"
                  alt="{{ item.issuer }}"
                  onerror="this.onerror=null;this.src='data:image/png;base64,{{ qr_code_base64 }}';this.style.filter='blur(3px)';">
             {% elif merchant_logo_url %}

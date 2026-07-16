@@ -8,10 +8,7 @@ from django.utils import timezone
 
 from .models import Item, SiteConfiguration
 
-CALENDAR_MONTHS_AHEAD = 3
 EXPIRING_SOON_DAYS = 7
-EXPIRING_SOON_LIMIT = 10
-WALLET_CHART_LIMIT = 8
 OTHER_WALLET_COLOR = '#9ca3af'
 
 
@@ -52,7 +49,7 @@ def get_summary_stats(user):
         'expiring_7_days': active_items.filter(expiry_date__gte=today, expiry_date__lt=week_cutoff).count(),
         'expiring_30_days': active_items.filter(expiry_date__gte=today, expiry_date__lt=soon_cutoff).count(),
         'by_type': list(active_items.values('type').annotate(count=Count('id')).order_by('type')),
-        'by_wallet': get_items_by_wallet(user, limit=WALLET_CHART_LIMIT),
+        'by_wallet': get_items_by_wallet(user),
         'value_by_currency': currency_totals(valued_items.filter(expiry_date__gte=today)),
         'at_risk_value_by_currency': currency_totals(
             valued_items.filter(expiry_date__gte=today, expiry_date__lt=soon_cutoff)
@@ -60,11 +57,17 @@ def get_summary_stats(user):
     }
 
 
-def get_expiry_timeline(user, months_ahead=CALENDAR_MONTHS_AHEAD):
+def get_expiry_timeline(user, months_ahead=None):
     """
     Items grouped by ISO expiry date (sparse — only dates with items),
-    for the analytics API's calendar feed.
+    for the analytics API's calendar feed. `months_ahead=None` (the
+    default) resolves to SiteConfiguration.calendar_months_ahead - the
+    API endpoint that calls this always passes its own explicit
+    `months` query param instead, so this default only matters for
+    other callers.
     """
+    if months_ahead is None:
+        months_ahead = SiteConfiguration.load().calendar_months_ahead
     today = timezone.localtime().date()
     horizon_end = today + timedelta(days=31 * months_ahead)
 
@@ -85,13 +88,18 @@ def get_expiry_timeline(user, months_ahead=CALENDAR_MONTHS_AHEAD):
     return grouped
 
 
-def get_items_by_wallet(user, limit=WALLET_CHART_LIMIT):
+def get_items_by_wallet(user, limit=None):
     """
     Returns [{'name': str, 'color': str, 'count': int}, ...] for the user's
     active (not-used) items, sorted by count desc. Wallet-less items are
     grouped under "No Wallet"; beyond `limit` distinct wallets, the rest
     fold into "Other" rather than generating an unbounded colour cycle.
+
+    `limit=None` (the default) resolves to the admin-configured
+    SiteConfiguration.wallet_chart_limit at call time.
     """
+    if limit is None:
+        limit = SiteConfiguration.load().wallet_chart_limit
     rows = (
         Item.objects.filter(user=user, is_used=False)
         .values('wallet__name', 'wallet__color')
@@ -115,7 +123,7 @@ def get_items_by_wallet(user, limit=WALLET_CHART_LIMIT):
     return results
 
 
-def get_expiring_soon_items(user, days=None, limit=EXPIRING_SOON_LIMIT):
+def get_expiring_soon_items(user, days=None, limit=None):
     """
     Active items expiring within the next `days` days, soonest first. Each
     item gets a `.days_left` attribute (int) attached for display.
@@ -125,9 +133,12 @@ def get_expiring_soon_items(user, days=None, limit=EXPIRING_SOON_LIMIT):
     fixed constant, so this list agrees with every other "soon expiring"
     count in the app (the Inventory filter chip, the notification
     default threshold) instead of silently using its own fixed window.
+    `limit=None` similarly resolves to SiteConfiguration.expiring_soon_limit.
     """
     if days is None:
         days = SiteConfiguration.load().expiry_threshold_days
+    if limit is None:
+        limit = SiteConfiguration.load().expiring_soon_limit
     now = timezone.now()
     today = timezone.localtime(now).date()
     cutoff = now + timedelta(days=days)
@@ -164,13 +175,18 @@ def get_next_up_items(wallets, limit=1):
     return items
 
 
-def build_expiry_calendar(user, months_ahead=CALENDAR_MONTHS_AHEAD):
+def build_expiry_calendar(user, months_ahead=None):
     """
     Returns a list of `months_ahead` month dicts (starting this month) for a
     day-grid calendar: {'label': 'July 2026', 'weeks': [[day_cell, ...], ...]}
     where each day_cell is None (padding outside the month) or a dict with
     day/date/is_today/is_past/count of items expiring that day.
+
+    `months_ahead=None` (the default) resolves to the admin-configured
+    SiteConfiguration.calendar_months_ahead at call time.
     """
+    if months_ahead is None:
+        months_ahead = SiteConfiguration.load().calendar_months_ahead
     today = timezone.localtime().date()
     horizon_end = today + timedelta(days=31 * months_ahead)
 

@@ -529,9 +529,9 @@ body.dark-mode .status-badge.expired {
         <div class="item-card-content">
           <!-- Top Row: Logo + Info -->
           <div class="card-top-row">
-            {% if entry.item.logo_slug %}
-            <img class="item-logo" 
-                 src="https://img.logo.dev/{{ entry.item.logo_slug }}?token=pk_NaUHDkw4SSeHCapveLJtjg" 
+            {% if entry.item.logo_slug and logo_dev_api_key %}
+            <img class="item-logo"
+                 src="https://img.logo.dev/{{ entry.item.logo_slug }}?token={{ logo_dev_api_key }}"
                  alt="{{ entry.item.issuer }}"
                  onerror="this.onerror=null;this.src='data:image/png;base64,{{ entry.qr_code_base64 }}';this.style.filter='blur(2px)';">
             {% else %}
