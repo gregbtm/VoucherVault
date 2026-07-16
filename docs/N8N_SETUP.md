@@ -99,3 +99,9 @@ No manual per-endpoint wiring.
   expose the API token itself anywhere public — the same "keep it off
   the public internet" guidance in [`MCP_SERVER_SETUP.md`](MCP_SERVER_SETUP.md)
   applies here too.
+
+## See also
+
+[`FIREFLY_III_SETUP.md`](FIREFLY_III_SETUP.md) builds on this doc's
+webhook direction to sync a gift card/voucher's balance into a
+self-hosted [Firefly III](https://www.firefly-iii.org/) budget.
