@@ -2998,6 +2998,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
             'Periodic Expiry Check', 'Notification Rules Expiry Check',
             'Next Up Reminder Check',
             'Update Check', 'Upstream Version Check', 'Scheduled Backup',
+            'Daily Notification Digest',
         })
 
     def test_update_check_and_upstream_check_run_hourly_not_daily(self):

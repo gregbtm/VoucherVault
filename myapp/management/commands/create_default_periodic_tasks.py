@@ -58,6 +58,9 @@ class Command(BaseCommand):
             {'name': 'Upstream Version Check', 'task': 'myapp.tasks.check_upstream_version_task', 'crontab': hourly_schedule, 'enabled': True},
             # Writes a rotating local Full Backup zip per user; a no-op if SCHEDULED_BACKUP_ENABLED=False
             {'name': 'Scheduled Backup', 'task': 'imports.tasks.run_scheduled_backups', 'crontab': backup_schedule, 'enabled': True},
+            # Sends one combined message per rule set to "Daily Digest", batching whatever
+            # fired that day; a no-op until a user opts a rule into digest delivery.
+            {'name': 'Daily Notification Digest', 'task': 'notify.tasks.send_daily_digests', 'crontab': crontab_schedule, 'enabled': True},
             # Add more tasks as needed
         ]
 

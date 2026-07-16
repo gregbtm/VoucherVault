@@ -46,6 +46,12 @@
               {% if form.event_types.errors %}<div class="text-danger small">{{ form.event_types.errors }}</div>{% endif %}
             </div>
 
+            <div class="mb-3">
+              <label for="{{ form.digest_frequency.id_for_label }}" class="form-label">{% trans "Delivery" %}</label>
+              {{ form.digest_frequency }}
+              <small class="form-text text-muted">{{ form.digest_frequency.help_text }}</small>
+            </div>
+
             <div id="backend-fields-ntfy" class="backend-fields">
               <h6 class="text-muted mt-3">{% trans "ntfy Settings" %}</h6>
               <div class="mb-2">

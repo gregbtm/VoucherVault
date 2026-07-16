@@ -273,7 +273,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 class NotificationRuleSerializer(serializers.ModelSerializer):
     class Meta:
         model = NotificationRule
-        fields = ['id', 'name', 'backend', 'config', 'enabled', 'event_types', 'created_at']
+        fields = ['id', 'name', 'backend', 'config', 'enabled', 'event_types', 'digest_frequency', 'created_at']
         read_only_fields = ['id', 'created_at']
 
     def validate_name(self, name):

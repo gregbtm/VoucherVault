@@ -25,7 +25,7 @@ from .backends.ntfy import NtfyBackend
 from .backends.webhook import WebhookBackend
 from .backends.webpush import WebPushBackend, get_vapid_public_key, webpush_enabled
 from .forms import NotificationRuleForm
-from .models import NotificationLog, NotificationRule, WebPushSubscription
+from .models import DigestEntry, NotificationLog, NotificationRule, WebPushSubscription
 from .tasks import (
     check_and_notify_expiry,
     check_next_up_reminders,
@@ -35,6 +35,7 @@ from .tasks import (
     notify_item_created,
     notify_item_shared,
     notify_item_used,
+    send_daily_digests,
     send_test_notification,
 )
 
@@ -53,7 +54,7 @@ def make_item(user, **kwargs):
     return Item.objects.create(**defaults)
 
 
-def make_rule(user, backend='ntfy', event_types=None, **config_overrides):
+def make_rule(user, backend='ntfy', event_types=None, digest_frequency='immediate', **config_overrides):
     config = {
         'ntfy': {'server': 'https://ntfy.example.com', 'topic': 'vouchervault'},
         'webhook': {'url': 'https://n8n.example.com/webhook/vv'},
@@ -64,6 +65,7 @@ def make_rule(user, backend='ntfy', event_types=None, **config_overrides):
     return NotificationRule.objects.create(
         user=user, name=f'{backend} rule', backend=backend,
         config=config, enabled=True, event_types=event_types or ['expiry_warning'],
+        digest_frequency=digest_frequency,
     )
 
 
@@ -356,6 +358,7 @@ class NotificationRuleFormWebPushGatingTests(TestCase):
         set_site_config(webpush_vapid_public_key='pub', webpush_vapid_private_key='priv')
         form = NotificationRuleForm(data={
             'name': 'push me', 'backend': 'webpush', 'enabled': 'on', 'event_types': ['expiry_warning'],
+            'digest_frequency': 'immediate',
         }, user=self.user)
         self.assertTrue(form.is_valid(), form.errors)
         rule = form.save(commit=False)
@@ -420,6 +423,91 @@ class FireNotificationsTests(TestCase):
         fire_notifications(self.item, 'balance_changed', 'title', 'message', dedupe=False)
         self.assertEqual(mock_send.call_count, 2)
         self.assertEqual(NotificationLog.objects.count(), 2)
+
+
+class DigestModeTests(TestCase):
+    """
+    digest_frequency='daily' routes fire_notifications() through
+    DigestEntry instead of an immediate send_via_rule() call, and
+    send_daily_digests() is what actually delivers them.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.item = make_item(self.user)
+
+    @patch('notify.tasks.send_via_rule')
+    def test_daily_rule_queues_instead_of_sending_immediately(self, mock_send):
+        rule = make_rule(self.user, event_types=['expiry_warning'], digest_frequency='daily')
+        fire_notifications(self.item, 'expiry_warning', 'title', 'message')
+
+        mock_send.assert_not_called()
+        entry = DigestEntry.objects.get()
+        self.assertEqual(entry.rule, rule)
+        self.assertEqual(entry.item, self.item)
+        self.assertEqual(entry.title, 'title')
+
+    @patch('notify.tasks.send_via_rule')
+    def test_daily_rule_logs_immediately_to_prevent_rescan_requeue(self, mock_send):
+        make_rule(self.user, event_types=['expiry_warning'], digest_frequency='daily')
+        fire_notifications(self.item, 'expiry_warning', 'title', 'message')  # dedupe=True default
+        fire_notifications(self.item, 'expiry_warning', 'title', 'message')
+
+        self.assertEqual(DigestEntry.objects.count(), 1)
+        self.assertEqual(NotificationLog.objects.filter(success=True).count(), 1)
+        mock_send.assert_not_called()
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_immediate_rule_unaffected(self, mock_send):
+        make_rule(self.user, event_types=['expiry_warning'], digest_frequency='immediate')
+        fire_notifications(self.item, 'expiry_warning', 'title', 'message')
+
+        mock_send.assert_called_once()
+        self.assertEqual(DigestEntry.objects.count(), 0)
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_send_daily_digests_combines_and_clears_entries(self, mock_send):
+        rule = make_rule(self.user, event_types=['expiry_warning', 'item_used'], digest_frequency='daily')
+        fire_notifications(self.item, 'expiry_warning', 'Card expiring', 'Details A', dedupe=False)
+        fire_notifications(self.item, 'item_used', 'Card used', 'Details B', dedupe=False)
+
+        send_daily_digests()
+
+        mock_send.assert_called_once()
+        call_args = mock_send.call_args
+        self.assertEqual(call_args.args[0], rule)
+        self.assertIn('2 updates', call_args.args[1])
+        self.assertIn('Card expiring', call_args.args[2])
+        self.assertIn('Card used', call_args.args[2])
+        self.assertEqual(DigestEntry.objects.count(), 0)
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_send_daily_digests_noop_with_nothing_queued(self, mock_send):
+        make_rule(self.user, event_types=['expiry_warning'], digest_frequency='daily')
+        send_daily_digests()
+        mock_send.assert_not_called()
+
+    @patch('notify.tasks.send_via_rule')
+    def test_send_daily_digests_skips_disabled_rule_but_still_clears(self, mock_send):
+        rule = make_rule(self.user, event_types=['expiry_warning'], digest_frequency='daily')
+        fire_notifications(self.item, 'expiry_warning', 'title', 'message')
+        rule.enabled = False
+        rule.save()
+
+        send_daily_digests()
+
+        mock_send.assert_not_called()
+        self.assertEqual(DigestEntry.objects.count(), 0)
+
+    @patch('notify.tasks.send_via_rule', return_value=(False, 'boom'))
+    def test_send_daily_digests_clears_entries_even_on_failure(self, mock_send):
+        make_rule(self.user, event_types=['expiry_warning'], digest_frequency='daily')
+        fire_notifications(self.item, 'expiry_warning', 'title', 'message')
+
+        send_daily_digests()
+
+        self.assertEqual(DigestEntry.objects.count(), 0)
+        self.assertTrue(NotificationLog.objects.filter(event_type='daily_digest', success=False).exists())
 
 
 class LifecycleEventNotificationTests(TestCase):
@@ -604,6 +692,7 @@ class NotificationRuleFormTests(TestCase):
         form = NotificationRuleForm(data={
             'name': 'x', 'backend': 'ntfy', 'enabled': 'on', 'event_types': ['expiry_warning'],
             'ntfy_server': 'https://ntfy.example.com/', 'ntfy_topic': 'vv', 'ntfy_priority': 'high',
+            'digest_frequency': 'immediate',
         }, user=self.user)
         self.assertTrue(form.is_valid(), form.errors)
         rule = form.save(commit=False)
@@ -629,7 +718,7 @@ class NotificationRuleViewTests(TestCase):
     def test_create_rule(self):
         response = self.client.post(reverse('manage_notification_rules'), {
             'name': 'My Webhook', 'backend': 'webhook', 'enabled': 'on', 'event_types': ['expiry_warning'],
-            'webhook_url': 'https://n8n.example.com/webhook/vv',
+            'webhook_url': 'https://n8n.example.com/webhook/vv', 'digest_frequency': 'immediate',
         })
         self.assertRedirects(response, reverse('manage_notification_rules'))
         self.assertTrue(NotificationRule.objects.filter(user=self.alice, name='My Webhook').exists())

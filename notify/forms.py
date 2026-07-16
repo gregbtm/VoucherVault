@@ -65,11 +65,12 @@ class NotificationRuleForm(forms.ModelForm):
 
     class Meta:
         model = NotificationRule
-        fields = ['name', 'backend', 'enabled', 'event_types']
+        fields = ['name', 'backend', 'enabled', 'event_types', 'digest_frequency']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'backend': forms.Select(attrs={'class': 'form-select'}),
             'enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'digest_frequency': forms.Select(attrs={'class': 'form-select'}),
         }
 
     def __init__(self, *args, user=None, **kwargs):

@@ -5,7 +5,7 @@ from celery import shared_task
 from myapp.models import Item, SiteConfiguration, UserPreference
 
 from .backends import get_backend
-from .models import NotificationLog, NotificationRule
+from .models import DigestEntry, NotificationLog, NotificationRule
 
 
 def default_threshold_days() -> int:
@@ -45,6 +45,19 @@ def fire_notifications(item, event_type: str, title: str, message: str, dedupe: 
     for rule in matching_rules:
         if dedupe and _already_notified(item, event_type, rule):
             continue
+
+        if rule.digest_frequency == 'daily':
+            DigestEntry.objects.create(rule=rule, item=item, event_type=event_type, title=title, message=message)
+            # Logged immediately (not once the digest actually sends) so
+            # dedupe=True callers - the periodic expiry re-scan - see this
+            # as already handled and don't re-queue it every day between
+            # now and the next digest send.
+            NotificationLog.objects.create(
+                user=item.user, rule=rule, item=item, event_type=event_type,
+                success=True, detail='Queued for daily digest.',
+            )
+            continue
+
         success, detail = send_via_rule(rule, title, message, item=item)
         NotificationLog.objects.create(
             user=item.user, rule=rule, item=item, event_type=event_type,
@@ -194,3 +207,32 @@ def check_next_up_reminders():
             title = f"📌 {item.name} is today"
             message = f"Code: {item.redeem_code}\nWallet: {item.wallet.name}"
             fire_notifications(item, 'next_up_reminder', title, message)
+
+
+@shared_task
+def send_daily_digests():
+    """
+    Runs on the same daily schedule as check_and_notify_expiry. Groups
+    every pending DigestEntry by rule and sends one combined message per
+    rule - the entries themselves were queued at the moment each event
+    happened (see fire_notifications), not built fresh here. Cleared
+    after every attempt, successful or not: nothing in this app retries
+    a failed send, so holding a failed digest's entries for tomorrow
+    would just silently double it up rather than actually recover it.
+    """
+    rule_ids = DigestEntry.objects.values_list('rule_id', flat=True).distinct()
+    for rule_id in rule_ids:
+        entries = list(DigestEntry.objects.filter(rule_id=rule_id).select_related('rule'))
+        if not entries:
+            continue
+        rule = entries[0].rule
+        if rule.enabled:
+            count = len(entries)
+            title = f"📋 VoucherVault Plus+ daily digest ({count} update{'s' if count != 1 else ''})"
+            message = '\n\n'.join(f'{e.title}\n{e.message}' for e in entries)
+            success, detail = send_via_rule(rule, title, message)
+            NotificationLog.objects.create(
+                user=rule.user, rule=rule, item=None, event_type='daily_digest',
+                success=success, detail=detail,
+            )
+        DigestEntry.objects.filter(rule_id=rule_id).delete()
