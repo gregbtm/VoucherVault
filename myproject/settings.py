@@ -168,6 +168,7 @@ TEMPLATES = [
                 'myapp.context_processors.user_preferences',
                 'myapp.context_processors.update_check_status',
                 'myapp.context_processors.share_settings',
+                'myapp.context_processors.merchant_logo_settings',
                 'myapp.context_processors.pwa_cache_clear_signal',
             ],
         },

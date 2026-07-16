@@ -30,7 +30,7 @@ from .merchant_logos import (
     remember_balance_check_url,
 )
 from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
-from .imagehash import compute_dhash, hamming_distance, DUPLICATE_THRESHOLD
+from .imagehash import compute_dhash, hamming_distance
 from .models import AppSettings, Document, Item, ItemPublicShare, MerchantProfile, SiteConfiguration, Tag, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, Wallet
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .test_utils import set_site_config
@@ -2515,7 +2515,15 @@ class LevenshteinDistanceTests(TestCase):
 
 
 class ImageHashTests(TestCase):
-    """myapp.imagehash - the perceptual-hash core of duplicate-photo detection."""
+    """
+    myapp.imagehash - the perceptual-hash core of duplicate-photo detection.
+    Threshold checks below use the SiteConfiguration.duplicate_photo_threshold
+    model default (not a fixed import from imagehash.py, which no longer
+    hardcodes one - see SiteConfiguration and check_duplicate_image) - this
+    is testing the hash algorithm's own behaviour against a realistic
+    threshold, not the settings wiring itself.
+    """
+    DEFAULT_THRESHOLD = 10
 
     def test_identical_images_have_zero_distance(self):
         image_bytes = _make_test_image('red')
@@ -2529,19 +2537,19 @@ class ImageHashTests(TestCase):
         png_bytes = _make_test_image('red', fmt='PNG')
         jpeg_bytes = _make_test_image('red', fmt='JPEG')
         distance = hamming_distance(compute_dhash(png_bytes), compute_dhash(jpeg_bytes))
-        self.assertLessEqual(distance, DUPLICATE_THRESHOLD)
+        self.assertLessEqual(distance, self.DEFAULT_THRESHOLD)
 
     def test_visually_different_images_exceed_threshold(self):
         distance = hamming_distance(compute_dhash(_make_test_image('red')), compute_dhash(_make_test_image('orange')))
-        self.assertGreater(distance, DUPLICATE_THRESHOLD)
+        self.assertGreater(distance, self.DEFAULT_THRESHOLD)
 
     def test_compute_dhash_returns_empty_string_for_invalid_bytes(self):
         self.assertEqual(compute_dhash(b'not an image'), '')
 
     def test_hamming_distance_treats_missing_hash_as_maximally_distant(self):
         real_hash = compute_dhash(_make_test_image('red'))
-        self.assertGreater(hamming_distance(real_hash, ''), DUPLICATE_THRESHOLD)
-        self.assertGreater(hamming_distance('', ''), DUPLICATE_THRESHOLD)
+        self.assertGreater(hamming_distance(real_hash, ''), self.DEFAULT_THRESHOLD)
+        self.assertGreater(hamming_distance('', ''), self.DEFAULT_THRESHOLD)
 
 
 class ItemImagePhashSaveTests(TestCase):
@@ -3216,6 +3224,8 @@ def _site_config_form_data(**overrides):
         'update_check_enabled': True, 'update_check_repo': 'gregbtm/VoucherVault',
         'portainer_webhook_url': '',
         'scheduled_backup_enabled': True, 'backup_retention_count': 7,
+        'expiring_soon_limit': 10, 'calendar_months_ahead': 3,
+        'wallet_chart_limit': 8, 'duplicate_photo_threshold': 10,
     }
     data.update(overrides)
     return data
