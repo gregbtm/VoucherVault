@@ -106,6 +106,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 73 — Configurable dashboard limits, duplicate-photo sensitivity, and a shared logo.dev token](#phase-73--configurable-dashboard-limits-duplicate-photo-sensitivity-and-a-shared-logodev-token)
 - [Phase 74 — Google Wallet passes now update live, not just at save time](#phase-74--google-wallet-passes-now-update-live-not-just-at-save-time)
 - [Phase 75 — Firefly III balance sync recipe](#phase-75--firefly-iii-balance-sync-recipe)
+- [Phase 76 — Daily digest mode for notification rules](#phase-76--daily-digest-mode-for-notification-rules)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4000,6 +4001,40 @@ existing n8n integration.
 - Cross-linked from `N8N_SETUP.md`'s "See also" section and README's
   setup guides list and n8n feature bullet.
 - Docs-only phase - no code, no migration, no test changes.
+
+## Phase 76 — Daily digest mode for notification rules
+
+Third of the batch. Every `NotificationRule` previously fired one
+message per event, immediately - fine for a single expiry warning, but
+noisy for anyone with enough items that several fire the same day.
+
+- **New `NotificationRule.digest_frequency`** (`immediate` default, or
+  `daily`) and a new `DigestEntry` model. When a rule's frequency is
+  `daily`, `fire_notifications()` queues a `DigestEntry` instead of
+  calling the backend immediately - the entry is still logged to
+  `NotificationLog` right away (as "Queued for daily digest"), so the
+  periodic expiry re-scan's dedupe check still treats it as handled and
+  doesn't re-queue the same warning every day between now and the
+  actual send.
+- **New periodic task `send_daily_digests`** (same 9am schedule as the
+  existing expiry checks): groups pending `DigestEntry` rows by rule,
+  sends one combined message per rule (title lines + bodies joined),
+  and clears the queue - on success or failure alike, since nothing in
+  this app retries a failed send and holding entries for "next time"
+  would just silently double up the next digest instead of actually
+  recovering the failed one.
+- Added to the Rules form/template as a "Delivery" dropdown next to the
+  event-type checkboxes, and to the API's `NotificationRuleSerializer`
+  for parity with the web UI.
+- Deliberately scoped to daily only for this first cut - no
+  day-of-week weekly option yet, kept simple rather than half-building
+  a fuller schedule picker.
+- 7 new tests (`notify/tests.py::DigestModeTests`) covering queuing vs.
+  immediate send, the dedupe-preventing early log, combining/clearing
+  on send, the disabled-rule and nothing-queued no-op paths, and
+  clearing on a failed send. Existing form/view tests updated for the
+  new field (same pattern as every previous required-field addition in
+  this changelog).
 
 ## New environment variables
 

@@ -27,6 +27,10 @@ class NotificationRule(models.Model):
         ('item_shared', 'Item Shared'),
         ('next_up_reminder', 'Next Up Item Due Today'),
     ]
+    DIGEST_FREQUENCY_CHOICES = [
+        ('immediate', 'Immediate'),
+        ('daily', 'Daily Digest'),
+    ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notification_rules')
     name = models.CharField(max_length=100)
@@ -34,6 +38,11 @@ class NotificationRule(models.Model):
     config = models.JSONField(default=dict, blank=True)  # backend-specific config blob
     enabled = models.BooleanField(default=True)
     event_types = models.JSONField(default=list, blank=True)  # e.g. ['expiry_warning', 'expiry_final']
+    digest_frequency = models.CharField(
+        max_length=10, choices=DIGEST_FREQUENCY_CHOICES, default='immediate',
+        help_text='"Daily Digest" batches matching events into one combined message sent once a day '
+                   'instead of pinging for each one separately.',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -63,6 +72,28 @@ class NotificationLog(models.Model):
 
     def __str__(self):
         return f'{self.event_type} via {self.rule_id} @ {self.sent_at}'
+
+
+class DigestEntry(models.Model):
+    """
+    A notification queued for a rule whose digest_frequency is 'daily'
+    instead of sent immediately. send_daily_digests() (notify/tasks.py)
+    groups these by rule once a day, sends one combined message per rule,
+    and clears them - this table only ever holds same-day, not-yet-sent
+    entries.
+    """
+    rule = models.ForeignKey(NotificationRule, on_delete=models.CASCADE, related_name='digest_entries')
+    item = models.ForeignKey(Item, on_delete=models.SET_NULL, null=True, blank=True)
+    event_type = models.CharField(max_length=50)
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f'{self.title} (queued for {self.rule})'
 
 
 class WebPushSubscription(models.Model):
