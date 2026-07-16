@@ -737,6 +737,24 @@ body.dark-mode .error-alert {
 
             <div class="form-row">
               <div class="form-group">
+                <label class="form-label" for="journey_origin">{% trans "Journey From" %}</label>
+                <input type="text" class="modern-input" id="journey_origin" name="journey_origin"
+                       placeholder="{% trans 'e.g. Hatfield Peverel' %}"
+                       value="{{ item.journey_origin|default_if_none:'' }}">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="journey_destination">{% trans "Journey To" %}</label>
+                <input type="text" class="modern-input" id="journey_destination" name="journey_destination"
+                       placeholder="{% trans 'e.g. London Terminals' %}"
+                       value="{{ item.journey_destination|default_if_none:'' }}">
+              </div>
+            </div>
+            <p class="text-muted small mb-3">
+              {% trans "Train/transport tickets only - powers the Active Today widget in Preferences. Leave blank for anything else." %}
+            </p>
+
+            <div class="form-row">
+              <div class="form-group">
                 <label class="form-label" for="code_type">{% trans "Code Type" %} <span class="required">*</span></label>
                 <select class="modern-select" id="code_type" name="code_type" required>
                   <option value="qrcode" {% if item.code_type == "qrcode" %}selected{% endif %}>QR Code</option>
@@ -1316,6 +1334,18 @@ document.addEventListener("DOMContentLoaded", function () {
           notesField.value = data.notes;
           markAutoFilled(notesField);
           filled.push("{% trans 'notes' %}");
+        }
+        const journeyOriginField = document.getElementById('journey_origin');
+        if (data.journey_origin && journeyOriginField && !journeyOriginField.value.trim()) {
+          journeyOriginField.value = data.journey_origin;
+          markAutoFilled(journeyOriginField);
+          filled.push("{% trans 'journey from' %}");
+        }
+        const journeyDestinationField = document.getElementById('journey_destination');
+        if (data.journey_destination && journeyDestinationField && !journeyDestinationField.value.trim()) {
+          journeyDestinationField.value = data.journey_destination;
+          markAutoFilled(journeyDestinationField);
+          filled.push("{% trans 'journey to' %}");
         }
         if (data.tags && data.tags.length) {
           // Check an existing tag checkbox if the suggested name matches

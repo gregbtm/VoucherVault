@@ -49,7 +49,7 @@ class ItemForm(forms.ModelForm):
 
     class Meta:
         model = Item
-        fields = ['name', 'issuer', 'redeem_code', 'card_number', 'pin', 'issue_date', 'expiry_date', 'description', 'logo_slug', 'type', 'value', 'value_type', 'currency', 'file', 'code_type', 'tile_color', 'wallet', 'tags', 'notes', 'notify_days_before', 'balance_check_url']
+        fields = ['name', 'issuer', 'redeem_code', 'card_number', 'pin', 'issue_date', 'expiry_date', 'description', 'logo_slug', 'type', 'value', 'value_type', 'currency', 'file', 'code_type', 'tile_color', 'wallet', 'tags', 'notes', 'notify_days_before', 'balance_check_url', 'journey_origin', 'journey_destination']
         widgets = {
             'issue_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
             'expiry_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
@@ -63,6 +63,14 @@ class ItemForm(forms.ModelForm):
             'balance_check_url': forms.URLInput(attrs={
                 'class': 'form-control',
                 'placeholder': _("The merchant's balance/validity check page"),
+            }),
+            'journey_origin': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': _('e.g. Hatfield Peverel'),
+            }),
+            'journey_destination': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': _('e.g. London Terminals'),
             }),
         }
 
@@ -211,6 +219,7 @@ class UserPreferenceForm(forms.ModelForm):
             'sort_by', 'sort_order', 'view_mode', 'fixer_api_key', 'default_currency',
             'keep_screen_awake', 'oled_dark_mode', 'offline_cache_enabled', 'blur_codes_enabled',
             'next_up_wallets', 'next_up_max_items',
+            'active_today_enabled', 'commute_home_station', 'active_today_cutoff_time',
         ]
         widgets = {
             'show_issue_date': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
@@ -227,11 +236,22 @@ class UserPreferenceForm(forms.ModelForm):
             'offline_cache_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'blur_codes_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'next_up_wallets': forms.CheckboxSelectMultiple(),
+            'active_today_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'commute_home_station': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': _('e.g. Hatfield Peverel'),
+            }),
+            'active_today_cutoff_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}, format='%H:%M'),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['next_up_wallets'].required = False
+        # Not required: a plain <input type="time"> always submits a value
+        # from the real Preferences page, but leaving it optional here means
+        # an omitted field falls back to the model's own default (see
+        # clean_active_today_cutoff_time) rather than failing validation.
+        self.fields['active_today_cutoff_time'].required = False
         # Scoped to wallets the user can actually see (own or shared with
         # them) - the instance always has a user by the time this form is
         # built (update_user_preferences creates the UserPreference first).
@@ -242,6 +262,9 @@ class UserPreferenceForm(forms.ModelForm):
             ).distinct()
         else:
             self.fields['next_up_wallets'].queryset = Wallet.objects.none()
+
+    def clean_active_today_cutoff_time(self):
+        return self.cleaned_data.get('active_today_cutoff_time') or UserPreference._meta.get_field('active_today_cutoff_time').default
 
 class DocumentForm(forms.ModelForm):
     class Meta:
@@ -283,12 +306,16 @@ class WalletShareForm(forms.Form):
 class WalletForm(forms.ModelForm):
     class Meta:
         model = Wallet
-        fields = ['name', 'description', 'icon', 'color']
+        fields = ['name', 'description', 'icon', 'color', 'auto_assign_issuer_match']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': _('e.g. Supermarkets')}),
             'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
             'icon': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'bi-cart'}),
             'color': forms.TextInput(attrs={'type': 'color', 'class': 'form-control form-control-color'}),
+            'auto_assign_issuer_match': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': _('e.g. National Rail'),
+            }),
         }
 
     def __init__(self, *args, user=None, **kwargs):

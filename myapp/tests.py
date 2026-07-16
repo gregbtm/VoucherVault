@@ -2,7 +2,7 @@ import json
 import os
 import urllib.error
 import uuid
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 from decimal import Decimal
 from io import BytesIO
 from unittest.mock import MagicMock, patch
@@ -273,6 +273,67 @@ class CreateItemWithOrganizationTests(TestCase):
         self.assertEqual(item.notes, 'Show at gate.')
         tag_names = set(item.tags.values_list('name', flat=True))
         self.assertEqual(tag_names, {'discount', 'summer'})
+
+    def test_create_item_auto_assigns_wallet_from_issuer_match(self):
+        train_wallet = Wallet.objects.create(
+            user=self.user, name='Train Tickets', auto_assign_issuer_match='National Rail',
+        )
+        response = self.client.post(reverse('create_item'), {
+            'type': 'voucher', 'name': 'HAP to LON', 'issuer': 'National Rail', 'redeem_code': 'RAIL1',
+            'value': '0.00', 'currency': 'GBP', 'code_type': 'qrcode', 'value_type': 'money',
+            'issue_date': date.today().isoformat(),
+        })
+        self.assertRedirects(response, reverse('show_items'))
+        item = Item.objects.get(name='HAP to LON')
+        self.assertEqual(item.wallet, train_wallet)
+
+    def test_create_item_auto_assign_does_not_override_explicit_wallet_choice(self):
+        Wallet.objects.create(user=self.user, name='Train Tickets', auto_assign_issuer_match='National Rail')
+        response = self.client.post(reverse('create_item'), {
+            'type': 'voucher', 'name': 'HAP to LON', 'issuer': 'National Rail', 'redeem_code': 'RAIL2',
+            'value': '0.00', 'currency': 'GBP', 'code_type': 'qrcode', 'value_type': 'money',
+            'issue_date': date.today().isoformat(), 'wallet': self.wallet.id,
+        })
+        self.assertRedirects(response, reverse('show_items'))
+        item = Item.objects.get(name='HAP to LON')
+        self.assertEqual(item.wallet, self.wallet)
+
+    def test_create_item_no_matching_rule_leaves_wallet_blank(self):
+        Wallet.objects.create(user=self.user, name='Train Tickets', auto_assign_issuer_match='National Rail')
+        response = self.client.post(reverse('create_item'), {
+            'type': 'voucher', 'name': 'Unrelated Item', 'issuer': 'Acme', 'redeem_code': 'ACME1',
+            'value': '0.00', 'currency': 'GBP', 'code_type': 'qrcode', 'value_type': 'money',
+            'issue_date': date.today().isoformat(),
+        })
+        self.assertRedirects(response, reverse('show_items'))
+        item = Item.objects.get(name='Unrelated Item')
+        self.assertIsNone(item.wallet)
+
+
+class WalletAutoAssignMatchTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_match_for_issuer_is_case_insensitive_substring(self):
+        wallet = Wallet.objects.create(user=self.user, name='Train Tickets', auto_assign_issuer_match='national rail')
+        self.assertEqual(Wallet.match_for_issuer(self.user, 'National Rail'), wallet)
+
+    def test_match_for_issuer_returns_none_without_match(self):
+        Wallet.objects.create(user=self.user, name='Train Tickets', auto_assign_issuer_match='National Rail')
+        self.assertIsNone(Wallet.match_for_issuer(self.user, 'Acme'))
+
+    def test_match_for_issuer_returns_none_for_wallets_without_a_rule(self):
+        Wallet.objects.create(user=self.user, name='Groceries')
+        self.assertIsNone(Wallet.match_for_issuer(self.user, 'Anything'))
+
+    def test_match_for_issuer_ignores_other_users_wallets(self):
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        Wallet.objects.create(user=bob, name='Train Tickets', auto_assign_issuer_match='National Rail')
+        self.assertIsNone(Wallet.match_for_issuer(self.user, 'National Rail'))
+
+    def test_match_for_issuer_returns_none_for_blank_issuer(self):
+        Wallet.objects.create(user=self.user, name='Train Tickets', auto_assign_issuer_match='National Rail')
+        self.assertIsNone(Wallet.match_for_issuer(self.user, ''))
 
 
 class NoBarcodeCodeTypeTests(TestCase):
@@ -586,6 +647,146 @@ class ShowItemsNextUpWidgetTests(TestCase):
         self.assertRedirects(response, reverse('show_items'))
         item.refresh_from_db()
         self.assertTrue(item.is_used)
+
+
+class ActiveTodayWidgetTests(TestCase):
+    """
+    myapp.analytics.get_active_today_item() - the daily-commute "Active
+    Today" widget. home="Hatfield Peverel" throughout, mirroring the real
+    use case: a round-trip rail ticket pair valid for exactly today, with
+    reciprocal journey_origin/journey_destination.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+        self.home = 'Hatfield Peverel'
+
+    def _outward(self, **kwargs):
+        defaults = {
+            'name': 'HAP to LON', 'redeem_code': 'OUT1',
+            'journey_origin': 'Hatfield Peverel', 'journey_destination': 'London Terminals',
+            'expiry_date': date.today(),
+        }
+        defaults.update(kwargs)
+        return make_item(self.user, **defaults)
+
+    def _return_leg(self, **kwargs):
+        defaults = {
+            'name': 'LON to HAP', 'redeem_code': 'RET1',
+            'journey_origin': 'London Terminals', 'journey_destination': 'Hatfield Peverel',
+            'expiry_date': date.today(),
+        }
+        defaults.update(kwargs)
+        return make_item(self.user, **defaults)
+
+    def test_none_when_disabled(self):
+        from .analytics import get_active_today_item
+        self._outward()
+        self.assertIsNone(get_active_today_item(self.user, False, self.home, time(12, 0)))
+
+    def test_none_when_no_home_station_configured(self):
+        from .analytics import get_active_today_item
+        self._outward()
+        self.assertIsNone(get_active_today_item(self.user, True, '', time(12, 0)))
+
+    def test_none_when_no_ticket_valid_today(self):
+        from .analytics import get_active_today_item
+        self._outward(expiry_date=date.today() + timedelta(days=1))
+        self.assertIsNone(get_active_today_item(self.user, True, self.home, time(12, 0)))
+
+    def test_ignores_items_without_both_journey_fields(self):
+        from .analytics import get_active_today_item
+        make_item(self.user, name='Not A Ticket', redeem_code='GC1', expiry_date=date.today())
+        self.assertIsNone(get_active_today_item(self.user, True, self.home, time(12, 0)))
+
+    def test_pre_cutoff_shows_outward_leg(self):
+        from .analytics import get_active_today_item
+        outward = self._outward()
+        self._return_leg()
+        result = get_active_today_item(self.user, True, self.home, time(23, 59, 59))
+        self.assertEqual(result.id, outward.id)
+
+    def test_post_cutoff_shows_return_leg(self):
+        from .analytics import get_active_today_item
+        self._outward()
+        return_leg = self._return_leg()
+        result = get_active_today_item(self.user, True, self.home, time(0, 0))
+        self.assertEqual(result.id, return_leg.id)
+
+    def test_pre_cutoff_falls_back_to_return_leg_when_only_return_bought(self):
+        from .analytics import get_active_today_item
+        return_leg = self._return_leg()
+        result = get_active_today_item(self.user, True, self.home, time(23, 59, 59))
+        self.assertEqual(result.id, return_leg.id)
+
+    def test_post_cutoff_with_no_return_leg_shows_nothing(self):
+        from .analytics import get_active_today_item
+        self._outward()
+        result = get_active_today_item(self.user, True, self.home, time(0, 0))
+        self.assertIsNone(result)
+
+    def test_used_outward_leg_is_never_shown_even_pre_cutoff(self):
+        from .analytics import get_active_today_item
+        self._outward(is_used=True)
+        return_leg = self._return_leg()
+        result = get_active_today_item(self.user, True, self.home, time(23, 59, 59))
+        self.assertEqual(result.id, return_leg.id)
+
+    def test_archived_ticket_is_never_shown(self):
+        from .analytics import get_active_today_item
+        self._outward(is_archived=True)
+        self.assertIsNone(get_active_today_item(self.user, True, self.home, time(23, 59, 59)))
+
+    def test_home_station_match_is_case_insensitive(self):
+        from .analytics import get_active_today_item
+        outward = self._outward()
+        result = get_active_today_item(self.user, True, 'HATFIELD PEVEREL', time(23, 59, 59))
+        self.assertEqual(result.id, outward.id)
+
+    def test_show_items_view_wires_widget_into_context(self):
+        preferences, _ = UserPreference.objects.get_or_create(user=self.user)
+        preferences.active_today_enabled = True
+        preferences.commute_home_station = self.home
+        preferences.active_today_cutoff_time = time(23, 59, 59)
+        preferences.save()
+        outward = self._outward()
+
+        response = self.client.get(reverse('show_items'))
+        self.assertEqual(response.context['active_today_item']['item'].id, outward.id)
+
+    def test_mark_expired_commute_outward_tickets_task_flips_outward_used(self):
+        from .tasks import mark_expired_commute_outward_tickets
+
+        preferences, _ = UserPreference.objects.get_or_create(user=self.user)
+        preferences.active_today_enabled = True
+        preferences.commute_home_station = self.home
+        preferences.active_today_cutoff_time = time(0, 0)
+        preferences.save()
+        outward = self._outward()
+        return_leg = self._return_leg()
+
+        mark_expired_commute_outward_tickets()
+
+        outward.refresh_from_db()
+        return_leg.refresh_from_db()
+        self.assertTrue(outward.is_used)
+        self.assertFalse(return_leg.is_used)
+
+    def test_mark_expired_commute_outward_tickets_task_no_op_before_cutoff(self):
+        from .tasks import mark_expired_commute_outward_tickets
+
+        preferences, _ = UserPreference.objects.get_or_create(user=self.user)
+        preferences.active_today_enabled = True
+        preferences.commute_home_station = self.home
+        preferences.active_today_cutoff_time = time(23, 59, 59)
+        preferences.save()
+        outward = self._outward()
+
+        mark_expired_commute_outward_tickets()
+
+        outward.refresh_from_db()
+        self.assertFalse(outward.is_used)
 
 
 class AnalyticsHelperTests(TestCase):
@@ -3028,7 +3229,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
             'Periodic Expiry Check', 'Notification Rules Expiry Check',
             'Next Up Reminder Check',
             'Update Check', 'Upstream Version Check', 'Scheduled Backup',
-            'Daily Notification Digest',
+            'Daily Notification Digest', 'Active Today Outward-Leg Cleanup',
         })
 
     def test_update_check_and_upstream_check_run_hourly_not_daily(self):

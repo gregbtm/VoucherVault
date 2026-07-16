@@ -20,6 +20,7 @@ _CODE_TYPE_OPTIONS = ', '.join(sorted(VALID_CODE_TYPES - {'none'}))
 _ITEM_TYPE_OPTIONS = ', '.join(sorted(VALID_ITEM_TYPES))
 _MAX_DESCRIPTION_LENGTH = 300
 _MAX_NOTES_LENGTH = 1000
+_MAX_JOURNEY_STATION_LENGTH = 100
 
 _PROMPT = (
     'This image shows a voucher, coupon, gift card, or loyalty card - it '
@@ -46,13 +47,20 @@ _PROMPT = (
     'conditions, where it can be used, exclusions) - never invented, '
     'only if actually printed - and suggest up to 4 short category tags '
     'for organizing it (e.g. "Restaurant", "Food Delivery", "Retail", '
-    '"Travel", "Coffee"). Respond with ONLY a JSON object, no other text '
-    'and no markdown code fences, in exactly this shape:\n'
+    '"Travel", "Coffee"). If this is a point-to-point travel ticket '
+    '(e.g. a train, coach, or ferry ticket showing a departure and an '
+    'arrival station/stop), also extract the journey origin and '
+    'destination exactly as printed (e.g. "Hatfield Peverel" and '
+    '"London Terminals", or short codes like "HAP" and "LON" if that is '
+    'all that is shown) - leave both null for anything that is not a '
+    'point-to-point journey ticket. Respond with ONLY a JSON object, no '
+    'other text and no markdown code fences, in exactly this shape:\n'
     '{"code": "...", "code_type": "...", "name": "...", "issuer": "...", '
     '"expiry_date": "YYYY-MM-DD", "pin": "...", "value": 0.00, '
     '"currency": "...", "card_number": "...", "logo_slug": "...", '
     '"balance_check_url": "...", "type": "...", "description": "...", '
-    '"notes": "...", "tags": ["...", "..."], "confidence": 0.0}\n'
+    '"notes": "...", "tags": ["...", "..."], "journey_origin": "...", '
+    '"journey_destination": "...", "confidence": 0.0}\n'
     f'"code_type" must be exactly one of: {_CODE_TYPE_OPTIONS}, "none" '
     '(if the code is a plain printed number with no separate scannable '
     'barcode at all), or null (if you cannot tell). "currency" must be a '
@@ -103,7 +111,8 @@ class ClaudeOCRBackend(OCRBackend):
             'code': None, 'code_type': None, 'name': None, 'issuer': None, 'expiry_date': None,
             'pin': None, 'value': None, 'currency': None, 'card_number': None,
             'logo_slug': None, 'balance_check_url': None, 'type': None,
-            'description': None, 'notes': None, 'tags': [], 'confidence': 0.0,
+            'description': None, 'notes': None, 'tags': [], 'journey_origin': None,
+            'journey_destination': None, 'confidence': 0.0,
         }
 
         image_b64 = base64.standard_b64encode(image_bytes).decode()
@@ -172,5 +181,7 @@ class ClaudeOCRBackend(OCRBackend):
             'description': sanitize_free_text(result.get('description'), _MAX_DESCRIPTION_LENGTH),
             'notes': sanitize_free_text(result.get('notes'), _MAX_NOTES_LENGTH),
             'tags': sanitize_tag_suggestions(result.get('tags')),
+            'journey_origin': sanitize_free_text(result.get('journey_origin'), _MAX_JOURNEY_STATION_LENGTH),
+            'journey_destination': sanitize_free_text(result.get('journey_destination'), _MAX_JOURNEY_STATION_LENGTH),
             'confidence': float(result.get('confidence') or 0.0),
         }

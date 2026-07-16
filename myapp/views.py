@@ -30,7 +30,7 @@ from django.contrib import messages
 from django.utils.timezone import now
 from django.utils.http import url_has_allowed_host_and_scheme
 from .decorators import require_authorization_header_with_api_token
-from .analytics import build_expiry_calendar, get_expiring_soon_items, get_items_by_wallet, get_next_up_items
+from .analytics import build_expiry_calendar, get_active_today_item, get_expiring_soon_items, get_items_by_wallet, get_next_up_items
 from .avatar import generate_initial_avatar, normalize_logo_image
 from .merchant_logos import fetch_merchant_logo, get_cached_balance_check_url, get_cached_logo, get_cached_logos_for_issuers, merchant_logos_enabled, remember_balance_check_url
 from .portainer import PortainerRedeployError, trigger_redeploy
@@ -251,6 +251,9 @@ def show_items(request):
     preferences, _ = UserPreference.objects.get_or_create(user=user)
 
     next_up_items = get_next_up_items(preferences.next_up_wallets.all(), preferences.next_up_max_items)
+    active_today_item = get_active_today_item(
+        user, preferences.active_today_enabled, preferences.commute_home_station, preferences.active_today_cutoff_time,
+    )
 
     # Calculate counts for filters (owned items plus items in wallets shared with the
     # user; archived items are hidden from every default view/count, only reachable
@@ -331,6 +334,8 @@ def show_items(request):
     items_with_qr = []
     issuers = [i.issuer for i in items]
     issuers.extend(i.issuer for i in next_up_items)
+    if active_today_item:
+        issuers.append(active_today_item.issuer)
     merchant_logos = get_cached_logos_for_issuers(issuers)
 
     for item in items:
@@ -346,9 +351,17 @@ def show_items(request):
         for item in next_up_items
     ]
 
+    active_today_with_logo = None
+    if active_today_item:
+        active_today_with_logo = {
+            'item': active_today_item,
+            'merchant_logo_url': merchant_logos.get(active_today_item.issuer.strip().lower()),
+        }
+
     context = {
         'items_with_qr': items_with_qr,
         'next_up_items': next_up_with_logos,
+        'active_today_item': active_today_with_logo,
         'item_type': item_type,  # Add the item_type to the context
         'item_status': filter_value,  # Reuse item_status to hold the combined filter value
         'search_query': search_query,
@@ -479,6 +492,8 @@ def create_item(request):
         if form.is_valid():
             item = form.save(commit=False)
             item.user = request.user  # Set the user from the session
+            if not item.wallet_id:
+                item.wallet = Wallet.match_for_issuer(request.user, item.issuer)
 
             try:
                 item.qr_code_base64, item.code_type = generate_code_image_base64(item)

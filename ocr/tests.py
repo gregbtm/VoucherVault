@@ -83,6 +83,8 @@ class TesseractBackendTests(TestCase):
         self.assertEqual(result['expiry_date'], '2026-12-31')
         self.assertIsNone(result['name'])
         self.assertIsNone(result['issuer'])
+        self.assertIsNone(result['journey_origin'])
+        self.assertIsNone(result['journey_destination'])
         self.assertGreater(result['confidence'], 0)
 
     @patch('ocr.backends.tesseract.pytesseract.image_to_data')
@@ -181,6 +183,44 @@ class ClaudeBackendTests(TestCase):
         self.assertEqual(result['card_number'], '4000123456789010')
         self.assertEqual(result['confidence'], 0.9)
         mock_client.messages.create.assert_called_once()
+
+    @patch('ocr.backends.claude_backend.anthropic.Anthropic')
+    def test_extract_parses_journey_fields_for_a_travel_ticket(self, mock_anthropic_cls):
+        set_site_config(anthropic_api_key='test-key')
+        mock_client = MagicMock()
+        mock_block = MagicMock(
+            type='text',
+            text=(
+                '{"code": "AABXF39DNGF", "code_type": "qrcode", "name": null, "issuer": "National Rail", '
+                '"journey_origin": "Hatfield Peverel", "journey_destination": "London Terminals", '
+                '"confidence": 0.9}'
+            ),
+        )
+        mock_client.messages.create.return_value = MagicMock(content=[mock_block])
+        mock_anthropic_cls.return_value = mock_client
+
+        backend = ClaudeOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertEqual(result['journey_origin'], 'Hatfield Peverel')
+        self.assertEqual(result['journey_destination'], 'London Terminals')
+
+    @patch('ocr.backends.claude_backend.anthropic.Anthropic')
+    def test_extract_journey_fields_none_for_a_non_ticket_card(self, mock_anthropic_cls):
+        set_site_config(anthropic_api_key='test-key')
+        mock_client = MagicMock()
+        mock_block = MagicMock(
+            type='text',
+            text='{"code": "SAVE20", "code_type": "code128", "confidence": 0.9}',
+        )
+        mock_client.messages.create.return_value = MagicMock(content=[mock_block])
+        mock_anthropic_cls.return_value = mock_client
+
+        backend = ClaudeOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertIsNone(result['journey_origin'])
+        self.assertIsNone(result['journey_destination'])
 
     @patch('ocr.backends.claude_backend.anthropic.Anthropic')
     def test_extract_requests_zero_temperature(self, mock_anthropic_cls):
@@ -436,6 +476,26 @@ class OpenAIBackendTests(TestCase):
         self.assertEqual(result['card_number'], '4000123456789010')
         self.assertEqual(result['confidence'], 0.9)
         mock_client.chat.completions.create.assert_called_once()
+
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_extract_parses_journey_fields_for_a_travel_ticket(self, mock_openai_cls):
+        set_site_config(openai_api_key='test-key')
+        mock_client = MagicMock()
+        mock_message = MagicMock(
+            content=(
+                '{"code": "AABXF39DNGG", "code_type": "qrcode", "name": null, "issuer": "National Rail", '
+                '"journey_origin": "London Terminals", "journey_destination": "Hatfield Peverel", '
+                '"confidence": 0.9}'
+            ),
+        )
+        mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
+        mock_openai_cls.return_value = mock_client
+
+        backend = OpenAIOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertEqual(result['journey_origin'], 'London Terminals')
+        self.assertEqual(result['journey_destination'], 'Hatfield Peverel')
 
     @patch('ocr.backends.openai_backend.OpenAI')
     def test_extract_requests_json_mode(self, mock_openai_cls):
