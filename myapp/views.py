@@ -214,6 +214,7 @@ def dashboard(request):
         'items_by_wallet': items_by_wallet,
         'wallet_chart_height': max(200, len(items_by_wallet) * 40 + 60),
         'expiring_soon_list': get_expiring_soon_items(user),
+        'expiry_threshold_days': threshold_days,
         'expiry_calendar': build_expiry_calendar(user),
         'shared_items_count_by_you': shared_items_count_by_you,
         'shared_items_count_with_you': shared_items_count_with_you,

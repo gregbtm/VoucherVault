@@ -115,11 +115,19 @@ def get_items_by_wallet(user, limit=WALLET_CHART_LIMIT):
     return results
 
 
-def get_expiring_soon_items(user, days=EXPIRING_SOON_DAYS, limit=EXPIRING_SOON_LIMIT):
+def get_expiring_soon_items(user, days=None, limit=EXPIRING_SOON_LIMIT):
     """
     Active items expiring within the next `days` days, soonest first. Each
     item gets a `.days_left` attribute (int) attached for display.
+
+    `days=None` (the default) resolves to the admin-configured
+    SiteConfiguration.expiry_threshold_days at call time rather than a
+    fixed constant, so this list agrees with every other "soon expiring"
+    count in the app (the Inventory filter chip, the notification
+    default threshold) instead of silently using its own fixed window.
     """
+    if days is None:
+        days = SiteConfiguration.load().expiry_threshold_days
     now = timezone.now()
     today = timezone.localtime(now).date()
     cutoff = now + timedelta(days=days)
