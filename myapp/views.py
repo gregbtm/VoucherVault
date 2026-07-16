@@ -40,6 +40,7 @@ from .public_share import is_link_preview_bot, pin_attempt_rate_limited, view_ra
 from .tasks import fetch_merchant_logo_task
 from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
 from imports.exporters.pkpass import generate_pkpass, pkpass_enabled
+from imports.tasks import update_google_wallet_pass_task
 from notify.tasks import notify_balance_changed, notify_item_archived, notify_item_created, notify_item_shared, notify_item_used
 from ocr.backends import ocr_enabled
 from django.db.models import Count, Sum, Q
@@ -50,6 +51,21 @@ from django.utils.text import get_valid_filename
 logger = logging.getLogger(__name__)
 
 apprise_txt = _('Apprise URLs were already configured. Will not display them again here to protect secrets. You can freely re-configure the URLs now and hit update though.')
+
+def _queue_google_wallet_update(item):
+    """
+    Fire-and-forget push of an item's balance/expiry/name/used-archived
+    state to its already-issued Google Wallet object, wherever one of
+    those fields just changed. A no-op when Google Wallet export isn't
+    configured, and best-effort like fetch_merchant_logo_task - a broker
+    outage shouldn't block the request that triggered it.
+    """
+    if not google_wallet_enabled():
+        return
+    try:
+        update_google_wallet_pass_task.delay(item.id)
+    except Exception:
+        logger.warning('Could not queue Google Wallet update for item %s', item.id, exc_info=True)
 
 def has_wallet_access(wallet, user):
     """True if `user` owns `wallet` or is a collaborator it's been shared with."""
@@ -401,6 +417,7 @@ def view_item(request, item_uuid):
             transaction.save()
             total_value += transaction.value
             notify_balance_changed(item, transaction)
+            _queue_google_wallet_update(item)
 
             if total_value <= 0:
                 item.is_used = True
@@ -566,6 +583,7 @@ def edit_item(request, item_uuid):
                     logger.warning('Could not queue merchant logo fetch for %r', item.issuer, exc_info=True)
 
             remember_balance_check_url(item.issuer, item.balance_check_url)
+            _queue_google_wallet_update(item)
 
             return redirect('view_item', item_uuid=item.id)
     else:
@@ -896,6 +914,7 @@ def toggle_item_status(request, item_id):
         notify_item_used(item)
 
     item.save()
+    _queue_google_wallet_update(item)
     next_url = request.POST.get('next') or request.GET.get('next')
     if next_url:
         return redirect(next_url)
@@ -1952,6 +1971,7 @@ def toggle_archive_item(request, item_uuid):
     item.save(update_fields=['is_archived'])
     if item.is_archived:
         notify_item_archived(item)
+    _queue_google_wallet_update(item)
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({'success': True, 'is_archived': item.is_archived})
@@ -1990,6 +2010,7 @@ def bulk_archive_items(request):
             item.is_archived = True
             item.save(update_fields=['is_archived'])
             notify_item_archived(item)
+            _queue_google_wallet_update(item)
             processed += 1
     return JsonResponse({'success': True, 'processed': processed, 'skipped': skipped})
 

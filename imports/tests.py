@@ -9,6 +9,8 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
+
+import requests
 from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
@@ -32,7 +34,7 @@ from notify.models import NotificationRule
 
 from .exporters.csv_export import export_items_csv
 from .exporters.full_backup import export_full_backup
-from .exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
+from .exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled, update_google_wallet_object
 from .exporters.json_export import export_items_json
 from .exporters.pkpass import generate_pkpass, pkpass_enabled
 from .full_backup_import import FullBackupImportError, import_full_backup
@@ -41,7 +43,7 @@ from .parsers.catima import parse as parse_catima
 from .parsers.native_csv import parse as parse_native_csv
 from .parsers.native_json import parse as parse_native_json
 from .pkpass_import import PkpassImportError, extract_pkpass_fields
-from .tasks import backup_user, create_item_from_row, process_import_job, run_scheduled_backups
+from .tasks import backup_user, create_item_from_row, process_import_job, run_scheduled_backups, update_google_wallet_pass_task
 
 CATIMA_SAMPLE = (
     'Group,Description,Note,Card Number,EAN Barcode ID,Card Type,Expiry,Balance,Balance Type,Colour,Star\n'
@@ -615,6 +617,90 @@ class GoogleWalletExporterTests(TestCase):
         item = make_item(self.user)
         with self.assertRaises(RuntimeError):
             generate_google_wallet_save_url(item)
+
+    def test_update_object_false_and_no_network_calls_when_disabled(self):
+        set_site_config(google_wallet_issuer_id='')
+        item = make_item(self.user)
+        with patch('imports.exporters.google_wallet.requests.post') as mock_post:
+            self.assertFalse(update_google_wallet_object(item))
+        mock_post.assert_not_called()
+
+    def _mock_token_response(self, mock_post):
+        mock_post.return_value.raise_for_status = lambda: None
+        mock_post.return_value.json.return_value = {'access_token': 'fake-token'}
+
+    def test_update_object_patches_with_current_item_state(self):
+        item = make_item(
+            self.user, type='giftcard', name='Coffee Gift Card', issuer='Bean Co',
+            redeem_code='GC12345', value='25.00', currency='GBP', code_type='qrcode',
+        )
+        with patch('imports.exporters.google_wallet.requests.post') as mock_post, \
+                patch('imports.exporters.google_wallet.requests.patch') as mock_patch:
+            self._mock_token_response(mock_post)
+            mock_patch.return_value.status_code = 200
+            mock_patch.return_value.raise_for_status = lambda: None
+
+            self.assertTrue(update_google_wallet_object(item))
+
+        patch_kwargs = mock_patch.call_args.kwargs
+        self.assertEqual(patch_kwargs['headers']['Authorization'], 'Bearer fake-token')
+        self.assertIn('3388000000012345678.item-%s' % item.id, mock_patch.call_args.args[0])
+        body = patch_kwargs['json']
+        self.assertEqual(body['header']['defaultValue']['value'], 'Coffee Gift Card')
+        self.assertEqual(body['state'], 'ACTIVE')
+        balance_module = next(m for m in body['textModulesData'] if m['id'] == 'balance')
+        self.assertEqual(balance_module['body'], '25.00 GBP')
+
+    def test_update_object_marks_used_items_completed(self):
+        item = make_item(self.user, is_used=True)
+        with patch('imports.exporters.google_wallet.requests.post') as mock_post, \
+                patch('imports.exporters.google_wallet.requests.patch') as mock_patch:
+            self._mock_token_response(mock_post)
+            mock_patch.return_value.status_code = 200
+            mock_patch.return_value.raise_for_status = lambda: None
+            update_google_wallet_object(item)
+        self.assertEqual(mock_patch.call_args.kwargs['json']['state'], 'COMPLETED')
+
+    def test_update_object_returns_false_when_never_saved(self):
+        """A 404 means the user never actually followed the save link - not an error."""
+        item = make_item(self.user)
+        with patch('imports.exporters.google_wallet.requests.post') as mock_post, \
+                patch('imports.exporters.google_wallet.requests.patch') as mock_patch:
+            self._mock_token_response(mock_post)
+            mock_patch.return_value.status_code = 404
+            self.assertFalse(update_google_wallet_object(item))
+
+    def test_update_object_raises_on_real_error(self):
+        item = make_item(self.user)
+        with patch('imports.exporters.google_wallet.requests.post') as mock_post, \
+                patch('imports.exporters.google_wallet.requests.patch') as mock_patch:
+            self._mock_token_response(mock_post)
+            mock_patch.return_value.status_code = 500
+            mock_patch.return_value.raise_for_status.side_effect = requests.HTTPError('boom')
+            with self.assertRaises(requests.HTTPError):
+                update_google_wallet_object(item)
+
+
+class UpdateGoogleWalletPassTaskTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='bob', password='pw12345!')
+
+    def test_missing_item_is_a_noop(self):
+        with patch('imports.tasks.update_google_wallet_object') as mock_update:
+            update_google_wallet_pass_task(999999)
+        mock_update.assert_not_called()
+
+    @patch('imports.tasks.update_google_wallet_object')
+    def test_delegates_to_update_function(self, mock_update):
+        item = make_item(self.user)
+        update_google_wallet_pass_task(item.id)
+        mock_update.assert_called_once_with(item)
+
+    @patch('imports.tasks.update_google_wallet_object')
+    def test_swallows_exceptions_from_update_function(self, mock_update):
+        item = make_item(self.user)
+        mock_update.side_effect = RuntimeError('boom')
+        update_google_wallet_pass_task(item.id)  # must not raise
 
 
 def _build_pkpass_bytes(pass_dict):

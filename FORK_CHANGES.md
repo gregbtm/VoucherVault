@@ -104,6 +104,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 71 — Next Up: multi-wallet queue, mark-used, day-of reminder](#phase-71--next-up-multi-wallet-queue-mark-used-day-of-reminder)
 - [Phase 72 — Fix Dashboard/Inventory "Expiring Soon" disagreement + settings gap audit](#phase-72--fix-dashboardinventory-expiring-soon-disagreement--settings-gap-audit)
 - [Phase 73 — Configurable dashboard limits, duplicate-photo sensitivity, and a shared logo.dev token](#phase-73--configurable-dashboard-limits-duplicate-photo-sensitivity-and-a-shared-logodev-token)
+- [Phase 74 — Google Wallet passes now update live, not just at save time](#phase-74--google-wallet-passes-now-update-live-not-just-at-save-time)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -3937,6 +3938,42 @@ hardcoded constants and the duplicated logo.dev client token.
   Dashboard context, and duplicate-photo hashing all pass; full test
   suite re-run to confirm no regressions from the new required-field
   additions.
+
+## Phase 74 — Google Wallet passes now update live, not just at save time
+
+First of a small batch of feature requests scoped from a broader "what
+else could we build" pass, starting with the smallest and most
+self-contained: `generate_google_wallet_save_url()` only ever affected
+the *next* time someone followed the save link - if a gift card's
+balance dropped or an item got marked used after being saved, the pass
+already sitting in someone's Google Wallet just went stale.
+
+- **New `update_google_wallet_object(item)`** (`imports/exporters/
+  google_wallet.py`) pushes an item's current name, balance, expiry and
+  used/archived state to its already-issued Wallet object via Google's
+  REST API (OAuth2 service-account token exchange + a `PATCH`), reusing
+  the exact same object-building logic the save link already used so
+  the two paths can't drift apart. The pass's `state` field is now also
+  derived from the item (`COMPLETED` once used or archived, `ACTIVE`
+  otherwise) instead of being permanently hardcoded to `ACTIVE`.
+- **No new tracking field for "was this ever saved."** Google gives no
+  signal for whether a user actually followed a save link - the link
+  itself gets regenerated on every page view whether or not anyone
+  clicks it. Rather than build a click-tracking beacon to guess at it,
+  the update call just fires and treats a 404 ("object doesn't exist")
+  as an expected no-op, not an error.
+- **Wired into every place an item's relevant state already changes**:
+  adding a transaction, marking used/unused, archiving/unarchiving
+  (single item and bulk), and editing an item - via a small
+  `_queue_google_wallet_update()` helper in `views.py` that queues a
+  best-effort Celery task, matching the existing `fetch_merchant_logo_task`
+  pattern (a broker outage doesn't block the request that triggered it).
+- No new `SiteConfiguration` fields, no migration - reuses the Google
+  Wallet credentials already configured for the save link.
+- 17 new tests: the update function's request-building and error
+  handling (`imports/tests.py`), the Celery task wrapper, and view-level
+  wiring confirming each of those six call sites actually queues an
+  update (`myapp/tests.py`).
 
 ## New environment variables
 
