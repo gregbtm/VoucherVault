@@ -738,6 +738,118 @@ body.dark-mode .mobile-filter-select {
 .items-grid .item-card:nth-child(4) { animation-delay: 0.08s; }
 .items-grid .item-card:nth-child(5) { animation-delay: 0.10s; }
 .items-grid .item-card:nth-child(6) { animation-delay: 0.12s; }
+
+/* Next Up Widget */
+.next-up-card {
+  display: block;
+  background: linear-gradient(135deg, var(--primary-color, #4154f1), #6c7ff2);
+  border-radius: 14px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  color: #fff;
+  text-decoration: none;
+  box-shadow: 0 4px 14px rgba(65, 84, 241, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.next-up-card:hover {
+  transform: translateY(-2px);
+  color: #fff;
+}
+
+.next-up-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.85;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.next-up-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.next-up-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.next-up-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: contain;
+  background: #fff;
+  padding: 4px;
+  flex-shrink: 0;
+}
+
+.next-up-issuer {
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+
+.next-up-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0.1rem 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60vw;
+}
+
+.next-up-date {
+  font-size: 0.85rem;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.next-up-code {
+  flex-shrink: 0;
+  background: #fff;
+  border-radius: 10px;
+  padding: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.next-up-barcode-img {
+  display: block;
+  width: 160px;
+  max-width: 100%;
+  height: auto;
+}
+
+.next-up-redeem-code {
+  color: #1a1a2e;
+  font-weight: 700;
+  font-family: monospace;
+  font-size: 1rem;
+  padding: 0.5rem 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+@media (max-width: 480px) {
+  .next-up-body { flex-direction: column; align-items: stretch; }
+  .next-up-code { align-self: center; }
+  .next-up-name { max-width: 100%; }
+}
+
+body.dark-mode .next-up-card {
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+}
 </style>
 
 <div class="inventory-header">
@@ -770,6 +882,43 @@ body.dark-mode .mobile-filter-select {
 </div>
 
 <section class="section">
+  {% if next_up_item %}
+  <!-- Next Up Widget -->
+  <a href="{% url 'view_item' item_uuid=next_up_item.id %}" class="next-up-card">
+    <div class="next-up-label"><i class="bi bi-pin-angle-fill"></i> {% trans "Next Up" %}</div>
+    <div class="next-up-body">
+      <div class="next-up-info">
+        {% if next_up_item.logo_slug %}
+        <img class="next-up-logo"
+             src="https://img.logo.dev/{{ next_up_item.logo_slug }}?token=pk_NaUHDkw4SSeHCapveLJtjg"
+             alt="{{ next_up_item.issuer }}"
+             onerror="this.style.display='none';">
+        {% elif next_up_logo_url %}
+        <img class="next-up-logo" src="{{ next_up_logo_url }}" alt="{{ next_up_item.issuer }}"
+             onerror="this.style.display='none';">
+        {% endif %}
+        <div>
+          <div class="next-up-issuer">{{ next_up_item.issuer }}</div>
+          <h3 class="next-up-name">{{ next_up_item.name }}</h3>
+          <div class="next-up-date">
+            {% if next_up_item.days_left == 0 %}{% trans "Today" %}
+            {% elif next_up_item.days_left == 1 %}{% trans "Tomorrow" %}
+            {% else %}{{ next_up_item.expiry_date|date:"D, d M" }}
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="next-up-code">
+        {% if next_up_item.code_type != "none" %}
+        <img src="data:image/png;base64,{{ next_up_item.qr_code_base64 }}" alt="{% trans 'Barcode' %}" class="next-up-barcode-img">
+        {% else %}
+        <div class="next-up-redeem-code">{{ next_up_item.redeem_code }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </a>
+  {% endif %}
+
   <!-- Filter Bar -->
   <div class="filter-bar">
     <form method="GET" action="" id="filterForm">

@@ -85,6 +85,11 @@ class UserPreference(models.Model):
         default=True,
         help_text="Blur barcodes and redeem codes until tapped. Turn off for faster access at point-of-sale.",
     )
+    next_up_wallet = models.ForeignKey(
+        'Wallet', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+        help_text="Highlight the soonest-expiring item from this wallet at the top of Inventory "
+                   "(e.g. a 'Train Tickets' wallet, to always surface the next one to use). Off if unset.",
+    )
 
 class Wallet(models.Model):
     """
