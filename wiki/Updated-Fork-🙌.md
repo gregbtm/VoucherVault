@@ -4,7 +4,7 @@ This is [gregbtm](https://github.com/gregbtm)'s fork of the upstream
 [l4rm4nd/VoucherVault](https://github.com/l4rm4nd/VoucherVault) project. It's a
 strict superset of upstream — every upstream feature still works exactly as
 documented in the [upstream wiki](https://github.com/l4rm4nd/VoucherVault/wiki)
-(installation, authentication/OIDC, base notification setup) — plus 65+
+(installation, authentication/OIDC, base notification setup) — plus 78+
 rounds of additive features layered on top.
 
 ## 📖 Pages in this wiki
