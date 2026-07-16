@@ -3224,6 +3224,8 @@ def _site_config_form_data(**overrides):
         'update_check_enabled': True, 'update_check_repo': 'gregbtm/VoucherVault',
         'portainer_webhook_url': '',
         'scheduled_backup_enabled': True, 'backup_retention_count': 7,
+        'expiring_soon_limit': 10, 'calendar_months_ahead': 3,
+        'wallet_chart_limit': 8, 'duplicate_photo_threshold': 10,
     }
     data.update(overrides)
     return data
