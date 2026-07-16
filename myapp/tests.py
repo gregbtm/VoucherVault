@@ -610,6 +610,24 @@ class AnalyticsHelperTests(TestCase):
         make_item(self.user, is_used=True, expiry_date=date.today() + timedelta(days=1))
         self.assertEqual(get_expiring_soon_items(self.user), [])
 
+    def test_get_expiring_soon_items_default_follows_site_configured_threshold(self):
+        from .analytics import get_expiring_soon_items
+
+        set_site_config(expiry_threshold_days=5)
+        within = make_item(self.user, name='Within', redeem_code='W1', expiry_date=date.today() + timedelta(days=3))
+        outside = make_item(self.user, name='Outside', redeem_code='O1', expiry_date=date.today() + timedelta(days=10))
+
+        results = get_expiring_soon_items(self.user)
+        self.assertEqual([i.id for i in results], [within.id])
+
+        # Raising the threshold should surface the previously-excluded item too,
+        # without passing an explicit `days=` - this is what keeps the Dashboard's
+        # "Expiring Soon" list in agreement with the Inventory filter chip and the
+        # notification default threshold, all three of which read this same setting.
+        set_site_config(expiry_threshold_days=15)
+        results = get_expiring_soon_items(self.user)
+        self.assertEqual({i.id for i in results}, {within.id, outside.id})
+
     def test_build_expiry_calendar_shape_and_counts(self):
         from .analytics import build_expiry_calendar
 
@@ -741,6 +759,25 @@ class DashboardAnalyticsContextTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context['at_risk_value'])
         self.assertEqual(response.context['items_by_wallet'], [])
+
+    def test_dashboard_expiring_soon_list_agrees_with_inventory_count(self):
+        """
+        Regression coverage: the Dashboard's "Expiring Soon" list and the
+        Inventory page's "Expiring Soon" filter chip must count the same
+        items, since both are meant to reflect the same configured
+        threshold - previously the Dashboard list used its own hardcoded
+        7-day window regardless of what the threshold was set to.
+        """
+        set_site_config(expiry_threshold_days=12)
+        make_item(self.user, name='In Window', wallet=self.wallet, expiry_date=date.today() + timedelta(days=10))
+        make_item(self.user, name='Out of Window', redeem_code='OOW1', expiry_date=date.today() + timedelta(days=20))
+
+        dashboard_response = self.client.get(reverse('dashboard'))
+        inventory_response = self.client.get(reverse('show_items'), {'status': 'soon_expiring'})
+
+        self.assertEqual(dashboard_response.context['expiry_threshold_days'], 12)
+        self.assertEqual(len(dashboard_response.context['expiring_soon_list']), 1)
+        self.assertEqual(len(inventory_response.context['items_with_qr']), 1)
 
 
 class GenerateInitialAvatarTests(TestCase):

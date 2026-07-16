@@ -689,11 +689,11 @@ body.dark-mode .calendar-month-label {
         </div>
       </div>
 
-      <!-- Expiring in 7 Days -->
+      <!-- Expiring Soon -->
       <div class="dashboard-section">
         <div class="section-header">
           <i class="bi bi-alarm"></i>
-          <h2>{% trans "Expiring in 7 Days" %}</h2>
+          <h2>{% blocktrans count counter=expiry_threshold_days %}Expiring in {{ counter }} Day{% plural %}Expiring in {{ counter }} Days{% endblocktrans %}</h2>
         </div>
         {% if expiring_soon_list %}
         <div class="expiring-list">
