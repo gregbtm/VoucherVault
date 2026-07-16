@@ -102,6 +102,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 69 — An honest feature count, and a real donate button](#phase-69--an-honest-feature-count-and-a-real-donate-button)
 - [Phase 70 — "Next Up" widget for the item you need right now](#phase-70--next-up-widget-for-the-item-you-need-right-now)
 - [Phase 71 — Next Up: multi-wallet queue, mark-used, day-of reminder](#phase-71--next-up-multi-wallet-queue-mark-used-day-of-reminder)
+- [Phase 72 — Fix Dashboard/Inventory "Expiring Soon" disagreement + settings gap audit](#phase-72--fix-dashboardinventory-expiring-soon-disagreement--settings-gap-audit)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -3846,6 +3847,45 @@ didn't happen to open the app that day.
   non-display settings (screen wake, offline caching, and now Next Up) -
   renamed to plain "Preferences" (page heading, breadcrumb, sidebar link,
   and the one other page that referenced it by name).
+
+## Phase 72 — Fix Dashboard/Inventory "Expiring Soon" disagreement + settings gap audit
+
+Follow-up to Phase 71's settings review, this time acting on the specific
+inconsistency it flagged rather than just naming it, plus a broader sweep
+for the same class of problem elsewhere.
+
+- **Fixed: the Dashboard's "Expiring Soon" list and its own "Soon
+  Expiring" stat card right above it could disagree.** The stat card (and
+  the Inventory page's "Expiring Soon" filter chip, and the notification
+  default threshold) all read `SiteConfiguration.expiry_threshold_days`
+  (admin-configurable, default 30). The Dashboard's list used a separate
+  hardcoded `EXPIRING_SOON_DAYS = 7` constant in `analytics.py` -
+  `get_expiring_soon_items()` now resolves the threshold at call time
+  instead, and the section heading ("Expiring in N Days") is dynamic
+  rather than a hardcoded "7 Days" label. Added regression coverage
+  asserting the Dashboard list and the Inventory count agree for the same
+  configured threshold - this is exactly the kind of drift that's easy to
+  reintroduce silently since nothing else would catch it.
+- **Full settings-gap audit** - every module-level constant across
+  `myapp/`, `notify/`, `imports/`, `api/`, `ocr/`, sorted into "safety or
+  implementation detail, correctly hardcoded" (upload size caps,
+  zip-bomb guards, HTTP timeouts, the RFC 5545-mandated iCal line-fold
+  length, barcode-type mappings - raising these to settings would mostly
+  just add ways to misconfigure or abuse the app) versus "genuinely a
+  user-facing behaviour that happens to be fixed in code." Four fell in
+  the second bucket, none fixed in this phase pending a decision on each:
+  `EXPIRING_SOON_LIMIT` (Dashboard list length cap), `CALENDAR_MONTHS_AHEAD`
+  (expiry calendar look-ahead), `WALLET_CHART_LIMIT` (wallets shown before
+  folding into "Other"), and `DUPLICATE_THRESHOLD` (OCR duplicate-photo
+  sensitivity). Also still open from Phase 71's audit: the logo.dev
+  client-side token duplicated across four templates, and cron schedule
+  times only reachable via Django admin, not the Site Settings page.
+- **Sanity pass**: `manage.py check` and `makemigrations --check` clean;
+  every major authenticated page (Dashboard, Inventory, Preferences,
+  Notification Rules, Wallets, Tags, Import/Export, Sharing Center, Site
+  Settings, API docs) hit with a real session and confirmed to resolve
+  correctly (the one non-200 was the expected superuser gate on Site
+  Settings for a non-admin test user).
 
 ## New environment variables
 
