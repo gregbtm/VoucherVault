@@ -14,7 +14,7 @@
       <a target="_blank" href="https://github.com/gregbtm/VoucherVault/network/members"><img src="https://img.shields.io/github/forks/gregbtm/VoucherVault?style=flat-square&color=4154f1" alt="Forks"></a>
     </p>
     <p>
-      <img src="https://img.shields.io/badge/345%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="345 features and fixes added on top of upstream">
+      <img src="https://img.shields.io/badge/348%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="348 features and fixes added on top of upstream">
       <img src="https://img.shields.io/badge/PWA-installable-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="Installable PWA">
       <img src="https://img.shields.io/badge/AI--assisted-scanning-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="AI-assisted scanning">
       <img src="https://img.shields.io/badge/REST-API-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="REST API">
@@ -31,7 +31,7 @@
 > multi-user login with OIDC SSO, and Apprise expiry notifications out of
 > the box (see [Features](#-features) for the complete original list).
 >
-> This fork is a strict superset: **74 rounds of work adding 345
+> This fork is a strict superset: **75 rounds of work adding 348
 > individual features and fixes** on top of upstream's own image, from a
 > full REST API and AI-assisted scanning to shared wallets, digital
 > wallet passes, and a rules-based notification engine — without
@@ -85,7 +85,7 @@ the deep dive.
 
 - **Full REST API** — token-authenticated CRUD for items, wallets, tags, and transactions, every endpoint scoped to the authenticated user. Interactive Swagger/OpenAPI docs live at `/api/v1/docs/` — browse and try every endpoint from your browser, no Postman required. Great for a Home Assistant sensor, a personal dashboard, or your own automation.
 - **MCP server** — a standalone, opt-in service exposing your vault to Claude Desktop, Claude Code, and other [MCP](https://modelcontextprotocol.io/) clients: search items, check what's expiring, log a gift-card spend, or create an item, all through your existing API token. See the [setup guide](docs/MCP_SERVER_SETUP.md).
-- **Zero-code n8n integration** — the same OpenAPI schema that powers the Swagger docs plugs straight into n8n's HTTP Request Tool or AI Agent node, no custom node needed. See the [setup guide](docs/N8N_SETUP.md).
+- **Zero-code n8n integration** — the same OpenAPI schema that powers the Swagger docs plugs straight into n8n's HTTP Request Tool or AI Agent node, no custom node needed. See the [setup guide](docs/N8N_SETUP.md). A recipe for syncing gift card/voucher balances to a self-hosted [Firefly III](https://www.firefly-iii.org/) budget is also included — see [`docs/FIREFLY_III_SETUP.md`](docs/FIREFLY_III_SETUP.md).
 - **Webhook lifecycle events** — item created, used, archived, balance changed, or shared, for wiring VoucherVault into n8n, Home Assistant, or anything else that speaks webhooks.
 - Rate limiting on every API write endpoint.
 
@@ -206,6 +206,7 @@ A handful of features need a one-time setup by whoever runs the container
 - [`docs/GOOGLE_WALLET_SETUP.md`](docs/GOOGLE_WALLET_SETUP.md) — Google Wallet export
 - [`docs/MCP_SERVER_SETUP.md`](docs/MCP_SERVER_SETUP.md) — wiring up an AI assistant
 - [`docs/N8N_SETUP.md`](docs/N8N_SETUP.md) — connecting n8n to the REST API
+- [`docs/FIREFLY_III_SETUP.md`](docs/FIREFLY_III_SETUP.md) — syncing gift card/voucher balances to Firefly III via n8n
 - [`docs/AUTO_DEPLOY.md`](docs/AUTO_DEPLOY.md) — one-click redeploy on every push to `main`
 - [`docs/BACKUP_RESTORE.md`](docs/BACKUP_RESTORE.md) — how scheduled backups work and how to restore one
 - [`docs/UPGRADE.md`](docs/UPGRADE.md) — already running the upstream Docker image? Switching to this fork

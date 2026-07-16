@@ -105,6 +105,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 72 — Fix Dashboard/Inventory "Expiring Soon" disagreement + settings gap audit](#phase-72--fix-dashboardinventory-expiring-soon-disagreement--settings-gap-audit)
 - [Phase 73 — Configurable dashboard limits, duplicate-photo sensitivity, and a shared logo.dev token](#phase-73--configurable-dashboard-limits-duplicate-photo-sensitivity-and-a-shared-logodev-token)
 - [Phase 74 — Google Wallet passes now update live, not just at save time](#phase-74--google-wallet-passes-now-update-live-not-just-at-save-time)
+- [Phase 75 — Firefly III balance sync recipe](#phase-75--firefly-iii-balance-sync-recipe)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -3974,6 +3975,31 @@ already sitting in someone's Google Wallet just went stale.
   handling (`imports/tests.py`), the Celery task wrapper, and view-level
   wiring confirming each of those six call sites actually queues an
   update (`myapp/tests.py`).
+
+## Phase 75 — Firefly III balance sync recipe
+
+Second of the batch scoped alongside Phase 74. A self-hosted financial
+tracker integration was requested; researching the landscape found
+Firefly III's REST API to be the strongest fit (asset accounts map
+cleanly onto a gift card's remaining balance, plain Personal Access
+Token auth) while Actual Budget's official client is Node-only with no
+plain REST surface - a much bigger lift for a first cut. Rather than
+build and maintain a native `NotificationRule` backend against a
+third-party API, this ships the zero-code path first, exactly like the
+existing n8n integration.
+
+- **New `docs/FIREFLY_III_SETUP.md`**: a recipe for syncing a gift card
+  or voucher's remaining balance into a Firefly III asset account,
+  built entirely on the existing `balance_changed` webhook event
+  (Phase 12.2) and an n8n workflow - no VoucherVault code, no new
+  dependency, no new backend to maintain. Documents the exact webhook
+  payload shape, a Firefly `PUT` call to reset the account's opening
+  balance (Firefly has no direct "set current balance" endpoint), and
+  two item-to-account mapping strategies (one pooled account vs. one
+  account per wallet).
+- Cross-linked from `N8N_SETUP.md`'s "See also" section and README's
+  setup guides list and n8n feature bullet.
+- Docs-only phase - no code, no migration, no test changes.
 
 ## New environment variables
 
