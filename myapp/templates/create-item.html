@@ -996,6 +996,25 @@ document.addEventListener("DOMContentLoaded", function () {
   const tileColorInput = document.getElementById('tile_color');
   const walletField = document.getElementById('wallet');
   const walletFieldOriginalHTML = walletField.innerHTML;
+  const issueDateField = document.getElementById('issue_date');
+  const expiryDateField = document.getElementById('expiry_date');
+  // Guards the very first, automatic toggleFields() call below (page load)
+  // from resyncing Issue Date against whatever Expiry Date happens to be
+  // pre-filled with - only a genuine later change (the user picking
+  // Travel Pass, editing Expiry Date, or an AI Scan result) should do that.
+  let skipInitialTravelPassSync = true;
+
+  // Once the user has deliberately typed their own Issue Date, the
+  // travelpass "keep it in sync with Expiry Date" behavior below must
+  // stop overwriting it.
+  issueDateField.addEventListener('input', function () {
+    issueDateField.dataset.userEdited = 'true';
+  });
+  expiryDateField.addEventListener('input', function () {
+    if (typeField.value === 'travelpass' && !issueDateField.dataset.userEdited) {
+      issueDateField.value = expiryDateField.value;
+    }
+  });
 
   // Set default tile color based on theme
   if (tileColorInput && tileColorInput.value === "#1e1e1e") {
@@ -1062,6 +1081,20 @@ document.addEventListener("DOMContentLoaded", function () {
       pinFieldContainer.style.display = '';
     }
 
+    // Train tickets are frequently valid and expire on the same day -
+    // Issue Date is optional for a travel pass, and (unless the user has
+    // deliberately edited it) tracks Expiry Date automatically, so leaving
+    // it alone actually produces "same as expiry" rather than silently
+    // defaulting to today and ending up after Expiry Date.
+    if (typeField.value === 'travelpass') {
+      issueDateField.required = false;
+      if (!skipInitialTravelPassSync && !issueDateField.dataset.userEdited && expiryDateField.value) {
+        issueDateField.value = expiryDateField.value;
+      }
+    } else {
+      issueDateField.required = true;
+    }
+
     if (typeField.value === 'coupon') {
       toggleValueTypeBtn.classList.remove('d-none');
     } else {
@@ -1124,6 +1157,7 @@ document.addEventListener("DOMContentLoaded", function () {
   toggleValueTypeBtn.addEventListener('click', toggleValueInput);
 
   toggleFields();
+  skipInitialTravelPassSync = false;
 
   // Suggest a remembered balance-check link once the issuer is entered,
   // if this is a gift card and the field hasn't already been filled in.
