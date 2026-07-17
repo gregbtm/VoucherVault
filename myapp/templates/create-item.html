@@ -637,6 +637,7 @@ body.dark-mode .error-alert {
                   <option value="voucher" {% if form.type.value == "voucher" %}selected{% endif %}>{% trans "Voucher" %}</option>
                   <option value="coupon" {% if form.type.value == "coupon" %}selected{% endif %}>{% trans "Coupon" %}</option>
                   <option value="loyaltycard" {% if form.type.value == "loyaltycard" %}selected{% endif %}>{% trans "Loyalty Card" %}</option>
+                  <option value="travelpass" {% if form.type.value == "travelpass" %}selected{% endif %}>{% trans "Travel Pass" %}</option>
                 </select>
                 <div class="color-picker-wrapper">
                   <input type="color"
@@ -723,6 +724,15 @@ body.dark-mode .error-alert {
                        placeholder="{% trans 'e.g. London Terminals' %}"
                        value='{{ form.journey_destination.value|default_if_none:"" }}'>
               </div>
+            </div>
+            <div class="form-group" id="travel-time-field">
+              <label class="form-label" for="travel_time">{% trans "Time of Travel" %}</label>
+              {% if ":" in form.travel_time.value|default:"" %}
+              <input type="time" class="modern-input" id="travel_time" name="travel_time" value="{{ form.travel_time.value }}">
+              {% else %}
+              <input type="time" class="modern-input" id="travel_time" name="travel_time" value="{{ form.travel_time.value|time:'H:i'|default:'' }}">
+              {% endif %}
+              <p class="text-muted small mt-1 mb-0">{% trans "Leave blank if the ticket doesn't show a fixed time." %}</p>
             </div>
             <p class="text-muted small mb-3">
               {% trans "Train/transport tickets only - powers the Active Today widget in Preferences. Leave blank for anything else." %}
@@ -977,12 +987,15 @@ document.addEventListener("DOMContentLoaded", function () {
   });
   const pinFieldContainer = pinField.closest('.form-group');
   const valueFieldContainer = valueField.closest('.form-section');
+  const cardNumberFieldContainer = document.getElementById('card_number').closest('.form-group');
   const issuerLabel = document.querySelector('label[for="issuer"]');
   const redeemCodeLabel = document.querySelector('label[for="redeem_code"]');
   const valueTypeIcon = document.getElementById('value-type-icon');
   const toggleValueTypeBtn = document.getElementById('toggle-value-type');
   const valueTypeField = document.getElementById('value_type');
   const tileColorInput = document.getElementById('tile_color');
+  const walletField = document.getElementById('wallet');
+  const walletFieldOriginalHTML = walletField.innerHTML;
 
   // Set default tile color based on theme
   if (tileColorInput && tileColorInput.value === "#1e1e1e") {
@@ -1003,8 +1016,27 @@ document.addEventListener("DOMContentLoaded", function () {
       issuerCodeField.placeholder = "{% trans 'The store of your loyalty card' %}";
       redeemCodeLabel.innerHTML = "{% trans 'Loyalty ID' %} <span class='required'>*</span>";
       redeemCodeField.placeholder = "{% trans 'Loyalty card number or customer ID' %}";
+      valueFieldContainer.style.display = '';
       document.getElementById('currency-field').style.display = 'none';
       document.getElementById('balance-check-field').style.display = 'none';
+      cardNumberFieldContainer.style.display = '';
+    } else if (typeField.value === 'travelpass') {
+      // Value/currency/card number/PIN don't apply to a travel pass -
+      // journey_origin/journey_destination/travel_time above cover what a
+      // ticket actually needs. Value is still forced to 0 (readonly,
+      // hidden) so a non-JS submission matches what clean() expects.
+      pinField.readOnly = true;
+      valueField.readOnly = true;
+      pinField.classList.add('readonly');
+      valueField.classList.add('readonly');
+      valueField.value = 0;
+      issuerLabel.innerHTML = "{% trans 'Issuer' %} <span class='required'>*</span>";
+      issuerCodeField.placeholder = "{% trans 'The issuer of the item' %}";
+      redeemCodeLabel.innerHTML = "{% trans 'Redeem Code' %} <span class='required'>*</span>";
+      redeemCodeField.placeholder = "{% trans 'The redeem code of the item' %}";
+      valueFieldContainer.style.display = 'none';
+      cardNumberFieldContainer.style.display = 'none';
+      pinFieldContainer.style.display = 'none';
     } else {
       pinField.readOnly = false;
       valueField.readOnly = false;
@@ -1014,6 +1046,8 @@ document.addEventListener("DOMContentLoaded", function () {
       issuerCodeField.placeholder = "{% trans 'The issuer of the item' %}";
       redeemCodeLabel.innerHTML = "{% trans 'Redeem Code' %} <span class='required'>*</span>";
       redeemCodeField.placeholder = "{% trans 'The redeem code of the item' %}";
+      valueFieldContainer.style.display = '';
+      cardNumberFieldContainer.style.display = '';
       const currencyField = document.getElementById('currency-field');
       if (valueTypeField.value === 'money') {
         currencyField.style.display = '';
@@ -1021,10 +1055,34 @@ document.addEventListener("DOMContentLoaded", function () {
       document.getElementById('balance-check-field').style.display = (typeField.value === 'giftcard') ? '' : 'none';
     }
 
+    // pinFieldContainer is only ever hidden for travelpass above - every
+    // other branch (including loyaltycard, which just makes it readonly)
+    // needs it visible.
+    if (typeField.value !== 'travelpass') {
+      pinFieldContainer.style.display = '';
+    }
+
     if (typeField.value === 'coupon') {
       toggleValueTypeBtn.classList.remove('d-none');
     } else {
       toggleValueTypeBtn.classList.add('d-none');
+    }
+
+    // Wallet is always visible, but for a travel pass it's locked to the
+    // "Travel Pass" wallet (created lazily server-side in Item.save()) -
+    // see the model-level enforcement, not just this UI hint.
+    if (typeField.value === 'travelpass') {
+      if (walletField.dataset.locked !== 'travelpass') {
+        walletField.innerHTML = '<option value="" selected>{% trans "Travel Pass (auto-assigned)" %}</option>';
+        walletField.dataset.locked = 'travelpass';
+      }
+      walletField.disabled = true;
+      walletField.classList.add('readonly');
+    } else if (walletField.dataset.locked === 'travelpass') {
+      walletField.innerHTML = walletFieldOriginalHTML;
+      delete walletField.dataset.locked;
+      walletField.disabled = false;
+      walletField.classList.remove('readonly');
     }
   }
 
@@ -1307,6 +1365,12 @@ document.addEventListener("DOMContentLoaded", function () {
           markAutoFilled(journeyDestinationField);
           filled.push("{% trans 'journey to' %}");
         }
+        const travelTimeField = document.getElementById('travel_time');
+        if (data.travel_time && travelTimeField && !travelTimeField.value.trim()) {
+          travelTimeField.value = data.travel_time;
+          markAutoFilled(travelTimeField);
+          filled.push("{% trans 'time of travel' %}");
+        }
         if (data.tags && data.tags.length) {
           // Check an existing tag checkbox if the suggested name matches
           // one (case-insensitively); anything left over goes into "New
@@ -1346,6 +1410,41 @@ document.addEventListener("DOMContentLoaded", function () {
           showOcrConfidenceWarning(data.code, data.confidence);
         }
         checkDuplicateCode();
+
+        // Auto-suggest: fields the AI scan still left blank get filled from
+        // this user's most recently created item of the same type - only
+        // ever reached via this AI Scan flow, never plain manual entry.
+        const suggestType = typeField.value;
+        fetch("{% url 'suggest_item_fields' %}?type=" + encodeURIComponent(suggestType))
+          .then(response => (response.ok ? response.json() : {}))
+          .then(suggestion => {
+            const suggested = [];
+            if (suggestion.issuer && !issuerCodeField.value.trim()) {
+              issuerCodeField.value = suggestion.issuer;
+              markAutoFilled(issuerCodeField);
+              suggested.push("{% trans 'issuer' %}");
+            }
+            if (suggestion.logo_slug && logoSlugField && !logoSlugField.value.trim()) {
+              logoSlugField.value = suggestion.logo_slug;
+              markAutoFilled(logoSlugField);
+              suggested.push("{% trans 'logo' %}");
+            }
+            if (suggestion.currency && currencyField && !data.currency) {
+              currencyField.value = suggestion.currency;
+              markAutoFilled(currencyField);
+              suggested.push("{% trans 'currency' %}");
+            }
+            // Travel Pass wallet is fixed - the suggestion never applies there.
+            if (suggestType !== 'travelpass' && suggestion.wallet_id && !walletField.value) {
+              walletField.value = suggestion.wallet_id;
+              markAutoFilled(walletField);
+              suggested.push("{% trans 'wallet' %}");
+            }
+            if (suggested.length) {
+              statusEl.innerHTML += ` <span class="text-muted small">({% trans "suggested from recent activity:" %} ${suggested.join(', ')})</span>`;
+            }
+          })
+          .catch(() => {});
       })
       .catch(() => {
         statusEl.innerHTML = '<span class="text-danger">{% trans "Scan failed. Please try again." %}</span>';

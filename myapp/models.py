@@ -166,6 +166,19 @@ class Wallet(models.Model):
                 return wallet
         return None
 
+    TRAVEL_PASS_WALLET_NAME = 'Travel Pass'
+
+    @classmethod
+    def get_or_create_travel_pass_wallet(cls, user):
+        """
+        Every Travel Pass item is unconditionally filed here - see
+        Item.save(). Created lazily on first use rather than at signup, so
+        a user who never scans a travel ticket never gets an empty wallet
+        they didn't ask for.
+        """
+        wallet, _ = cls.objects.get_or_create(user=user, name=cls.TRAVEL_PASS_WALLET_NAME)
+        return wallet
+
 
 class Tag(models.Model):
     """
@@ -243,6 +256,7 @@ class Item(models.Model):
         ('giftcard', 'Gift Card'),
         ('coupon', 'Coupon'),
         ('loyaltycard', 'Loyalty Card'),
+        ('travelpass', 'Travel Pass'),
     )
     VALUE_TYPES = (
         ('money', 'Money'),
@@ -321,6 +335,12 @@ class Item(models.Model):
         help_text="Arrival station/stop for a train or transport ticket, e.g. \"London "
                    "Terminals\" or \"LON\".",
     )
+    travel_time = models.TimeField(
+        null=True, blank=True,
+        help_text="Scheduled departure/travel time for a Travel Pass, if known - leave blank "
+                   "otherwise (many train tickets are date-only, with no fixed time).",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     objects = ItemQuerySet.as_manager()
 
@@ -340,6 +360,11 @@ class Item(models.Model):
                 self.file.seek(0)
             except Exception:
                 pass
+        # Every Travel Pass is unconditionally filed into the "Travel Pass"
+        # wallet - enforced here rather than per-caller (views, API, CSV
+        # import) so nothing can bypass it by skipping the web form.
+        if self.type == 'travelpass' and self.user_id:
+            self.wallet = Wallet.get_or_create_travel_pass_wallet(self.user)
         super().save(*args, **kwargs)
 
     def get_current_balance(self, transactions=None):

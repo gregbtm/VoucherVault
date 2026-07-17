@@ -620,6 +620,32 @@ def lookup_merchant_balance_url(request):
 
 @require_GET
 @login_required
+def suggest_item_fields(request):
+    """
+    Read-only AJAX helper for the create/edit item forms' AI Scan flow
+    only - never called from plain manual entry, so nothing is ever
+    silently suggested outside a photo scan. Whatever the OCR extraction
+    left blank (issuer, logo_slug, wallet, currency) gets suggested from
+    the user's most recently created item of the same type, so a second
+    scan of the same kind of ticket/card doesn't need everything retyped.
+    """
+    item_type = request.GET.get('type', '')
+    latest = (
+        Item.objects.filter(user=request.user, type=item_type, created_at__isnull=False)
+        .order_by('-created_at')
+        .first()
+    )
+    if not latest:
+        return JsonResponse({})
+    return JsonResponse({
+        'issuer': latest.issuer or None,
+        'logo_slug': latest.logo_slug or None,
+        'wallet_id': str(latest.wallet_id) if latest.wallet_id else None,
+        'currency': latest.currency or None,
+    })
+
+@require_GET
+@login_required
 def check_duplicate_code(request):
     """
     Read-only AJAX helper for the create/edit item forms: warns (never

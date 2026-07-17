@@ -9,7 +9,8 @@ from myapp.models import SiteConfiguration
 from .base import (
     OCRBackend, VALID_CODE_TYPES, VALID_CURRENCIES, VALID_ITEM_TYPES,
     parse_float_or_none, sanitize_domain_slug, sanitize_free_text,
-    sanitize_tag_suggestions, sanitize_url, strip_json_fences,
+    sanitize_tag_suggestions, sanitize_time_or_none, sanitize_url,
+    strip_json_fences,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,24 +50,31 @@ _PROMPT = (
     'for organizing it (e.g. "Restaurant", "Food Delivery", "Retail", '
     '"Travel", "Coffee"). If this is a point-to-point travel ticket '
     '(e.g. a train, coach, or ferry ticket showing a departure and an '
-    'arrival station/stop), also extract the journey origin and '
-    'destination exactly as printed (e.g. "Hatfield Peverel" and '
-    '"London Terminals", or short codes like "HAP" and "LON" if that is '
-    'all that is shown) - leave both null for anything that is not a '
-    'point-to-point journey ticket. Respond with ONLY a JSON object, no '
+    'arrival station/stop), classify "type" as "travelpass", and also '
+    'extract the journey origin and destination exactly as printed '
+    '(e.g. "Hatfield Peverel" and "London Terminals", or short codes '
+    'like "HAP" and "LON" if that is all that is shown), plus a '
+    'scheduled departure/travel time if one is printed on the ticket '
+    '(e.g. "09:14") - leave journey origin, destination, and travel '
+    'time all null for anything that is not a point-to-point journey '
+    'ticket, or if no specific time is printed. Respond with ONLY a '
+    'JSON object, no '
     'other text and no markdown code fences, in exactly this shape:\n'
     '{"code": "...", "code_type": "...", "name": "...", "issuer": "...", '
     '"expiry_date": "YYYY-MM-DD", "pin": "...", "value": 0.00, '
     '"currency": "...", "card_number": "...", "logo_slug": "...", '
     '"balance_check_url": "...", "type": "...", "description": "...", '
     '"notes": "...", "tags": ["...", "..."], "journey_origin": "...", '
-    '"journey_destination": "...", "confidence": 0.0}\n'
+    '"journey_destination": "...", "travel_time": "...", '
+    '"confidence": 0.0}\n'
     f'"code_type" must be exactly one of: {_CODE_TYPE_OPTIONS}, "none" '
     '(if the code is a plain printed number with no separate scannable '
     'barcode at all), or null (if you cannot tell). "currency" must be a '
     'three-letter ISO 4217 code (e.g. "GBP", "USD", "EUR") or null. '
     '"logo_slug" must be a bare domain with no scheme or "www." (e.g. '
-    '"uber.com"), or null if you cannot confidently tell. '
+    '"uber.com"), or null if you cannot confidently tell. "travel_time" '
+    'must be a 24-hour "HH:MM" string (e.g. "09:14") if a specific '
+    'departure/travel time is printed on the ticket, or null. '
     '"balance_check_url" must be a full URL including "https://", or '
     'null - never a URL you are guessing at, only one actually printed '
     f'on the card. "type" must be exactly one of: {_ITEM_TYPE_OPTIONS}, '
@@ -112,7 +120,7 @@ class ClaudeOCRBackend(OCRBackend):
             'pin': None, 'value': None, 'currency': None, 'card_number': None,
             'logo_slug': None, 'balance_check_url': None, 'type': None,
             'description': None, 'notes': None, 'tags': [], 'journey_origin': None,
-            'journey_destination': None, 'confidence': 0.0,
+            'journey_destination': None, 'travel_time': None, 'confidence': 0.0,
         }
 
         image_b64 = base64.standard_b64encode(image_bytes).decode()
@@ -183,5 +191,6 @@ class ClaudeOCRBackend(OCRBackend):
             'tags': sanitize_tag_suggestions(result.get('tags')),
             'journey_origin': sanitize_free_text(result.get('journey_origin'), _MAX_JOURNEY_STATION_LENGTH),
             'journey_destination': sanitize_free_text(result.get('journey_destination'), _MAX_JOURNEY_STATION_LENGTH),
+            'travel_time': sanitize_time_or_none(result.get('travel_time')),
             'confidence': float(result.get('confidence') or 0.0),
         }

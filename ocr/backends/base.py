@@ -98,6 +98,21 @@ def sanitize_free_text(value, max_length: int) -> str | None:
     return text[:max_length] if text else None
 
 
+_TIME_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
+
+
+def sanitize_time_or_none(value) -> str | None:
+    """
+    Best-effort validation for a vision model's "travel_time" guess - only
+    trusted if it's a well-formed 24-hour "HH:MM" string, since that's
+    what the <input type="time"> on the create/edit item forms expects.
+    """
+    if not value or not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value if _TIME_RE.match(value) else None
+
+
 _MAX_SUGGESTED_TAGS = 4
 _MAX_TAG_LENGTH = 30
 
@@ -160,7 +175,11 @@ class OCRBackend(ABC):
         user's existing tags or suggest as new ones. journey_origin and
         journey_destination are the departure/arrival station or stop for
         a point-to-point travel ticket (e.g. "Hatfield Peverel"/"HAP" and
-        "London Terminals"/"LON"), used by the Active Today widget - both
-        None for anything that isn't that kind of ticket.
+        "London Terminals"/"LON"), used by the Active Today widget -
+        expected alongside type="travelpass". travel_time is a 24-hour
+        "HH:MM" string if a specific departure/travel time is printed on
+        the ticket, else None. journey_origin, journey_destination, and
+        travel_time are all None for anything that isn't that kind of
+        ticket.
         """
         ...

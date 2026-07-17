@@ -49,7 +49,7 @@ class ItemForm(forms.ModelForm):
 
     class Meta:
         model = Item
-        fields = ['name', 'issuer', 'redeem_code', 'card_number', 'pin', 'issue_date', 'expiry_date', 'description', 'logo_slug', 'type', 'value', 'value_type', 'currency', 'file', 'code_type', 'tile_color', 'wallet', 'tags', 'notes', 'notify_days_before', 'balance_check_url', 'journey_origin', 'journey_destination']
+        fields = ['name', 'issuer', 'redeem_code', 'card_number', 'pin', 'issue_date', 'expiry_date', 'description', 'logo_slug', 'type', 'value', 'value_type', 'currency', 'file', 'code_type', 'tile_color', 'wallet', 'tags', 'notes', 'notify_days_before', 'balance_check_url', 'journey_origin', 'journey_destination', 'travel_time']
         widgets = {
             'issue_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
             'expiry_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
@@ -72,19 +72,29 @@ class ItemForm(forms.ModelForm):
                 'class': 'form-control',
                 'placeholder': _('e.g. London Terminals'),
             }),
+            'travel_time': forms.TimeInput(attrs={'type': 'time'}, format='%H:%M'),
         }
 
     def __init__(self, *args, user=None, **kwargs):
         super(ItemForm, self).__init__(*args, **kwargs)
-        if 'data' in kwargs:
-            item_type = kwargs['data'].get('type')
-            if item_type == 'loyaltycard':
-                self.fields['value'].required = False
-            else:
-                self.fields['value'].required = True
+        # self.data/self.is_bound (set by BaseForm.__init__ above) reflect
+        # the real submission regardless of whether the caller passed data
+        # positionally (views.py, the test client) or as a kwarg - checking
+        # kwargs directly missed every real call, since both pass it
+        # positionally.
+        item_type = self.data.get('type') if self.is_bound else None
+        if item_type in ('loyaltycard', 'travelpass'):
+            self.fields['value'].required = False
+        elif self.is_bound:
+            self.fields['value'].required = True
 
         # Make expiry_date optional
         self.fields['expiry_date'].required = False
+
+        # Travel Pass tickets are frequently valid and expire on the same
+        # day - clean() below falls back to expiry_date when this is left
+        # blank, so it doesn't need to be required for this type.
+        self.fields['issue_date'].required = (item_type != 'travelpass')
 
         # Scope wallet/tag choices to the owning user so items can't be
         # organised into another user's wallet or tags.
@@ -145,6 +155,18 @@ class ItemForm(forms.ModelForm):
         # Set expiry_date to 50 years in the future if not provided
         if not expiry_date:
             cleaned_data['expiry_date'] = timezone.now() + timedelta(days=50*365)  # 50 years in the future
+
+        if item_type == 'travelpass':
+            # Train tickets are frequently valid and expire on the same day.
+            if not cleaned_data.get('issue_date'):
+                cleaned_data['issue_date'] = cleaned_data['expiry_date']
+            # Value/currency/card number/PIN don't apply to a travel pass -
+            # forced to a harmless zero rather than erroring on a blank
+            # submission (covers non-JS clients; the form UI hides and
+            # zeroes this field itself).
+            if not value:
+                value = 0
+                cleaned_data['value'] = 0
 
         if item_type == 'loyaltycard' and value != 0:
             error_msg_value = _('Value must be zero for loyalty cards.')

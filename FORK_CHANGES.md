@@ -111,6 +111,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 78 — Fix wallet filter reset getting stuck at zero results](#phase-78--fix-wallet-filter-reset-getting-stuck-at-zero-results)
 - [Phase 79 — Active Today widget for round-trip commute tickets + auto-wallet-assignment](#phase-79--active-today-widget-for-round-trip-commute-tickets--auto-wallet-assignment)
 - [Phase 80 — Modern color picker + a richer .ics calendar feed](#phase-80--modern-color-picker--a-richer-ics-calendar-feed)
+- [Phase 81 — Travel Pass item type + activity-based field auto-suggest](#phase-81--travel-pass-item-type--activity-based-field-auto-suggest)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4220,6 +4221,61 @@ screenshots of the deployed app.
   verification of the color picker's open/select/hex-entry/outside-
   click-close/dark-mode behavior against a real running instance) and a
   full-suite run: 781 tests, 0 failures, 0 errors.
+
+## Phase 81 — Travel Pass item type + activity-based field auto-suggest
+
+Refines the round-trip commute ticket support added in Phase 79 (the
+Active Today widget) with a dedicated item type built around what a
+train/transport ticket actually is, plus a general auto-suggest layer
+for whatever a photo scan couldn't read.
+
+- **"Travel Pass" item type** - a fifth `Item.type` alongside Voucher/
+  Gift Card/Coupon/Loyalty Card. Selecting it in the create/edit item
+  form switches to a purpose-built layout: Value, Currency, Card/Member
+  Number and PIN all hide (they don't apply to a travel ticket), and a
+  new **Time of Travel** field appears next to the existing Journey
+  From/Journey To fields, for a scheduled departure time when the
+  ticket shows one (left blank otherwise - many train tickets are
+  date-only). **Issue Date** becomes optional for this type and falls
+  back to the expiry date when left blank, since train tickets are
+  frequently valid and expire on the same day.
+- **Fixed "Travel Pass" wallet** - every item of this type is
+  unconditionally filed into a wallet named "Travel Pass" (created
+  lazily on first use, one per user), enforced in `Item.save()` itself
+  rather than any single call site, so it holds regardless of what a
+  form, the API, or a future import path submits. The wallet field
+  stays visible in the form (shown locked, labelled "Travel Pass
+  (auto-assigned)") rather than disappearing outright, so it's clear
+  where the item went.
+- **Activity-based auto-suggest** - a new read-only endpoint
+  (`items/suggest-fields/`) that, given a type, returns the Issuer,
+  Logo Slug, Wallet, and Currency of the user's most recently created
+  item of that same type. Wired into the existing "AI Scan" photo flow
+  only: once OCR extraction fills in whatever it could read, any of
+  those four fields it left blank get suggested from your own recent
+  activity (e.g. a second National Rail ticket doesn't need the issuer
+  retyped). Never fires for plain manual entry - there's no "recent
+  activity" signal to suggest from outside a scan, and unprompted
+  autofill on a blank form would be more surprising than helpful.
+- **OCR backends** (Claude, OpenAI) now recognize a point-to-point
+  travel ticket as `type: "travelpass"` explicitly (previously they'd
+  extract the journey fields but leave `type` to fall through to
+  whatever the model guessed), and extract a `travel_time` in 24-hour
+  `HH:MM` format when one is printed on the ticket.
+- Fixed a latent bug surfaced while building this: `ItemForm.__init__`
+  checked `'data' in kwargs` to detect a bound submission, but every
+  real caller (the view, the Django test client) passes `data`
+  positionally - the check was always `False`, so the loyalty-card
+  "Value isn't required" relaxation never actually applied outside the
+  browser (silently rescued there by the JS always submitting `value=0`
+  regardless of type). Now reads `self.data`/`self.is_bound`, which
+  `BaseForm.__init__` sets correctly regardless of calling convention.
+- 18 new tests (Travel Pass wallet enforcement/reuse/override, the
+  issue-date fallback, the suggest-fields endpoint including its
+  per-user scoping, and the OCR travel_time extraction/sanitization)
+  plus a live Playwright check of the field show/hide and wallet-lock
+  behavior against a real running instance. Full suite: 799 tests, 0
+  failures, 0 errors.
 
 ## New environment variables
 

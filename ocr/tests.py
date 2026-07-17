@@ -14,7 +14,8 @@ from myapp.test_utils import set_site_config
 from .backends import get_backend, ocr_enabled
 from .backends.base import (
     parse_float_or_none, sanitize_domain_slug, sanitize_free_text,
-    sanitize_tag_suggestions, sanitize_url, strip_json_fences,
+    sanitize_tag_suggestions, sanitize_time_or_none, sanitize_url,
+    strip_json_fences,
 )
 from .backends.claude_backend import ClaudeOCRBackend
 from .backends.openai_backend import OpenAIOCRBackend
@@ -221,6 +222,44 @@ class ClaudeBackendTests(TestCase):
 
         self.assertIsNone(result['journey_origin'])
         self.assertIsNone(result['journey_destination'])
+
+    @patch('ocr.backends.claude_backend.anthropic.Anthropic')
+    def test_extract_parses_travel_time_and_type_for_a_travel_ticket(self, mock_anthropic_cls):
+        set_site_config(anthropic_api_key='test-key')
+        mock_client = MagicMock()
+        mock_block = MagicMock(
+            type='text',
+            text=(
+                '{"code": "AABXF39DNGF", "code_type": "qrcode", "issuer": "National Rail", '
+                '"type": "travelpass", "journey_origin": "Hatfield Peverel", '
+                '"journey_destination": "London Terminals", "travel_time": "09:14", '
+                '"confidence": 0.9}'
+            ),
+        )
+        mock_client.messages.create.return_value = MagicMock(content=[mock_block])
+        mock_anthropic_cls.return_value = mock_client
+
+        backend = ClaudeOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertEqual(result['type'], 'travelpass')
+        self.assertEqual(result['travel_time'], '09:14')
+
+    @patch('ocr.backends.claude_backend.anthropic.Anthropic')
+    def test_extract_discards_malformed_travel_time(self, mock_anthropic_cls):
+        set_site_config(anthropic_api_key='test-key')
+        mock_client = MagicMock()
+        mock_block = MagicMock(
+            type='text',
+            text='{"code": "AABXF39DNGF", "travel_time": "9:14 AM", "confidence": 0.9}',
+        )
+        mock_client.messages.create.return_value = MagicMock(content=[mock_block])
+        mock_anthropic_cls.return_value = mock_client
+
+        backend = ClaudeOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertIsNone(result['travel_time'])
 
     @patch('ocr.backends.claude_backend.anthropic.Anthropic')
     def test_extract_requests_zero_temperature(self, mock_anthropic_cls):
@@ -496,6 +535,27 @@ class OpenAIBackendTests(TestCase):
 
         self.assertEqual(result['journey_origin'], 'London Terminals')
         self.assertEqual(result['journey_destination'], 'Hatfield Peverel')
+
+    @patch('ocr.backends.openai_backend.OpenAI')
+    def test_extract_parses_travel_time_and_type_for_a_travel_ticket(self, mock_openai_cls):
+        set_site_config(openai_api_key='test-key')
+        mock_client = MagicMock()
+        mock_message = MagicMock(
+            content=(
+                '{"code": "AABXF39DNGG", "code_type": "qrcode", "issuer": "National Rail", '
+                '"type": "travelpass", "journey_origin": "London Terminals", '
+                '"journey_destination": "Hatfield Peverel", "travel_time": "17:32", '
+                '"confidence": 0.9}'
+            ),
+        )
+        mock_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=mock_message)])
+        mock_openai_cls.return_value = mock_client
+
+        backend = OpenAIOCRBackend()
+        result = backend.extract(b'fake-bytes', 'image/jpeg')
+
+        self.assertEqual(result['type'], 'travelpass')
+        self.assertEqual(result['travel_time'], '17:32')
 
     @patch('ocr.backends.openai_backend.OpenAI')
     def test_extract_requests_json_mode(self, mock_openai_cls):
@@ -777,6 +837,18 @@ class BaseHelperTests(TestCase):
         self.assertIsNone(sanitize_domain_slug('not a domain'))
         self.assertIsNone(sanitize_domain_slug(''))
         self.assertIsNone(sanitize_domain_slug(None))
+
+    def test_sanitize_time_or_none_accepts_well_formed_24h_time(self):
+        self.assertEqual(sanitize_time_or_none('09:14'), '09:14')
+        self.assertEqual(sanitize_time_or_none('23:59'), '23:59')
+        self.assertEqual(sanitize_time_or_none('00:00'), '00:00')
+
+    def test_sanitize_time_or_none_rejects_junk(self):
+        self.assertIsNone(sanitize_time_or_none('25:00'))
+        self.assertIsNone(sanitize_time_or_none('9:14 AM'))
+        self.assertIsNone(sanitize_time_or_none('not a time'))
+        self.assertIsNone(sanitize_time_or_none(''))
+        self.assertIsNone(sanitize_time_or_none(None))
 
     def test_sanitize_url_accepts_valid_http_url(self):
         self.assertEqual(sanitize_url('https://example.com/balance'), 'https://example.com/balance')
