@@ -1,4 +1,11 @@
-## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.62...v1.2.0) (2026-07-17)
+## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.63...v1.2.0) (2026-07-17)
+
+
+### Features
+
+* settings pass - organised sections, groups, and helper hints ([4bc8221](https://github.com/gregbtm/VoucherVault/commit/4bc8221e9df0a65a7a066f2ce738489973f5eb30))
+
+## [1.1.63](https://github.com/gregbtm/VoucherVault/compare/v1.1.62...v1.1.63) (2026-07-17)
 
 
 ### Features
@@ -20,11 +27,4 @@
 * Issue Date actually usable on Travel Pass, better OCR name/issuer ([c6bfc34](https://github.com/gregbtm/VoucherVault/commit/c6bfc3473f06e802c2c1314e78bd73ac324a49d6))
 
 ## [1.1.60](https://github.com/gregbtm/VoucherVault/compare/v1.1.59...v1.1.60) (2026-07-17)
-
-## [1.1.59](https://github.com/gregbtm/VoucherVault/compare/v1.1.58...v1.1.59) (2026-07-17)
-
-
-### Features
-
-* Travel Pass item type + activity-based field auto-suggest ([7c2b3be](https://github.com/gregbtm/VoucherVault/commit/7c2b3be200939a72ab237d05fceb97a0205f0505))
 
