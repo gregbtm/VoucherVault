@@ -26,6 +26,16 @@ database/imports/
 database/documents/
 database/backups/
 
+# ignore stray media files manage.py test writes straight to database/ -
+# Item.file uploads aren't wrapped in the DB transaction rollback tests
+# otherwise get, so every run leaves a handful of throwaway images/PDFs
+# sitting in the repo root's database/ directory
+database/*.png
+database/*.pdf
+database/*.jpg
+database/*.jpeg
+encrypted.data
+
 # ignore signed licenses
 **license.txt
 
