@@ -1,4 +1,11 @@
-## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.63...v1.2.0) (2026-07-17)
+## [1.1.65](https://github.com/gregbtm/VoucherVault/compare/v1.1.64...v1.1.65) (2026-07-17)
+
+
+### Bug Fixes
+
+* settings pages blank on load + help hints not tappable on mobile ([4d8071a](https://github.com/gregbtm/VoucherVault/commit/4d8071ad474e4ee44036ed3305218527822f2551))
+
+## [1.1.64](https://github.com/gregbtm/VoucherVault/compare/v1.1.63...v1.1.64) (2026-07-17)
 
 
 ### Features
@@ -25,6 +32,4 @@
 ### Bug Fixes
 
 * Issue Date actually usable on Travel Pass, better OCR name/issuer ([c6bfc34](https://github.com/gregbtm/VoucherVault/commit/c6bfc3473f06e802c2c1314e78bd73ac324a49d6))
-
-## [1.1.60](https://github.com/gregbtm/VoucherVault/compare/v1.1.59...v1.1.60) (2026-07-17)
 
