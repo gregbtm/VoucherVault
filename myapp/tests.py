@@ -336,6 +336,136 @@ class WalletAutoAssignMatchTests(TestCase):
         self.assertIsNone(Wallet.match_for_issuer(self.user, ''))
 
 
+class TravelPassTypeTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def _post_travelpass(self, **overrides):
+        data = {
+            'type': 'travelpass', 'name': 'HAP to LON', 'issuer': 'National Rail',
+            'redeem_code': 'RAIL1', 'code_type': 'qrcode', 'value_type': 'money',
+            'currency': 'GBP', 'expiry_date': date.today().isoformat(),
+            'journey_origin': 'Hatfield Peverel', 'journey_destination': 'London Terminals',
+        }
+        data.update(overrides)
+        return self.client.post(reverse('create_item'), data)
+
+    def test_create_item_travelpass_auto_assigns_travel_pass_wallet(self):
+        response = self._post_travelpass()
+        self.assertRedirects(response, reverse('show_items'))
+        item = Item.objects.get(name='HAP to LON')
+        self.assertEqual(item.wallet.name, 'Travel Pass')
+        self.assertEqual(item.wallet.user, self.user)
+
+    def test_create_item_travelpass_overrides_explicit_wallet_choice(self):
+        other_wallet = Wallet.objects.create(user=self.user, name='Everything Else')
+        response = self._post_travelpass(wallet=other_wallet.id)
+        self.assertRedirects(response, reverse('show_items'))
+        item = Item.objects.get(name='HAP to LON')
+        self.assertEqual(item.wallet.name, 'Travel Pass')
+
+    def test_create_item_travelpass_reuses_existing_travel_pass_wallet(self):
+        self._post_travelpass(name='Outward')
+        self._post_travelpass(name='Return', redeem_code='RAIL2')
+        wallets = Wallet.objects.filter(user=self.user, name='Travel Pass')
+        self.assertEqual(wallets.count(), 1)
+        self.assertEqual(
+            Item.objects.get(name='Outward').wallet_id,
+            Item.objects.get(name='Return').wallet_id,
+        )
+
+    def test_create_item_travelpass_issue_date_defaults_to_expiry_when_blank(self):
+        response = self._post_travelpass(expiry_date='2027-03-15')
+        self.assertRedirects(response, reverse('show_items'))
+        item = Item.objects.get(name='HAP to LON')
+        self.assertEqual(item.issue_date.isoformat(), '2027-03-15')
+        self.assertEqual(item.expiry_date.isoformat(), '2027-03-15')
+
+    def test_create_item_travelpass_respects_explicit_issue_date(self):
+        response = self._post_travelpass(issue_date='2027-01-01', expiry_date='2027-03-15')
+        self.assertRedirects(response, reverse('show_items'))
+        item = Item.objects.get(name='HAP to LON')
+        self.assertEqual(item.issue_date.isoformat(), '2027-01-01')
+
+    def test_create_item_travelpass_value_defaults_to_zero(self):
+        response = self._post_travelpass()
+        self.assertRedirects(response, reverse('show_items'))
+        item = Item.objects.get(name='HAP to LON')
+        self.assertEqual(item.value, 0)
+
+    def test_create_item_travelpass_stores_travel_time(self):
+        response = self._post_travelpass(travel_time='09:14')
+        self.assertRedirects(response, reverse('show_items'))
+        item = Item.objects.get(name='HAP to LON')
+        self.assertEqual(item.travel_time, time(9, 14))
+
+    def test_get_or_create_travel_pass_wallet_is_idempotent(self):
+        first = Wallet.get_or_create_travel_pass_wallet(self.user)
+        second = Wallet.get_or_create_travel_pass_wallet(self.user)
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(Wallet.objects.filter(user=self.user, name='Travel Pass').count(), 1)
+
+    def test_item_save_forces_travel_pass_wallet_regardless_of_caller(self):
+        other_wallet = Wallet.objects.create(user=self.user, name='Somewhere Else')
+        item = Item.objects.create(
+            type='travelpass', name='Direct Save', issuer='National Rail', redeem_code='RAIL3',
+            expiry_date=date.today(), value=Decimal('0.00'), currency='GBP', user=self.user,
+            wallet=other_wallet,
+        )
+        item.refresh_from_db()
+        self.assertEqual(item.wallet.name, 'Travel Pass')
+
+
+class SuggestItemFieldsTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_suggests_from_most_recently_created_item_of_same_type(self):
+        wallet = Wallet.objects.create(user=self.user, name='Groceries')
+        older = Item.objects.create(
+            type='giftcard', name='Older', issuer='Old Issuer', redeem_code='OLD1',
+            expiry_date=date.today(), value=Decimal('10.00'), currency='USD', user=self.user,
+        )
+        Item.objects.filter(pk=older.pk).update(created_at=timezone.now() - timedelta(days=1))
+        Item.objects.create(
+            type='giftcard', name='Newer', issuer='New Issuer', redeem_code='NEW1',
+            expiry_date=date.today(), value=Decimal('10.00'), currency='EUR', user=self.user,
+            wallet=wallet, logo_slug='newissuer.com',
+        )
+
+        response = self.client.get(reverse('suggest_item_fields'), {'type': 'giftcard'})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['issuer'], 'New Issuer')
+        self.assertEqual(data['logo_slug'], 'newissuer.com')
+        self.assertEqual(data['currency'], 'EUR')
+        self.assertEqual(data['wallet_id'], str(wallet.id))
+
+    def test_returns_empty_when_no_items_of_that_type_exist(self):
+        response = self.client.get(reverse('suggest_item_fields'), {'type': 'coupon'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {})
+
+    def test_does_not_leak_another_users_items(self):
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        item = Item.objects.create(
+            type='giftcard', name='Bobs Card', issuer='Bob Issuer', redeem_code='BOB1',
+            expiry_date=date.today(), value=Decimal('5.00'), currency='GBP', user=bob,
+        )
+        Item.objects.filter(pk=item.pk).update(created_at=timezone.now())
+
+        response = self.client.get(reverse('suggest_item_fields'), {'type': 'giftcard'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {})
+
+    def test_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('suggest_item_fields'), {'type': 'giftcard'})
+        self.assertNotEqual(response.status_code, 200)
+
+
 class NoBarcodeCodeTypeTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')

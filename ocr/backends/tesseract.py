@@ -107,6 +107,7 @@ class TesseractOCRBackend(OCRBackend):
             'tags': [],
             'journey_origin': None,
             'journey_destination': None,
+            'travel_time': None,
             'confidence': round(confidence, 2) if code else 0.0,
         }
 
