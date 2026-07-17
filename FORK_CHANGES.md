@@ -115,6 +115,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 82 — Self-learning scans, smarter suggestions, Travel Pass polish](#phase-82--self-learning-scans-smarter-suggestions-travel-pass-polish)
 - [Phase 83 — Site-wide motion polish (Motion library)](#phase-83--site-wide-motion-polish-motion-library)
 - [Phase 84 — Settings pass: organised, grouped, and explained](#phase-84--settings-pass-organised-grouped-and-explained)
+- [Phase 85 — Fix blank-on-load settings pages + tap-to-view help hints](#phase-85--fix-blank-on-load-settings-pages--tap-to-view-help-hints)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4416,6 +4417,40 @@ pages read as one visual family.
   persists, Site Settings autosave still fires its toast and persists,
   and zero JS errors on either page. Full suite: 820 tests, 0
   failures, 0 errors.
+
+## Phase 85 — Fix blank-on-load settings pages + tap-to-view help hints
+
+Two real bugs reported from production on a phone (Samsung Internet)
+straight after Phase 84 shipped: Site Settings loaded fully blank
+until scrolled a long way down, and the new ⓘ help hints didn't
+respond to a tap at all.
+
+- **Settings pages blank until scrolled** - the entrance-animation
+  threshold (`amount: 0.1`, meaning 10% of an element's *area* must be
+  on screen before it fades in) was fine for card grids, but Phase
+  84's settings pages wrap everything in one tall single `.card`. On a
+  card several times taller than the viewport, 10% of its area only
+  becomes visible once the whole viewport is filled edge-to-edge with
+  it - which meant scrolling roughly halfway down the page before
+  anything appeared. Switched to Motion's own default, `amount:
+  'some'` (fires as soon as any pixel is visible), which is exactly
+  what a page that's already on screen at load needs.
+- **Help hints didn't respond to tap** - they used a plain HTML `title`
+  attribute, which only shows on mouse hover and is well known not to
+  work via tap on mobile browsers. Converted every icon-based
+  `.help-hint` on both Preferences and Site Settings to the app's
+  existing Bootstrap tooltip component (`data-bs-toggle="tooltip"`,
+  already initialized site-wide in `main.js`) with `data-bs-trigger="click"`
+  so a tap toggles the tooltip open/closed.
+- Re-verified with a corrected methodology this time: a real touch-
+  enabled mobile viewport (384×810), checked visibility at the exact
+  `load` event with no artificial wait (the Phase 84 check used a
+  600ms timeout on a desktop-sized viewport, which masked this
+  failure mode), and an actual `tap()` on the help icons rather than
+  just checking a `title` attribute was present. Both pages now start
+  their entrance fade immediately without any scroll and reach full
+  opacity within its ~300ms duration; tapping a help icon shows its
+  tooltip. Full suite: 820 tests, 0 failures, 0 errors.
 
 ## New environment variables
 

@@ -50,7 +50,7 @@
             <div class="settings-group-label"><i class="bi bi-bell me-1"></i> {% trans "Notifications & Expiry" %}</div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-clock-history me-2"></i>{% trans "Expiry & Notifications" %}<i class="bi bi-info-circle help-hint" title="{% trans 'How many days before an item expires the first and final expiry notifications fire, unless an item sets its own override.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-clock-history me-2"></i>{% trans "Expiry & Notifications" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'How many days before an item expires the first and final expiry notifications fire, unless an item sets its own override.' %}"></i></h6>
               <div class="row">
                 <div class="col-md-4 mb-3">
                   <label for="{{ form.expiry_threshold_days.id_for_label }}" class="form-label">{% trans "Expiry warning threshold (days)" %}</label>
@@ -71,7 +71,7 @@
             </div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-broadcast me-2"></i>{% trans "Web Push" %}<i class="bi bi-info-circle help-hint" title="{% trans 'Lets users receive expiry notifications as native browser/phone push messages. Requires a one-off VAPID key pair.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-broadcast me-2"></i>{% trans "Web Push" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Lets users receive expiry notifications as native browser/phone push messages. Requires a one-off VAPID key pair.' %}"></i></h6>
               <p class="text-muted small">{% trans "Generate a key pair with" %} <code>docker compose exec app python manage.py generate_vapid_keys</code></p>
               <div class="row">
                 <div class="col-md-4 mb-3">
@@ -93,7 +93,7 @@
             <div class="settings-group-label"><i class="bi bi-puzzle me-1"></i> {% trans "Features & Integrations" %}</div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-image me-2"></i>{% trans "Merchant Logos" %}<i class="bi bi-info-circle help-hint" title="{% trans 'Fetches a brand logo for each item card automatically, based on the issuer name or logo domain.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-image me-2"></i>{% trans "Merchant Logos" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Fetches a brand logo for each item card automatically, based on the issuer name or logo domain.' %}"></i></h6>
               <div class="form-check mb-3">
                 {{ form.merchant_logos_enabled }}
                 <label class="form-check-label" for="{{ form.merchant_logos_enabled.id_for_label }}">{% trans "Auto-fetch merchant logos on item cards" %}</label>
@@ -112,7 +112,7 @@
             </div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-send me-2"></i>{% trans "Sharing" %}<i class="bi bi-info-circle help-hint" title="{% trans 'Controls what the Share via... button offers and how public share links behave.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-send me-2"></i>{% trans "Sharing" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Controls what the Share via... button offers and how public share links behave.' %}"></i></h6>
               <div class="form-check">
                 {{ form.share_via_smart_enabled }}
                 <label class="form-check-label" for="{{ form.share_via_smart_enabled.id_for_label }}">{% trans "Offer a choice on \"Share via...\": bare link, or a rich share (merchant, code, PIN, remaining balance) via a public link" %}</label>
@@ -417,7 +417,7 @@
             <div class="settings-group-label"><i class="bi bi-bar-chart me-1"></i> {% trans "Dashboard & Analytics" %}</div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-sliders me-2"></i>{% trans "Analytics & Duplicate Detection" %}<i class="bi bi-info-circle help-hint" title="{% trans 'Tuning knobs for the Dashboard widgets and the duplicate-photo detector on the item form.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-sliders me-2"></i>{% trans "Analytics & Duplicate Detection" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Tuning knobs for the Dashboard widgets and the duplicate-photo detector on the item form.' %}"></i></h6>
               <div class="row">
                 <div class="col-md-3 mb-3">
                   <label for="{{ form.expiring_soon_limit.id_for_label }}" class="form-label">{% trans "Expiring Soon list length" %}</label>
