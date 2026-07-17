@@ -113,6 +113,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 80 — Modern color picker + a richer .ics calendar feed](#phase-80--modern-color-picker--a-richer-ics-calendar-feed)
 - [Phase 81 — Travel Pass item type + activity-based field auto-suggest](#phase-81--travel-pass-item-type--activity-based-field-auto-suggest)
 - [Phase 82 — Self-learning scans, smarter suggestions, Travel Pass polish](#phase-82--self-learning-scans-smarter-suggestions-travel-pass-polish)
+- [Phase 83 — Site-wide motion polish (Motion library)](#phase-83--site-wide-motion-polish-motion-library)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4330,6 +4331,50 @@ type, with one headline capability: the scanner now learns from you.
   against a running instance covering the detail-page rows, the chips,
   the amber suggestion styling, and the snapshot capture. Full suite:
   817 tests, 0 failures, 0 errors.
+
+## Phase 83 — Site-wide motion polish (Motion library)
+
+Subtle, modern animation across the whole app, built as one shared
+convention-based system rather than per-page effects.
+
+- **Motion (motion.dev) vendored** - the actively-developed vanilla-JS
+  successor to Framer Motion (v12.42.2, UMD build, self-hosted under
+  `assets/vendor/motion/` like every other dependency - no CDN at
+  runtime, and precached by the service worker for offline). Chosen
+  because it drives animations through the browser's native Web
+  Animations API, so transform/opacity work runs on the compositor
+  thread and stays smooth even when the main JS thread is busy - the
+  difference between "sleek" and "laggy" on a cheap phone.
+- **Convention-based entrances** (`assets/js/animations.js`) - the
+  app's recurring patterns (inventory tiles, dashboard stat cards,
+  create/edit form sections, Next Up / Active Today widgets, item
+  detail fields, and generic cards on manage/settings pages) get a
+  250-300ms staggered fade-up as they enter the viewport, grouped per
+  container so each grid reads as one gesture. Any future page using
+  these classes inherits the polish with zero wiring. Long grids cap
+  at 24 animated elements per container - nobody watches 200 tiles
+  fade in, so the browser doesn't either.
+- **Deliberately failure-proof** - elements are only hidden for their
+  entrance *after* the library is confirmed loaded, so a blocked or
+  broken script can never blank a page; the whole layer is progressive
+  enhancement over fully-working server-rendered HTML.
+- **`prefers-reduced-motion` respected app-wide** (previously absent
+  entirely): the OS-level setting now disables both the new entrance
+  system and every other animation/transition in the app, ours and
+  Bootstrap's alike, via a global media-query kill switch.
+- **CSS micro-interactions** (`assets/css/animations.css`) - toasts
+  and post-scan chips pop in on insertion via pure CSS keyframes (so
+  dynamically-injected elements animate with no JS hooks), tap targets
+  get a barely-there press-down scale for tactile feedback on mobile,
+  and the clickable Next Up / Active Today hero widgets gain the same
+  gentle hover lift the item cards already had.
+- 3 wiring-guard tests (base template references, static files
+  resolvable, service worker precache list) plus a live Playwright
+  pass: Motion loads, 9/9 inventory tiles animate to full opacity with
+  none stuck hidden, below-fold dashboard cards reveal on scroll
+  (8/10 on load → 10/10 after scrolling), zero JS errors, and an
+  emulated reduced-motion run confirms nothing is ever touched. Full
+  suite: 820 tests, 0 failures, 0 errors.
 
 ## New environment variables
 

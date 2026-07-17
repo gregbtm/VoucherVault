@@ -14,7 +14,7 @@
       <a target="_blank" href="https://github.com/gregbtm/VoucherVault/network/members"><img src="https://img.shields.io/github/forks/gregbtm/VoucherVault?style=flat-square&color=4154f1" alt="Forks"></a>
     </p>
     <p>
-      <img src="https://img.shields.io/badge/386%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="386 features and fixes added on top of upstream">
+      <img src="https://img.shields.io/badge/392%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="392 features and fixes added on top of upstream">
       <img src="https://img.shields.io/badge/PWA-installable-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="Installable PWA">
       <img src="https://img.shields.io/badge/AI--assisted-scanning-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="AI-assisted scanning">
       <img src="https://img.shields.io/badge/REST-API-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="REST API">
@@ -31,7 +31,7 @@
 > multi-user login with OIDC SSO, and Apprise expiry notifications out of
 > the box (see [Features](#-features) for the complete original list).
 >
-> This fork is a strict superset: **82 rounds of work adding 386
+> This fork is a strict superset: **83 rounds of work adding 392
 > individual features and fixes** on top of upstream's own image, from a
 > full REST API and AI-assisted scanning to shared wallets, digital
 > wallet passes, and a rules-based notification engine — without
@@ -188,6 +188,7 @@ lifecycle.
 - **Screen wake lock** — the screen stays on while a barcode is shown to a cashier.
 - A configurable **code-blur toggle** for privacy in public.
 - Floating toast messages instead of a page-top banner.
+- **Smooth, modern animations everywhere** — staggered fade-up entrances on cards, form sections, and widgets (powered by the self-hosted [Motion](https://motion.dev) library, hardware-accelerated so it stays fluid on low-end phones), pop-in toasts and chips, and tactile press feedback on buttons. Fully respects your OS's reduced-motion setting.
 - **A modern color picker** for wallet, tag, and item-tile colours — a curated swatch grid plus a hex field, replacing the jarring native browser/OS colour picker `<input type="color">` otherwise falls back to.
 
 </details>

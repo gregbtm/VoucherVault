@@ -1,0 +1,91 @@
+/*
+ * Site-wide motion polish, the CSS half (the JS half is
+ * assets/js/animations.js + the vendored Motion library).
+ *
+ * Everything here animates only compositor-friendly properties
+ * (transform, opacity, box-shadow) so it stays smooth on low-end
+ * devices, and everything is killed wholesale for users who ask the OS
+ * for reduced motion.
+ */
+
+/* Initial state for elements queued for a staggered entrance. Applied by
+   animations.js ONLY after it has confirmed the Motion library actually
+   loaded - so if JS is disabled or the vendor file fails, nothing is
+   ever hidden. */
+.vv-anim-pre {
+  opacity: 0;
+}
+
+/* Toasts pop in on insertion - a CSS animation fires automatically for
+   both server-rendered Django messages and showToast()-created ones, no
+   JS hook needed. */
+@keyframes vv-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.toast-stack .toast-item {
+  animation: vv-pop-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Post-scan status chips are injected dynamically - same trick. Slight
+   per-chip delay so a row of chips reads left-to-right. */
+.scan-chip {
+  animation: vv-pop-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.scan-chip:nth-child(2) { animation-delay: 0.08s; }
+.scan-chip:nth-child(3) { animation-delay: 0.16s; }
+
+/* Tactile press feedback on the app's tap targets - a barely-there
+   scale-down that makes taps feel acknowledged on mobile. */
+.btn,
+.filter-chip,
+.more-action-row,
+.swap-fields-btn,
+.input-addon-btn,
+.next-up-mark-used-btn {
+  transition: transform 0.12s ease;
+}
+.btn:active,
+.filter-chip:active,
+.more-action-row:active,
+.swap-fields-btn:active,
+.input-addon-btn:active,
+.next-up-mark-used-btn:active {
+  transform: scale(0.97);
+}
+
+/* The Next Up / Active Today hero widgets had no hover affordance
+   despite being clickable - give them the same gentle lift the item
+   cards already have. */
+.next-up-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.next-up-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(1, 41, 112, 0.12);
+}
+body.dark-mode .next-up-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* One switch kills the lot: OS-level "reduce motion" disables every
+   animation and transition in the app, ours and Bootstrap's alike.
+   (animations.js independently refuses to start entrance animations,
+   so nothing is left stuck at opacity 0 either.) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
