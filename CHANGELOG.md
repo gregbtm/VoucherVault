@@ -1,4 +1,11 @@
-## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.61...v1.2.0) (2026-07-17)
+## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.62...v1.2.0) (2026-07-17)
+
+
+### Features
+
+* site-wide motion polish via the vendored Motion library ([a44b03f](https://github.com/gregbtm/VoucherVault/commit/a44b03fe19632ec0125dc6c6fb29dee50fb6474e))
+
+## [1.1.62](https://github.com/gregbtm/VoucherVault/compare/v1.1.61...v1.1.62) (2026-07-17)
 
 
 ### Features
@@ -20,6 +27,4 @@
 ### Features
 
 * Travel Pass item type + activity-based field auto-suggest ([7c2b3be](https://github.com/gregbtm/VoucherVault/commit/7c2b3be200939a72ab237d05fceb97a0205f0505))
-
-## [1.1.58](https://github.com/gregbtm/VoucherVault/compare/v1.1.57...v1.1.58) (2026-07-16)
 
