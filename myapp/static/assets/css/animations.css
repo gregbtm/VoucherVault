@@ -75,6 +75,16 @@ body.dark-mode .next-up-card:hover {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
+/* Brief fade-out on internal link clicks (see main.js), so navigating
+   between pages reads as a transition rather than a hard reload. Only
+   ever the leaving page fading out - never gates the incoming page's
+   visibility, unlike .vv-anim-pre above, so it can't reintroduce that
+   class of blank-on-load bug. */
+body.vv-page-leaving {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
 /* One switch kills the lot: OS-level "reduce motion" disables every
    animation and transition in the app, ours and Bootstrap's alike.
    (animations.js independently refuses to start entrance animations,

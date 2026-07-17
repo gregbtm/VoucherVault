@@ -159,8 +159,13 @@ const codeTypeLabels = {
 // Flags a field as auto-filled (scan, AI extraction, shape guess) so the
 // .auto-filled CSS can highlight it as "not yet reviewed" - cleared the
 // moment the user actually interacts with that field, marking it reviewed.
+// Mutually exclusive with markSuggested below: a field re-filled by a
+// second, more/less confident source (e.g. an AI guess followed by a real
+// barcode decode on a re-scan) must end up in exactly one state, not both
+// classes stacked from two separate calls.
 function markAutoFilled(el) {
     if (!el) return;
+    el.classList.remove('suggested-fill');
     el.classList.add('auto-filled');
     const clear = () => el.classList.remove('auto-filled');
     el.addEventListener('input', clear, { once: true });
@@ -173,6 +178,7 @@ function markAutoFilled(el) {
 // prefill are never mistaken for one another.
 function markSuggested(el) {
     if (!el) return;
+    el.classList.remove('auto-filled');
     el.classList.add('suggested-fill');
     const clear = () => el.classList.remove('suggested-fill');
     el.addEventListener('input', clear, { once: true });
@@ -197,19 +203,33 @@ redeemTypeField?.addEventListener('change', () => {
     if (codeTypeHint) codeTypeHint.style.display = 'none';
 });
 
-function showCodeTypeHint(text) {
+function showCodeTypeHint(text, confidence) {
     if (!codeTypeHint) return;
     codeTypeHint.textContent = text;
+    codeTypeHint.classList.toggle('text-warning', confidence === 'guess');
+    codeTypeHint.classList.toggle('text-muted', confidence !== 'guess');
     codeTypeHint.style.display = 'block';
 }
 
-function applyDetectedFormat(formatValue, source) {
+// confidence: 'exact' (a real barcode decode/declared format - ZXing camera
+// scan, file-scan decode, or an imported .pkpass's own header) vs 'guess'
+// (an AI vision model's best read of the photo, or a shape heuristic from
+// typed text). Both fill the field, but only 'exact' gets the confident
+// solid-highlight styling; 'guess' gets the same dashed-amber "please
+// review" treatment as markSuggested, because a symbology guess can be
+// wrong in a way a pixel-level decode structurally can't.
+function applyDetectedFormat(formatValue, source, confidence) {
     if (!formatValue || !redeemTypeField) return;
     redeemTypeField.value = formatValue;
     userSelectedType = false; // a definitive scan always wins over an earlier guess
-    markAutoFilled(redeemTypeField);
     const label = codeTypeLabels[formatValue] || formatValue;
-    showCodeTypeHint(`Detected from ${source}: ${label}`);
+    if (confidence === 'guess') {
+        markSuggested(redeemTypeField);
+        showCodeTypeHint(`AI's best guess from ${source}: ${label} - scan the barcode directly for a sure match.`, 'guess');
+    } else {
+        markAutoFilled(redeemTypeField);
+        showCodeTypeHint(`Detected from ${source}: ${label}`);
+    }
 }
 
 // Best-effort guess from the shape of a manually typed/pasted code, used
@@ -238,9 +258,9 @@ if (redeemCodeField) {
         const guess = guessCodeTypeFromValue(redeemCodeField.value);
         if (!guess || !redeemTypeField) return;
         redeemTypeField.value = guess;
-        markAutoFilled(redeemTypeField);
+        markSuggested(redeemTypeField);
         const label = codeTypeLabels[guess] || guess;
-        showCodeTypeHint(`Guessed from the code you typed: ${label} - scan the barcode instead for a sure match.`);
+        showCodeTypeHint(`Guessed from the code you typed: ${label} - scan the barcode instead for a sure match.`, 'guess');
     });
 }
 
@@ -373,6 +393,85 @@ if (startScannerButton) {
 // throws afterwards - matching how the pre-refactor inline version assigned
 // its outer `img` variable as soon as the image loaded, not only on full
 // success.
+// Draws `img` onto an offscreen canvas via `drawFn`, then loads the result
+// back into a fresh <img> - the only way to hand ZXing a pixel-transformed
+// version of a photo (rotated, contrast-stretched) since it decodes from
+// an <img>/<canvas>, not raw pixel arrays.
+function _canvasVariant(img, drawFn) {
+    return new Promise((resolve, reject) => {
+        const canvas = document.createElement('canvas');
+        drawFn(canvas, img);
+        const variant = new Image();
+        variant.onload = () => resolve(variant);
+        variant.onerror = reject;
+        variant.src = canvas.toDataURL('image/png');
+    });
+}
+
+function _rotatedVariant(img, degrees) {
+    return _canvasVariant(img, (canvas, img) => {
+        const ctx = canvas.getContext('2d');
+        if (degrees % 180 === 0) {
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+        } else {
+            canvas.width = img.naturalHeight;
+            canvas.height = img.naturalWidth;
+        }
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(degrees * Math.PI / 180);
+        ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+    });
+}
+
+// Grayscale + min/max contrast stretch - cheap and surprisingly effective
+// against the low-contrast, glare-y phone photos that trip up a barcode
+// decoder (a dim Aztec/QR code photographed under indoor lighting, a
+// ticket print that's gone slightly grey, etc).
+function _contrastVariant(img) {
+    return _canvasVariant(img, (canvas, img) => {
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        const gray = new Uint8ClampedArray(data.length / 4);
+        let min = 255, max = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            const g = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            gray[i / 4] = g;
+            if (g < min) min = g;
+            if (g > max) max = g;
+        }
+        const range = Math.max(max - min, 1);
+        for (let i = 0; i < data.length; i += 4) {
+            const stretched = ((gray[i / 4] - min) / range) * 255;
+            data[i] = data[i + 1] = data[i + 2] = stretched;
+        }
+        ctx.putImageData(imageData, 0, 0);
+    });
+}
+
+async function _decodeAttempt(img, attempts) {
+    let result = null;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+        try {
+            const scanReader = new ZXing.BrowserMultiFormatReader();
+            const hints = new Map();
+            hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+            scanReader.hints = hints;
+            result = await scanReader.decodeFromImageElement(img);
+            break;
+        } catch (error) {
+            if (attempt < attempts) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+    }
+    return result;
+}
+
 async function decodeBarcodeFromImageFile(file, onImageLoaded) {
     const dataUrl = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -393,19 +492,25 @@ async function decodeBarcodeFromImageFile(file, onImageLoaded) {
     }
 
     // Scan twice - ZXing needs warmup
-    let result = null;
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    let result = await _decodeAttempt(img, 2);
+
+    // Real-world phone photos (glare, low light, a sideways shot) can trip
+    // up a first pass. Before giving up, try a handful of cheap pixel
+    // transforms - one attempt each, since these are already enhanced -
+    // rather than falling straight through to the AI's guess.
+    if (!result) {
         try {
-            const scanReader = new ZXing.BrowserMultiFormatReader();
-            const hints = new Map();
-            hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-            scanReader.hints = hints;
-            result = await scanReader.decodeFromImageElement(img);
-            break;
-        } catch (error) {
-            if (attempt < 2) {
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
+            const contrastImg = await _contrastVariant(img);
+            result = await _decodeAttempt(contrastImg, 1);
+        } catch (error) { /* canvas ops can fail on tainted/huge images - just move on */ }
+    }
+    if (!result) {
+        for (const degrees of [90, 180, 270]) {
+            try {
+                const rotatedImg = await _rotatedVariant(img, degrees);
+                result = await _decodeAttempt(rotatedImg, 1);
+                if (result) break;
+            } catch (error) { /* same as above */ }
         }
     }
 
@@ -446,7 +551,7 @@ if (scanFromFileButton && fileInput) {
             const decoded = await decodeBarcodeFromImageFile(file, (loadedImg) => { img = loadedImg; });
 
             if (!decoded.text) {
-                throw new Error("Failed to detect barcode after 2 attempts");
+                throw new Error("Failed to detect barcode after multiple attempts");
             }
 
             // Success! Set the barcode value and type

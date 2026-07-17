@@ -1277,15 +1277,27 @@ def view_doc(request, doc_slug):
     Settings sections - superuser-only since it's only linked from there,
     and rendered locally (see help_docs.py) rather than out to GitHub so
     it's available on a fully offline deployment too.
+
+    Supports an AJAX JSON round-trip (see _wants_json) so the help link can
+    open the guide in an in-page modal instead of navigating away from
+    whatever settings section the admin was reading - the full-page
+    doc_viewer.html render below stays as a fallback for a direct link/
+    bookmark, or if JS is unavailable.
     """
     if not request.user.is_superuser:
+        if _wants_json(request):
+            return JsonResponse({'error': str(_('Only administrators can view setup guides.'))}, status=403)
         messages.error(request, _('Only administrators can view setup guides.'))
         return redirect('show_items')
 
     result = render_doc(doc_slug)
     if result is None:
+        if _wants_json(request):
+            return JsonResponse({'error': str(_('Unknown help topic.'))}, status=404)
         raise Http404('Unknown help topic.')
     title, html = result
+    if _wants_json(request):
+        return JsonResponse({'title': title, 'body_html': html})
     return render(request, 'doc_viewer.html', {'title': title, 'body_html': html})
 
 @login_required

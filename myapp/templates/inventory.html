@@ -1621,16 +1621,22 @@ document.addEventListener("DOMContentLoaded", function () {
 
   document.getElementById('bulkArchiveBtn').addEventListener('click', () => {
     if (selectedIds.size === 0) return;
+    const btn = document.getElementById('bulkArchiveBtn');
+    window.setButtonLoading(btn, true);
     postBulkAction('{% url "bulk_archive_items" %}').then(data => {
-      if (data.success) window.location.reload();
+      if (data.success) { window.location.reload(); return; }
+      window.setButtonLoading(btn, false);
     });
   });
 
   document.getElementById('bulkDeleteBtn').addEventListener('click', () => {
     if (selectedIds.size === 0) return;
     if (!confirm('{% trans "Delete the selected items? This cannot be undone." %}')) return;
+    const btn = document.getElementById('bulkDeleteBtn');
+    window.setButtonLoading(btn, true);
     postBulkAction('{% url "bulk_delete_items" %}').then(data => {
-      if (data.success) window.location.reload();
+      if (data.success) { window.location.reload(); return; }
+      window.setButtonLoading(btn, false);
     });
   });
 
@@ -1638,20 +1644,26 @@ document.addEventListener("DOMContentLoaded", function () {
     if (selectedIds.size === 0) return;
     const tags = document.getElementById('bulkTagInput').value;
     if (!tags.trim()) return;
+    const btn = document.getElementById('bulkTagConfirmBtn');
+    window.setButtonLoading(btn, true);
     postBulkAction('{% url "bulk_tag_items" %}', { tags: tags }).then(data => {
+      if (data.success) { window.location.reload(); return; }
+      window.setButtonLoading(btn, false);
       const modalEl = document.getElementById('bulkTagModal');
       bootstrap.Modal.getInstance(modalEl).hide();
-      if (data.success) window.location.reload();
     });
   });
 
   document.getElementById('bulkMoveConfirmBtn').addEventListener('click', () => {
     if (selectedIds.size === 0) return;
     const walletId = document.getElementById('bulkWalletSelect').value;
+    const btn = document.getElementById('bulkMoveConfirmBtn');
+    window.setButtonLoading(btn, true);
     postBulkAction('{% url "bulk_move_items" %}', { wallet_id: walletId || null }).then(data => {
+      if (data.success) { window.location.reload(); return; }
+      window.setButtonLoading(btn, false);
       const modalEl = document.getElementById('bulkMoveModal');
       bootstrap.Modal.getInstance(modalEl).hide();
-      if (data.success) window.location.reload();
     });
   });
 })();

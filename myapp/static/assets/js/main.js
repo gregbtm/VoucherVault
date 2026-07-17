@@ -251,4 +251,42 @@
     }, 200);
   }
 
+  /**
+   * Page transition fade: a brief fade-out on internal link clicks before
+   * the browser navigates, so page-to-page navigation reads as a
+   * transition rather than a hard reload. This is a classic server-
+   * rendered app, not an SPA, so there's no way to fade the INCOMING page
+   * in too without gating its visibility on JS - the exact class of bug
+   * that made Settings render blank on load (see animations.js). This
+   * only ever touches the page that's leaving.
+   */
+  const prefersReducedMotion = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!prefersReducedMotion) {
+    document.addEventListener('click', (e) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const link = e.target.closest('a[href]');
+      if (!link) return;
+      const rawHref = link.getAttribute('href');
+      // Same-page anchors (jump links, the back-to-top button) aren't a
+      // real navigation - let the browser's native anchor scroll happen.
+      if (!rawHref || rawHref.startsWith('#') || rawHref.startsWith('javascript:')) return;
+      if (link.target && link.target !== '_self') return;
+      if (link.hasAttribute('download') || link.dataset.docUrl || link.hasAttribute('data-bs-toggle') || link.hasAttribute('data-bs-dismiss')) return;
+
+      let url;
+      try {
+        url = new URL(link.href, window.location.href);
+      } catch (err) {
+        return;
+      }
+      if (url.origin !== window.location.origin) return;
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+
+      e.preventDefault();
+      document.body.classList.add('vv-page-leaving');
+      setTimeout(() => { window.location.href = link.href; }, 120);
+    });
+  }
+
 })();

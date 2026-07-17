@@ -479,6 +479,29 @@
         autoDismiss(el);
         return el;
       };
+
+      // Shared helper for any button that fires a fetch() and needs to show
+      // it's working - swaps in a small spinner ahead of the button's own
+      // label/icon and disables it, then restores the original content
+      // exactly as it was. Idempotent: calling with loading=true twice in a
+      // row (or before the first call ever resolves) won't lose the real
+      // original content behind the spinner.
+      window.setButtonLoading = function (btn, loading) {
+        if (!btn) return;
+        if (loading) {
+          if (btn.dataset.loadingOriginalHtml === undefined) {
+            btn.dataset.loadingOriginalHtml = btn.innerHTML;
+          }
+          btn.disabled = true;
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>' + btn.dataset.loadingOriginalHtml;
+        } else {
+          btn.disabled = false;
+          if (btn.dataset.loadingOriginalHtml !== undefined) {
+            btn.innerHTML = btn.dataset.loadingOriginalHtml;
+            delete btn.dataset.loadingOriginalHtml;
+          }
+        }
+      };
     })();
   </script>
 
@@ -512,6 +535,71 @@
 
   <a href="#" class="back-to-top d-flex align-items-center justify-content-center"><i class="bi bi-arrow-up-short"></i></a>
 
+  <!-- Shared help-doc modal - any "?" help link (class="help-link"
+       data-doc-url="...") opens its setup guide here via AJAX instead of
+       navigating away to a full page. See view_doc()/help_docs.py. The
+       link's real href stays a working full-page fallback if JS fails. -->
+  <div class="modal fade" id="helpDocModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="helpDocModalTitle">&nbsp;</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div id="helpDocModalLoading" class="text-center text-muted py-4">
+            <div class="spinner-border spinner-border-sm me-2" role="status"></div>{% trans "Loading..." %}
+          </div>
+          <div id="helpDocModalBody" class="doc-viewer-body" style="display:none;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .doc-viewer-body { max-width: 860px; line-height: 1.6; }
+    .doc-viewer-body h1 { font-size: 1.6rem; margin-top: 0; }
+    .doc-viewer-body h2 { font-size: 1.3rem; margin-top: 1.75rem; }
+    .doc-viewer-body h3 { font-size: 1.1rem; margin-top: 1.5rem; }
+    .doc-viewer-body pre {
+      background: var(--bs-tertiary-bg, #f3f3f3);
+      border: 1px solid var(--border-color, #dee2e6);
+      border-radius: 8px;
+      padding: 0.9rem;
+      overflow-x: auto;
+    }
+    .doc-viewer-body code {
+      background: var(--bs-tertiary-bg, #f3f3f3);
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+    .doc-viewer-body pre code { background: transparent; padding: 0; }
+    .doc-viewer-body table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      display: block;
+      overflow-x: auto;
+    }
+    .doc-viewer-body th, .doc-viewer-body td {
+      border: 1px solid var(--border-color, #dee2e6);
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+    }
+    .doc-viewer-body blockquote {
+      border-left: 3px solid var(--primary-color, #4154f1);
+      margin-left: 0;
+      padding-left: 1rem;
+      color: var(--text-muted, #6c757d);
+    }
+    body.dark-mode .doc-viewer-body pre,
+    body.dark-mode .doc-viewer-body code {
+      background: #2a2b2f;
+      border-color: #3a3b40;
+    }
+  </style>
+
   <!-- Vendor JS Files -->
   <script src="{% static 'assets/vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
   <script src="{% static 'assets/vendor/chart.js/chart.umd.js' %}"></script>
@@ -519,6 +607,51 @@
 
   <!-- Template Main JS File -->
   <script src="{% static 'assets/js/main.js' %}"></script>
+
+  <script>
+    (function () {
+      var modalEl = document.getElementById('helpDocModal');
+      if (!modalEl || !window.bootstrap) return;
+      var modal = new bootstrap.Modal(modalEl);
+      var titleEl = document.getElementById('helpDocModalTitle');
+      var loadingEl = document.getElementById('helpDocModalLoading');
+      var bodyEl = document.getElementById('helpDocModalBody');
+
+      function openHelpDoc(url) {
+        titleEl.textContent = '{% trans "Setup guide" %}';
+        loadingEl.style.display = '';
+        bodyEl.style.display = 'none';
+        bodyEl.innerHTML = '';
+        modal.show();
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+          .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
+          .then(function (result) {
+            loadingEl.style.display = 'none';
+            bodyEl.style.display = '';
+            if (!result.ok) {
+              bodyEl.innerHTML = '<p class="text-danger">' + (result.data.error || '{% trans "Could not load this guide." %}') + '</p>';
+              return;
+            }
+            titleEl.textContent = result.data.title;
+            bodyEl.innerHTML = result.data.body_html;
+          })
+          .catch(function () {
+            loadingEl.style.display = 'none';
+            bodyEl.style.display = '';
+            bodyEl.innerHTML = '<p class="text-danger">{% trans "Could not load this guide - check your connection." %}</p>';
+          });
+      }
+
+      // Delegated so links inside content swapped in later (autosaved
+      // sections, future pages) are picked up with no extra wiring.
+      document.addEventListener('click', function (e) {
+        var link = e.target.closest('.help-link[data-doc-url]');
+        if (!link) return;
+        e.preventDefault();
+        openHelpDoc(link.dataset.docUrl);
+      });
+    })();
+  </script>
 
   <!-- Motion (motion.dev) + site-wide entrance animations -->
   <script src="{% static 'assets/vendor/motion/motion.min.js' %}"></script>
