@@ -3554,7 +3554,11 @@ class UpdateCheckContextProcessorTests(TestCase):
         UpdateCheckStatus.objects.filter(pk=1).update(update_available=False, latest_version='1.0.0')
         self.client.login(username='admin', password='pw12345!')
         response = self.client.get(reverse('site_settings'))
-        self.assertNotContains(response, 'A newer version')
+        # Not a plain assertNotContains(response, 'A newer version') - that
+        # text also appears, inert, inside the "Check for updates now" JS
+        # (see PortainerRedeployBannerTests docstring) so the check needs to
+        # target the server-rendered banner markup specifically.
+        self.assertNotContains(response, 'role="alert" id="update-banner"')
 
     def test_banner_hidden_once_running_version_catches_up_even_with_stale_flag(self):
         # Regression test for a real bug: update_available is only
@@ -3569,7 +3573,7 @@ class UpdateCheckContextProcessorTests(TestCase):
         UpdateCheckStatus.objects.filter(pk=1).update(update_available=True, latest_version='v1.0.0')
         self.client.login(username='admin', password='pw12345!')
         response = self.client.get(reverse('site_settings'))
-        self.assertNotContains(response, 'A newer version')
+        self.assertNotContains(response, 'role="alert" id="update-banner"')
 
 
 class CreateDefaultPeriodicTasksCommandTests(TestCase):
@@ -3772,6 +3776,17 @@ class PortainerRedeployBannerTests(TestCase):
     the Site Settings page next to the update-checker card it's about,
     not as a global banner on every page - see the "Update Check" section
     of site_settings.html.
+
+    Since "Check for updates now" can also build this banner client-side
+    (no page reload - see check-updates-btn's handler), its HTML template
+    lives inline in that JS too, inert until a check actually finds an
+    update. That means literal strings like 'id="redeploy-btn"' or 'A
+    newer version' can legitimately appear in the page source even when
+    nothing is rendered - assertions here target either the actual
+    server-rendered wrapper ('role="alert" id="update-banner"', built via
+    a Django {% if %}, never via the JS template) or the
+    data-redeploy-configured/-url capability flags the JS reads at
+    runtime, not the dead template text itself.
     """
     def setUp(self):
         self.superuser = User.objects.create_superuser(username='admin', password='pw12345!', email='a@example.com')
@@ -3779,16 +3794,32 @@ class PortainerRedeployBannerTests(TestCase):
         self.client.login(username='admin', password='pw12345!')
 
     def test_button_shown_when_configured(self):
-        # "Redeploy now" also appears as static help copy elsewhere on this
-        # page regardless of config, so assert on the actual button element.
         set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
         response = self.client.get(reverse('site_settings'))
-        self.assertContains(response, 'id="redeploy-btn"')
+        self.assertContains(response, 'role="alert" id="update-banner"')
+        self.assertContains(response, 'data-redeploy-configured="1"')
+
+    def test_check_updates_button_always_carries_redeploy_config(self):
+        # "Check for updates now" can discover an update mid-session and
+        # build the banner + Redeploy button itself via JS, with no page
+        # reload - so it needs the webhook config even when no banner was
+        # server-rendered (e.g. no update was known about yet).
+        # update_check_available is derived by comparing latest_version to
+        # the live settings.VERSION (see UpdateCheckContextProcessorTests),
+        # not by trusting this stored boolean - both must match to make the
+        # banner genuinely absent.
+        UpdateCheckStatus.objects.filter(pk=1).update(update_available=False, latest_version='1.0.0')
+        set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
+        response = self.client.get(reverse('site_settings'))
+        content = response.content.decode()
+        self.assertNotIn('role="alert" id="update-banner"', content)  # no banner server-rendered
+        self.assertIn('data-redeploy-configured="1"', content)
+        self.assertIn(f'data-redeploy-url="{reverse("trigger_portainer_redeploy")}"', content)
 
     def test_button_hidden_when_not_configured(self):
         set_site_config(portainer_webhook_url='')
         response = self.client.get(reverse('site_settings'))
-        self.assertNotContains(response, 'id="redeploy-btn"')
+        self.assertNotContains(response, 'data-redeploy-configured="1"')
 
     def test_banner_not_shown_on_other_pages(self):
         set_site_config(portainer_webhook_url='https://portainer.example.com/api/webhooks/abc123')
@@ -4213,6 +4244,22 @@ class HelpDocViewerTests(TestCase):
             self.assertEqual(response.status_code, 200, f'{slug} did not render')
             # Markdown headings should have been converted to real HTML, not left as literal "#" text.
             self.assertContains(response, '<h1', msg_prefix=f'{slug} missing rendered heading')
+
+    def test_ajax_request_returns_json_for_modal(self):
+        """The help-doc modal (base.html) fetches this with X-Requested-With - it
+        must get {title, body_html} JSON, not the full doc_viewer.html page."""
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('view_doc', args=['google-wallet']), HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('Google Wallet', data['title'])
+        self.assertIn('<h1', data['body_html'])
+
+    def test_ajax_unknown_doc_slug_returns_json_404(self):
+        self.client.login(username='admin', password='pw12345!')
+        response = self.client.get(reverse('view_doc', args=['not-a-real-doc']), HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('error', response.json())
 
 
 class OfflineCacheTogglePreferenceTests(TestCase):

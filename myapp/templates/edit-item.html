@@ -1393,7 +1393,7 @@ document.addEventListener("DOMContentLoaded", function () {
           filled.push("{% trans 'code' %}");
         } else if (codeWasEmpty && data.code && redeemCodeField) {
           redeemCodeField.value = data.code;
-          markAutoFilled(redeemCodeField);
+          markSuggested(redeemCodeField);
           filled.push("{% trans 'code' %}");
           codeFromAiGuess = true;
         }
@@ -1401,7 +1401,7 @@ document.addEventListener("DOMContentLoaded", function () {
           applyDetectedFormat(decoded.formatValue, "{% trans 'barcode in photo' %}");
           filled.push("{% trans 'barcode type' %}");
         } else if (codeWasEmpty && data.code_type && typeof applyDetectedFormat === 'function') {
-          applyDetectedFormat(data.code_type, "{% trans 'AI photo scan' %}");
+          applyDetectedFormat(data.code_type, "{% trans 'AI photo scan' %}", 'guess');
           filled.push("{% trans 'barcode type' %}");
         }
 

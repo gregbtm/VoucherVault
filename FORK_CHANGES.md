@@ -116,6 +116,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 83 — Site-wide motion polish (Motion library)](#phase-83--site-wide-motion-polish-motion-library)
 - [Phase 84 — Settings pass: organised, grouped, and explained](#phase-84--settings-pass-organised-grouped-and-explained)
 - [Phase 85 — Fix blank-on-load settings pages + tap-to-view help hints](#phase-85--fix-blank-on-load-settings-pages--tap-to-view-help-hints)
+- [Phase 86 — Scan confidence, in-page help, and site-wide polish](#phase-86--scan-confidence-in-page-help-and-site-wide-polish)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4451,6 +4452,63 @@ respond to a tap at all.
   their entrance fade immediately without any scroll and reach full
   opacity within its ~300ms duration; tapping a help icon shows its
   tooltip. Full suite: 820 tests, 0 failures, 0 errors.
+
+## Phase 86 — Scan confidence, in-page help, and site-wide polish
+
+Prompted by a real scanned train ticket that came back as a QR code
+when it was actually printed as an Aztec code. Aztec Code turned out
+to already be fully supported end-to-end (dropdown option, a real
+ZXing barcode decode on both the camera/file-scan buttons and the "Scan
+with AI" flow, and server-side rendering via treepoem) - the gap was
+that a vision-model guess and a pixel-level decode looked identical in
+the UI, so there was no way to tell which one you'd gotten.
+
+- **Barcode decode is more persistent before falling back to a guess**
+  - real phone photos (glare, low light, a sideways shot) can trip up
+  a first pass. Before handing off to the AI's guess, the decoder now
+  tries a contrast-stretched version of the photo, then each 90°
+  rotation, instead of giving up after two identical attempts.
+- **Redeem code and barcode type now show whether they're a fact or a
+  guess** - a real barcode decode (camera scan, file scan, or an
+  imported .pkpass's own header) still gets the confident solid
+  highlight; an AI vision guess or a shape-based guess from typed text
+  now gets the same dashed-amber "please review" styling already used
+  elsewhere for suggested values, plus a hint explaining it's a guess
+  and to scan the actual barcode for a sure match. Fixed a real bug
+  along the way: the two highlight styles didn't clear each other, so
+  re-scanning a field that had already been guess-filled could stack
+  both classes at once.
+- **Help/setup guides open in a modal, not a new tab** - the "?" links
+  on Site Settings (OCR, Apple/Google Wallet, auto-deploy, backups,
+  upstream sync) now fetch their guide via AJAX and show it in an
+  in-page modal, instead of leaving the settings you were reading to
+  land on a whole separate page. The full-page view (`/admin-tools/
+  help/<slug>/`) still works as a direct link/bookmark fallback.
+- **The update-available banner and its Redeploy button now appear
+  live** - clicking "Check for updates now" and discovering a new
+  release used to update the version text in place but never show the
+  banner or Redeploy button unless you reloaded the page. Both now get
+  built and inserted the moment a check finds something, no reload.
+- **Loading spinners on buttons that fire a request** - "Check for
+  updates now", "Check now" (Upstream Sync), and the Inventory bulk-
+  action buttons (archive/delete/tag/move) now show a small spinner
+  and disable themselves while their request is in flight, instead of
+  giving no feedback until the page changes.
+- **A brief fade on page navigation** - clicking an internal link
+  fades the current page out for ~120ms before the browser navigates,
+  so moving between pages reads as a transition rather than a hard
+  reload. Deliberately one-directional (only the page you're leaving
+  fades) - fading the incoming page in too would mean gating its
+  visibility on JS, the exact class of bug that made Settings render
+  blank on load in Phase 85.
+- Full suite: 823 tests, 0 failures, 0 errors. Live-verified: barcode
+  confidence styling (both exact and guess states, including the
+  stacking-bug fix) and its hint text, the help-doc modal opening in
+  place without navigating away and rendering real content, the
+  redeploy banner + button appearing via a mocked "check for updates"
+  response with zero page reload, and a button spinner engaging and
+  cleanly clearing itself around a delayed response - all via real
+  browser interaction, not just template string matching.
 
 ## New environment variables
 

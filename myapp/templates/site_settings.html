@@ -135,7 +135,7 @@
             <div class="settings-section">
               <h6 class="text-muted mb-3">
                 <i class="bi bi-camera me-2"></i>{% trans "Scan with AI (OCR)" %}
-                <a href="{% url 'view_doc' 'ocr' %}" target="_blank" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
+                <a href="{% url 'view_doc' 'ocr' %}" data-doc-url="{% url 'view_doc' 'ocr' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
               </h6>
               <div class="row">
                 <div class="col-md-4 mb-3">
@@ -183,7 +183,7 @@
             <div class="settings-section">
               <h6 class="text-muted mb-3">
                 <i class="bi bi-apple me-2"></i>{% trans "Apple Wallet (.pkpass)" %}
-                <a href="{% url 'view_doc' 'apple-wallet' %}" target="_blank" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
+                <a href="{% url 'view_doc' 'apple-wallet' %}" data-doc-url="{% url 'view_doc' 'apple-wallet' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
                 {% if integration_status.pkpass %}
                   {% if integration_status.pkpass.ready %}
                     <span class="badge bg-success ms-2"><i class="bi bi-check-circle me-1"></i>{% trans "Ready" %}</span>
@@ -230,7 +230,7 @@
             <div class="settings-section">
               <h6 class="text-muted mb-3">
                 <i class="bi bi-google me-2"></i>{% trans "Google Wallet" %}
-                <a href="{% url 'view_doc' 'google-wallet' %}" target="_blank" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
+                <a href="{% url 'view_doc' 'google-wallet' %}" data-doc-url="{% url 'view_doc' 'google-wallet' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
                 {% if integration_status.google_wallet %}
                   {% if integration_status.google_wallet.ready %}
                     <span class="badge bg-success ms-2"><i class="bi bi-check-circle me-1"></i>{% trans "Ready" %}</span>
@@ -262,7 +262,7 @@
             <div class="settings-section">
               <h6 class="text-muted mb-3">
                 <i class="bi bi-arrow-repeat me-2"></i>{% trans "Update Check" %}
-                <a href="{% url 'view_doc' 'auto-deploy' %}" target="_blank" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
+                <a href="{% url 'view_doc' 'auto-deploy' %}" data-doc-url="{% url 'view_doc' 'auto-deploy' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
               </h6>
               {% if update_check_available %}
                 <div class="alert alert-info alert-dismissible shadow-sm rounded-3 p-3 mb-3" role="alert" id="update-banner">
@@ -322,7 +322,10 @@
               <p class="text-muted small mb-2" id="update-check-release-link" {% if not update_check_status.latest_release_url %}style="display:none;"{% endif %}>
                 <a href="{{ update_check_status.latest_release_url }}" target="_blank" rel="noopener"><i class="bi bi-file-earmark-diff me-1"></i>{% trans "View what's changed in the latest release" %}</a>
               </p>
-              <button type="button" id="check-updates-btn" class="btn btn-sm btn-outline-secondary" data-url="{% url 'trigger_update_check' %}">
+              <button type="button" id="check-updates-btn" class="btn btn-sm btn-outline-secondary"
+                      data-url="{% url 'trigger_update_check' %}"
+                      data-redeploy-configured="{{ portainer_redeploy_configured|yesno:'1,' }}"
+                      data-redeploy-url="{% url 'trigger_portainer_redeploy' %}">
                 {% trans "Check for updates now" %}
               </button>
             </div>
@@ -330,7 +333,7 @@
             <div class="settings-section">
               <h6 class="text-muted mb-3">
                 <i class="bi bi-cloud-arrow-up me-2"></i>{% trans "Portainer Redeploy Webhook" %}
-                <a href="{% url 'view_doc' 'auto-deploy' %}" target="_blank" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
+                <a href="{% url 'view_doc' 'auto-deploy' %}" data-doc-url="{% url 'view_doc' 'auto-deploy' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
                 {% if config.portainer_webhook_url %}
                   <span class="badge bg-success ms-2"><i class="bi bi-check-circle me-1"></i>{% trans "Configured" %}</span>
                 {% else %}
@@ -351,7 +354,7 @@
             <div class="settings-section">
               <h6 class="text-muted mb-3">
                 <i class="bi bi-signpost-split me-2"></i>{% trans "Upstream Sync" %}
-                <a href="{% url 'view_doc' 'upstream-sync' %}" target="_blank" class="help-link" title="{% trans 'How upstream sync works' %}"><i class="bi bi-question-circle"></i></a>
+                <a href="{% url 'view_doc' 'upstream-sync' %}" data-doc-url="{% url 'view_doc' 'upstream-sync' %}" class="help-link" title="{% trans 'How upstream sync works' %}"><i class="bi bi-question-circle"></i></a>
               </h6>
               <p class="text-muted small mb-2">
                 {% trans "Informational only - tracks the upstream project this fork is based on. Doesn't affect this app's behaviour." %}
@@ -400,7 +403,7 @@
             <div class="settings-section">
               <h6 class="text-muted mb-3">
                 <i class="bi bi-archive me-2"></i>{% trans "Scheduled Local Backups" %}
-                <a href="{% url 'view_doc' 'backup-restore' %}" target="_blank" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
+                <a href="{% url 'view_doc' 'backup-restore' %}" data-doc-url="{% url 'view_doc' 'backup-restore' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
               </h6>
               <div class="form-check mb-2">
                 {{ form.scheduled_backup_enabled }}
@@ -556,8 +559,13 @@ document.addEventListener('DOMContentLoaded', function () {
   // button + fetch, not a <form>, since this banner now lives inside
   // #site-settings-form - a nested <form> here would hit the exact bug
   // test_check_updates_control_is_not_a_nested_form guards against below.
-  var redeployBtn = document.getElementById('redeploy-btn');
-  if (redeployBtn) {
+  //
+  // Wired as a named function, not a one-off getElementById at page load,
+  // because the banner (and this button) can also appear later - built by
+  // the "Check for updates now" handler below when a check discovers an
+  // update mid-session, with no page reload to re-run inline script setup.
+  function wireRedeployButton(redeployBtn) {
+    if (!redeployBtn) return;
     redeployBtn.addEventListener('click', function () {
       if (!confirm('{% trans "This rebuilds and restarts the app container now. Continue?" %}')) return;
 
@@ -613,22 +621,26 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
   }
+  wireRedeployButton(document.getElementById('redeploy-btn'));
 
   // "Check for updates now" hits GitHub Releases and updates the version/
   // connectivity display in place via fetch - no page reload, matching
-  // the rest of this page's autosave-and-toast behavior.
+  // the rest of this page's autosave-and-toast behavior. If the check
+  // discovers an update that wasn't already known when the page rendered,
+  // the banner + Redeploy button are built and inserted here too - they
+  // used to only ever appear after a manual page reload.
   var checkUpdatesBtn = document.getElementById('check-updates-btn');
   if (checkUpdatesBtn) {
     checkUpdatesBtn.addEventListener('click', function () {
       var csrfInput = document.querySelector('input[name=csrfmiddlewaretoken]');
-      checkUpdatesBtn.disabled = true;
+      window.setButtonLoading(checkUpdatesBtn, true);
       fetch(checkUpdatesBtn.dataset.url, {
         method: 'POST',
         headers: { 'X-CSRFToken': csrfInput.value, 'X-Requested-With': 'XMLHttpRequest' },
       })
         .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
         .then(function (result) {
-          checkUpdatesBtn.disabled = false;
+          window.setButtonLoading(checkUpdatesBtn, false);
           if (!result.ok) {
             window.showToast(result.data.error || '{% trans "Check failed." %}', 'danger');
             return;
@@ -660,10 +672,38 @@ document.addEventListener('DOMContentLoaded', function () {
             releaseLinkEl.style.display = 'none';
           }
 
+          // Rebuild from scratch rather than patching an existing banner's
+          // text in place - simpler, and correctly handles every case (no
+          // banner yet, a stale one showing an older version, or one that
+          // needs to disappear because the answer flipped to "up to date").
+          var existingBanner = document.getElementById('update-banner');
+          if (existingBanner) existingBanner.remove();
+          if (data.update_available) {
+            var redeployConfigured = !!checkUpdatesBtn.dataset.redeployConfigured;
+            var banner = document.createElement('div');
+            banner.className = 'alert alert-info alert-dismissible shadow-sm rounded-3 p-3 mb-3';
+            banner.setAttribute('role', 'alert');
+            banner.id = 'update-banner';
+            banner.innerHTML =
+              '<strong class="me-2">ℹ️</strong>' +
+              '{% trans "A newer version" %} (' + data.latest_version + ') {% trans "is available." %}' +
+              ' <a href="' + data.latest_release_url + '" target="_blank" rel="noopener">{% trans "View release" %}</a>' +
+              (redeployConfigured
+                ? ' <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="redeploy-btn" data-url="' + checkUpdatesBtn.dataset.redeployUrl + '">{% trans "Redeploy now" %}</button>' +
+                  '<div id="redeploy-progress" class="mt-2" style="display:none;">' +
+                  '<div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>' +
+                  '<span id="redeploy-progress-text">{% trans "Redeploying - this can take a couple of minutes. The app will be briefly unavailable, then this page will reload automatically." %}</span>' +
+                  '</div>'
+                : '') +
+              '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>';
+            checkUpdatesBtn.closest('.settings-section').querySelector('h6').insertAdjacentElement('afterend', banner);
+            wireRedeployButton(document.getElementById('redeploy-btn'));
+          }
+
           window.showToast(data.message, 'success');
         })
         .catch(function () {
-          checkUpdatesBtn.disabled = false;
+          window.setButtonLoading(checkUpdatesBtn, false);
           window.showToast('{% trans "Check failed - could not reach the server." %}', 'danger');
         });
     });
@@ -677,14 +717,14 @@ document.addEventListener('DOMContentLoaded', function () {
   if (checkUpstreamBtn) {
     checkUpstreamBtn.addEventListener('click', function () {
       var csrfInput = document.querySelector('input[name=csrfmiddlewaretoken]');
-      checkUpstreamBtn.disabled = true;
+      window.setButtonLoading(checkUpstreamBtn, true);
       fetch(checkUpstreamBtn.dataset.url, {
         method: 'POST',
         headers: { 'X-CSRFToken': csrfInput.value, 'X-Requested-With': 'XMLHttpRequest' },
       })
         .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
         .then(function (result) {
-          checkUpstreamBtn.disabled = false;
+          window.setButtonLoading(checkUpstreamBtn, false);
           if (!result.ok) {
             window.showToast(result.data.error || '{% trans "Check failed." %}', 'danger');
             return;
@@ -726,7 +766,7 @@ document.addEventListener('DOMContentLoaded', function () {
           window.showToast(data.message, 'success');
         })
         .catch(function () {
-          checkUpstreamBtn.disabled = false;
+          window.setButtonLoading(checkUpstreamBtn, false);
           window.showToast('{% trans "Check failed - could not reach the server." %}', 'danger');
         });
     });
