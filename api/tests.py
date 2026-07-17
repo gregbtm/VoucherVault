@@ -860,6 +860,39 @@ class OCRExtractApiTests(APITestCase):
         response = self.client.post('/api/v1/ocr/extract/', {'image': _tiny_image_upload()}, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
 
+    @patch('api.views.get_backend')
+    def test_learned_corrections_heal_the_extraction(self, mock_get_backend):
+        from myapp.models import ScanFieldCorrection
+        ScanFieldCorrection.objects.create(
+            user=self.alice, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail',
+        )
+        mock_backend = MagicMock()
+        mock_backend.extract.return_value = {
+            'code': 'AABXF39DNGF', 'code_type': 'qrcode', 'issuer': 'Nationl Rail',
+            'type': 'travelpass', 'confidence': 0.9,
+        }
+        mock_get_backend.return_value = mock_backend
+
+        set_site_config(ocr_backend='claude')
+        response = self.client.post('/api/v1/ocr/extract/', {'image': _tiny_image_upload()}, format='multipart')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['issuer'], 'National Rail')
+        self.assertEqual(response.data['healed_fields'], ['issuer'])
+
+    @patch('api.views.get_backend')
+    def test_no_corrections_means_empty_healed_fields(self, mock_get_backend):
+        mock_backend = MagicMock()
+        mock_backend.extract.return_value = {'code': 'X', 'issuer': 'Acme', 'confidence': 0.9}
+        mock_get_backend.return_value = mock_backend
+
+        set_site_config(ocr_backend='claude')
+        response = self.client.post('/api/v1/ocr/extract/', {'image': _tiny_image_upload()}, format='multipart')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['healed_fields'], [])
+
 
 class PkpassApiTests(APITestCase):
     def setUp(self):

@@ -167,6 +167,18 @@ function markAutoFilled(el) {
     el.addEventListener('change', clear, { once: true });
 }
 
+// Same review-me lifecycle as markAutoFilled, but for values guessed from
+// the user's own recent activity rather than read off the photo - styled
+// deliberately weaker (.suggested-fill, dashed amber) so the two kinds of
+// prefill are never mistaken for one another.
+function markSuggested(el) {
+    if (!el) return;
+    el.classList.add('suggested-fill');
+    const clear = () => el.classList.remove('suggested-fill');
+    el.addEventListener('input', clear, { once: true });
+    el.addEventListener('change', clear, { once: true });
+}
+
 // On the edit-item form, redeemCodeField/redeemTypeField start out already
 // populated with the item's real, presumably-correct values - unlike
 // create-item, where they start empty. Auto-detection (the typed-code

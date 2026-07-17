@@ -382,6 +382,37 @@ class Item(models.Model):
     def __str__(self):
         return self.name
 
+class ScanFieldCorrection(models.Model):
+    """
+    One user's remembered correction to an AI photo-scan field: "the scan
+    said `ai_value` for `field`, and I changed it to `corrected_value`
+    before saving". Recorded automatically on item save (see
+    myapp/scan_learning.py) and replayed against future scan results, so
+    a correction only ever has to be made once - e.g. an operator name
+    the model keeps misreading, or a barcode symbology it keeps calling
+    "qrcode" when this user's train tickets are really Aztec codes.
+
+    ai_value == '' means "the scan left this field blank and the user
+    filled it in" - those are replayed more cautiously (only after being
+    seen twice, and only for the same item type) since a blank can be
+    filled with something item-specific once without it being a pattern.
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='scan_corrections')
+    item_type = models.CharField(max_length=100, blank=True, default='')
+    field = models.CharField(max_length=50)
+    ai_value = models.CharField(max_length=255, blank=True, default='')
+    corrected_value = models.CharField(max_length=255)
+    times_seen = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'item_type', 'field', 'ai_value')
+
+    def __str__(self):
+        shown = self.ai_value or '(blank)'
+        return f'{self.field}: {shown} -> {self.corrected_value}'
+
+
 def document_upload_path(instance, filename):
     safe_name = os.path.basename(filename)
     username = str(instance.item.user)

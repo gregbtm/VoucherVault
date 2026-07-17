@@ -31,7 +31,8 @@ from .merchant_logos import (
 )
 from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
 from .imagehash import compute_dhash, hamming_distance
-from .models import AppSettings, Document, Item, ItemPublicShare, MerchantProfile, SiteConfiguration, Tag, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, Wallet
+from .models import AppSettings, Document, Item, ItemPublicShare, MerchantProfile, ScanFieldCorrection, SiteConfiguration, Tag, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, Wallet
+from .scan_learning import apply_learned_corrections, record_scan_corrections
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .test_utils import set_site_config
 from .tasks import check_for_update_task, check_upstream_version_task, fetch_merchant_logo_task
@@ -443,6 +444,27 @@ class SuggestItemFieldsTests(TestCase):
         self.assertEqual(data['currency'], 'EUR')
         self.assertEqual(data['wallet_id'], str(wallet.id))
 
+    def test_habitual_issuer_beats_a_one_off_newer_item(self):
+        # Two older "National Rail" tickets vs one newer "Greater Anglia"
+        # one-off: the habit wins, and the companion fields come from the
+        # newest National Rail item so the suggestion stays coherent.
+        for index, name in enumerate(['A', 'B']):
+            item = Item.objects.create(
+                type='giftcard', name=name, issuer='National Rail', redeem_code=f'NR{index}',
+                expiry_date=date.today(), value=Decimal('1.00'), currency='GBP', user=self.user,
+                logo_slug='nationalrail.co.uk',
+            )
+            Item.objects.filter(pk=item.pk).update(created_at=timezone.now() - timedelta(days=2 - index))
+        Item.objects.create(
+            type='giftcard', name='One-off', issuer='Greater Anglia', redeem_code='GA1',
+            expiry_date=date.today(), value=Decimal('1.00'), currency='GBP', user=self.user,
+        )
+
+        response = self.client.get(reverse('suggest_item_fields'), {'type': 'giftcard'})
+        data = response.json()
+        self.assertEqual(data['issuer'], 'National Rail')
+        self.assertEqual(data['logo_slug'], 'nationalrail.co.uk')
+
     def test_returns_empty_when_no_items_of_that_type_exist(self):
         response = self.client.get(reverse('suggest_item_fields'), {'type': 'coupon'})
         self.assertEqual(response.status_code, 200)
@@ -464,6 +486,175 @@ class SuggestItemFieldsTests(TestCase):
         self.client.logout()
         response = self.client.get(reverse('suggest_item_fields'), {'type': 'giftcard'})
         self.assertNotEqual(response.status_code, 200)
+
+
+class ScanLearningTests(TestCase):
+    """
+    myapp/scan_learning.py - the self-healing loop between an AI scan's
+    raw extraction (snapshot) and what the user actually saved.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def _item(self, **overrides):
+        defaults = dict(
+            type='travelpass', name='HAP to LON', issuer='National Rail',
+            redeem_code='RAIL1', expiry_date=date.today(), value=Decimal('0.00'),
+            currency='GBP', user=self.user,
+        )
+        defaults.update(overrides)
+        return Item.objects.create(**defaults)
+
+    def test_correction_recorded_when_user_changes_a_scanned_value(self):
+        item = self._item(issuer='National Rail')
+        record_scan_corrections(self.user, {'issuer': 'Nationl Rail'}, item)
+        correction = ScanFieldCorrection.objects.get(user=self.user, field='issuer')
+        self.assertEqual(correction.ai_value, 'Nationl Rail')
+        self.assertEqual(correction.corrected_value, 'National Rail')
+        self.assertEqual(correction.times_seen, 1)
+
+    def test_repeat_of_same_correction_increments_times_seen(self):
+        item = self._item()
+        record_scan_corrections(self.user, {'issuer': 'Nationl Rail'}, item)
+        record_scan_corrections(self.user, {'issuer': 'Nationl Rail'}, item)
+        correction = ScanFieldCorrection.objects.get(user=self.user, field='issuer')
+        self.assertEqual(correction.times_seen, 2)
+
+    def test_keeping_the_scanned_value_retires_a_stale_correction(self):
+        item = self._item(issuer='Nationl Rail')
+        # Previously corrected "Nationl Rail" -> "National Rail"...
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail',
+        )
+        # ...but this time the user saved the scanned value untouched.
+        record_scan_corrections(self.user, {'issuer': 'Nationl Rail'}, item)
+        self.assertFalse(ScanFieldCorrection.objects.filter(user=self.user, field='issuer').exists())
+
+    def test_unchanged_matching_values_record_nothing(self):
+        item = self._item(issuer='National Rail')
+        record_scan_corrections(self.user, {'issuer': 'National Rail'}, item)
+        self.assertFalse(ScanFieldCorrection.objects.exists())
+
+    def test_apply_heals_a_previously_corrected_value(self):
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail',
+        )
+        result = {'issuer': 'Nationl Rail', 'type': 'travelpass'}
+        healed = apply_learned_corrections(self.user, result)
+        self.assertEqual(result['issuer'], 'National Rail')
+        self.assertEqual(healed, ['issuer'])
+
+    def test_apply_matches_ai_value_case_insensitively(self):
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='nationl rail', corrected_value='National Rail',
+        )
+        result = {'issuer': 'NATIONL RAIL', 'type': 'travelpass'}
+        self.assertEqual(apply_learned_corrections(self.user, result), ['issuer'])
+        self.assertEqual(result['issuer'], 'National Rail')
+
+    def test_blank_fill_needs_two_sightings_before_it_replays(self):
+        item = self._item(issuer='National Rail')
+        record_scan_corrections(self.user, {'issuer': None}, item)
+
+        result = {'issuer': None, 'type': 'travelpass'}
+        self.assertEqual(apply_learned_corrections(self.user, result), [])
+        self.assertIsNone(result['issuer'])
+
+        record_scan_corrections(self.user, {'issuer': None}, item)
+        result = {'issuer': None, 'type': 'travelpass'}
+        self.assertEqual(apply_learned_corrections(self.user, result), ['issuer'])
+        self.assertEqual(result['issuer'], 'National Rail')
+
+    def test_blank_fill_requires_matching_item_type(self):
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='', corrected_value='National Rail', times_seen=5,
+        )
+        result = {'issuer': None, 'type': 'giftcard'}
+        self.assertEqual(apply_learned_corrections(self.user, result), [])
+        self.assertIsNone(result['issuer'])
+
+    def test_apply_rejects_invalid_choice_values(self):
+        # A correction whose stored value is no longer a legal choice for
+        # the field (here: a type that doesn't exist) must never replay.
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='type',
+            ai_value='giftcard', corrected_value='not-a-real-type',
+        )
+        result = {'type': 'giftcard'}
+        self.assertEqual(apply_learned_corrections(self.user, result), [])
+        self.assertEqual(result['type'], 'giftcard')
+
+    def test_apply_heals_type_first_so_blank_fills_use_corrected_type(self):
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', field='type',
+            ai_value='giftcard', corrected_value='travelpass',
+        )
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='', corrected_value='National Rail', times_seen=2,
+        )
+        result = {'type': 'giftcard', 'issuer': None}
+        healed = apply_learned_corrections(self.user, result)
+        self.assertEqual(result['type'], 'travelpass')
+        self.assertEqual(result['issuer'], 'National Rail')
+        self.assertEqual(set(healed), {'type', 'issuer'})
+
+    def test_corrections_are_scoped_per_user(self):
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        ScanFieldCorrection.objects.create(
+            user=bob, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail',
+        )
+        result = {'issuer': 'Nationl Rail', 'type': 'travelpass'}
+        self.assertEqual(apply_learned_corrections(self.user, result), [])
+        self.assertEqual(result['issuer'], 'Nationl Rail')
+
+    def test_travel_time_correction_round_trip(self):
+        item = self._item(travel_time=time(9, 14))
+        record_scan_corrections(self.user, {'travel_time': '09:41'}, item)
+        result = {'travel_time': '09:41', 'type': 'travelpass'}
+        self.assertEqual(apply_learned_corrections(self.user, result), ['travel_time'])
+        self.assertEqual(result['travel_time'], '09:14')
+
+    def test_new_correction_for_same_ai_value_replaces_old_and_resets_count(self):
+        item = self._item(issuer='National Rail')
+        record_scan_corrections(self.user, {'issuer': 'Ntnl Rail'}, item)
+        record_scan_corrections(self.user, {'issuer': 'Ntnl Rail'}, item)
+        item.issuer = 'Greater Anglia'
+        item.save()
+        record_scan_corrections(self.user, {'issuer': 'Ntnl Rail'}, item)
+        correction = ScanFieldCorrection.objects.get(user=self.user, field='issuer')
+        self.assertEqual(correction.corrected_value, 'Greater Anglia')
+        self.assertEqual(correction.times_seen, 1)
+
+    def test_create_item_view_records_snapshot_corrections(self):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.post(reverse('create_item'), {
+            'type': 'travelpass', 'name': 'HAP to LON', 'issuer': 'National Rail',
+            'redeem_code': 'RAIL9', 'code_type': 'qrcode', 'value_type': 'money',
+            'currency': 'GBP', 'expiry_date': date.today().isoformat(),
+            'journey_origin': 'Hatfield Peverel', 'journey_destination': 'London Terminals',
+            'ai_scan_snapshot': json.dumps({'issuer': 'Nationl Rail', 'type': 'travelpass'}),
+        })
+        self.assertRedirects(response, reverse('show_items'))
+        correction = ScanFieldCorrection.objects.get(user=self.user, field='issuer')
+        self.assertEqual(correction.corrected_value, 'National Rail')
+
+    def test_create_item_view_tolerates_garbled_snapshot(self):
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.post(reverse('create_item'), {
+            'type': 'voucher', 'name': 'Fine', 'issuer': 'Acme', 'redeem_code': 'OK1',
+            'value': '5.00', 'currency': 'GBP', 'code_type': 'qrcode', 'value_type': 'money',
+            'issue_date': date.today().isoformat(),
+            'ai_scan_snapshot': 'not-json-at-all',
+        })
+        self.assertRedirects(response, reverse('show_items'))
+        self.assertFalse(ScanFieldCorrection.objects.exists())
 
 
 class NoBarcodeCodeTypeTests(TestCase):

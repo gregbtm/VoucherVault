@@ -15,6 +15,7 @@ from .ics_calendar import build_ics_calendar
 from .models import *
 from .utils import generate_code_image_base64, get_fixer_rates, convert_currency, levenshtein_distance
 from .imagehash import compute_dhash, hamming_distance
+from .scan_learning import record_scan_corrections
 from django.db.models import Sum
 from django.utils import timezone
 from django.http import Http404, JsonResponse
@@ -485,6 +486,24 @@ def _known_issuers(user):
         .values_list('issuer', flat=True).distinct()
     )
 
+def _record_scan_learning(request, item):
+    """
+    If this save round-tripped through an AI photo scan (the form JS
+    captures the raw extraction into ai_scan_snapshot), diff it against
+    what was actually saved so future scans can self-correct - see
+    myapp/scan_learning.py. A missing/garbled snapshot just means nothing
+    to learn from.
+    """
+    snapshot_raw = request.POST.get('ai_scan_snapshot', '')
+    if not snapshot_raw:
+        return
+    try:
+        snapshot = json.loads(snapshot_raw)
+    except (ValueError, TypeError):
+        return
+    record_scan_corrections(request.user, snapshot, item)
+
+
 @login_required
 def create_item(request):
     if request.method == 'POST':
@@ -530,6 +549,7 @@ def create_item(request):
                     logger.warning('Could not queue merchant logo fetch for %r', item.issuer, exc_info=True)
 
             remember_balance_check_url(item.issuer, item.balance_check_url)
+            _record_scan_learning(request, item)
             notify_item_created(item)
 
             return redirect('show_items')
@@ -598,6 +618,7 @@ def edit_item(request, item_uuid):
                     logger.warning('Could not queue merchant logo fetch for %r', item.issuer, exc_info=True)
 
             remember_balance_check_url(item.issuer, item.balance_check_url)
+            _record_scan_learning(request, item)
             _queue_google_wallet_update(item)
 
             return redirect('view_item', item_uuid=item.id)
@@ -630,18 +651,37 @@ def suggest_item_fields(request):
     scan of the same kind of ticket/card doesn't need everything retyped.
     """
     item_type = request.GET.get('type', '')
-    latest = (
+    recent = list(
         Item.objects.filter(user=request.user, type=item_type, created_at__isnull=False)
-        .order_by('-created_at')
-        .first()
+        .order_by('-created_at')[:10]
     )
-    if not latest:
+    if not recent:
         return JsonResponse({})
+
+    # "Recent activity" means a habit, not just the single latest item: the
+    # suggested issuer is the one appearing most often across the last 10
+    # items of this type (ties broken by recency), so one odd one-off
+    # doesn't hijack the suggestion. The companion fields (logo, wallet,
+    # currency) then come from the newest item with that issuer, keeping
+    # the suggestion internally consistent rather than a Frankenstein of
+    # unrelated items.
+    counts = {}
+    for item in recent:
+        key = item.issuer.strip().lower()
+        if key:
+            counts[key] = counts.get(key, 0) + 1
+    source = recent[0]
+    if counts:
+        modal_issuer = max(counts, key=lambda key: (counts[key], -next(
+            index for index, item in enumerate(recent) if item.issuer.strip().lower() == key
+        )))
+        source = next(item for item in recent if item.issuer.strip().lower() == modal_issuer)
+
     return JsonResponse({
-        'issuer': latest.issuer or None,
-        'logo_slug': latest.logo_slug or None,
-        'wallet_id': str(latest.wallet_id) if latest.wallet_id else None,
-        'currency': latest.currency or None,
+        'issuer': source.issuer or None,
+        'logo_slug': source.logo_slug or None,
+        'wallet_id': str(source.wallet_id) if source.wallet_id else None,
+        'currency': source.currency or None,
     })
 
 @require_GET

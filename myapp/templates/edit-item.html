@@ -154,6 +154,55 @@
   border-color: var(--primary-color, #4154f1);
 }
 
+/* Suggested from the user's own recent activity, not read off the photo -
+   deliberately weaker-looking than .auto-filled (dashed, amber) so "the
+   scan read this" and "we guessed this from your history" never look
+   like the same level of confidence. */
+.modern-input.suggested-fill,
+.modern-select.suggested-fill {
+  background: rgba(255, 193, 7, 0.08);
+  border: 1px dashed #d39e00;
+}
+
+/* Post-scan status chips - one pill per kind of fill, replacing the old
+   run-on sentence. */
+.scan-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
+  margin: 0.15rem 0.25rem 0.15rem 0;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  white-space: normal;
+}
+.scan-chip-filled {
+  background: rgba(25, 135, 84, 0.12);
+  color: #146c43;
+}
+.scan-chip-suggested {
+  background: rgba(255, 193, 7, 0.15);
+  color: #997404;
+}
+.scan-chip-learned {
+  background: rgba(111, 66, 193, 0.12);
+  color: #59359a;
+}
+.scan-chip-empty {
+  background: rgba(108, 117, 125, 0.12);
+  color: #6c757d;
+}
+body.dark-mode .scan-chip-filled { background: rgba(25, 135, 84, 0.25); color: #75d9a6; }
+body.dark-mode .scan-chip-suggested { background: rgba(255, 193, 7, 0.2); color: #ffd75e; }
+body.dark-mode .scan-chip-learned { background: rgba(111, 66, 193, 0.28); color: #c5a3ff; }
+body.dark-mode .scan-chip-empty { background: rgba(108, 117, 125, 0.25); color: #adb5bd; }
+body.dark-mode .modern-input.suggested-fill,
+body.dark-mode .modern-select.suggested-fill {
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px dashed #b8860b;
+}
+
 .modern-textarea {
   resize: vertical;
   min-height: 100px;
@@ -839,6 +888,10 @@ body.dark-mode .error-alert {
                 </button>
               </div>
               <input type="hidden" id="value_type" name="value_type" value="{{ item.value_type }}">
+              {# Raw AI-scan extraction, captured at scan time so the server
+                 can diff it against what actually gets saved and learn from
+                 the user's corrections (myapp/scan_learning.py). #}
+              <input type="hidden" id="ai_scan_snapshot" name="ai_scan_snapshot" value="">
             </div>
 
             <div class="form-group" id="currency-field">
@@ -1473,10 +1526,25 @@ document.addEventListener("DOMContentLoaded", function () {
           }
         }
 
+        // Capture the raw extraction so the server can diff it against
+        // what actually gets saved and learn from any corrections.
+        const snapshotField = document.getElementById('ai_scan_snapshot');
+        if (snapshotField) {
+          snapshotField.value = JSON.stringify({
+            issuer: data.issuer, logo_slug: data.logo_slug, currency: data.currency,
+            type: data.type, code_type: data.code_type,
+            journey_origin: data.journey_origin, journey_destination: data.journey_destination,
+            travel_time: data.travel_time,
+          });
+        }
+
         if (filled.length) {
-          statusEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> {% trans "Filled from photo:" %} ${filled.join(', ')}</span>`;
+          statusEl.innerHTML = `<span class="scan-chip scan-chip-filled"><i class="bi bi-stars"></i> {% trans "Filled from photo:" %} ${filled.join(', ')}</span>`;
         } else {
-          statusEl.innerHTML = '<span class="text-muted">{% trans "Nothing could be confidently read from that photo." %}</span>';
+          statusEl.innerHTML = '<span class="scan-chip scan-chip-empty"><i class="bi bi-eye-slash"></i> {% trans "Nothing could be confidently read from that photo." %}</span>';
+        }
+        if (data.healed_fields && data.healed_fields.length) {
+          statusEl.innerHTML += `<span class="scan-chip scan-chip-learned" title="{% trans 'Fields you corrected on a previous scan were automatically fixed the same way this time.' %}"><i class="bi bi-magic"></i> {% trans "Learned from your past corrections:" %} ${data.healed_fields.join(', ')}</span>`;
         }
         if (codeFromAiGuess) {
           showOcrConfidenceWarning(data.code, data.confidence);
@@ -1484,8 +1552,8 @@ document.addEventListener("DOMContentLoaded", function () {
         checkDuplicateCode();
 
         // Auto-suggest: fields the AI scan still left blank get filled from
-        // this user's most recently created item of the same type - only
-        // ever reached via this AI Scan flow, never plain manual entry.
+        // this user's recent activity with this item type - only ever
+        // reached via this AI Scan flow, never plain manual entry.
         const suggestType = typeField.value;
         fetch("{% url 'suggest_item_fields' %}?type=" + encodeURIComponent(suggestType))
           .then(response => (response.ok ? response.json() : {}))
@@ -1493,27 +1561,27 @@ document.addEventListener("DOMContentLoaded", function () {
             const suggested = [];
             if (suggestion.issuer && !issuerCodeField.value.trim()) {
               issuerCodeField.value = suggestion.issuer;
-              markAutoFilled(issuerCodeField);
+              markSuggested(issuerCodeField);
               suggested.push("{% trans 'issuer' %}");
             }
             if (suggestion.logo_slug && logoSlugField && !logoSlugField.value.trim()) {
               logoSlugField.value = suggestion.logo_slug;
-              markAutoFilled(logoSlugField);
+              markSuggested(logoSlugField);
               suggested.push("{% trans 'logo' %}");
             }
             if (suggestion.currency && currencyField && !data.currency) {
               currencyField.value = suggestion.currency;
-              markAutoFilled(currencyField);
+              markSuggested(currencyField);
               suggested.push("{% trans 'currency' %}");
             }
             // Travel Pass wallet is fixed - the suggestion never applies there.
             if (suggestType !== 'travelpass' && suggestion.wallet_id && !walletField.value) {
               walletField.value = suggestion.wallet_id;
-              markAutoFilled(walletField);
+              markSuggested(walletField);
               suggested.push("{% trans 'wallet' %}");
             }
             if (suggested.length) {
-              statusEl.innerHTML += ` <span class="text-muted small">({% trans "suggested from recent activity:" %} ${suggested.join(', ')})</span>`;
+              statusEl.innerHTML += `<span class="scan-chip scan-chip-suggested" title="{% trans 'Guessed from your recent items of this type - review before saving.' %}"><i class="bi bi-lightbulb"></i> {% trans "Suggested from your recent activity:" %} ${suggested.join(', ')}</span>`;
             }
           })
           .catch(() => {});
