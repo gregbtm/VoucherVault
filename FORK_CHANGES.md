@@ -114,6 +114,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 81 — Travel Pass item type + activity-based field auto-suggest](#phase-81--travel-pass-item-type--activity-based-field-auto-suggest)
 - [Phase 82 — Self-learning scans, smarter suggestions, Travel Pass polish](#phase-82--self-learning-scans-smarter-suggestions-travel-pass-polish)
 - [Phase 83 — Site-wide motion polish (Motion library)](#phase-83--site-wide-motion-polish-motion-library)
+- [Phase 84 — Settings pass: organised, grouped, and explained](#phase-84--settings-pass-organised-grouped-and-explained)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4375,6 +4376,46 @@ convention-based system rather than per-page effects.
   (8/10 on load → 10/10 after scrolling), zero JS errors, and an
   emulated reduced-motion run confirms nothing is ever touched. Full
   suite: 820 tests, 0 failures, 0 errors.
+
+## Phase 84 — Settings pass: organised, grouped, and explained
+
+A structural pass over both settings surfaces so every setting sits in
+a section that makes sense, every section explains itself, and the two
+pages read as one visual family.
+
+- **Preferences rebuilt around what you're doing, not where the fields
+  happened to land** - sections regrouped under three labelled bands:
+  *Look & Layout* (Appearance - inventory layout + OLED dark mode now
+  live together; Visible Fields; Sorting; Currency), *At the Till*
+  (screen wake-lock and code blur, which were previously mixed in with
+  the OLED theme toggle under a vague "Barcode & Screen"; Offline
+  Access), and *Inventory Widgets* (Next Up; Active Today). The
+  template also swapped eight separate loop-the-whole-form passes for
+  direct field rendering, with per-field error display everywhere.
+- **Every section now has a helper** - an ⓘ hover hint on each
+  Preferences section header explaining what it controls (regular
+  users can't open the superuser-only setup guides, so tooltips do the
+  job there), and the Site Settings sections that had no "?" setup-
+  guide link (Expiry & Notifications, Web Push, Merchant Logos,
+  Sharing, Analytics) gained hover hints of their own.
+- **Site Settings grouped into four labelled bands** - *Notifications &
+  Expiry*, *Features & Integrations* (logos, sharing, OCR, Apple/Google
+  Wallet), *Maintenance & Deployment*, and *Dashboard & Analytics* -
+  with the Portainer Redeploy Webhook section moved up to sit directly
+  beside the Update Check whose banner hosts its Redeploy button,
+  instead of being stranded after Upstream Sync.
+- **A shared section-tile look** - both pages now render each topic as
+  a bordered, rounded tile with an icon header (mode-neutral colors,
+  works in light/dark/OLED), plus small uppercase group labels, so
+  Preferences and Site Settings look like the same app.
+- Cross-links added: Preferences notes where site-wide settings live,
+  and the Active Today section now points at the Travel Pass item type
+  that feeds it.
+- Verified end-to-end with a live Playwright pass: both pages render
+  all sections/hints/groups, a Preferences save round-trips and
+  persists, Site Settings autosave still fires its toast and persists,
+  and zero JS errors on either page. Full suite: 820 tests, 0
+  failures, 0 errors.
 
 ## New environment variables
 
