@@ -1,4 +1,13 @@
-## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.58...v1.2.0) (2026-07-17)
+## [1.1.61](https://github.com/gregbtm/VoucherVault/compare/v1.1.60...v1.1.61) (2026-07-17)
+
+
+### Bug Fixes
+
+* Issue Date actually usable on Travel Pass, better OCR name/issuer ([c6bfc34](https://github.com/gregbtm/VoucherVault/commit/c6bfc3473f06e802c2c1314e78bd73ac324a49d6))
+
+## [1.1.60](https://github.com/gregbtm/VoucherVault/compare/v1.1.59...v1.1.60) (2026-07-17)
+
+## [1.1.59](https://github.com/gregbtm/VoucherVault/compare/v1.1.58...v1.1.59) (2026-07-17)
 
 
 ### Features
@@ -13,13 +22,4 @@
 ### Features
 
 * modern color picker + a richer .ics calendar feed ([16273e1](https://github.com/gregbtm/VoucherVault/commit/16273e1e8dfad3cd2b7798cf001a559eeb1f652c))
-
-## [1.1.56](https://github.com/gregbtm/VoucherVault/compare/v1.1.55...v1.1.56) (2026-07-16)
-
-## [1.1.55](https://github.com/gregbtm/VoucherVault/compare/v1.1.54...v1.1.55) (2026-07-16)
-
-
-### Performance Improvements
-
-* **test:** stop the suite from retrying doomed Redis connections ([53cbb08](https://github.com/gregbtm/VoucherVault/commit/53cbb084606e22c36ab6a8b26992f56b02f1683c))
 
