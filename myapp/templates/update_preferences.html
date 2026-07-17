@@ -3,6 +3,27 @@
 {% load static %}
 
 {% block content %}
+<style>
+  /* Same section-tile look as Site Settings, so the two settings pages
+     read as one family. */
+  .settings-section {
+    border: 1px solid rgba(128, 128, 128, 0.18);
+    border-radius: 0.6rem;
+    padding: 1.1rem 1.25rem 0.6rem;
+    margin-bottom: 1.25rem;
+  }
+  .settings-group-label {
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted, #6c757d);
+    margin: 1.75rem 0 0.75rem;
+  }
+  .settings-group-label:first-of-type { margin-top: 0.5rem; }
+  .help-hint { color: var(--text-muted, #6c757d); margin-left: 0.35rem; cursor: help; }
+</style>
+
 <div class="pagetitle">
   <h1>{% trans "Preferences" %}</h1>
   <nav>
@@ -19,217 +40,162 @@
       <div class="card">
         <div class="card-body">
           <h5 class="card-title">{% trans "Configure Preferences" %}</h5>
+          <p class="text-muted small">{% trans "Personal to your account - other users have their own. Site-wide settings live on the Site Settings page (admins only)." %}</p>
 
           <form method="POST" action="">
             {% csrf_token %}
 
-            <!-- View Mode Section -->
-            <div class="mb-4">
-              <h6 class="text-muted mb-3"><i class="bi bi-grid me-2"></i>{% trans "View Mode" %}</h6>
-              {% for field in form %}
-                {% if field.name == "view_mode" %}
-                  <div class="mb-3">
-                    <label for="{{ field.id_for_label }}" class="form-label">{% trans "Inventory Layout" %}</label>
-                    {{ field }}
-                    <small class="form-text text-muted">{% trans "Choose between compact grid or expanded card view" %}</small>
-                    {% if field.errors %}
-                      <div class="text-danger small">{{ field.errors }}</div>
-                    {% endif %}
-                  </div>
-                {% endif %}
-              {% endfor %}
-            </div>
+            <div class="settings-group-label"><i class="bi bi-palette me-1"></i> {% trans "Look & Layout" %}</div>
 
-            <!-- Display Options Section -->
-            <div class="mb-4">
-              <h6 class="text-muted mb-3"><i class="bi bi-eye me-2"></i>{% trans "Visible Fields" %}</h6>
-              <p class="text-muted small">{% trans "Select which fields should be visible in your inventory/sharing view." %}</p>
-              
-              {% for field in form %}
-                {% if field.name|slice:":5" == "show_" %}
-                  <div class="mb-2 form-check">
-                    {{ field }}
-                    <label class="form-check-label" for="{{ field.id_for_label }}">
-                      {% trans field.label %}
-                    </label>
-                    {% if field.errors %}
-                      <div class="text-danger small">{{ field.errors }}</div>
-                    {% endif %}
-                  </div>
-                {% endif %}
-              {% endfor %}
-            </div>
-
-            <!-- Sorting Options Section -->
-            <div class="mb-4">
-              <h6 class="text-muted mb-3"><i class="bi bi-sort-down me-2"></i>{% trans "Sorting" %}</h6>
+            <div class="settings-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-palette me-2"></i>{% trans "Appearance" %}<i class="bi bi-info-circle help-hint" title="{% trans 'How the app itself looks. Light/dark mode follows the sun toggle in the top bar.' %}"></i></h6>
               <div class="row">
-                {% for field in form %}
-                  {% if field.name == "sort_by" or field.name == "sort_order" %}
-                    <div class="col-md-6 mb-3">
-                      <label for="{{ field.id_for_label }}" class="form-label">
-                        {% if field.name == "sort_by" %}
-                          {% trans "Sort Items By" %}
-                        {% else %}
-                          {% trans "Sort Order" %}
-                        {% endif %}
-                      </label>
-                      {{ field }}
-                      {% if field.errors %}
-                        <div class="text-danger small">{{ field.errors }}</div>
-                      {% endif %}
-                    </div>
-                  {% endif %}
-                {% endfor %}
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.view_mode.id_for_label }}" class="form-label">{% trans "Inventory Layout" %}</label>
+                  {{ form.view_mode }}
+                  <small class="form-text text-muted">{% trans "Choose between compact grid or expanded card view." %}</small>
+                  {% if form.view_mode.errors %}<div class="text-danger small">{{ form.view_mode.errors }}</div>{% endif %}
+                </div>
+              </div>
+              <div class="form-check mb-3">
+                {{ form.oled_dark_mode }}
+                <label class="form-check-label" for="{{ form.oled_dark_mode.id_for_label }}">{% trans "True-black dark mode (OLED)" %}</label>
+                <div class="form-text text-muted">{% trans "Pure black backgrounds in dark mode - saves battery on OLED/AMOLED screens." %}</div>
+                {% if form.oled_dark_mode.errors %}<div class="text-danger small">{{ form.oled_dark_mode.errors }}</div>{% endif %}
               </div>
             </div>
 
-            <!-- Currency Section -->
-            <div class="mb-4">
-              <h6 class="text-muted mb-3"><i class="bi bi-currency-exchange me-2"></i>{% trans "Currency" %}</h6>
-              <p class="text-muted small">
-                {% trans "Select your preferred display currency. If your items use multiple currencies, a" %}
-                <a href="https://fixer.io/signup/free/monthly" target="_blank">Fixer.io</a>
-                {% trans "API key is required to calculate a combined total on the dashboard." %}
-              </p>
-              <div class="row">
-                {% for field in form %}
-                  {% if field.name == "default_currency" %}
-                    <div class="col-md-6 mb-3">
-                      <label for="{{ field.id_for_label }}" class="form-label">{% trans "Default Currency" %}</label>
-                      {{ field }}
-                      {% if field.errors %}
-                        <div class="text-danger small">{{ field.errors }}</div>
-                      {% endif %}
-                    </div>
-                  {% endif %}
-                  {% if field.name == "fixer_api_key" %}
-                    <div class="col-md-6 mb-3">
-                      <label for="{{ field.id_for_label }}" class="form-label">
-                        {% trans "Fixer.io API Key" %}
-                        <a href="https://fixer.io/signup/free/monthly" target="_blank" title="{% trans 'Get a free API key at fixer.io' %}">
-                          <i class="bi bi-info-circle"></i>
-                        </a>
-                      </label>
-                      {{ field }}
-                      <small class="form-text text-muted">{% trans "Optional. Required only when items use mixed currencies." %}</small>
-                      {% if field.errors %}
-                        <div class="text-danger small">{{ field.errors }}</div>
-                      {% endif %}
-                    </div>
-                  {% endif %}
-                {% endfor %}
+            <div class="settings-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-eye me-2"></i>{% trans "Visible Fields" %}<i class="bi bi-info-circle help-hint" title="{% trans 'Which details each item card shows in the Inventory and Sharing Center views.' %}"></i></h6>
+              <div class="form-check mb-2">
+                {{ form.show_issue_date }}
+                <label class="form-check-label" for="{{ form.show_issue_date.id_for_label }}">{% trans "Issue date" %}</label>
+                {% if form.show_issue_date.errors %}<div class="text-danger small">{{ form.show_issue_date.errors }}</div>{% endif %}
+              </div>
+              <div class="form-check mb-2">
+                {{ form.show_expiry_date }}
+                <label class="form-check-label" for="{{ form.show_expiry_date.id_for_label }}">{% trans "Expiry date" %}</label>
+                {% if form.show_expiry_date.errors %}<div class="text-danger small">{{ form.show_expiry_date.errors }}</div>{% endif %}
+              </div>
+              <div class="form-check mb-2">
+                {{ form.show_value }}
+                <label class="form-check-label" for="{{ form.show_value.id_for_label }}">{% trans "Value" %}</label>
+                {% if form.show_value.errors %}<div class="text-danger small">{{ form.show_value.errors }}</div>{% endif %}
+              </div>
+              <div class="form-check mb-3">
+                {{ form.show_description }}
+                <label class="form-check-label" for="{{ form.show_description.id_for_label }}">{% trans "Description" %}</label>
+                {% if form.show_description.errors %}<div class="text-danger small">{{ form.show_description.errors }}</div>{% endif %}
               </div>
             </div>
 
-            <!-- Barcode & Screen Section -->
-            <div class="mb-4">
-              <h6 class="text-muted mb-3"><i class="bi bi-phone me-2"></i>{% trans "Barcode & Screen" %}</h6>
-              {% for field in form %}
-                {% if field.name == "keep_screen_awake" or field.name == "oled_dark_mode" or field.name == "blur_codes_enabled" %}
-                  <div class="mb-2 form-check">
-                    {{ field }}
-                    <label class="form-check-label" for="{{ field.id_for_label }}">
-                      {% if field.name == "keep_screen_awake" %}
-                        {% trans "Keep screen on while viewing an item" %}
-                      {% elif field.name == "oled_dark_mode" %}
-                        {% trans "True-black dark mode (OLED)" %}
-                      {% else %}
-                        {% trans "Blur barcodes and codes until tapped" %}
-                      {% endif %}
-                    </label>
-                    {% if field.name == "blur_codes_enabled" %}
-                      <div class="form-text text-muted">{% trans "Turn off for faster access at point-of-sale - the code shows immediately instead of requiring a tap to reveal." %}</div>
-                    {% endif %}
-                    {% if field.errors %}
-                      <div class="text-danger small">{{ field.errors }}</div>
-                    {% endif %}
-                  </div>
-                {% endif %}
-              {% endfor %}
+            <div class="settings-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-sort-down me-2"></i>{% trans "Sorting" %}<i class="bi bi-info-circle help-hint" title="{% trans 'The default order of the Inventory grid. You can still re-sort on the page itself.' %}"></i></h6>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.sort_by.id_for_label }}" class="form-label">{% trans "Sort Items By" %}</label>
+                  {{ form.sort_by }}
+                  {% if form.sort_by.errors %}<div class="text-danger small">{{ form.sort_by.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.sort_order.id_for_label }}" class="form-label">{% trans "Sort Order" %}</label>
+                  {{ form.sort_order }}
+                  {% if form.sort_order.errors %}<div class="text-danger small">{{ form.sort_order.errors }}</div>{% endif %}
+                </div>
+              </div>
             </div>
 
-            <!-- Offline Access Section -->
-            <div class="mb-4">
-              <h6 class="text-muted mb-3"><i class="bi bi-wifi-off me-2"></i>{% trans "Offline Access" %}</h6>
-              {% for field in form %}
-                {% if field.name == "offline_cache_enabled" %}
-                  <div class="mb-2 form-check">
-                    {{ field }}
-                    <label class="form-check-label" for="{{ field.id_for_label }}">
-                      {% trans "Allow caching pages for offline use" %}
-                    </label>
-                    <div class="form-text text-muted">{% trans "Turning this off removes the 'Cache for Offline' option and purges any existing offline cache." %}</div>
-                    {% if field.errors %}
-                      <div class="text-danger small">{{ field.errors }}</div>
-                    {% endif %}
-                  </div>
-                {% endif %}
-              {% endfor %}
+            <div class="settings-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-currency-exchange me-2"></i>{% trans "Currency" %}<i class="bi bi-info-circle help-hint" title="{% trans 'The currency new items default to, and how mixed-currency totals are combined on the Dashboard.' %}"></i></h6>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.default_currency.id_for_label }}" class="form-label">{% trans "Default Currency" %}</label>
+                  {{ form.default_currency }}
+                  {% if form.default_currency.errors %}<div class="text-danger small">{{ form.default_currency.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.fixer_api_key.id_for_label }}" class="form-label">
+                    {% trans "Fixer.io API Key" %}
+                    <a href="https://fixer.io/signup/free/monthly" target="_blank" rel="noopener" class="help-hint" title="{% trans 'Get a free API key at fixer.io' %}"><i class="bi bi-box-arrow-up-right"></i></a>
+                  </label>
+                  {{ form.fixer_api_key }}
+                  <small class="form-text text-muted">{% trans "Optional. Only needed when your items use mixed currencies, to calculate a combined Dashboard total." %}</small>
+                  {% if form.fixer_api_key.errors %}<div class="text-danger small">{{ form.fixer_api_key.errors }}</div>{% endif %}
+                </div>
+              </div>
             </div>
 
-            <!-- Next Up Widget Section -->
-            <div class="mb-4">
-              <h6 class="text-muted mb-3"><i class="bi bi-pin-angle me-2"></i>{% trans "Next Up Widget" %}</h6>
+            <div class="settings-group-label"><i class="bi bi-upc-scan me-1"></i> {% trans "At the Till" %}</div>
+
+            <div class="settings-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-upc-scan me-2"></i>{% trans "Showing a Code" %}<i class="bi bi-info-circle help-hint" title="{% trans 'Behavior while an item is open to be scanned at a checkout.' %}"></i></h6>
+              <div class="form-check mb-2">
+                {{ form.keep_screen_awake }}
+                <label class="form-check-label" for="{{ form.keep_screen_awake.id_for_label }}">{% trans "Keep screen on while viewing an item" %}</label>
+                {% if form.keep_screen_awake.errors %}<div class="text-danger small">{{ form.keep_screen_awake.errors }}</div>{% endif %}
+              </div>
+              <div class="form-check mb-3">
+                {{ form.blur_codes_enabled }}
+                <label class="form-check-label" for="{{ form.blur_codes_enabled.id_for_label }}">{% trans "Blur barcodes and codes until tapped" %}</label>
+                <div class="form-text text-muted">{% trans "Privacy in public places. Turn off for faster access at point-of-sale - the code shows immediately instead of requiring a tap to reveal." %}</div>
+                {% if form.blur_codes_enabled.errors %}<div class="text-danger small">{{ form.blur_codes_enabled.errors }}</div>{% endif %}
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-wifi-off me-2"></i>{% trans "Offline Access" %}<i class="bi bi-info-circle help-hint" title="{% trans 'Cache items on this device so codes still open with no signal - e.g. in a basement store or on the tube.' %}"></i></h6>
+              <div class="form-check mb-3">
+                {{ form.offline_cache_enabled }}
+                <label class="form-check-label" for="{{ form.offline_cache_enabled.id_for_label }}">{% trans "Allow caching pages for offline use" %}</label>
+                <div class="form-text text-muted">{% trans "Turning this off removes the 'Cache for Offline' option and purges any existing offline cache." %}</div>
+                {% if form.offline_cache_enabled.errors %}<div class="text-danger small">{{ form.offline_cache_enabled.errors }}</div>{% endif %}
+              </div>
+            </div>
+
+            <div class="settings-group-label"><i class="bi bi-stars me-1"></i> {% trans "Inventory Widgets" %}</div>
+
+            <div class="settings-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-pin-angle me-2"></i>{% trans "Next Up Widget" %}<i class="bi bi-info-circle help-hint" title="{% trans 'A queue at the top of Inventory for the items you will need soonest, barcode included and ready to scan.' %}"></i></h6>
               <p class="text-muted small">{% trans "Shows a queue at the top of Inventory for the items you'll need soonest - e.g. a \"Train Tickets\" wallet, to always surface the next one to use. Empty selection means off." %}</p>
-              {% for field in form %}
-                {% if field.name == "next_up_wallets" %}
-                  <div class="mb-3">
-                    <label class="form-label">{% trans "Highlight the soonest-expiring items from" %}</label>
-                    {{ field }}
-                    {% if field.errors %}
-                      <div class="text-danger small">{{ field.errors }}</div>
-                    {% endif %}
-                  </div>
-                {% endif %}
-                {% if field.name == "next_up_max_items" %}
-                  <div class="mb-3" style="max-width: 200px;">
-                    <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
-                    {{ field }}
-                    <small class="form-text text-muted">{% trans "Soonest first, up to 3." %}</small>
-                    {% if field.errors %}
-                      <div class="text-danger small">{{ field.errors }}</div>
-                    {% endif %}
-                  </div>
-                {% endif %}
-              {% endfor %}
-              <p class="text-muted small mb-0">
+              <div class="mb-3">
+                <label class="form-label">{% trans "Highlight the soonest-expiring items from" %}</label>
+                {{ form.next_up_wallets }}
+                {% if form.next_up_wallets.errors %}<div class="text-danger small">{{ form.next_up_wallets.errors }}</div>{% endif %}
+              </div>
+              <div class="mb-3" style="max-width: 200px;">
+                <label for="{{ form.next_up_max_items.id_for_label }}" class="form-label">{{ form.next_up_max_items.label }}</label>
+                {{ form.next_up_max_items }}
+                <small class="form-text text-muted">{% trans "Soonest first, up to 3." %}</small>
+                {% if form.next_up_max_items.errors %}<div class="text-danger small">{{ form.next_up_max_items.errors }}</div>{% endif %}
+              </div>
+              <p class="text-muted small mb-3">
                 {% blocktrans %}Want a reminder the morning an item is due? Add "Next Up Item Due Today" to a notification rule on the{% endblocktrans %}
                 <a href="{% url 'manage_notification_rules' %}">{% trans "Notification Rules" %}</a> {% trans "page." %}
               </p>
             </div>
 
-            <!-- Active Today Widget Section -->
-            <div class="mb-4">
-              <h6 class="text-muted mb-3"><i class="bi bi-train-front me-2"></i>{% trans "Active Today Widget" %}</h6>
-              <p class="text-muted small">{% trans "For a daily round-trip ticket (e.g. a train commute): shows today's outward leg before your cutoff time, then switches to the return leg after it - only ever on the day the ticket is actually valid for. Set your home station below and tag your tickets' Journey From/To fields when creating them." %}</p>
-              {% for field in form %}
-                {% if field.name == "active_today_enabled" %}
-                  <div class="form-check mb-3">
-                    {{ field }}
-                    <label class="form-check-label" for="{{ field.id_for_label }}">{% trans "Enable Active Today widget" %}</label>
-                  </div>
-                {% endif %}
-                {% if field.name == "commute_home_station" %}
-                  <div class="mb-3">
-                    <label for="{{ field.id_for_label }}" class="form-label">{% trans "Home station" %}</label>
-                    {{ field }}
-                    <small class="form-text text-muted">{% trans "Matched against a ticket's Journey From/To - must match what's on your tickets, e.g. \"Hatfield Peverel\" or \"HAP\"." %}</small>
-                    {% if field.errors %}
-                      <div class="text-danger small">{{ field.errors }}</div>
-                    {% endif %}
-                  </div>
-                {% endif %}
-                {% if field.name == "active_today_cutoff_time" %}
-                  <div class="mb-3" style="max-width: 200px;">
-                    <label for="{{ field.id_for_label }}" class="form-label">{% trans "Switchover time" %}</label>
-                    {{ field }}
-                    {% if field.errors %}
-                      <div class="text-danger small">{{ field.errors }}</div>
-                    {% endif %}
-                  </div>
-                {% endif %}
-              {% endfor %}
+            <div class="settings-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-train-front me-2"></i>{% trans "Active Today Widget" %}<i class="bi bi-info-circle help-hint" title="{% trans 'For daily round-trip tickets: shows the leg you actually need right now, switching from outward to return at your cutoff time.' %}"></i></h6>
+              <p class="text-muted small">{% trans "For a daily round-trip ticket (e.g. a train commute): shows today's outward leg before your cutoff time, then switches to the return leg after it - only ever on the day the ticket is actually valid for. Works best with the Travel Pass item type, which fills the Journey From/To fields for you when scanned." %}</p>
+              <div class="form-check mb-3">
+                {{ form.active_today_enabled }}
+                <label class="form-check-label" for="{{ form.active_today_enabled.id_for_label }}">{% trans "Enable Active Today widget" %}</label>
+                {% if form.active_today_enabled.errors %}<div class="text-danger small">{{ form.active_today_enabled.errors }}</div>{% endif %}
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.commute_home_station.id_for_label }}" class="form-label">{% trans "Home station" %}</label>
+                  {{ form.commute_home_station }}
+                  <small class="form-text text-muted">{% trans "Matched against a ticket's Journey From/To - must match what's on your tickets, e.g. \"Hatfield Peverel\" or \"HAP\"." %}</small>
+                  {% if form.commute_home_station.errors %}<div class="text-danger small">{{ form.commute_home_station.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-3 mb-3">
+                  <label for="{{ form.active_today_cutoff_time.id_for_label }}" class="form-label">{% trans "Switchover time" %}</label>
+                  {{ form.active_today_cutoff_time }}
+                  <small class="form-text text-muted">{% trans "Before this: outward leg. After: return leg." %}</small>
+                  {% if form.active_today_cutoff_time.errors %}<div class="text-danger small">{{ form.active_today_cutoff_time.errors }}</div>{% endif %}
+                </div>
+              </div>
             </div>
 
             <div class="mt-4">
