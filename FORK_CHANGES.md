@@ -112,6 +112,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 79 — Active Today widget for round-trip commute tickets + auto-wallet-assignment](#phase-79--active-today-widget-for-round-trip-commute-tickets--auto-wallet-assignment)
 - [Phase 80 — Modern color picker + a richer .ics calendar feed](#phase-80--modern-color-picker--a-richer-ics-calendar-feed)
 - [Phase 81 — Travel Pass item type + activity-based field auto-suggest](#phase-81--travel-pass-item-type--activity-based-field-auto-suggest)
+- [Phase 82 — Self-learning scans, smarter suggestions, Travel Pass polish](#phase-82--self-learning-scans-smarter-suggestions-travel-pass-polish)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4276,6 +4277,59 @@ for whatever a photo scan couldn't read.
   plus a live Playwright check of the field show/hide and wallet-lock
   behavior against a real running instance. Full suite: 799 tests, 0
   failures, 0 errors.
+
+## Phase 82 — Self-learning scans, smarter suggestions, Travel Pass polish
+
+An enhancement pass over the AI-scan pipeline and the new Travel Pass
+type, with one headline capability: the scanner now learns from you.
+
+- **Self-learning scan corrections** - every AI photo scan's raw
+  extraction is captured alongside the form (a hidden snapshot), and on
+  save the server diffs it against what the user actually kept. Any
+  learnable field the user changed (issuer, logo, currency, type,
+  barcode symbology, journey fields, travel time) becomes a per-user
+  `ScanFieldCorrection`; the OCR endpoint then replays those against
+  every future scan before the form ever sees the result. Correct
+  "Nationl Rail" to "National Rail" once and the next misread heals
+  itself - including the classic UK-rail case of a ticket's Aztec code
+  being called a QR code. The store also *un*-learns: keep a scanned
+  value as-is and any stale correction mapping it elsewhere is retired.
+  Blank-fills (AI left it empty, user typed something) replay more
+  cautiously - only for the same item type and only once the same fill
+  has been seen twice, so one item-specific value never becomes a rule.
+  Replayed values are re-validated against the same sanitizers as real
+  extractions, and the whole loop is best-effort: learning can never be
+  the reason a save or a scan fails.
+- **"Learned from your past corrections" chip** - when a scan was
+  healed, the status line says so (violet chip, with the healed field
+  names), so silent fixes are never invisible fixes.
+- **Smarter auto-suggest** - the recent-activity suggestion no longer
+  parrots the single most recent item: the suggested issuer is the one
+  appearing most often across the last 10 items of that type (ties
+  broken by recency), and logo/wallet/currency then come from the
+  newest item with that issuer so the suggestion is internally
+  consistent rather than stitched from unrelated items.
+- **Suggestions now look like suggestions** - activity-based guesses
+  get their own dashed amber styling (distinct from the solid indigo
+  "read off the photo" highlight) and the post-scan status line is now
+  a row of colored chips - green "filled from photo", amber "suggested
+  from your recent activity", violet "learned from your past
+  corrections" - instead of one run-on sentence. Both prefill styles
+  still clear themselves the moment the field is edited.
+- **Travel Pass detail page polish** - a train icon on the type badge,
+  the meaningless "0.00 GBP" value hidden (as loyalty cards already
+  were), and new Journey (origin → destination) and Time of Travel
+  rows on the item detail page.
+- **Travel time where it matters** - the Active Today commute widget
+  now shows the departure time next to the ticket name when one is
+  set, and inventory tiles stop rendering a pointless 0.00 value for
+  travel passes.
+- 18 new tests (the full learn/replay/retire lifecycle, blank-fill
+  caution rules, per-user scoping, choice re-validation, endpoint
+  healing, the modal-issuer suggestion) plus a live Playwright pass
+  against a running instance covering the detail-page rows, the chips,
+  the amber suggestion styling, and the snapshot capture. Full suite:
+  817 tests, 0 failures, 0 errors.
 
 ## New environment variables
 

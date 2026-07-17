@@ -1376,6 +1376,8 @@ body.dark-mode .action-btn-danger-outline:hover {
                   <i class="bi bi-percent"></i>
                   {% elif item.type == 'loyaltycard' %}
                   <i class="bi bi-star"></i>
+                  {% elif item.type == 'travelpass' %}
+                  <i class="bi bi-train-front"></i>
                   {% endif %}
                   {% translate item.type %}
                 </span>
@@ -1406,7 +1408,7 @@ body.dark-mode .action-btn-danger-outline:hover {
               </div>
             </div>
             
-            {% if item.type != "loyaltycard" %}
+            {% if item.type != "loyaltycard" and item.type != "travelpass" %}
             <div class="detail-field">
               <div class="detail-field-label">
                 {% if item.value_type == "percentage" %}
@@ -1426,6 +1428,24 @@ body.dark-mode .action-btn-danger-outline:hover {
                 {{ total_value|floatformat:2 }} {{ item.currency }}
                 {% endif %}
               </div>
+            </div>
+            {% endif %}
+
+            {% if item.journey_origin or item.journey_destination %}
+            <div class="detail-field">
+              <div class="detail-field-label">
+                <i class="bi bi-signpost-split"></i> {% trans "Journey" %}
+              </div>
+              <div class="detail-field-value">{{ item.journey_origin }} &rarr; {{ item.journey_destination }}</div>
+            </div>
+            {% endif %}
+
+            {% if item.travel_time %}
+            <div class="detail-field">
+              <div class="detail-field-label">
+                <i class="bi bi-clock"></i> {% trans "Time of Travel" %}
+              </div>
+              <div class="detail-field-value">{{ item.travel_time|time:"H:i" }}</div>
             </div>
             {% endif %}
           </div>

@@ -31,6 +31,7 @@ from imports.tasks import process_import_job
 from myapp.analytics import get_expiry_timeline, get_summary_stats
 from myapp.merchant_logos import remember_balance_check_url
 from myapp.models import Item, ItemShare, MerchantProfile, Tag, Transaction, UserPreference, UserProfile, Wallet
+from myapp.scan_learning import apply_learned_corrections
 from notify.models import NotificationLog, NotificationRule
 from notify.tasks import notify_balance_changed, notify_item_created, notify_item_shared, notify_item_used, send_test_notification
 from ocr.backends import get_backend, ocr_enabled
@@ -463,6 +464,10 @@ class OCRExtractView(APIView):
                 'description': serializers.CharField(allow_null=True),
                 'notes': serializers.CharField(allow_null=True),
                 'tags': serializers.ListField(child=serializers.CharField()),
+                'journey_origin': serializers.CharField(allow_null=True),
+                'journey_destination': serializers.CharField(allow_null=True),
+                'travel_time': serializers.CharField(allow_null=True),
+                'healed_fields': serializers.ListField(child=serializers.CharField()),
                 'confidence': serializers.FloatField(),
             },
         ),
@@ -491,6 +496,12 @@ class OCRExtractView(APIView):
                 {'detail': _('OCR scanning is temporarily unavailable: %(error)s') % {'error': str(exc)}},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
+
+        # Self-healing pass: replay this user's past corrections against
+        # the fresh extraction (see myapp/scan_learning.py) - e.g. an
+        # operator name the model keeps misreading gets silently fixed
+        # before the form ever sees it. healed_fields lets the UI say so.
+        result['healed_fields'] = apply_learned_corrections(request.user, result)
 
         return Response(result)
 

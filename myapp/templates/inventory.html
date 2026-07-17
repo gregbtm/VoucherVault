@@ -940,7 +940,9 @@ body.dark-mode .next-up-card {
             <div>
               <div class="next-up-issuer">{{ active_today_item.item.issuer }}</div>
               <h3 class="next-up-name">{{ active_today_item.item.journey_origin }} &rarr; {{ active_today_item.item.journey_destination }}</h3>
-              <div class="next-up-date">{{ active_today_item.item.name }}</div>
+              <div class="next-up-date">
+                {% if active_today_item.item.travel_time %}<i class="bi bi-clock"></i> {{ active_today_item.item.travel_time|time:"H:i" }} &middot; {% endif %}{{ active_today_item.item.name }}
+              </div>
             </div>
           </div>
           <div class="next-up-code">
@@ -1231,7 +1233,7 @@ body.dark-mode .next-up-card {
           
           <!-- Meta Row -->
           <div class="card-meta-row">
-            {% if entry.item.type != "loyaltycard" and preferences.show_value %}
+            {% if entry.item.type != "loyaltycard" and entry.item.type != "travelpass" and preferences.show_value %}
             <div class="meta-item">
               {% if entry.item.value_type == "percentage" %}
               <i class="bi bi-percent"></i> {{ entry.current_value|floatformat:0 }}%
