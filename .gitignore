@@ -36,6 +36,9 @@ database/*.jpg
 database/*.jpeg
 encrypted.data
 
+# throwaway local settings override used for sandbox/dev verification
+sandbox_settings.py
+
 # ignore signed licenses
 **license.txt
 

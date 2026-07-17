@@ -14,6 +14,7 @@ const SUPPORTED_LANGS = ['en', 'de', 'fr', 'it'];
 const STATIC_CACHE_URLS = [
     '/offline/',
     ...SUPPORTED_LANGS.map(lang => `/${lang}/offline/`),
+    '/static/assets/css/animations.css',
     '/static/assets/css/dark-mode.css',
     '/static/assets/css/style.css',
     '/static/assets/img/apple-icon-180.png',
@@ -29,6 +30,8 @@ const STATIC_CACHE_URLS = [
     '/static/assets/js/page-cache-helper.js',
     '/static/assets/js/manual-cache.js',
     '/static/assets/js/main.js',
+    '/static/assets/js/animations.js',
+    '/static/assets/vendor/motion/motion.min.js',
     '/static/assets/vendor/bootstrap/css/bootstrap.min.css',
     '/static/assets/vendor/bootstrap-icons/bootstrap-icons.css',
     '/static/assets/vendor/bootstrap/js/bootstrap.bundle.min.js',

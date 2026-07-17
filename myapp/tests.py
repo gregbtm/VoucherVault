@@ -488,6 +488,42 @@ class SuggestItemFieldsTests(TestCase):
         self.assertNotEqual(response.status_code, 200)
 
 
+class AnimationAssetsTests(TestCase):
+    """
+    The site-wide animation layer (Phase 83) is progressive enhancement:
+    these tests guard the wiring, since a 404'd vendor file would
+    silently disable every entrance animation without breaking anything
+    else.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_base_template_references_animation_assets(self):
+        response = self.client.get(reverse('show_items'))
+        content = response.content.decode()
+        self.assertIn('assets/css/animations.css', content)
+        self.assertIn('assets/vendor/motion/motion.min.js', content)
+        self.assertIn('assets/js/animations.js', content)
+
+    def test_animation_static_files_exist(self):
+        from django.contrib.staticfiles import finders
+        for path in (
+            'assets/css/animations.css',
+            'assets/js/animations.js',
+            'assets/vendor/motion/motion.min.js',
+        ):
+            self.assertIsNotNone(finders.find(path), f'{path} missing from static files')
+
+    def test_serviceworker_precaches_animation_assets(self):
+        import pathlib
+        sw = pathlib.Path('myapp/serviceworker.js').read_text()
+        self.assertIn('/static/assets/css/animations.css', sw)
+        self.assertIn('/static/assets/js/animations.js', sw)
+        self.assertIn('/static/assets/vendor/motion/motion.min.js', sw)
+
+
 class ScanLearningTests(TestCase):
     """
     myapp/scan_learning.py - the self-healing loop between an AI scan's
