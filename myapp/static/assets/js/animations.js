@@ -66,6 +66,13 @@
         // Not returning a cleanup function makes inView one-shot: each
         // group animates the first time it scrolls into view, then the
         // observer disconnects itself.
+        //
+        // amount is intersection ratio, not pixels: for a container much
+        // taller than the viewport (e.g. a single settings page wrapped
+        // in one tall .card), a fixed fraction like 0.1 can require the
+        // container to fill the ENTIRE viewport before it's reached,
+        // which reads as "page is blank until you scroll". 'some' (any
+        // pixel visible) is Motion's own default for exactly this reason.
         inView(container, function () {
             group.forEach(function (el) { el.classList.remove('vv-anim-pre'); });
             animate(
@@ -73,6 +80,6 @@
                 { opacity: [0, 1], y: [10, 0] },
                 { duration: 0.3, delay: stagger(0.045), ease: [0.22, 1, 0.36, 1] }
             );
-        }, { amount: 0.1 });
+        }, { amount: 'some' });
     });
 })();

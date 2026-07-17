@@ -48,7 +48,7 @@
             <div class="settings-group-label"><i class="bi bi-palette me-1"></i> {% trans "Look & Layout" %}</div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-palette me-2"></i>{% trans "Appearance" %}<i class="bi bi-info-circle help-hint" title="{% trans 'How the app itself looks. Light/dark mode follows the sun toggle in the top bar.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-palette me-2"></i>{% trans "Appearance" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'How the app itself looks. Light/dark mode follows the sun toggle in the top bar.' %}"></i></h6>
               <div class="row">
                 <div class="col-md-6 mb-3">
                   <label for="{{ form.view_mode.id_for_label }}" class="form-label">{% trans "Inventory Layout" %}</label>
@@ -66,7 +66,7 @@
             </div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-eye me-2"></i>{% trans "Visible Fields" %}<i class="bi bi-info-circle help-hint" title="{% trans 'Which details each item card shows in the Inventory and Sharing Center views.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-eye me-2"></i>{% trans "Visible Fields" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Which details each item card shows in the Inventory and Sharing Center views.' %}"></i></h6>
               <div class="form-check mb-2">
                 {{ form.show_issue_date }}
                 <label class="form-check-label" for="{{ form.show_issue_date.id_for_label }}">{% trans "Issue date" %}</label>
@@ -90,7 +90,7 @@
             </div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-sort-down me-2"></i>{% trans "Sorting" %}<i class="bi bi-info-circle help-hint" title="{% trans 'The default order of the Inventory grid. You can still re-sort on the page itself.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-sort-down me-2"></i>{% trans "Sorting" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'The default order of the Inventory grid. You can still re-sort on the page itself.' %}"></i></h6>
               <div class="row">
                 <div class="col-md-6 mb-3">
                   <label for="{{ form.sort_by.id_for_label }}" class="form-label">{% trans "Sort Items By" %}</label>
@@ -106,7 +106,7 @@
             </div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-currency-exchange me-2"></i>{% trans "Currency" %}<i class="bi bi-info-circle help-hint" title="{% trans 'The currency new items default to, and how mixed-currency totals are combined on the Dashboard.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-currency-exchange me-2"></i>{% trans "Currency" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'The currency new items default to, and how mixed-currency totals are combined on the Dashboard.' %}"></i></h6>
               <div class="row">
                 <div class="col-md-6 mb-3">
                   <label for="{{ form.default_currency.id_for_label }}" class="form-label">{% trans "Default Currency" %}</label>
@@ -128,7 +128,7 @@
             <div class="settings-group-label"><i class="bi bi-upc-scan me-1"></i> {% trans "At the Till" %}</div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-upc-scan me-2"></i>{% trans "Showing a Code" %}<i class="bi bi-info-circle help-hint" title="{% trans 'Behavior while an item is open to be scanned at a checkout.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-upc-scan me-2"></i>{% trans "Showing a Code" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Behavior while an item is open to be scanned at a checkout.' %}"></i></h6>
               <div class="form-check mb-2">
                 {{ form.keep_screen_awake }}
                 <label class="form-check-label" for="{{ form.keep_screen_awake.id_for_label }}">{% trans "Keep screen on while viewing an item" %}</label>
@@ -143,7 +143,7 @@
             </div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-wifi-off me-2"></i>{% trans "Offline Access" %}<i class="bi bi-info-circle help-hint" title="{% trans 'Cache items on this device so codes still open with no signal - e.g. in a basement store or on the tube.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-wifi-off me-2"></i>{% trans "Offline Access" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Cache items on this device so codes still open with no signal - e.g. in a basement store or on the tube.' %}"></i></h6>
               <div class="form-check mb-3">
                 {{ form.offline_cache_enabled }}
                 <label class="form-check-label" for="{{ form.offline_cache_enabled.id_for_label }}">{% trans "Allow caching pages for offline use" %}</label>
@@ -155,7 +155,7 @@
             <div class="settings-group-label"><i class="bi bi-stars me-1"></i> {% trans "Inventory Widgets" %}</div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-pin-angle me-2"></i>{% trans "Next Up Widget" %}<i class="bi bi-info-circle help-hint" title="{% trans 'A queue at the top of Inventory for the items you will need soonest, barcode included and ready to scan.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-pin-angle me-2"></i>{% trans "Next Up Widget" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'A queue at the top of Inventory for the items you will need soonest, barcode included and ready to scan.' %}"></i></h6>
               <p class="text-muted small">{% trans "Shows a queue at the top of Inventory for the items you'll need soonest - e.g. a \"Train Tickets\" wallet, to always surface the next one to use. Empty selection means off." %}</p>
               <div class="mb-3">
                 <label class="form-label">{% trans "Highlight the soonest-expiring items from" %}</label>
@@ -175,7 +175,7 @@
             </div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-train-front me-2"></i>{% trans "Active Today Widget" %}<i class="bi bi-info-circle help-hint" title="{% trans 'For daily round-trip tickets: shows the leg you actually need right now, switching from outward to return at your cutoff time.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-train-front me-2"></i>{% trans "Active Today Widget" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'For daily round-trip tickets: shows the leg you actually need right now, switching from outward to return at your cutoff time.' %}"></i></h6>
               <p class="text-muted small">{% trans "For a daily round-trip ticket (e.g. a train commute): shows today's outward leg before your cutoff time, then switches to the return leg after it - only ever on the day the ticket is actually valid for. Works best with the Travel Pass item type, which fills the Journey From/To fields for you when scanned." %}</p>
               <div class="form-check mb-3">
                 {{ form.active_today_enabled }}
