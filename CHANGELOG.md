@@ -1,3 +1,10 @@
+## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.72...v1.2.0) (2026-07-18)
+
+
+### Features
+
+* mobile logo lockup, item form field scoping, share page polish (Phases 92-93) ([0f18d00](https://github.com/gregbtm/VoucherVault/commit/0f18d009b9a35c0ae2c771a3ce6a374ca8c22fdf))
+
 ## [1.1.72](https://github.com/gregbtm/VoucherVault/compare/v1.1.71...v1.1.72) (2026-07-18)
 
 
@@ -21,11 +28,4 @@
 ### Features
 
 * minify hand-written JS in the Docker image build (Phase 88) ([1d637ba](https://github.com/gregbtm/VoucherVault/commit/1d637baf1e26f782506027e155cfdfbc2c95ba7c))
-
-## [1.1.68](https://github.com/gregbtm/VoucherVault/compare/v1.1.67...v1.1.68) (2026-07-18)
-
-
-### Bug Fixes
-
-* **ci:** bump docker/login-action and docker/setup-buildx-action ([baa19b5](https://github.com/gregbtm/VoucherVault/commit/baa19b5e62c168d99741164361381710fb1c9e93))
 
