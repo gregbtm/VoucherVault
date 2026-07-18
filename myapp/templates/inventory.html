@@ -896,6 +896,58 @@ body.dark-mode .mobile-filter-select {
 body.dark-mode .next-up-card {
   box-shadow: 0 4px 14px rgba(0,0,0,0.4);
 }
+
+/* Nearby Widget - populated client-side after a one-shot location check,
+   so it starts hidden and has no server-rendered content; a lighter list
+   style (not the Next Up/Active Today gradient card) since it can surface
+   more than one match at once. */
+.nearby-items-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.nearby-item-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #eee);
+  text-decoration: none;
+  color: var(--text-color, #1e1e1e);
+  transition: border-color 0.2s ease, transform 0.15s ease;
+}
+
+.nearby-item-link:hover {
+  border-color: var(--primary-color, #4154f1);
+  color: var(--text-color, #1e1e1e);
+  transform: translateY(-1px);
+}
+
+.nearby-item-text {
+  min-width: 0;
+}
+
+.nearby-item-issuer {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6c757d;
+}
+
+.nearby-item-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 </style>
 
 <div class="inventory-header">
@@ -928,6 +980,22 @@ body.dark-mode .next-up-card {
 </div>
 
 <section class="section">
+  {% if preferences.nearby_items_enabled %}
+  <!-- Nearby Widget: starts hidden, filled in client-side after a one-shot
+       location check (see nearby-items.js) - there's nothing to
+       server-render since we don't know where the user is at page load. -->
+  <div class="next-up-queue" id="nearby-items-widget" hidden>
+    <div class="next-up-label"><i class="bi bi-geo-alt-fill"></i> {% trans "Nearby" %}</div>
+    <ul class="nearby-items-list" id="nearby-items-list"></ul>
+  </div>
+  <script src="{% static 'assets/js/nearby-items.js' %}"></script>
+  <script>
+  vvInitNearbyItems({
+    nearbyUrl: "{% url 'nearby_items' %}",
+  });
+  </script>
+  {% endif %}
+
   {% if active_today_item %}
   <!-- Active Today Widget -->
   <div class="next-up-queue">

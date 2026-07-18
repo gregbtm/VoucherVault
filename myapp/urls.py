@@ -23,6 +23,7 @@ urlpatterns = (
     path('items/toggle_status/<uuid:item_id>', views.toggle_item_status, name='toggle_item_status'),
     path('items/toggle_pin/<uuid:item_uuid>', views.toggle_pin_item, name='toggle_pin_item'),
     path('items/toggle_archive/<uuid:item_uuid>', views.toggle_archive_item, name='toggle_archive_item'),
+    path('nearby-items/', views.nearby_items, name='nearby_items'),
     path('items/bulk-archive/', views.bulk_archive_items, name='bulk_archive_items'),
     path('items/bulk-delete/', views.bulk_delete_items, name='bulk_delete_items'),
     path('items/bulk-tag/', views.bulk_tag_items, name='bulk_tag_items'),

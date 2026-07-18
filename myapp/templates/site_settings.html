@@ -112,6 +112,24 @@
             </div>
 
             <div class="settings-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-geo-alt me-2"></i>{% trans "Nearby Items" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Site-wide switch for the opt-in Nearby widget. Users still need to enable it in their own Preferences - this only controls whether the underlying OpenStreetMap lookup is available at all.' %}"></i></h6>
+              <div class="form-check mb-3">
+                {{ form.nearby_places_enabled }}
+                <label class="form-check-label" for="{{ form.nearby_places_enabled.id_for_label }}">{% trans "Allow the Nearby widget to query OpenStreetMap" %}</label>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.overpass_api_url.id_for_label }}" class="form-label">{% trans "Overpass API URL" %}</label>
+                  {{ form.overpass_api_url }}
+                  <small class="form-text text-muted">
+                    {% trans "Free, no API key required. Point this at your own instance to avoid the public one's rate limits - see" %}
+                    <a href="https://wiki.openstreetmap.org/wiki/Overpass_API/Installation" target="_blank" rel="noopener">{% trans "self-hosting instructions" %}</a>.
+                  </small>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-send me-2"></i>{% trans "Sharing" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Controls what the Share via... button offers and how public share links behave.' %}"></i></h6>
               <div class="form-check">
                 {{ form.share_via_smart_enabled }}

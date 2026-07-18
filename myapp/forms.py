@@ -251,6 +251,7 @@ class UserPreferenceForm(forms.ModelForm):
             'tilt_scan_detection_enabled',
             'next_up_wallets', 'next_up_max_items',
             'active_today_enabled', 'commute_home_station', 'active_today_cutoff_time',
+            'nearby_items_enabled', 'nearby_radius_m',
         ]
         widgets = {
             'show_issue_date': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
@@ -273,6 +274,8 @@ class UserPreferenceForm(forms.ModelForm):
                 'placeholder': _('e.g. Hatfield Peverel'),
             }),
             'active_today_cutoff_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}, format='%H:%M'),
+            'nearby_items_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'nearby_radius_m': forms.NumberInput(attrs={'class': 'form-control', 'min': 25, 'max': 1000}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -283,6 +286,8 @@ class UserPreferenceForm(forms.ModelForm):
         # an omitted field falls back to the model's own default (see
         # clean_active_today_cutoff_time) rather than failing validation.
         self.fields['active_today_cutoff_time'].required = False
+        # Same reasoning as above, for a plain <input type="number">.
+        self.fields['nearby_radius_m'].required = False
         # Scoped to wallets the user can actually see (own or shared with
         # them) - the instance always has a user by the time this form is
         # built (update_user_preferences creates the UserPreference first).
@@ -296,6 +301,9 @@ class UserPreferenceForm(forms.ModelForm):
 
     def clean_active_today_cutoff_time(self):
         return self.cleaned_data.get('active_today_cutoff_time') or UserPreference._meta.get_field('active_today_cutoff_time').default
+
+    def clean_nearby_radius_m(self):
+        return self.cleaned_data.get('nearby_radius_m') or UserPreference._meta.get_field('nearby_radius_m').default
 
 class DocumentForm(forms.ModelForm):
     class Meta:
@@ -406,6 +414,7 @@ class SiteConfigurationForm(forms.ModelForm):
             'google_wallet_service_account_key_path', 'google_wallet_issuer_id', 'google_wallet_class_id',
             'update_check_enabled', 'update_check_repo',
             'portainer_webhook_url',
+            'nearby_places_enabled', 'overpass_api_url',
             'scheduled_backup_enabled', 'backup_retention_count',
             'expiring_soon_limit', 'calendar_months_ahead', 'wallet_chart_limit', 'duplicate_photo_threshold',
         ]
@@ -433,6 +442,8 @@ class SiteConfigurationForm(forms.ModelForm):
             'update_check_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'update_check_repo': forms.TextInput(attrs={'class': 'form-control'}),
             'portainer_webhook_url': forms.TextInput(attrs={'class': 'form-control'}),
+            'nearby_places_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'overpass_api_url': forms.TextInput(attrs={'class': 'form-control'}),
             'scheduled_backup_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'backup_retention_count': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
             'expiring_soon_limit': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 50}),

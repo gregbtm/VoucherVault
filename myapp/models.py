@@ -121,6 +121,18 @@ class UserPreference(models.Model):
                    "origin). From this time on, the outward leg is marked used and the return "
                    "leg (home station as destination) is shown instead.",
     )
+    nearby_items_enabled = models.BooleanField(
+        default=False,
+        help_text="On Inventory, ask for your location once and suggest items whose issuer "
+                   "matches a shop near you right now (e.g. \"You're near Tesco - 2 items "
+                   "here\"). A one-shot lookup only - never tracks your location in the "
+                   "background. Looked up via OpenStreetMap; no account or API key needed.",
+    )
+    nearby_radius_m = models.PositiveIntegerField(
+        default=150,
+        validators=[MinValueValidator(25), MaxValueValidator(1000)],
+        help_text="How far around your current location to look for a matching shop, in metres.",
+    )
 
 class Wallet(models.Model):
     """
@@ -757,6 +769,19 @@ class SiteConfiguration(models.Model):
     # ---- Scheduled local backups ----
     scheduled_backup_enabled = models.BooleanField(default=True)
     backup_retention_count = models.PositiveIntegerField(default=7)
+
+    # ---- Nearby items (OpenStreetMap) ----
+    nearby_places_enabled = models.BooleanField(
+        default=True,
+        help_text="Allow the opt-in 'Nearby' widget to query OpenStreetMap's Overpass API "
+                   "with a user's one-shot location, matched against their item issuers. "
+                   "Off disables the feature site-wide regardless of each user's own preference.",
+    )
+    overpass_api_url = models.CharField(
+        max_length=255, blank=True, default='https://overpass-api.de/api/interpreter',
+        help_text="Overpass API endpoint. Point this at your own instance to avoid the public "
+                   "one's rate limits - see https://wiki.openstreetmap.org/wiki/Overpass_API/Installation.",
+    )
 
     # ---- Analytics & duplicate detection display/behaviour limits ----
     # Previously fixed constants in myapp/analytics.py and myapp/imagehash.py -
