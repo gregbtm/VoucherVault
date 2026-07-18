@@ -86,6 +86,21 @@
   color: var(--primary-color, #4154f1);
 }
 
+/* Animated show/hide for type-conditional field groups (e.g. travel-fields) -
+   max-height caps at real content height so the collapse doesn't clip. */
+.field-toggle {
+  transition: opacity 0.25s ease, max-height 0.35s ease, margin 0.25s ease;
+  overflow: hidden;
+  max-height: 260px;
+}
+
+.field-toggle.is-collapsed {
+  opacity: 0;
+  max-height: 0;
+  margin: 0 !important;
+  pointer-events: none;
+}
+
 /* Form Groups */
 .form-group {
   margin-bottom: 1.25rem;
@@ -760,32 +775,34 @@ body.dark-mode .error-alert {
                      value='{{ form.card_number.value|default_if_none:"" }}'>
             </div>
 
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label" for="journey_origin">{% trans "Journey From" %}</label>
-                <input type="text" class="modern-input" id="journey_origin" name="journey_origin"
-                       placeholder="{% trans 'e.g. Hatfield Peverel' %}"
-                       value='{{ form.journey_origin.value|default_if_none:"" }}'>
+            <div id="travel-fields" class="field-toggle">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label" for="journey_origin">{% trans "Journey From" %}</label>
+                  <input type="text" class="modern-input" id="journey_origin" name="journey_origin"
+                         placeholder="{% trans 'e.g. Hatfield Peverel' %}"
+                         value='{{ form.journey_origin.value|default_if_none:"" }}'>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="journey_destination">{% trans "Journey To" %}</label>
+                  <input type="text" class="modern-input" id="journey_destination" name="journey_destination"
+                         placeholder="{% trans 'e.g. London Terminals' %}"
+                         value='{{ form.journey_destination.value|default_if_none:"" }}'>
+                </div>
               </div>
-              <div class="form-group">
-                <label class="form-label" for="journey_destination">{% trans "Journey To" %}</label>
-                <input type="text" class="modern-input" id="journey_destination" name="journey_destination"
-                       placeholder="{% trans 'e.g. London Terminals' %}"
-                       value='{{ form.journey_destination.value|default_if_none:"" }}'>
+              <div class="form-group" id="travel-time-field">
+                <label class="form-label" for="travel_time">{% trans "Time of Travel" %}</label>
+                {% if ":" in form.travel_time.value|default:"" %}
+                <input type="time" class="modern-input" id="travel_time" name="travel_time" value="{{ form.travel_time.value }}">
+                {% else %}
+                <input type="time" class="modern-input" id="travel_time" name="travel_time" value="{{ form.travel_time.value|time:'H:i'|default:'' }}">
+                {% endif %}
+                <p class="text-muted small mt-1 mb-0">{% trans "Leave blank if the ticket doesn't show a fixed time." %}</p>
               </div>
+              <p class="text-muted small mb-3">
+                {% trans "Powers the Active Today widget in Preferences." %}
+              </p>
             </div>
-            <div class="form-group" id="travel-time-field">
-              <label class="form-label" for="travel_time">{% trans "Time of Travel" %}</label>
-              {% if ":" in form.travel_time.value|default:"" %}
-              <input type="time" class="modern-input" id="travel_time" name="travel_time" value="{{ form.travel_time.value }}">
-              {% else %}
-              <input type="time" class="modern-input" id="travel_time" name="travel_time" value="{{ form.travel_time.value|time:'H:i'|default:'' }}">
-              {% endif %}
-              <p class="text-muted small mt-1 mb-0">{% trans "Leave blank if the ticket doesn't show a fixed time." %}</p>
-            </div>
-            <p class="text-muted small mb-3">
-              {% trans "Train/transport tickets only - powers the Active Today widget in Preferences. Leave blank for anything else." %}
-            </p>
 
             <div class="form-row">
               <div class="form-group">
@@ -867,9 +884,11 @@ body.dark-mode .error-alert {
                 </button>
               </div>
               <input type="hidden" id="value_type" name="value_type" value="money">
-              {# Raw AI-scan extraction, captured at scan time so the server
-                 can diff it against what actually gets saved and learn from
-                 the user's corrections (myapp/scan_learning.py). #}
+              {% comment %}
+                Raw AI-scan extraction, captured at scan time so the server
+                can diff it against what actually gets saved and learn from
+                the user's corrections (myapp/scan_learning.py).
+              {% endcomment %}
               <input type="hidden" id="ai_scan_snapshot" name="ai_scan_snapshot" value="">
             </div>
 
@@ -1051,6 +1070,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const walletFieldOriginalHTML = walletField.innerHTML;
   const issueDateField = document.getElementById('issue_date');
   const expiryDateField = document.getElementById('expiry_date');
+  const travelFieldsContainer = document.getElementById('travel-fields');
   // Guards the very first, automatic toggleFields() call below (page load)
   // from resyncing Issue Date against whatever Expiry Date happens to be
   // pre-filled with - only a genuine later change (the user picking
@@ -1078,6 +1098,11 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function toggleFields() {
+    // Journey From/To and Time of Travel only make sense for a travel pass -
+    // every other type collapses this group out (animated via .field-toggle
+    // in style.css) instead of leaving it visible and unused.
+    travelFieldsContainer.classList.toggle('is-collapsed', typeField.value !== 'travelpass');
+
     if (typeField.value === 'loyaltycard') {
       pinField.readOnly = true;
       valueField.readOnly = true;

@@ -364,28 +364,12 @@ h6 {
   }
 }
 
-/* Icon-only mark on narrow viewports (matches the old d-lg breakpoint the
-   wordmark span used to toggle on); the full mark+wordmark lockup once
-   there's room for it. Kept as plain display toggles (not Bootstrap's
-   !important-laden d-* utilities) since they have to compose cleanly with
-   the light/dark theme toggle below, not fight it - see dark-mode.css. */
-.logo-icon {
-  max-height: 26px;
-}
-
-.logo-lockup {
-  display: none;
-  max-height: 32px;
-}
-
-@media (min-width: 992px) {
-  .logo-icon {
-    display: none;
-  }
-
-  .logo-lockup {
-    display: inline-block;
-  }
+/* The full mark+wordmark lockup, at every viewport width - no separate
+   icon-only fallback. 28px keeps it comfortably clear of the hamburger
+   and dark-mode toggle even at a 320px-wide phone screen (verified with
+   real screenshots, not just math). */
+.logo img {
+  max-height: 28px;
 }
 
 .header {
