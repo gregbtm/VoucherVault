@@ -1,4 +1,12 @@
-## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.70...v1.2.0) (2026-07-18)
+## [1.1.72](https://github.com/gregbtm/VoucherVault/compare/v1.1.71...v1.1.72) (2026-07-18)
+
+
+### Bug Fixes
+
+* **ci:** drop test job's needless changelog dependency ([ebc9ac8](https://github.com/gregbtm/VoucherVault/commit/ebc9ac80b5a9c57e945a0d5f444e913d6a78668b))
+* **ci:** install tesseract-ocr in the test job too ([5903fea](https://github.com/gregbtm/VoucherVault/commit/5903feaf3359affa2b36676de270a9c738a9a7b7))
+
+## [1.1.71](https://github.com/gregbtm/VoucherVault/compare/v1.1.70...v1.1.71) (2026-07-18)
 
 
 ### Features
@@ -20,6 +28,4 @@
 ### Bug Fixes
 
 * **ci:** bump docker/login-action and docker/setup-buildx-action ([baa19b5](https://github.com/gregbtm/VoucherVault/commit/baa19b5e62c168d99741164361381710fb1c9e93))
-
-## [1.1.67](https://github.com/gregbtm/VoucherVault/compare/v1.1.66...v1.1.67) (2026-07-18)
 
