@@ -124,6 +124,15 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 91 — CI actually runs the test suites now](#phase-91--ci-actually-runs-the-test-suites-now)
 - [Phase 92 — Mark+wordmark lockup on every viewport width, not just desktop](#phase-92--markwordmark-lockup-on-every-viewport-width-not-just-desktop)
 - [Phase 93 — Item form field scoping, a stray comment, and share-page polish](#phase-93--item-form-field-scoping-a-stray-comment-and-share-page-polish)
+- [Phase 94 — Header logo can no longer push the hamburger off-screen](#phase-94--header-logo-can-no-longer-push-the-hamburger-off-screen)
+- [Phase 95 — UK rail eTicket import (PDF parsing + server-side Aztec decode)](#phase-95--uk-rail-eticket-import-pdf-parsing--server-side-aztec-decode)
+- [Phase 96 — Header control order + a GUI page to generate your own API token](#phase-96--header-control-order--a-gui-page-to-generate-your-own-api-token)
+- [Phase 97 — Four layout bugs, and an interactive suggestion engine to replace the silent one](#phase-97--four-layout-bugs-and-an-interactive-suggestion-engine-to-replace-the-silent-one)
+- [Phase 98 — Tilt-to-scan detection: suggest "Mark Used?" from the phone's own motion](#phase-98--tilt-to-scan-detection-suggest-mark-used-from-the-phones-own-motion)
+- [Phase 99 — A "common sense pass": file preview, barcode-only blur, tap-to-copy codes](#phase-99--a-common-sense-pass-file-preview-barcode-only-blur-tap-to-copy-codes)
+- [Phase 100 — "Nearby" widget: suggest an item when a matching shop is close by](#phase-100--nearby-widget-suggest-an-item-when-a-matching-shop-is-close-by)
+- [Phase 101 — Mobile PDF viewer, download blank page, copy-toast overlap, barcode fixes](#phase-101--mobile-pdf-viewer-download-blank-page-copy-toast-overlap-barcode-fixes)
+- [Phase 102 — Full-text search, wallet budgets, expiry timeline, recurring items, document OCR](#phase-102--full-text-search-wallet-budgets-expiry-timeline-recurring-items-document-ocr)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -5220,6 +5229,77 @@ turned out to have a much more useful shape than a naive
   Preferences and Site Settings pages round-trip the new fields correctly,
   and pointing `overpass_api_url` at a non-default endpoint actually took
   effect end-to-end.
+
+## Phase 101 — Mobile PDF viewer, download blank page, copy-toast overlap, barcode fixes
+
+Six mobile UX bugs fixed:
+
+- **PDF blocked on mobile.** On Android/iOS, browsers block PDFs rendered
+  inside an `<iframe>` with "This content is blocked." The view-item PDF
+  viewer now detects touch-primary devices
+  (`window.matchMedia('(pointer: coarse)').matches`) and opens the file in
+  a new tab instead of trying to inline it; desktop users still see the
+  iframe preview unchanged.
+- **Download leaves a blank page.** Tapping "Download file" navigated the
+  main window to the download URL; cancelling the browser's download prompt
+  left an empty page that required a full refresh to recover. Fixed by
+  adding `target="_blank" rel="noopener"` so the download URL opens in a
+  new tab that immediately closes, keeping the item-detail page intact.
+- **"Copied!" toast overlaps other text.** The previous implementation
+  used `height: 0` to hide the confirmation badge, which let the text
+  overflow its zero-height box and collide with the surrounding code block.
+  Replaced with `position: absolute` so the badge floats over the
+  code block without affecting layout, and added `user-select: none` on the
+  tappable container to suppress the browser's native text-selection UI on
+  long-press.
+- **Barcode key box misaligned.** The barcode/QR panel's "code" text was
+  not centred inside its container. Fixed with explicit `text-align: center`
+  and `align-items: center` on the key box.
+- **Barcode rotation broken.** The rotate slider was overwriting the
+  `transform` set by the zoom slider (and vice versa), so only the
+  last-moved control took effect. Both controls now write a combined
+  `scale(…) rotate(…)` transform in a single assignment.
+- **FORK_CHANGES.md TOC gap.** Phases 94–100 existed in the body but were
+  missing from the table of contents. All seven entries added.
+
+## Phase 102 — Full-text search, wallet budgets, expiry timeline, recurring items, document OCR
+
+Five features that address the most common inventory-management gaps:
+
+- **Full-text search.** The inventory search box previously matched only
+  `name` and `issuer`. It now also searches `redeem_code`, `card_number`,
+  `description`, and `notes`, so "SAVE10" or a partial order number finds
+  the right item immediately. Search placeholder updated accordingly.
+- **Wallet spending budgets.** `Wallet` gains an optional `budget_amount`
+  (decimal). When set, the inventory page shows a colour-coded progress bar
+  below the wallet filter: green → yellow (≥ 80 %) → red (over budget),
+  displaying "X spent / Y budget" for the current calendar month. Spend is
+  derived from the existing `Transaction` ledger (negative-value rows =
+  debits). The `WalletForm` exposes the new field in the wallet edit UI.
+- **Expiry timeline view.** New `/expiry-timeline/` page groups every
+  active, non-archived item (including items in shared wallets) into four
+  bands — "This week", "This month", "Next 3 months", "Beyond 3 months" —
+  each sorted by expiry date. Items show their merchant logo, name, issuer,
+  expiry date, and wallet. An "Timeline" chip in the inventory filter bar
+  links directly to the page.
+- **Recurring / subscription tracking.** `Item` gains three new fields:
+  `is_recurring` (boolean), `renewal_period` (weekly / monthly / quarterly
+  / every 6 months / annual), and `renewal_date` (date). The create- and
+  edit-item forms expose a "Recurring / Subscription" checkbox that
+  conditionally reveals the period select and renewal-date picker. The
+  item-detail page shows a labelled badge row when the item is recurring.
+- **Document/receipt OCR.** After a document is attached to an item, a
+  Celery task (`extract_document_text_task`) runs OCR on it in the
+  background and stores the result in `Document.extracted_text`. PDF
+  attachments are rasterised via `pypdfium2` before OCR. The item-detail
+  page shows an expandable "Extracted text" `<details>` element under each
+  document that has recognised text, making attachment content searchable
+  and readable without downloading the file. Requires `OCR_BACKEND` to be
+  configured; silently skips if OCR is disabled.
+
+**Migration:** `0063_phase102_budget_recurring_ocr` — adds `budget_amount`
+to `wallet`, `is_recurring` / `renewal_period` / `renewal_date` to `item`,
+and `extracted_text` to `document`.
 
 ## New environment variables
 

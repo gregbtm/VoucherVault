@@ -41,7 +41,7 @@ from .portainer import PortainerRedeployError, trigger_redeploy
 from .update_check import _is_newer, check_for_update, check_upstream_version
 from .help_docs import render_doc
 from .public_share import is_link_preview_bot, pin_attempt_rate_limited, view_rate_limited
-from .tasks import fetch_merchant_logo_task
+from .tasks import extract_document_text_task, fetch_merchant_logo_task
 from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
 from imports.exporters.pkpass import generate_pkpass, pkpass_enabled
 from imports.tasks import update_google_wallet_pass_task
@@ -241,6 +241,42 @@ def dashboard(request):
     }
     return render(request, 'dashboard.html', context)
 
+def _get_wallet_budget(wallet_id, user):
+    """
+    Returns a dict {budget, spent, percent, remaining} for the selected wallet
+    if it has a budget set, or None.  `spent` is the absolute value of all
+    negative transactions on items in that wallet during the current calendar
+    month.
+    """
+    if not wallet_id or not str(wallet_id).isdigit():
+        return None
+    try:
+        wallet = Wallet.objects.get(pk=wallet_id, user=user)
+    except Wallet.DoesNotExist:
+        return None
+    if not wallet.budget_amount:
+        return None
+    month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    spent = (
+        Transaction.objects.filter(
+            item__wallet=wallet,
+            item__user=user,
+            date__gte=month_start,
+            value__lt=0,
+        ).aggregate(total=Sum('value'))['total'] or 0
+    )
+    spent = abs(spent)
+    budget = wallet.budget_amount
+    percent = min(int(spent / budget * 100), 100) if budget else 0
+    return {
+        'budget': budget,
+        'spent': spent,
+        'remaining': max(budget - spent, 0),
+        'percent': percent,
+        'over_budget': spent > budget,
+    }
+
+
 @require_GET
 @login_required
 def show_items(request):
@@ -321,7 +357,11 @@ def show_items(request):
     if search_query:
         items = items.filter(
             Q(name__icontains=search_query) |
-            Q(issuer__icontains=search_query)
+            Q(issuer__icontains=search_query) |
+            Q(redeem_code__icontains=search_query) |
+            Q(card_number__icontains=search_query) |
+            Q(description__icontains=search_query) |
+            Q(notes__icontains=search_query)
         )
 
     # Apply sorting based on user preference
@@ -386,6 +426,7 @@ def show_items(request):
         # Wallet filter
         'wallets': Wallet.objects.filter(Q(user=user) | Q(shared_with=user)).distinct().annotate(item_count=Count('items')),
         'selected_wallet_id': int(wallet_id) if wallet_id and wallet_id.isdigit() else None,
+        'wallet_budget': _get_wallet_budget(wallet_id, user),
         # Tag filter — counts reflect the user's own non-archived accessible
         # items, same base set "All Items" browses by default
         'all_tags': Tag.objects.filter(user=user).annotate(
@@ -398,6 +439,49 @@ def show_items(request):
         'tag_query_params': mark_safe(''.join(f'&tag={t}' for t in tag_ids)),  # nosec
     }
     return render(request, 'inventory.html', context)
+
+
+@require_GET
+@login_required
+def expiry_timeline(request):
+    """Expiry timeline view: items grouped into time bands for a quick at-a-glance."""
+    user = request.user
+    today = timezone.localtime().date()
+    in_7 = today + dt.timedelta(days=7)
+    in_30 = today + dt.timedelta(days=30)
+    in_90 = today + dt.timedelta(days=90)
+
+    base = (
+        Item.objects.filter(Q(user=user) | Q(wallet__shared_with=user))
+        .filter(is_used=False, is_archived=False, expiry_date__gte=today)
+        .distinct()
+        .select_related('wallet')
+        .prefetch_related('tags')
+        .order_by('expiry_date', 'name')
+    )
+
+    bands = [
+        {'label': 'This week', 'items': list(base.filter(expiry_date__lte=in_7))},
+        {'label': 'This month', 'items': list(base.filter(expiry_date__gt=in_7, expiry_date__lte=in_30))},
+        {'label': 'Next 3 months', 'items': list(base.filter(expiry_date__gt=in_30, expiry_date__lte=in_90))},
+        {'label': 'Beyond 3 months', 'items': list(base.filter(expiry_date__gt=in_90))},
+    ]
+
+    issuers = [item.issuer for band in bands for item in band['items']]
+    merchant_logos = get_cached_logos_for_issuers(issuers)
+
+    for band in bands:
+        band['items_with_logos'] = [
+            {'item': item, 'merchant_logo_url': merchant_logos.get(item.issuer.strip().lower())}
+            for item in band['items']
+        ]
+
+    return render(request, 'expiry-timeline.html', {
+        'bands': bands,
+        'today': today,
+        'current_date': timezone.now(),
+    })
+
 
 @login_required
 def view_item(request, item_uuid):
@@ -988,6 +1072,10 @@ def upload_document(request, item_uuid):
         document = form.save(commit=False)
         document.item = item
         document.save()
+        try:
+            extract_document_text_task.delay(document.id)
+        except Exception:
+            pass
         messages.success(request, _('Document uploaded successfully!'))
     else:
         for error in form.errors.get('file', []):

@@ -49,7 +49,7 @@ class ItemForm(forms.ModelForm):
 
     class Meta:
         model = Item
-        fields = ['name', 'issuer', 'redeem_code', 'card_number', 'pin', 'issue_date', 'expiry_date', 'description', 'logo_slug', 'type', 'value', 'value_type', 'currency', 'file', 'code_type', 'tile_color', 'wallet', 'tags', 'notes', 'notify_days_before', 'balance_check_url', 'journey_origin', 'journey_destination', 'travel_time', 'order_id', 'discount_applied']
+        fields = ['name', 'issuer', 'redeem_code', 'card_number', 'pin', 'issue_date', 'expiry_date', 'description', 'logo_slug', 'type', 'value', 'value_type', 'currency', 'file', 'code_type', 'tile_color', 'wallet', 'tags', 'notes', 'notify_days_before', 'balance_check_url', 'journey_origin', 'journey_destination', 'travel_time', 'order_id', 'discount_applied', 'is_recurring', 'renewal_period', 'renewal_date']
         widgets = {
             'issue_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
             'expiry_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
@@ -81,6 +81,7 @@ class ItemForm(forms.ModelForm):
                 'class': 'form-control',
                 'placeholder': _('e.g. Network Railcard'),
             }),
+            'renewal_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
         }
 
     def __init__(self, *args, user=None, **kwargs):
@@ -345,7 +346,7 @@ class WalletShareForm(forms.Form):
 class WalletForm(forms.ModelForm):
     class Meta:
         model = Wallet
-        fields = ['name', 'description', 'icon', 'color', 'auto_assign_issuer_match']
+        fields = ['name', 'description', 'icon', 'color', 'auto_assign_issuer_match', 'budget_amount']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': _('e.g. Supermarkets')}),
             'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
@@ -354,6 +355,12 @@ class WalletForm(forms.ModelForm):
             'auto_assign_issuer_match': forms.TextInput(attrs={
                 'class': 'form-control',
                 'placeholder': _('e.g. National Rail'),
+            }),
+            'budget_amount': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'placeholder': _('e.g. 200.00'),
+                'min': '0',
+                'step': '0.01',
             }),
         }
 

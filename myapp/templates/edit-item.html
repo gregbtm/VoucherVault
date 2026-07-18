@@ -982,6 +982,34 @@ body.dark-mode .error-alert {
                         rows="3">{{ item.notes }}</textarea>
             </div>
 
+            <!-- Recurring / Subscription -->
+            <div class="form-group">
+              <div class="d-flex align-items-center gap-2">
+                <input type="checkbox" class="form-check-input" id="is_recurring" name="is_recurring"
+                       {% if item.is_recurring %}checked{% endif %}>
+                <label class="form-label mb-0" for="is_recurring">{% trans "Recurring / Subscription" %}</label>
+              </div>
+              <small class="form-text text-muted">{% trans "Check if this item renews periodically (annual pass, subscription, etc.)" %}</small>
+            </div>
+            <div class="form-row" id="recurring-fields" style="{% if not item.is_recurring %}display:none{% endif %}">
+              <div class="form-group">
+                <label class="form-label" for="renewal_period">{% trans "Renewal Period" %}</label>
+                <select class="modern-select" id="renewal_period" name="renewal_period">
+                  <option value="">---------</option>
+                  {% for val, label in form.fields.renewal_period.choices %}
+                  {% if val %}
+                  <option value="{{ val }}" {% if item.renewal_period == val %}selected{% endif %}>{{ label }}</option>
+                  {% endif %}
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="renewal_date">{% trans "Next Renewal Date" %}</label>
+                <input type="date" class="modern-input" id="renewal_date" name="renewal_date"
+                       value="{{ item.renewal_date|date:'Y-m-d'|default_if_none:'' }}">
+              </div>
+            </div>
+
             <div class="form-group">
               <label class="form-label" for="notify_days_before">{% trans "Notify Me Before Expiry" %}</label>
               <input type="number" class="modern-input" id="notify_days_before" name="notify_days_before"
@@ -1073,6 +1101,16 @@ function handleSubmitButton() {
     document.getElementById('loadingOverlay').style.display = 'none';
   }
 }
+
+(function () {
+  const cb = document.getElementById('is_recurring');
+  const fields = document.getElementById('recurring-fields');
+  if (cb && fields) {
+    cb.addEventListener('change', function () {
+      fields.style.display = this.checked ? '' : 'none';
+    });
+  }
+})();
 
 function resetTileColor() {
   const tileColorInput = document.getElementById('tile_color');

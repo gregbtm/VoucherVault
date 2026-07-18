@@ -692,7 +692,9 @@ body.dark-mode a.more-action-row-danger:hover {
   cursor: pointer;
   transition: background 0.2s ease, border-color 0.2s ease;
   word-break: break-all;
-  user-select: all;
+  user-select: none;
+  -webkit-user-select: none;
+  text-align: center;
 }
 
 .redeem-code:hover {
@@ -717,13 +719,21 @@ body.dark-mode a.more-action-row-danger:hover {
 }
 
 .copied-flash {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #198754;
-  height: 0;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(25, 135, 84, 0.9);
+  padding: 0.2rem 0.75rem;
+  border-radius: 20px;
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.25s ease;
   pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
 }
 
 .copied-flash.show {
@@ -851,6 +861,22 @@ body.dark-mode a.more-action-row-danger:hover {
     width: 100%;
     border-radius: 0 0 8px 8px;
   }
+}
+
+.doc-ocr-text {
+  margin-top: 0.4rem;
+  margin-left: 0.25rem;
+}
+.doc-ocr-pre {
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bs-secondary-bg, #f8f9fa);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.25rem;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 /* Shared Users / Documents */
@@ -1675,6 +1701,23 @@ body.dark-mode .tilt-scan-enable-btn {
           </div>
           {% endif %}
 
+          <!-- Recurring / Subscription info -->
+          {% if item.is_recurring %}
+          <div class="item-description-section">
+            <h6><i class="bi bi-arrow-repeat"></i> {% trans "Recurring" %}</h6>
+            <div class="d-flex flex-wrap gap-2">
+              {% if item.renewal_period %}
+              <span class="badge bg-primary-subtle text-primary-emphasis">{{ item.get_renewal_period_display }}</span>
+              {% endif %}
+              {% if item.renewal_date %}
+              <span class="badge bg-secondary-subtle text-secondary-emphasis">
+                <i class="bi bi-calendar-event me-1"></i>{% trans "Renews" %} {{ item.renewal_date }}
+              </span>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+
           <!-- Action Buttons (owner or shared-wallet collaborator) -->
           {% if can_edit %}
           <div class="item-actions-toolbar">
@@ -1860,7 +1903,7 @@ body.dark-mode .tilt-scan-enable-btn {
             <h5><i class="bi bi-paperclip"></i> {% trans "Receipts & Documents" %}</h5>
             {% for document in item.documents.all %}
             <div class="shared-user-item">
-              <a href="{% url 'download_document' document.id %}" class="shared-user-info">
+              <a href="{% url 'download_document' document.id %}" class="shared-user-info" target="_blank" rel="noopener">
                 <i class="bi bi-file-earmark-text"></i> {{ document.file.name|basename }}
                 <small class="text-muted">({{ document.uploaded_at|date:"Y-m-d H:i" }})</small>
               </a>
@@ -1884,6 +1927,12 @@ body.dark-mode .tilt-scan-enable-btn {
                 {% endif %}
               </div>
             </div>
+            {% if document.extracted_text %}
+            <details class="doc-ocr-text">
+              <summary class="small text-muted">{% trans "Extracted text" %}</summary>
+              <pre class="doc-ocr-pre">{{ document.extracted_text }}</pre>
+            </details>
+            {% endif %}
             {% empty %}
             <p class="text-muted mb-0">{% trans "No receipts or documents attached yet." %}</p>
             {% endfor %}
@@ -1918,7 +1967,7 @@ body.dark-mode .tilt-scan-enable-btn {
             <i class="bi bi-eye"></i> {% trans "View" %}
           </button>
           {% endif %}
-          <a href="{% url 'download_file' item.id %}" class="file-btn">
+          <a href="{% url 'download_file' item.id %}" class="file-btn" target="_blank" rel="noopener">
             <i class="bi bi-download"></i> {% trans "Download" %}
           </a>
         </div>
@@ -2062,6 +2111,9 @@ body.dark-mode .tilt-scan-enable-btn {
           <button type="button" id="zoom-in-btn" class="zoom-btn" title="{% trans 'Zoom in' %}">
             <i class="bi bi-zoom-in"></i>
           </button>
+          <button type="button" id="rotate-btn" class="zoom-btn" title="{% trans 'Rotate 90°' %}">
+            <i class="bi bi-arrow-clockwise"></i>
+          </button>
         </div>
         {% endif %}
 
@@ -2121,6 +2173,12 @@ document.addEventListener("DOMContentLoaded", function() {
 
   function openFilePreview(url, kind) {
     if (kind === 'pdf') {
+      // Mobile browsers (Android/iOS) block PDFs inside iframes — open in a
+      // new tab so the device's native PDF viewer handles it instead.
+      if (window.matchMedia('(pointer: coarse)').matches) {
+        window.open(url, '_blank', 'noopener');
+        return;
+      }
       previewIframe.src = url;
       previewIframe.classList.remove('d-none');
       previewImg.classList.add('d-none');
@@ -2224,31 +2282,41 @@ document.addEventListener("DOMContentLoaded", function() {
   const overlayImg = document.getElementById('qr-overlay-img');
   const closeBtn = document.getElementById('qr-close-btn');
 
-  // Barcode zoom (client-side only, persisted per item in localStorage)
+  // Barcode zoom + rotation (client-side only, persisted per item in localStorage)
   const zoomStorageKey = 'vv_barcode_zoom_{{ item.id }}';
+  const rotateStorageKey = 'vv_barcode_rotate_{{ item.id }}';
   const zoomOutBtn = document.getElementById('zoom-out-btn');
   const zoomInBtn = document.getElementById('zoom-in-btn');
   const zoomResetBtn = document.getElementById('zoom-reset-btn');
+  const rotateBtn = document.getElementById('rotate-btn');
   const MIN_ZOOM = 50, MAX_ZOOM = 200, ZOOM_STEP = 10;
-
-  function applyZoom(percent) {
-    if (qrCode) qrCode.style.transform = `scale(${percent / 100})`;
-  }
 
   function getZoom() {
     return parseInt(localStorage.getItem(zoomStorageKey), 10) || 100;
+  }
+  function getRotate() {
+    return parseInt(localStorage.getItem(rotateStorageKey), 10) || 0;
+  }
+
+  function applyTransform() {
+    if (qrCode) qrCode.style.transform = `scale(${getZoom() / 100}) rotate(${getRotate()}deg)`;
   }
 
   function setZoom(percent) {
     percent = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, percent));
     localStorage.setItem(zoomStorageKey, percent);
-    applyZoom(percent);
+    applyTransform();
+  }
+  function setRotate(deg) {
+    localStorage.setItem(rotateStorageKey, ((deg % 360) + 360) % 360);
+    applyTransform();
   }
 
-  applyZoom(getZoom());
+  applyTransform();
   zoomOutBtn?.addEventListener('click', () => setZoom(getZoom() - ZOOM_STEP));
   zoomInBtn?.addEventListener('click', () => setZoom(getZoom() + ZOOM_STEP));
-  zoomResetBtn?.addEventListener('click', () => setZoom(100));
+  zoomResetBtn?.addEventListener('click', () => { setZoom(100); setRotate(0); });
+  rotateBtn?.addEventListener('click', () => setRotate(getRotate() + 90));
 
   // Tap/click the barcode to reveal it - blur only ever hides the
   // barcode/QR image itself, never the code text (which stays legible so

@@ -162,6 +162,11 @@ class Wallet(models.Model):
                    "placed in this wallet, unless a wallet was already chosen. E.g. \"National "
                    "Rail\" to route scanned train tickets straight into a \"Train Tickets\" wallet.",
     )
+    budget_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Optional monthly spending budget for this wallet. When set, a progress bar "
+                   "shows how much of the budget has been spent in the current calendar month.",
+    )
 
     class Meta:
         ordering = ['name']
@@ -371,6 +376,25 @@ class Item(models.Model):
                    "Informational only.",
     )
     created_at = models.DateTimeField(auto_now_add=True, null=True)
+    is_recurring = models.BooleanField(
+        default=False,
+        help_text="This item renews periodically (subscription, annual pass, etc.).",
+    )
+    RENEWAL_PERIOD_CHOICES = (
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('biannual', 'Every 6 months'),
+        ('annual', 'Annual'),
+    )
+    renewal_period = models.CharField(
+        max_length=10, blank=True, choices=RENEWAL_PERIOD_CHOICES,
+        help_text="How often this item renews.",
+    )
+    renewal_date = models.DateField(
+        null=True, blank=True,
+        help_text="Next renewal / billing date for recurring items.",
+    )
 
     objects = ItemQuerySet.as_manager()
 
@@ -458,6 +482,10 @@ class Document(models.Model):
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='documents')
     file = models.FileField(upload_to=document_upload_path)
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    extracted_text = models.TextField(
+        blank=True, default='',
+        help_text="Text extracted from the document by OCR, populated automatically after upload when OCR is enabled.",
+    )
 
     class Meta:
         ordering = ['-uploaded_at']
