@@ -248,6 +248,7 @@ class UserPreferenceForm(forms.ModelForm):
             'show_issue_date', 'show_expiry_date', 'show_value', 'show_description',
             'sort_by', 'sort_order', 'view_mode', 'fixer_api_key', 'default_currency',
             'keep_screen_awake', 'oled_dark_mode', 'offline_cache_enabled', 'blur_codes_enabled',
+            'tilt_scan_detection_enabled',
             'next_up_wallets', 'next_up_max_items',
             'active_today_enabled', 'commute_home_station', 'active_today_cutoff_time',
         ]

@@ -21,6 +21,7 @@ from django.utils import timezone
 from django.http import Http404, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
+from csp.decorators import csp_replace
 from django.http import HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
@@ -907,6 +908,18 @@ def download_file(request, item_id):
     else:
         return HttpResponse("No file found", status=404)
 
+def _previewable_mime_type(file_field, allow_pdf=False):
+    """Mime type for a FileField if it's safe to render inline in the
+    browser (an image, or a PDF when allow_pdf is set), else None."""
+    if not file_field:
+        return None
+    mime_type, _ = mimetypes.guess_type(file_field.name)
+    if not mime_type:
+        return None
+    if mime_type.startswith('image/') or (allow_pdf and mime_type == 'application/pdf'):
+        return mime_type
+    return None
+
 @require_GET
 @login_required
 def serve_image_file(request, item_id):
@@ -918,11 +931,49 @@ def serve_image_file(request, item_id):
     if not item.file:
         raise Http404("No file attached.")
 
-    mime_type, _ = mimetypes.guess_type(item.file.name)
-    if not mime_type or not mime_type.startswith('image/'):
+    mime_type = _previewable_mime_type(item.file)
+    if not mime_type:
         return HttpResponse("File is not an image", status=400)
 
     return HttpResponse(item.file, content_type=mime_type)
+
+@require_GET
+@login_required
+@csp_replace({"frame-ancestors": ["'self'"]})
+def view_original_file(request, item_id):
+    """Serves the item's original upload inline (image or PDF) for the
+    view-in-overlay button - unlike download_file, no attachment header.
+    frame-ancestors is relaxed to 'self' just for this response, since the
+    site's own CSP_FRAME_ANCESTORS default ('none') would otherwise block
+    the page's own same-origin <iframe> preview of a PDF."""
+    item = get_object_or_404(Item, id=item_id)
+
+    if not has_item_access(item, request.user):
+        return HttpResponse("Unauthorized", status=403)
+
+    mime_type = _previewable_mime_type(item.file, allow_pdf=True)
+    if not mime_type:
+        return HttpResponse("File cannot be previewed", status=400)
+
+    return HttpResponse(item.file, content_type=mime_type)
+
+@require_GET
+@login_required
+@csp_replace({"frame-ancestors": ["'self'"]})
+def view_document_file(request, document_id):
+    """Serves an attached receipt/document inline (image or PDF) for the
+    view-in-overlay button - unlike download_document, no attachment header.
+    See view_original_file for why frame-ancestors is relaxed here."""
+    document = get_object_or_404(Document, id=document_id)
+
+    if not has_item_access(document.item, request.user):
+        return HttpResponse("Unauthorized", status=403)
+
+    mime_type = _previewable_mime_type(document.file, allow_pdf=True)
+    if not mime_type:
+        return HttpResponse("File cannot be previewed", status=400)
+
+    return HttpResponse(document.file, content_type=mime_type)
 
 @require_POST
 @login_required
@@ -999,6 +1050,10 @@ def toggle_item_status(request, item_id):
 
     item.save()
     _queue_google_wallet_update(item)
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({'success': True, 'is_used': item.is_used})
+
     next_url = request.POST.get('next') or request.GET.get('next')
     if next_url:
         return redirect(next_url)

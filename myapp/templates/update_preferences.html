@@ -140,6 +140,12 @@
                 <div class="form-text text-muted">{% trans "Privacy in public places. Turn off for faster access at point-of-sale - the code shows immediately instead of requiring a tap to reveal." %}</div>
                 {% if form.blur_codes_enabled.errors %}<div class="text-danger small">{{ form.blur_codes_enabled.errors }}</div>{% endif %}
               </div>
+              <div class="form-check mb-2">
+                {{ form.tilt_scan_detection_enabled }}
+                <label class="form-check-label" for="{{ form.tilt_scan_detection_enabled.id_for_label }}">{% trans "Suggest marking Used when I tilt my phone forward" %}</label>
+                <div class="form-text text-muted">{% trans "Detects the motion of presenting a barcode to a reader (train barriers, a till scanner) and offers a one-tap 'Mark Used?' prompt - it only ever suggests, never marks an item used on its own. Asks for one-time motion access on your phone the first time it's needed." %}</div>
+                {% if form.tilt_scan_detection_enabled.errors %}<div class="text-danger small">{{ form.tilt_scan_detection_enabled.errors }}</div>{% endif %}
+              </div>
             </div>
 
             <div class="settings-section">

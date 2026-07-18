@@ -1864,6 +1864,21 @@ class DocumentUploadTests(TestCase):
         response = self.client.get(reverse('download_document', args=[document.id]))
         self.assertEqual(response.status_code, 200)
 
+    def test_owner_can_view_previewable_document_inline(self):
+        document = Document.objects.create(item=self.item, file=make_upload('receipt.pdf'))
+        response = self.client.get(reverse('view_document_file', args=[document.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertNotIn('Content-Disposition', response)
+
+    def test_view_rejects_non_previewable_document(self):
+        document = Document.objects.create(
+            item=self.item,
+            file=SimpleUploadedFile('notes.txt', b'hello', content_type='text/plain'),
+        )
+        response = self.client.get(reverse('view_document_file', args=[document.id]))
+        self.assertEqual(response.status_code, 400)
+
     def test_non_collaborator_cannot_upload_view_or_delete(self):
         document = Document.objects.create(item=self.item, file=make_upload())
         self.client.logout()
@@ -1874,6 +1889,9 @@ class DocumentUploadTests(TestCase):
 
         download_response = self.client.get(reverse('download_document', args=[document.id]))
         self.assertEqual(download_response.status_code, 403)
+
+        view_response = self.client.get(reverse('view_document_file', args=[document.id]))
+        self.assertEqual(view_response.status_code, 403)
 
         delete_response = self.client.post(reverse('delete_document', args=[document.id]))
         self.assertEqual(delete_response.status_code, 403)
@@ -2760,6 +2778,45 @@ class ServeImageFileTests(TestCase):
         item = make_item(self.user)
         response = self.client.get(reverse('serve_image_file', args=[item.id]))
         self.assertEqual(response.status_code, 404)
+
+
+class ViewOriginalFileTests(TestCase):
+    """
+    view_original_file backs the "View" overlay button on an item's
+    original upload - unlike download_file, it serves inline (no
+    attachment header) so an <img> or <iframe> can render it directly, and
+    it accepts a PDF as well as an image.
+    """
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_serves_image_inline_with_correct_content_type(self):
+        item = make_item(self.alice, file=SimpleUploadedFile('scan.png', _make_test_image('blue'), content_type='image/png'))
+        response = self.client.get(reverse('view_original_file', args=[item.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/png')
+        self.assertNotIn('Content-Disposition', response)
+
+    def test_serves_pdf_inline_with_correct_content_type(self):
+        item = make_item(self.alice, file=make_upload('ticket.pdf'))
+        response = self.client.get(reverse('view_original_file', args=[item.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertNotIn('Content-Disposition', response)
+
+    def test_rejects_non_previewable_file_type(self):
+        item = make_item(self.alice, file=SimpleUploadedFile('notes.txt', b'hello', content_type='text/plain'))
+        response = self.client.get(reverse('view_original_file', args=[item.id]))
+        self.assertEqual(response.status_code, 400)
+
+    def test_non_collaborator_forbidden(self):
+        item = make_item(self.alice, file=make_upload('ticket.pdf'))
+        self.client.logout()
+        self.client.login(username='bob', password='pw12345!')
+        response = self.client.get(reverse('view_original_file', args=[item.id]))
+        self.assertEqual(response.status_code, 403)
 
 
 class ArchivedItemTests(TestCase):
@@ -4426,10 +4483,13 @@ class BlurCodesTogglePreferenceTests(TestCase):
         self.assertTrue(prefs.blur_codes_enabled)
 
     def test_codes_blurred_by_default(self):
+        # Blur only ever applies to the barcode/QR image - the redeem code
+        # text is never blurred, since the whole block is tap-to-copy and
+        # needs to stay legible.
         item = make_item(self.user)
         response = self.client.get(reverse('view_item', args=[item.id]))
         self.assertContains(response, 'qr-image opaque')
-        self.assertContains(response, 'redeem-code opaque')
+        self.assertNotContains(response, 'redeem-code opaque')
 
     def test_codes_not_blurred_when_disabled(self):
         prefs, _ = UserPreference.objects.get_or_create(user=self.user)
@@ -4439,7 +4499,6 @@ class BlurCodesTogglePreferenceTests(TestCase):
         response = self.client.get(reverse('view_item', args=[item.id]))
         self.assertNotContains(response, 'qr-image opaque')
         self.assertNotContains(response, 'redeem-code opaque')
-        self.assertContains(response, 'copy-code-btn visible')
 
     def test_toggle_off_saves_via_preferences_form(self):
         response = self.client.post(reverse('update_user_preferences'), data={
@@ -4451,6 +4510,136 @@ class BlurCodesTogglePreferenceTests(TestCase):
         self.assertRedirects(response, reverse('show_items') + '?prefs_saved=1')
         prefs = UserPreference.objects.get(user=self.user)
         self.assertFalse(prefs.blur_codes_enabled)
+
+
+class RedeemCodeTapToCopyTests(TestCase):
+    """
+    The redeem code/card number blocks are tap-to-copy in their entirety
+    (no separate copy button) and clip to a few lines with a "Show full
+    code" toggle once the code gets long, rather than growing the card
+    indefinitely.
+    """
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_short_code_has_no_expand_toggle(self):
+        item = make_item(self.user, redeem_code='SHORT123')
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertNotContains(response, 'id="redeem-code-expand-btn"')
+        self.assertNotContains(response, 'redeem-code clippable')
+
+    def test_long_code_gets_clippable_and_expand_toggle(self):
+        item = make_item(self.user, redeem_code='X' * 120)
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertContains(response, 'id="redeem-code-expand-btn"')
+        self.assertContains(response, 'redeem-code clippable')
+
+    def test_long_card_number_gets_clippable_and_expand_toggle(self):
+        item = make_item(self.user, card_number='Y' * 120)
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertContains(response, 'id="card-number-expand-btn"')
+
+
+class TiltScanDetectionTests(TestCase):
+    """
+    tilt_scan_detection_enabled (opt-in, default off) suggests marking an
+    item Used when the phone is tilted forward - see tilt-scan-detect.js
+    for the client-side motion heuristic this just gates the markup for.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_defaults_to_disabled(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        self.assertFalse(prefs.tilt_scan_detection_enabled)
+
+    def test_banner_absent_by_default(self):
+        item = make_item(self.user, code_type='qrcode')
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertNotContains(response, 'id="tilt-scan-banner"')
+
+    def test_banner_present_when_enabled_and_scannable_and_unused(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        prefs.tilt_scan_detection_enabled = True
+        prefs.save()
+        item = make_item(self.user, code_type='qrcode')
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertContains(response, 'id="tilt-scan-banner"')
+        self.assertContains(response, 'vvInitTiltScanDetect')
+
+    def test_banner_absent_once_item_already_used(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        prefs.tilt_scan_detection_enabled = True
+        prefs.save()
+        item = make_item(self.user, code_type='qrcode')
+        item.is_used = True
+        item.save()
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertNotContains(response, 'id="tilt-scan-banner"')
+
+    def test_banner_absent_for_loyalty_card(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        prefs.tilt_scan_detection_enabled = True
+        prefs.save()
+        item = make_item(self.user, type='loyaltycard', code_type='qrcode')
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertNotContains(response, 'id="tilt-scan-banner"')
+
+    def test_banner_absent_when_no_scannable_code(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        prefs.tilt_scan_detection_enabled = True
+        prefs.save()
+        item = make_item(self.user, code_type='none')
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertNotContains(response, 'id="tilt-scan-banner"')
+
+    def test_toggle_on_saves_via_preferences_form(self):
+        response = self.client.post(reverse('update_user_preferences'), data={
+            'show_expiry_date': 'on', 'show_value': 'on', 'show_description': 'on',
+            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact', 'next_up_max_items': '1',
+            'default_currency': 'GBP', 'keep_screen_awake': 'on', 'offline_cache_enabled': 'on',
+            'blur_codes_enabled': 'on', 'tilt_scan_detection_enabled': 'on',
+        })
+        self.assertRedirects(response, reverse('show_items') + '?prefs_saved=1')
+        prefs = UserPreference.objects.get(user=self.user)
+        self.assertTrue(prefs.tilt_scan_detection_enabled)
+
+
+class ToggleItemStatusAjaxTests(TestCase):
+    """
+    toggle_item_status supports an AJAX JSON round-trip (mirroring
+    toggle_pin_item's existing pattern) so tilt-scan-detect.js's "Mark
+    Used" banner button can flip the status without a full page reload.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_ajax_request_returns_json(self):
+        item = make_item(self.user)
+        response = self.client.post(
+            reverse('toggle_item_status', args=[item.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertTrue(data['is_used'])
+
+        response = self.client.post(
+            reverse('toggle_item_status', args=[item.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertFalse(response.json()['is_used'])
+
+    def test_non_ajax_request_still_redirects(self):
+        item = make_item(self.user)
+        response = self.client.post(reverse('toggle_item_status', args=[item.id]))
+        self.assertRedirects(response, reverse('view_item', kwargs={'item_uuid': item.id}))
 
 
 class PwaCacheClearOnLoginTests(TestCase):

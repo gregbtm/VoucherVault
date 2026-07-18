@@ -5028,6 +5028,128 @@ them silently.
   case, where Wallet is disabled and correctly shows no button at all) in
   both themes.
 
+## Phase 98 — Tilt-to-scan detection: suggest "Mark Used?" from the phone's own motion
+
+A feature request grown from a question about whether the phone's sensors
+could help at all: pull up a Travel Pass, tilt the phone forward to present
+its barcode to a reader (train barriers, a till scanner), and have the app
+notice that motion and offer a one-tap "Mark Used?" prompt - never marking
+anything on its own, only ever suggesting.
+
+- **Opt-in preference**, `UserPreference.tilt_scan_detection_enabled`
+  (default off), alongside `keep_screen_awake` and `blur_codes_enabled` under
+  Preferences → "At the Till". Scoped to any item with a scannable code, not
+  just Travel Pass as literally described - a gift card or coupon barcode
+  presented to a reader benefits from the same nudge, and loyalty cards
+  (which get scanned repeatedly without ever being "used up") and already-
+  used items are excluded.
+- **`tilt-scan-detect.js`**, wired into `view-item.html` behind
+  `{% if preferences.tilt_scan_detection_enabled and can_edit and not
+  item.is_used and item.type != "loyaltycard" and item.code_type != "none"
+  %}` (the same gates already used around the page's own "Mark Used" button
+  and its "more actions" menu). Listens for `deviceorientation` events and
+  watches `event.beta` - the phone's front-to-back tilt, ~90° held upright
+  normally, dropping toward/past 0° when tilted forward to show its screen
+  to a reader. A sustained dip below threshold (configurable, default 25°)
+  held for 350ms shows a dismissible banner with an explicit "Mark Used"
+  button; a 15-second cooldown after any trigger stops it from firing again
+  on every subsequent wobble.
+  - The first check confirmed the "check again on the next event" approach
+    that seemed obvious doesn't hold up: device orientation events aren't
+    guaranteed to keep arriving at any particular rate (iOS throttles them
+    in low-power/background states), so a single sustained tilt with no
+    fresh event to re-trigger the check would never actually fire. Rebuilt
+    around an explicit `setTimeout` scheduled the moment the tilt starts,
+    confirmed against the last known state when it fires - deterministic
+    regardless of how often (or rarely) new events show up.
+  - iOS 13+ gates `DeviceOrientationEvent.requestPermission()` behind an
+    explicit user gesture and won't grant it from a page-load handler; the
+    banner's markup includes an inert "Enable tilt detection" button that
+    only appears when that gate is feature-detected, and attaches
+    immediately everywhere else (Android and other browsers have no such
+    gate).
+  - Mark Used reuses the existing `toggle_item_status` view's redirect
+    behavior for non-JS callers, extended with an AJAX branch (checking
+    `X-Requested-With: XMLHttpRequest`, matching the pattern already
+    established by the pin-toggle on Inventory) so the banner's button can
+    flip the item without a full page navigation, then reload once the
+    server confirms success.
+- Full suite: 862 backend tests (9 new: banner presence/absence across the
+  enabled/scannable/unused matrix, the preference round-tripping through the
+  form, and the new AJAX branch on `toggle_item_status`) + 46 JS tests (10
+  new, covering permission gating on both the iOS-gesture and no-gate paths,
+  the hold-and-cooldown timing logic, and the dismiss/mark-used banner
+  actions), 0 failures. Live-verified with a real Playwright session:
+  dispatched a synthetic `deviceorientation` event at desktop/light and
+  mobile/dark, confirmed the banner appears after the hold, dismisses
+  cleanly, and Mark Used correctly flips the item and makes the banner
+  disappear on the next load.
+- Not yet real-device-tuned: the default threshold (25°), hold (350ms), and
+  cooldown (15s) are reasonable starting points reasoned from how the
+  gesture should look, not calibrated against an actual ticket barrier or
+  till scanner - expect a follow-up pass to adjust `vvInitTiltScanDetect()`'s
+  config once tested against a real reader.
+
+## Phase 99 — A "common sense pass": file preview, barcode-only blur, tap-to-copy codes
+
+A round of small, concrete UX complaints, fixed together as a "common
+sense pass" rather than one at a time.
+
+- **View, not just download, the original upload and attached
+  documents.** The Original Upload section previously offered an inline
+  "Show Image" toggle for images and nothing at all for PDFs beyond a raw
+  download; Receipts & Documents had no way to look at a file without
+  downloading it first. Both now get a "View" button that opens the file
+  - image or PDF - in a fullscreen overlay, reusing the fullscreen-overlay
+  pattern already established for the barcode/QR image.
+  - New `view_original_file`/`view_document_file` views serve the
+    relevant `FileField` inline (no `Content-Disposition: attachment`
+    header, correct guessed mime type), sharing a `_previewable_mime_type`
+    helper with the existing `serve_image_file` so all three agree on what
+    counts as previewable (image or, now, PDF too).
+  - Caught before it reached a live test: the site's CSP sets
+    `frame-ancestors 'none'` by default (`CSP_FRAME_ANCESTORS`, off by
+    default to block clickjacking from other origins) - which also blocks
+    a page from framing its own content in an `<iframe>`, same-origin or
+    not. The two new views relax just `frame-ancestors` to `'self'` on
+    their own response via `django-csp`'s `csp_replace` decorator, leaving
+    every other page's stricter policy untouched.
+- **Blur only ever hides the barcode/QR image now, never the code text.**
+  `blur_codes_enabled` used to blur the redeem code text alongside the
+  barcode/QR image and the zoom/rotate controls sat right next to both -
+  worth separating cleanly. The code text is never blurred now (it has to
+  stay legible to be tap-to-copy - see below); only the barcode/QR image
+  itself still blurs behind a "Tap to reveal".
+- **The whole redeem code (and card number) block is now the copy
+  target** - tap or click it anywhere to copy, no separate copy button.
+  Freeing up that horizontal space lets the block use the sidebar's full
+  width, and a long code (over 80 characters - the kind of thing an
+  encrypted rail-ticket payload produces) now clips to about three lines
+  with a small "Show full code" toggle underneath, rather than stretching
+  the card indefinitely. Copying always grabs the full underlying text
+  regardless of what's visually clipped. A brief "Copied!" flash and a
+  green-tinted border replace the old button's own copied state.
+- **Fixed the "rotate doesn't work" report**, which turned out to be a
+  labeling problem, not a broken feature: the middle barcode-zoom button
+  was always "reset zoom to 100%" (`bi-arrow-counterclockwise`, a circular
+  arrow that reads as "rotate" at a glance), not an image-rotate control
+  that never existed. Swapped the icon for `bi-aspect-ratio` and the title
+  attribute now reads "Reset zoom (100%)" so it doesn't get mistaken for a
+  rotate button again.
+- Full suite: 871 backend tests (9 new: inline-preview content-type/403/400
+  behavior for both new views, blur staying off the code text, and the
+  clip/expand-toggle threshold) + 46 JS tests (unchanged - this phase
+  didn't touch any JS-tested file), 0 failures. Live-verified with a real
+  Playwright session: the PDF preview overlay opens and closes cleanly (a
+  minimal real PDF rendered via Chromium's built-in viewer once the CSP
+  fix landed - it had been a blank "refused to connect" page before);
+  the barcode still blurs and reveals correctly while the redeem code and
+  card number stay fully legible throughout; the whole code block copies
+  the correct value to the clipboard with visible feedback; a 120-
+  character code clips with a working expand/collapse toggle; and the
+  zoom-reset icon reads clearly instead of implying a rotate feature that
+  isn't there - all confirmed in both light/desktop and dark/mobile.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

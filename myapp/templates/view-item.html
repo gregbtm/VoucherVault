@@ -670,62 +670,74 @@ body.dark-mode a.more-action-row-danger:hover {
 .redeem-code-wrapper {
   position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
+/* The code is never blurred - blur_codes_enabled only ever applies to the
+   barcode/QR image (.qr-image.opaque above); tapping/clicking the code
+   copies it, so it needs to stay legible and selectable at all times. */
 .redeem-code {
   font-family: 'Courier New', monospace;
   font-size: 1.1rem;
+  line-height: 1.4;
   font-weight: 600;
   padding: 0.75rem 1rem;
   background: var(--field-bg, #f8f9fa);
   border-radius: 8px;
-  display: inline-block;
+  border: 1px solid transparent;
+  display: block;
+  width: 100%;
   cursor: pointer;
-  transition: filter 0.2s ease;
+  transition: background 0.2s ease, border-color 0.2s ease;
   word-break: break-all;
   user-select: all;
 }
 
-.redeem-code.opaque {
-  filter: blur(5px);
-  user-select: none;
+.redeem-code:hover {
+  border-color: var(--border-color, #dee2e6);
 }
 
-.copy-code-btn {
-  width: 44px;
-  height: 44px;
-  border-radius: 8px;
-  border: 1px solid var(--border-color, #dee2e6);
-  background: var(--card-bg, #fff);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-color, #495057);
-  transition: all 0.2s ease;
-  flex-shrink: 0;
+.redeem-code.copied {
+  background: rgba(25, 135, 84, 0.12);
+  border-color: #198754;
+}
+
+/* Long codes are clipped to ~3 lines by default so a very long code
+   doesn't dominate the page - copying always grabs the full underlying
+   text regardless of what's visible, so clipping never loses data. */
+.redeem-code.clippable {
+  max-height: 4.9em;
+  overflow: hidden;
+}
+
+.redeem-code.clippable.expanded {
+  max-height: none;
+}
+
+.copied-flash {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #198754;
+  height: 0;
   opacity: 0;
+  transition: opacity 0.3s ease;
   pointer-events: none;
 }
 
-.copy-code-btn.visible {
+.copied-flash.show {
   opacity: 1;
-  pointer-events: auto;
 }
 
-.copy-code-btn:hover {
-  background: var(--hover-bg, #f8f9fa);
-  border-color: var(--primary-color, #4154f1);
+.code-expand-toggle {
+  background: none;
+  border: none;
   color: var(--primary-color, #4154f1);
-}
-
-.copy-code-btn.copied {
-  background: #198754;
-  border-color: #198754;
-  color: white;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
 }
 
 /* Bumps otherwise-undersized Bootstrap .btn/.btn-sm controls (Public
@@ -961,12 +973,6 @@ body.dark-mode a.more-action-row-danger:hover {
   color: var(--text-color, #495057);
 }
 
-.loaded-image {
-  margin-top: 1rem;
-  max-width: 100%;
-  border-radius: 10px;
-}
-
 /* Transaction Section */
 .transaction-card {
   background: var(--card-bg, #fff);
@@ -1099,6 +1105,65 @@ body.no-scroll {
   top: 1rem;
   right: 1rem;
   z-index: 10000;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.95);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+}
+
+/* File Preview Overlay - views an original upload or attached document
+   (image or PDF) inline instead of forcing a download. */
+.file-preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 10000;
+}
+
+.file-preview-overlay.show {
+  display: flex;
+}
+
+.file-preview-content {
+  width: 100%;
+  height: 100%;
+  max-width: 1000px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.file-preview-content img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.file-preview-content iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 8px;
+  background: #fff;
+}
+
+#file-preview-close-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 10001;
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -1273,17 +1338,6 @@ body.dark-mode .fullscreen-btn:hover {
   background: #333;
 }
 
-body.dark-mode .copy-code-btn {
-  background: #2a2a2a;
-  border-color: #444;
-  color: #e0e0e0;
-}
-
-body.dark-mode .copy-code-btn:hover {
-  background: #333;
-  border-color: #5a6cf1;
-  color: #5a6cf1;
-}
 
 body.dark-mode #qr-close-btn {
   background: rgba(40, 40, 40, 0.95);
@@ -1320,7 +1374,126 @@ body.dark-mode .action-btn-danger-outline:hover {
   background: #dc3545;
   color: white !important;
 }
+
+/* Tilt-to-suggest-used banner and its "enable motion access" precursor -
+   mirrors .offline-content-banner's fixed, slide-down pattern (base.html)
+   but in the app's amber "suggestion" color (matches field-suggest.js's
+   lightbulb) rather than that banner's blue/purple, so the two kinds of
+   proactive, dismissible suggestion read as the same family. */
+.tilt-scan-banner {
+  position: fixed;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9997;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #fff8e6;
+  border: 1px solid #ffe08a;
+  color: #664d03;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 14px;
+  max-width: calc(100vw - 24px);
+  animation: tiltBannerSlideDown 0.25s ease-out;
+}
+
+.tilt-scan-banner i {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.tilt-scan-banner .tilt-scan-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.tilt-scan-banner button {
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tilt-scan-banner .tilt-scan-mark-used {
+  background: #ffc107;
+  color: #402d00;
+  font-weight: 600;
+}
+
+.tilt-scan-banner .tilt-scan-dismiss {
+  background: transparent;
+  color: #664d03;
+}
+
+@keyframes tiltBannerSlideDown {
+  from { top: -60px; opacity: 0; }
+  to { top: 70px; opacity: 1; }
+}
+
+.tilt-scan-enable-btn {
+  position: fixed;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9997;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid #ffe08a;
+  background: #fff8e6;
+  color: #664d03;
+  font-size: 13px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
+
+body.dark-mode .tilt-scan-banner {
+  background: #3a2f0a;
+  border-color: #665108;
+  color: #ffd75e;
+}
+
+body.dark-mode .tilt-scan-banner .tilt-scan-dismiss {
+  color: #ffd75e;
+}
+
+body.dark-mode .tilt-scan-enable-btn {
+  background: #3a2f0a;
+  border-color: #665108;
+  color: #ffd75e;
+}
+
+@media (max-width: 768px) {
+  .tilt-scan-banner {
+    left: 10px;
+    right: 10px;
+    transform: none;
+    max-width: none;
+  }
+}
 </style>
+
+{% if preferences.tilt_scan_detection_enabled and can_edit and not item.is_used and item.type != "loyaltycard" and item.code_type != "none" %}
+<button type="button" class="tilt-scan-enable-btn" id="tilt-scan-enable-btn" hidden>
+  <i class="bi bi-phone-vibrate"></i>
+  {% trans "Enable tilt detection" %}
+</button>
+<div class="tilt-scan-banner" id="tilt-scan-banner" role="status" hidden>
+  <i class="bi bi-lightbulb"></i>
+  <span>{% trans "Looks like you scanned this - mark it as used?" %}</span>
+  <div class="tilt-scan-actions">
+    <button type="button" class="tilt-scan-mark-used" id="tilt-scan-mark-used-btn">{% trans "Mark Used" %}</button>
+    <button type="button" class="tilt-scan-dismiss" id="tilt-scan-dismiss-btn">{% trans "Dismiss" %}</button>
+  </div>
+</div>
+{% endif %}
 
 <div class="detail-header">
   <div>
@@ -1691,14 +1864,25 @@ body.dark-mode .action-btn-danger-outline:hover {
                 <i class="bi bi-file-earmark-text"></i> {{ document.file.name|basename }}
                 <small class="text-muted">({{ document.uploaded_at|date:"Y-m-d H:i" }})</small>
               </a>
-              {% if can_edit %}
-              <form method="POST" action="{% url 'delete_document' document.id %}" style="display:inline;">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-danger unshare-btn" onclick="return confirm('{% trans "Delete this document?" %}');">
-                  {% trans "Delete" %}
+              <div class="d-flex gap-2 align-items-center">
+                {% if document.file.name|is_image_file %}
+                <button type="button" class="btn btn-outline-secondary unshare-btn" data-preview-url="{% url 'view_document_file' document.id %}" data-preview-kind="image">
+                  <i class="bi bi-eye"></i> {% trans "View" %}
                 </button>
-              </form>
-              {% endif %}
+                {% elif document.file.name|is_pdf_file %}
+                <button type="button" class="btn btn-outline-secondary unshare-btn" data-preview-url="{% url 'view_document_file' document.id %}" data-preview-kind="pdf">
+                  <i class="bi bi-eye"></i> {% trans "View" %}
+                </button>
+                {% endif %}
+                {% if can_edit %}
+                <form method="POST" action="{% url 'delete_document' document.id %}" style="display:inline;">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-danger unshare-btn" onclick="return confirm('{% trans "Delete this document?" %}');">
+                    {% trans "Delete" %}
+                  </button>
+                </form>
+                {% endif %}
+              </div>
             </div>
             {% empty %}
             <p class="text-muted mb-0">{% trans "No receipts or documents attached yet." %}</p>
@@ -1717,30 +1901,27 @@ body.dark-mode .action-btn-danger-outline:hover {
       </div>
 
       <!-- File Section: the original upload, not the scan code above -->
-      {% if item.file.name|is_image_file %}
+      {% if item.file.name %}
       <div class="file-section">
-        <div class="file-section-title"><i class="bi bi-image"></i> {% trans "Original Upload" %}</div>
+        <div class="file-section-title">
+          <i class="bi {% if item.file.name|is_image_file %}bi-image{% else %}bi-file-earmark{% endif %}"></i>
+          {% trans "Original Upload" %}
+        </div>
         <p class="file-section-caption">{% trans "The file you uploaded when adding this item - not the redemption code above." %}</p>
-        <div class="file-buttons" id="image-button-group">
-          <button class="file-btn" id="show-image-btn">
-            <i class="bi bi-eye"></i> {% trans "Show Image" %}
+        <div class="file-buttons">
+          {% if item.file.name|is_image_file %}
+          <button type="button" class="file-btn" data-preview-url="{% url 'view_original_file' item.id %}" data-preview-kind="image">
+            <i class="bi bi-eye"></i> {% trans "View" %}
           </button>
-          <button class="file-btn d-none" id="hide-image-btn">
-            <i class="bi bi-eye-slash"></i> {% trans "Hide Image" %}
+          {% elif item.file.name|is_pdf_file %}
+          <button type="button" class="file-btn" data-preview-url="{% url 'view_original_file' item.id %}" data-preview-kind="pdf">
+            <i class="bi bi-eye"></i> {% trans "View" %}
           </button>
+          {% endif %}
           <a href="{% url 'download_file' item.id %}" class="file-btn">
             <i class="bi bi-download"></i> {% trans "Download" %}
           </a>
         </div>
-        <img id="loaded-image" src="" class="loaded-image d-none">
-      </div>
-      {% elif item.file.name %}
-      <div class="file-section">
-        <div class="file-section-title"><i class="bi bi-file-earmark"></i> {% trans "Original Upload" %}</div>
-        <p class="file-section-caption">{% trans "The file you uploaded when adding this item." %}</p>
-        <a href="{% url 'download_file' item.id %}" class="file-btn">
-          <i class="bi bi-download"></i> {% trans "Download File" %}
-        </a>
       </div>
       {% endif %}
       
@@ -1846,10 +2027,11 @@ body.dark-mode .action-btn-danger-outline:hover {
         
         {% if item.card_number %}
         <div class="redeem-code-wrapper mb-2">
-          <div class="redeem-code" id="card-number">{{ item.card_number }}</div>
-          <button type="button" class="copy-code-btn visible" id="copy-card-number-btn" title="{% trans 'Copy card number' %}">
-            <i class="bi bi-clipboard"></i>
-          </button>
+          <div class="redeem-code{% if item.card_number|length > 80 %} clippable{% endif %}" id="card-number" title="{% trans 'Tap to copy' %}">{{ item.card_number }}</div>
+          <span class="copied-flash" id="card-number-copied-flash">{% trans "Copied!" %}</span>
+          {% if item.card_number|length > 80 %}
+          <button type="button" class="code-expand-toggle" id="card-number-expand-btn">{% trans "Show full number" %}</button>
+          {% endif %}
         </div>
         <p class="text-muted small mb-2">{% trans "Card number shown above; barcode below encodes the redeem code." %}</p>
         {% endif %}
@@ -1874,8 +2056,8 @@ body.dark-mode .action-btn-danger-outline:hover {
           <button type="button" id="zoom-out-btn" class="zoom-btn" title="{% trans 'Zoom out' %}">
             <i class="bi bi-zoom-out"></i>
           </button>
-          <button type="button" id="zoom-reset-btn" class="zoom-btn" title="{% trans 'Reset zoom' %}">
-            <i class="bi bi-arrow-counterclockwise"></i>
+          <button type="button" id="zoom-reset-btn" class="zoom-btn" title="{% trans 'Reset zoom (100%)' %}">
+            <i class="bi bi-aspect-ratio"></i>
           </button>
           <button type="button" id="zoom-in-btn" class="zoom-btn" title="{% trans 'Zoom in' %}">
             <i class="bi bi-zoom-in"></i>
@@ -1884,15 +2066,11 @@ body.dark-mode .action-btn-danger-outline:hover {
         {% endif %}
 
         <div class="redeem-code-wrapper">
-          <div class="redeem-code{% if global_preferences.blur_codes_enabled %} opaque{% endif %}" id="redeem-code">{{ item.redeem_code }}</div>
-          {% if item.code_type == "none" and global_preferences.blur_codes_enabled %}
-          <div class="tap-hint" id="qr-tap-hint">
-            <i class="bi bi-hand-index"></i> {% trans "Tap to reveal" %}
-          </div>
+          <div class="redeem-code{% if item.redeem_code|length > 80 %} clippable{% endif %}" id="redeem-code" title="{% trans 'Tap to copy' %}">{{ item.redeem_code }}</div>
+          <span class="copied-flash" id="redeem-code-copied-flash">{% trans "Copied!" %}</span>
+          {% if item.redeem_code|length > 80 %}
+          <button type="button" class="code-expand-toggle" id="redeem-code-expand-btn">{% trans "Show full code" %}</button>
           {% endif %}
-          <button type="button" class="copy-code-btn{% if not global_preferences.blur_codes_enabled %} visible{% endif %}" id="copy-code-btn" title="{% trans 'Copy code' %}">
-            <i class="bi bi-clipboard"></i>
-          </button>
         </div>
       </div>
       
@@ -1922,28 +2100,61 @@ body.dark-mode .action-btn-danger-outline:hover {
   <img id="qr-overlay-img" alt="QR Code (Fullscreen)">
 </div>
 
+<!-- File Preview Overlay: views an original upload or attached document
+     (image or PDF) inline instead of forcing a download. -->
+<div id="file-preview-overlay" class="file-preview-overlay" aria-hidden="true">
+  <button id="file-preview-close-btn" aria-label="{% trans 'Close' %}">
+    <i class="bi bi-x-lg"></i>
+  </button>
+  <div class="file-preview-content">
+    <img id="file-preview-img" class="d-none" alt="{% trans 'File preview' %}">
+    <iframe id="file-preview-iframe" class="d-none" title="{% trans 'File preview' %}"></iframe>
+  </div>
+</div>
+
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-  // Image show/hide
-  const showBtn = document.getElementById('show-image-btn');
-  const hideBtn = document.getElementById('hide-image-btn');
-  const loadedImage = document.getElementById('loaded-image');
+  const previewOverlay = document.getElementById('file-preview-overlay');
+  const previewImg = document.getElementById('file-preview-img');
+  const previewIframe = document.getElementById('file-preview-iframe');
+  const previewCloseBtn = document.getElementById('file-preview-close-btn');
 
-  if (showBtn && hideBtn && loadedImage) {
-    showBtn.addEventListener('click', function() {
-      loadedImage.src = "{% url 'serve_image_file' item.id %}";
-      loadedImage.classList.remove('d-none');
-      showBtn.classList.add('d-none');
-      hideBtn.classList.remove('d-none');
-    });
-
-    hideBtn.addEventListener('click', function() {
-      loadedImage.classList.add('d-none');
-      showBtn.classList.remove('d-none');
-      hideBtn.classList.add('d-none');
-      loadedImage.src = "";
-    });
+  function openFilePreview(url, kind) {
+    if (kind === 'pdf') {
+      previewIframe.src = url;
+      previewIframe.classList.remove('d-none');
+      previewImg.classList.add('d-none');
+      previewImg.src = '';
+    } else {
+      previewImg.src = url;
+      previewImg.classList.remove('d-none');
+      previewIframe.classList.add('d-none');
+      previewIframe.src = '';
+    }
+    previewOverlay.classList.add('show');
+    document.body.classList.add('no-scroll');
   }
+
+  function closeFilePreview() {
+    previewOverlay.classList.remove('show');
+    document.body.classList.remove('no-scroll');
+    previewImg.src = '';
+    previewIframe.src = '';
+  }
+
+  document.querySelectorAll('[data-preview-url]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      openFilePreview(btn.dataset.previewUrl, btn.dataset.previewKind);
+    });
+  });
+
+  previewOverlay?.addEventListener('click', function (e) {
+    if (e.target === previewOverlay) closeFilePreview();
+  });
+  previewCloseBtn?.addEventListener('click', closeFilePreview);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && previewOverlay.classList.contains('show')) closeFilePreview();
+  });
 });
 </script>
 
@@ -2007,9 +2218,7 @@ document.addEventListener("DOMContentLoaded", function() {
 document.addEventListener("DOMContentLoaded", function() {
   const blurCodesEnabled = {{ global_preferences.blur_codes_enabled|yesno:"true,false" }};
   const qrCode = document.getElementById('qr-code');
-  const redeemCode = document.getElementById('redeem-code');
   const qrTapHint = document.getElementById('qr-tap-hint');
-  const copyBtn = document.getElementById('copy-code-btn');
   const fsBtn = document.getElementById('fullscreen-btn');
   const overlay = document.getElementById('qr-overlay');
   const overlayImg = document.getElementById('qr-overlay-img');
@@ -2041,69 +2250,59 @@ document.addEventListener("DOMContentLoaded", function() {
   zoomInBtn?.addEventListener('click', () => setZoom(getZoom() + ZOOM_STEP));
   zoomResetBtn?.addEventListener('click', () => setZoom(100));
 
-  // Toggle blur on click - reveals both the barcode/QR image (if any) and the redeem code
-  function toggleCodeReveal(e) {
+  // Tap/click the barcode to reveal it - blur only ever hides the
+  // barcode/QR image itself, never the code text (which stays legible so
+  // it can always be tapped to copy).
+  function toggleBarcodeReveal(e) {
     qrCode?.classList.toggle('opaque');
-    redeemCode?.classList.toggle('opaque');
-
-    // Show/hide copy button and hints based on blur state
-    const stillHidden = redeemCode ? redeemCode.classList.contains('opaque') : qrCode.classList.contains('opaque');
+    const stillHidden = qrCode?.classList.contains('opaque');
     if (!stillHidden) {
       qrTapHint?.classList.add('hidden');
-      copyBtn?.classList.add('visible');
     } else {
       qrTapHint?.classList.remove('hidden');
-      copyBtn?.classList.remove('visible');
     }
     e.stopPropagation();
   }
   if (blurCodesEnabled) {
-    qrCode?.addEventListener('click', toggleCodeReveal, { passive: true });
-    redeemCode?.addEventListener('click', toggleCodeReveal, { passive: true });
+    qrCode?.addEventListener('click', toggleBarcodeReveal, { passive: true });
   }
 
-  // Copy code button
-  copyBtn?.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    
-    // Copy to clipboard
-    try {
-      const code = redeemCode?.textContent?.trim();
-      if (code) {
-        await navigator.clipboard.writeText(code);
-        copyBtn.classList.add('copied');
-        copyBtn.innerHTML = '<i class="bi bi-check"></i>';
-        
-        setTimeout(() => {
-          copyBtn.classList.remove('copied');
-          copyBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
-        }, 2000);
-      }
-    } catch (err) {
-      console.error('Failed to copy:', err);
-    }
-  });
+  // Tap/click a code block (redeem code or card number) to copy it - the
+  // whole block is the touch target, no separate copy button.
+  function wireTapToCopy(blockId, flashId, expandBtnId) {
+    const block = document.getElementById(blockId);
+    const flash = document.getElementById(flashId);
+    const expandBtn = expandBtnId ? document.getElementById(expandBtnId) : null;
+    if (!block) return;
 
-  // Copy card number button
-  const cardNumber = document.getElementById('card-number');
-  const copyCardNumberBtn = document.getElementById('copy-card-number-btn');
-  copyCardNumberBtn?.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    try {
-      const value = cardNumber?.textContent?.trim();
-      if (value) {
+    block.addEventListener('click', async () => {
+      try {
+        const value = block.textContent?.trim();
+        if (!value) return;
         await navigator.clipboard.writeText(value);
-        copyCardNumberBtn.classList.add('copied');
-        copyCardNumberBtn.innerHTML = '<i class="bi bi-check"></i>';
+        block.classList.add('copied');
+        flash?.classList.add('show');
         setTimeout(() => {
-          copyCardNumberBtn.classList.remove('copied');
-          copyCardNumberBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
-        }, 2000);
+          block.classList.remove('copied');
+          flash?.classList.remove('show');
+        }, 1500);
+      } catch (err) {
+        console.error('Failed to copy:', err);
       }
-    } catch (err) {
-      console.error('Failed to copy:', err);
+    });
+
+    if (expandBtn) {
+      const collapsedLabel = expandBtn.textContent;
+      expandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const expanded = block.classList.toggle('expanded');
+        expandBtn.textContent = expanded ? '{% trans "Show less" %}' : collapsedLabel;
+      });
     }
-  });
+  }
+
+  wireTapToCopy('redeem-code', 'redeem-code-copied-flash', 'redeem-code-expand-btn');
+  wireTapToCopy('card-number', 'card-number-copied-flash', 'card-number-expand-btn');
 
   // Fullscreen button
   fsBtn?.addEventListener('click', () => {
@@ -2208,6 +2407,15 @@ document.querySelectorAll('.editable-date').forEach(span => {
 
   requestWakeLock();
 })();
+</script>
+{% endif %}
+
+{% if preferences.tilt_scan_detection_enabled and can_edit and not item.is_used and item.type != "loyaltycard" and item.code_type != "none" %}
+<script src="{% static 'assets/js/tilt-scan-detect.js' %}"></script>
+<script>
+vvInitTiltScanDetect({
+  toggleUrl: "{% url 'toggle_item_status' item.id %}",
+});
 </script>
 {% endif %}
 

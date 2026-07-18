@@ -76,6 +76,13 @@ class UserPreference(models.Model):
     keep_screen_awake = models.BooleanField(
         default=True, help_text="Keep the screen on while viewing an item's barcode."
     )
+    tilt_scan_detection_enabled = models.BooleanField(
+        default=False,
+        help_text="On an item's page, suggest marking it Used when you tilt your phone "
+                   "forward - the motion of presenting a barcode to a reader (train "
+                   "barriers, a till scanner). Requires enabling motion access once per "
+                   "device; never marks an item used on its own, only suggests it.",
+    )
     oled_dark_mode = models.BooleanField(
         default=False, help_text="Use true-black surfaces in dark mode (OLED screens)."
     )

@@ -52,6 +52,12 @@ def is_image_file(filename):
     return bool(re.search(r'\.(jpg|jpeg|png)$', filename.lower()))
 
 @register.filter
+def is_pdf_file(filename):
+    if not filename:
+        return False
+    return filename.lower().endswith('.pdf')
+
+@register.filter
 def basename(path):
     if not path:
         return ''
