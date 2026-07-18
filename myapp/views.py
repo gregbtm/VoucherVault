@@ -27,6 +27,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
+from rest_framework.authtoken.models import Token
 from django.contrib import messages
 from django.utils.timezone import now
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -1270,12 +1271,21 @@ def _integration_status(config):
 
     return status
 
+# Docs about a personal integration any user can set up for their own
+# account (their own API token, their own n8n/MCP client) - not gated to
+# superuser like every other doc here, which are all server/deployment-
+# level concerns (cert paths, service accounts, Portainer webhooks) only
+# an admin should be looking at.
+_SELF_SERVICE_DOCS = {'n8n', 'mcp-server'}
+
+
 @login_required
 def view_doc(request, doc_slug):
     """
     Renders one of docs/*.md in-app for the "?" help buttons next to Site
-    Settings sections - superuser-only since it's only linked from there,
-    and rendered locally (see help_docs.py) rather than out to GitHub so
+    Settings sections (superuser-only, since Site Settings itself is) and
+    the API Access page (any logged-in user, see _SELF_SERVICE_DOCS above)
+    - rendered locally (see help_docs.py) rather than out to GitHub so
     it's available on a fully offline deployment too.
 
     Supports an AJAX JSON round-trip (see _wants_json) so the help link can
@@ -1284,7 +1294,7 @@ def view_doc(request, doc_slug):
     doc_viewer.html render below stays as a fallback for a direct link/
     bookmark, or if JS is unavailable.
     """
-    if not request.user.is_superuser:
+    if doc_slug not in _SELF_SERVICE_DOCS and not request.user.is_superuser:
         if _wants_json(request):
             return JsonResponse({'error': str(_('Only administrators can view setup guides.'))}, status=403)
         messages.error(request, _('Only administrators can view setup guides.'))
@@ -2032,6 +2042,50 @@ def update_user_preferences(request):
         form = UserPreferenceForm(instance=preferences)
 
     return render(request, 'update_preferences.html', {'form': form})
+
+
+@login_required
+def api_access(request):
+    """
+    Lets a user generate/regenerate/revoke their own REST API token from
+    the GUI - the same token type docs/N8N_SETUP.md and
+    docs/MCP_SERVER_SETUP.md ask for, previously only obtainable via
+    `docker compose exec app python manage.py drf_create_token` or POSTing
+    a password to /api/v1/auth/token/.
+
+    The raw key is only ever handed back to the browser immediately after
+    a generate/regenerate action, via a one-shot session value popped (and
+    so cleared) on the very next render - this view could technically read
+    the key back out of the DB at any time (DRF's Token model stores it in
+    plaintext, unlike a hashed password), but not resurfacing it on every
+    page load limits shoulder-surfing/screen-share exposure the same way a
+    GitHub/GitLab personal access token page does.
+    """
+    token = Token.objects.filter(user=request.user).first()
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action in ('generate', 'regenerate'):
+            if token:
+                token.delete()
+            token = Token.objects.create(user=request.user)
+            request.session['just_generated_api_token'] = token.key
+            messages.success(
+                request,
+                _('API token regenerated - update anywhere the old one was used, it no longer works.')
+                if action == 'regenerate' else _('API token generated.')
+            )
+        elif action == 'revoke' and token:
+            token.delete()
+            messages.success(request, _('API token revoked.'))
+        return redirect('api_access')
+
+    revealed_token = request.session.pop('just_generated_api_token', None)
+
+    return render(request, 'api_access.html', {
+        'token': token,
+        'revealed_token': revealed_token,
+    })
 
 
 @require_POST

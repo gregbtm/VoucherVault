@@ -15,6 +15,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from PIL import Image
+from rest_framework.authtoken.models import Token
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 
@@ -4260,6 +4261,84 @@ class HelpDocViewerTests(TestCase):
         response = self.client.get(reverse('view_doc', args=['not-a-real-doc']), HTTP_X_REQUESTED_WITH='XMLHttpRequest')
         self.assertEqual(response.status_code, 404)
         self.assertIn('error', response.json())
+
+    def test_regular_user_can_view_self_service_docs(self):
+        """n8n/mcp-server are personal-integration docs, not admin-only -
+        unlike every other slug, a non-superuser must be able to reach
+        them (the API Access page that links to them isn't superuser-gated)."""
+        self.client.login(username='alice', password='pw12345!')
+        for slug in ('n8n', 'mcp-server'):
+            response = self.client.get(reverse('view_doc', args=[slug]))
+            self.assertEqual(response.status_code, 200, f'{slug} did not render for a regular user')
+            self.assertContains(response, '<h1', msg_prefix=f'{slug} missing rendered heading')
+
+    def test_regular_user_still_forbidden_for_admin_docs(self):
+        """Loosening the gate for n8n/mcp-server must not loosen it for
+        the server/deployment-level docs - those stay superuser-only."""
+        self.client.login(username='alice', password='pw12345!')
+        for slug in ('google-wallet', 'apple-wallet', 'ocr', 'auto-deploy', 'backup-restore'):
+            response = self.client.get(reverse('view_doc', args=[slug]), follow=True)
+            self.assertContains(response, 'Only administrators')
+
+
+class ApiAccessViewTests(TestCase):
+    """The self-service API token page (GUI alternative to
+    drf_create_token / POSTing a password to /api/v1/auth/token/)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('api_access'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/accounts/login/', response.url)
+
+    def test_no_token_shows_generate_button(self):
+        response = self.client.get(reverse('api_access'))
+        self.assertContains(response, 'Generate API Token')
+        self.assertNotContains(response, 'Regenerate')
+
+    def test_generate_creates_token_and_reveals_it_once(self):
+        response = self.client.post(reverse('api_access'), {'action': 'generate'}, follow=True)
+        token = Token.objects.get(user=self.user)
+        self.assertContains(response, f'Token {token.key}')
+
+        # A second GET must not still show the raw key - it was a one-shot reveal.
+        response = self.client.get(reverse('api_access'))
+        self.assertNotContains(response, token.key)
+        self.assertContains(response, 'Active token')
+
+    def test_regenerate_replaces_the_key(self):
+        old_token = Token.objects.create(user=self.user)
+        old_key = old_token.key
+
+        response = self.client.post(reverse('api_access'), {'action': 'regenerate'}, follow=True)
+        new_token = Token.objects.get(user=self.user)
+
+        self.assertNotEqual(new_token.key, old_key)
+        self.assertContains(response, f'Token {new_token.key}')
+        self.assertFalse(Token.objects.filter(key=old_key).exists())
+
+    def test_revoke_deletes_the_token(self):
+        Token.objects.create(user=self.user)
+        response = self.client.post(reverse('api_access'), {'action': 'revoke'}, follow=True)
+        self.assertFalse(Token.objects.filter(user=self.user).exists())
+        self.assertContains(response, 'Generate API Token')
+
+    def test_revoke_with_no_token_is_a_harmless_noop(self):
+        response = self.client.post(reverse('api_access'), {'action': 'revoke'}, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Token.objects.filter(user=self.user).exists())
+
+    def test_token_is_scoped_to_the_requesting_user(self):
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        bob_token = Token.objects.create(user=bob)
+
+        response = self.client.get(reverse('api_access'))
+        self.assertContains(response, 'Generate API Token')
+        self.assertNotContains(response, bob_token.key)
 
 
 class OfflineCacheTogglePreferenceTests(TestCase):

@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% load static %}
+
+{% block content %}
+<style>
+  .settings-section {
+    border: 1px solid rgba(128, 128, 128, 0.18);
+    border-radius: 0.6rem;
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  .token-reveal {
+    background: rgba(65, 84, 241, 0.08);
+    border: 1px solid rgba(65, 84, 241, 0.3);
+    border-radius: 0.6rem;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  .token-value-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+  .token-value {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: 0.95rem;
+    word-break: break-all;
+    flex: 1;
+    background: var(--card-bg, #fff);
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    border-radius: 0.4rem;
+    padding: 0.5rem 0.75rem;
+  }
+  .token-copy-btn {
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    background: transparent;
+    border-radius: 0.4rem;
+    padding: 0.5rem 0.7rem;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .token-copy-btn.copied { border-color: #2e7d32; color: #2e7d32; }
+  .token-meta { color: var(--text-muted, #6c757d); font-size: 0.85rem; margin-top: 0.5rem; }
+</style>
+
+<div class="pagetitle">
+  <h1>{% trans "API Access" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "API Access" %}</li>
+    </ol>
+  </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+  <div class="row">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">{% trans "Your API Token" %}</h5>
+          <p class="text-muted small mb-1">
+            {% trans "One token, full read/write access to your own vault. Treat it like a password - anyone with it can act as you." %}
+          </p>
+          <p class="text-muted small">
+            {% trans "Used by:" %}
+            <a href="{% url 'view_doc' 'n8n' %}" data-doc-url="{% url 'view_doc' 'n8n' %}" class="help-link">n8n <i class="bi bi-question-circle"></i></a>
+            &middot;
+            <a href="{% url 'view_doc' 'mcp-server' %}" data-doc-url="{% url 'view_doc' 'mcp-server' %}" class="help-link">{% trans "MCP server" %} <i class="bi bi-question-circle"></i></a>
+            &middot;
+            <a href="/api/v1/docs/" target="_blank" rel="noopener">{% trans "REST API" %} <i class="bi bi-box-arrow-up-right"></i></a>
+          </p>
+
+          {% if revealed_token %}
+          <div class="token-reveal">
+            <strong><i class="bi bi-exclamation-triangle text-warning"></i> {% trans "Copy this now - it won't be shown again." %}</strong>
+            <div class="token-value-row">
+              <span class="token-value" id="revealed-token-value">Token {{ revealed_token }}</span>
+              <button type="button" class="token-copy-btn" id="copy-token-btn" data-copy="Token {{ revealed_token }}" title="{% trans 'Copy' %}">
+                <i class="bi bi-clipboard"></i>
+              </button>
+            </div>
+            <p class="token-meta mb-0">{% trans "This is the exact value to paste into an n8n Header Auth credential, or an Authorization: header anywhere else." %}</p>
+          </div>
+          {% endif %}
+
+          <div class="settings-section">
+            {% if token %}
+              <p class="mb-1">
+                <i class="bi bi-check-circle text-success"></i>
+                {% trans "Active token" %}
+                <span class="token-meta">&middot; {% blocktrans with created=token.created|date:"j M Y" %}created {{ created }}{% endblocktrans %}</span>
+              </p>
+              <p class="text-muted small mb-3">{% trans "The key itself isn't shown again after creation - regenerate it if you've lost it." %}</p>
+              <div class="d-flex gap-2 flex-wrap">
+                <form method="POST" action="{% url 'api_access' %}" class="api-token-confirm-form" data-confirm="{% trans "Regenerate your API token? The old one will stop working immediately - update it anywhere it's currently used (n8n, MCP server, scripts)." %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="regenerate">
+                  <button type="submit" class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-arrow-clockwise"></i> {% trans "Regenerate" %}
+                  </button>
+                </form>
+                <form method="POST" action="{% url 'api_access' %}" class="api-token-confirm-form" data-confirm="{% trans "Revoke your API token? Anything using it (n8n, MCP server, scripts) will stop working until you generate a new one." %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="revoke">
+                  <button type="submit" class="btn btn-outline-danger btn-sm">
+                    <i class="bi bi-x-circle"></i> {% trans "Revoke" %}
+                  </button>
+                </form>
+              </div>
+            {% else %}
+              <p class="text-muted small mb-3">{% trans "No API token yet." %}</p>
+              <form method="POST" action="{% url 'api_access' %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="generate">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  <i class="bi bi-plus-circle"></i> {% trans "Generate API Token" %}
+                </button>
+              </form>
+            {% endif %}
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var btn = document.getElementById('copy-token-btn');
+  if (btn) {
+    btn.addEventListener('click', function () {
+      navigator.clipboard.writeText(btn.dataset.copy).then(function () {
+        var icon = btn.querySelector('i');
+        icon.className = 'bi bi-check2';
+        btn.classList.add('copied');
+        setTimeout(function () {
+          icon.className = 'bi bi-clipboard';
+          btn.classList.remove('copied');
+        }, 1500);
+      });
+    });
+  }
+
+  document.querySelectorAll('.api-token-confirm-form').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+      if (!confirm(form.dataset.confirm)) {
+        e.preventDefault();
+      }
+    });
+  });
+});
+</script>
+{% endblock %}

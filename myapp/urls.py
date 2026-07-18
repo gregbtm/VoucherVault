@@ -51,6 +51,7 @@ urlpatterns = (
     path('shared-items/', views.sharing_center, name='sharing_center'),
     path('api/get/stats', views.get_stats, name='get_stats'),
     path('user/edit/preferences', views.update_user_preferences, name='update_user_preferences'),
+    path('user/api-access/', views.api_access, name='api_access'),
     path('wallets/', views.manage_wallets, name='manage_wallets'),
     path('wallets/<int:wallet_id>/edit', views.edit_wallet, name='edit_wallet'),
     path('wallets/<int:wallet_id>/delete', views.delete_wallet, name='delete_wallet'),

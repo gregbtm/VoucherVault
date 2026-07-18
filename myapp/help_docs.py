@@ -19,6 +19,8 @@ DOCS = {
     'auto-deploy': ('Update check & Portainer redeploy', 'AUTO_DEPLOY.md'),
     'backup-restore': ('Scheduled backups & restore', 'BACKUP_RESTORE.md'),
     'upstream-sync': ('How upstream sync works', 'UPSTREAM_SYNC.md'),
+    'n8n': ('Connecting n8n', 'N8N_SETUP.md'),
+    'mcp-server': ('Wiring up an AI assistant (MCP)', 'MCP_SERVER_SETUP.md'),
 }
 
 

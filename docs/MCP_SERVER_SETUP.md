@@ -34,6 +34,12 @@ direct database access and no special privileges of its own.
 
 ## Step 1 — Generate an API token for yourself
 
+Easiest: log in to VoucherVault, open the **alice ▾ → API Access** menu
+(top right), and click **Generate API Token**. The token is shown once —
+copy it now.
+
+Prefer the command line? Same result:
+
 ```bash
 docker compose exec app python manage.py drf_create_token <your-username>
 ```
