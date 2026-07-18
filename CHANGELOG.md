@@ -1,3 +1,10 @@
+## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.74...v1.2.0) (2026-07-18)
+
+
+### Features
+
+* UK rail eTicket import - PDF parsing + server-side Aztec decode (Phase 95) ([df579f2](https://github.com/gregbtm/VoucherVault/commit/df579f2a8e9344f8636fad4f9c6fdb410f9eb4f6))
+
 ## [1.1.74](https://github.com/gregbtm/VoucherVault/compare/v1.1.73...v1.1.74) (2026-07-18)
 
 
@@ -26,6 +33,4 @@
 ### Features
 
 * use the mark+wordmark lockup for the nav logo (Phase 90) ([63b87c9](https://github.com/gregbtm/VoucherVault/commit/63b87c9bbc27303be5e26860be3e368a0ca15f47))
-
-## [1.1.70](https://github.com/gregbtm/VoucherVault/compare/v1.1.69...v1.1.70) (2026-07-18)
 
