@@ -14,7 +14,7 @@
       <a target="_blank" href="https://github.com/gregbtm/VoucherVault/network/members"><img src="https://img.shields.io/github/forks/gregbtm/VoucherVault?style=flat-square&color=4154f1" alt="Forks"></a>
     </p>
     <p>
-      <img src="https://img.shields.io/badge/430%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="430 features and fixes added on top of upstream">
+      <img src="https://img.shields.io/badge/434%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="434 features and fixes added on top of upstream">
       <img src="https://img.shields.io/badge/PWA-installable-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="Installable PWA">
       <img src="https://img.shields.io/badge/AI--assisted-scanning-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="AI-assisted scanning">
       <img src="https://img.shields.io/badge/REST-API-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="REST API">
@@ -31,7 +31,7 @@
 > multi-user login with OIDC SSO, and Apprise expiry notifications out of
 > the box (see [Features](#-features) for the complete original list).
 >
-> This fork is a strict superset: **92 rounds of work adding 430
+> This fork is a strict superset: **93 rounds of work adding 434
 > individual features and fixes** on top of upstream's own image, from a
 > full REST API and AI-assisted scanning to shared wallets, digital
 > wallet passes, and a rules-based notification engine — without
@@ -187,7 +187,9 @@ lifecycle.
 - **True-black OLED dark theme** — an extra toggle on top of the regular light/dark theme, for phones with an OLED/AMOLED screen.
 - **Barcode zoom** — pinch or on-screen +/− controls for codes that scan poorly at the default size.
 - **Screen wake lock** — the screen stays on while a barcode is shown to a cashier.
-- A configurable **code-blur toggle** for privacy in public.
+- A configurable **code-blur toggle** for privacy in public — hides just the barcode/QR image behind a tap-to-reveal, never the code text itself, which stays legible so it can always be tapped to copy.
+- **Tap the redeem code or card number anywhere to copy it** — no separate copy button to hunt for; a long code clips to a few lines with a "Show full code" toggle instead of stretching the page.
+- **View original uploads and attached documents inline** — a "View" button opens an image or PDF in a fullscreen overlay, no download required just to check what you scanned.
 - **Tilt-to-scan detection** (opt-in) — tilt your phone forward to present a barcode to a reader (train barriers, a till scanner) and a dismissible "Mark Used?" prompt appears on its own; it only ever suggests, never marks an item used without an explicit tap.
 - Floating toast messages instead of a page-top banner.
 - **Smooth, modern animations everywhere** — staggered fade-up entrances on cards, form sections, and widgets (powered by the self-hosted [Motion](https://motion.dev) library, hardware-accelerated so it stays fluid on low-end phones), pop-in toasts and chips, and tactile press feedback on buttons. Fully respects your OS's reduced-motion setting.

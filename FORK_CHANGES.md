@@ -5090,6 +5090,66 @@ anything on its own, only ever suggesting.
   till scanner - expect a follow-up pass to adjust `vvInitTiltScanDetect()`'s
   config once tested against a real reader.
 
+## Phase 99 — A "common sense pass": file preview, barcode-only blur, tap-to-copy codes
+
+A round of small, concrete UX complaints, fixed together as a "common
+sense pass" rather than one at a time.
+
+- **View, not just download, the original upload and attached
+  documents.** The Original Upload section previously offered an inline
+  "Show Image" toggle for images and nothing at all for PDFs beyond a raw
+  download; Receipts & Documents had no way to look at a file without
+  downloading it first. Both now get a "View" button that opens the file
+  - image or PDF - in a fullscreen overlay, reusing the fullscreen-overlay
+  pattern already established for the barcode/QR image.
+  - New `view_original_file`/`view_document_file` views serve the
+    relevant `FileField` inline (no `Content-Disposition: attachment`
+    header, correct guessed mime type), sharing a `_previewable_mime_type`
+    helper with the existing `serve_image_file` so all three agree on what
+    counts as previewable (image or, now, PDF too).
+  - Caught before it reached a live test: the site's CSP sets
+    `frame-ancestors 'none'` by default (`CSP_FRAME_ANCESTORS`, off by
+    default to block clickjacking from other origins) - which also blocks
+    a page from framing its own content in an `<iframe>`, same-origin or
+    not. The two new views relax just `frame-ancestors` to `'self'` on
+    their own response via `django-csp`'s `csp_replace` decorator, leaving
+    every other page's stricter policy untouched.
+- **Blur only ever hides the barcode/QR image now, never the code text.**
+  `blur_codes_enabled` used to blur the redeem code text alongside the
+  barcode/QR image and the zoom/rotate controls sat right next to both -
+  worth separating cleanly. The code text is never blurred now (it has to
+  stay legible to be tap-to-copy - see below); only the barcode/QR image
+  itself still blurs behind a "Tap to reveal".
+- **The whole redeem code (and card number) block is now the copy
+  target** - tap or click it anywhere to copy, no separate copy button.
+  Freeing up that horizontal space lets the block use the sidebar's full
+  width, and a long code (over 80 characters - the kind of thing an
+  encrypted rail-ticket payload produces) now clips to about three lines
+  with a small "Show full code" toggle underneath, rather than stretching
+  the card indefinitely. Copying always grabs the full underlying text
+  regardless of what's visually clipped. A brief "Copied!" flash and a
+  green-tinted border replace the old button's own copied state.
+- **Fixed the "rotate doesn't work" report**, which turned out to be a
+  labeling problem, not a broken feature: the middle barcode-zoom button
+  was always "reset zoom to 100%" (`bi-arrow-counterclockwise`, a circular
+  arrow that reads as "rotate" at a glance), not an image-rotate control
+  that never existed. Swapped the icon for `bi-aspect-ratio` and the title
+  attribute now reads "Reset zoom (100%)" so it doesn't get mistaken for a
+  rotate button again.
+- Full suite: 871 backend tests (9 new: inline-preview content-type/403/400
+  behavior for both new views, blur staying off the code text, and the
+  clip/expand-toggle threshold) + 46 JS tests (unchanged - this phase
+  didn't touch any JS-tested file), 0 failures. Live-verified with a real
+  Playwright session: the PDF preview overlay opens and closes cleanly (a
+  minimal real PDF rendered via Chromium's built-in viewer once the CSP
+  fix landed - it had been a blank "refused to connect" page before);
+  the barcode still blurs and reveals correctly while the redeem code and
+  card number stay fully legible throughout; the whole code block copies
+  the correct value to the clipboard with visible feedback; a 120-
+  character code clips with a working expand/collapse toggle; and the
+  zoom-reset icon reads clearly instead of implying a rotate feature that
+  isn't there - all confirmed in both light/desktop and dark/mobile.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
