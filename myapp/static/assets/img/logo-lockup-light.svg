@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 64" width="340" height="64">
+  <g transform="translate(0 6)">
+    <rect x="4" y="6" width="6.5" height="27.4" rx="3.25" fill="#4154f1"></rect>
+    <rect x="15.5" y="14.2" width="6.5" height="37.4" rx="3.25" fill="#4154f1"></rect>
+    <rect x="27.6" y="26.9" width="6.5" height="24.5" rx="3.25" fill="#e0a300"></rect>
+    <rect x="39.7" y="14.2" width="6.5" height="37.4" rx="3.25" fill="#4154f1"></rect>
+    <rect x="51.2" y="6" width="6.5" height="27.4" rx="3.25" fill="#4154f1"></rect>
+  </g>
+  <text x="76" y="40" font-family="-apple-system,&#39;Segoe UI&#39;,sans-serif" font-size="26" font-weight="700" fill="#161a2e" letter-spacing="-0.3">VoucherVault<tspan fill="#4154f1"> Plus+</tspan></text>
+</svg>

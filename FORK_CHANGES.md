@@ -120,6 +120,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 87 — JS test harness](#phase-87--js-test-harness)
 - [Phase 88 — Minified JS build step](#phase-88--minified-js-build-step)
 - [Phase 89 — Vendor audit: 86MB → 11MB of static assets](#phase-89--vendor-audit-86mb--11mb-of-static-assets)
+- [Phase 90 — Wire in the mark+wordmark lockup](#phase-90--wire-in-the-markwordmark-lockup)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4628,6 +4629,39 @@ list before removing anything.
   (the actual `scanner.js`/`zxing.js` consumer), wallets, tags, login,
   and the offline fallback page - zero console errors, zero failed
   requests tied to any removed file.
+
+## Phase 90 — Wire in the mark+wordmark lockup
+
+Phase 63's logo package shipped a proper mark+wordmark lockup
+(`lockup-light-bg.svg` / `lockup-dark-bg.svg`) but the header never used
+it - it faked the same look with the icon-only mark plus a separately
+CSS-styled `<span>VoucherVault Plus+</span>`, spaced and sized by eye
+rather than the designer's own baseline-aligned asset.
+
+- **Two new derived assets** - `logo-lockup-light.svg` /
+  `logo-lockup-dark.svg`, straight copies of the brand package's lockup
+  sources (same convention as every other served logo file - `brand/`
+  holds sources, `img/` holds what's actually requested).
+- **The header now swaps between icon-only and full lockup by
+  breakpoint**, not just by theme: below `lg` (992px, the same
+  breakpoint the old wordmark span used) it shows just the mark, same as
+  before; at `lg` and up it shows the full lockup instead of icon+span.
+  Four `<img>`s total (light/dark × icon/lockup), each breakpoint
+  showing exactly one.
+- **Two independent toggles (theme, breakpoint) that don't fight each
+  other** - `style.css` owns sizing and the icon/lockup breakpoint swap
+  with no theme awareness; `dark-mode.css` owns theme with two
+  `!important` rules that only ever *hide* the wrong theme's images
+  (`body:not(.dark-mode) .logo-dark`, `body.dark-mode .logo-light`),
+  never *reveal* anything - so it can't clobber whichever display value
+  the breakpoint rules gave the correct-theme image. The alternative
+  (both toggles setting `display` positively on the same elements)
+  is exactly the class of bug Phase 65 already hit once with this same
+  header.
+- Full suite: 823 backend tests + 24 JS tests, 0 failures. Live-verified
+  with real Playwright screenshots across light/dark × mobile/desktop,
+  plus the exact 991px/992px breakpoint boundary and a 320px viewport -
+  clean swap, no overlap, no overflow at any width.
 
 ## New environment variables
 

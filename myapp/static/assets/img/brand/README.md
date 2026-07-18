@@ -37,9 +37,11 @@ SVGs (via `cairosvg`, no manual editing):
 
 | Generated file | Source | Notes |
 |---|---|---|
-| `../logo.svg` | `mark-color.svg` | Main in-app/README logo reference |
-| `../logo-mono-white.svg` | `mark-mono-white.svg` | Dark-mode/OLED nav logo |
-| `../logo.png` | `mark-color.svg` | Raster fallback, 1024×1024 |
+| `../logo.svg` | `mark-color.svg` | Icon-only nav logo below the `lg` breakpoint |
+| `../logo-mono-white.svg` | `mark-mono-white.svg` | Dark-mode/OLED icon-only nav logo |
+| `../logo-lockup-light.svg` | `lockup-light-bg.svg` | Mark+wordmark nav logo at `lg` and up |
+| `../logo-lockup-dark.svg` | `lockup-dark-bg.svg` | Dark-mode/OLED mark+wordmark nav logo at `lg` and up |
+| `../logo.png` | `mark-color.svg` | Raster fallback, 1024×1024, README reference |
 | `../favicon.ico` | `favicon.svg` | Multi-size ICO (16/32/48) |
 | `../apple-icon-180.png`, `../apple-touch-icon.png` | `app-icon-light-bg.svg` | 180×180 |
 | `../manifest-icon-192.png`, `../manifest-icon-512.png` | `app-icon-light-bg.svg` | PWA icons, `purpose: any` |
