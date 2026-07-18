@@ -259,9 +259,17 @@
   border-radius: 8px;
 }
 
+/* padding-right reserves the strip the absolutely-positioned pin/share
+   buttons float over (top-right of the card, 44px each + gaps - see
+   .pin-btn/.share-btn below) so a long issuer/name never flows underneath
+   them. This has to hold at every viewport, not just while hovered:
+   .pin-btn/.share-btn are opacity:0 until hover on desktop but forced to
+   opacity:1 on touch devices (see the touch media query below), where
+   there's no hover state to time an overlap around. */
 .item-main-info {
   flex: 1;
   min-width: 0;
+  padding-right: 96px;
 }
 
 .item-issuer {

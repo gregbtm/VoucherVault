@@ -56,6 +56,7 @@
   <link href="{% static 'assets/css/style.css' %}" rel="stylesheet">
   <link href="{% static 'assets/css/dark-mode.css' %}" rel="stylesheet">
   <link href="{% static 'assets/css/color-picker.css' %}" rel="stylesheet">
+  <link href="{% static 'assets/css/field-suggest.css' %}" rel="stylesheet">
   <link href="{% static 'assets/css/animations.css' %}" rel="stylesheet">
 
   <style>
@@ -623,6 +624,9 @@
 
   <!-- Modern color picker (replaces the native <input type="color"> UI) -->
   <script src="{% static 'assets/js/color-picker.js' %}"></script>
+
+  <!-- Interactive "suggest from your recent items" field buttons -->
+  <script src="{% static 'assets/js/field-suggest.js' %}"></script>
 
   <script>
     document.getElementById('languageSelect').addEventListener('change', function() {

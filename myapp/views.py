@@ -640,50 +640,52 @@ def lookup_merchant_balance_url(request):
     issuer = request.GET.get('issuer', '')
     return JsonResponse({'balance_check_url': get_cached_balance_check_url(issuer)})
 
+_SUGGESTABLE_FIELDS = {'issuer', 'logo_slug', 'wallet', 'discount_applied'}
+
+
 @require_GET
 @login_required
-def suggest_item_fields(request):
+def suggest_field_options(request):
     """
-    Read-only AJAX helper for the create/edit item forms' AI Scan flow
-    only - never called from plain manual entry, so nothing is ever
-    silently suggested outside a photo scan. Whatever the OCR extraction
-    left blank (issuer, logo_slug, wallet, currency) gets suggested from
-    the user's most recently created item of the same type, so a second
-    scan of the same kind of ticket/card doesn't need everything retyped.
+    Read-only AJAX helper backing the "suggest" button next to a handful
+    of item-form fields (see field-suggest.js): given an item type and one
+    of _SUGGESTABLE_FIELDS, returns up to 5 distinct values for that field
+    drawn from this user's own recent items of that type, ranked by how
+    often each value appears (ties broken by recency) so one odd one-off
+    item doesn't outrank an actual habit. Interactive by design - the
+    button that triggers this only ever appears next to a field the AI
+    scan (or the user) has left blank, and picking a suggestion is always
+    an explicit click, never a silent fill.
     """
+    field = request.GET.get('field', '')
     item_type = request.GET.get('type', '')
+    if field not in _SUGGESTABLE_FIELDS:
+        return JsonResponse({'options': []})
+
     recent = list(
-        Item.objects.filter(user=request.user, type=item_type, created_at__isnull=False)
-        .order_by('-created_at')[:10]
+        Item.objects.filter(user=request.user, type=item_type)
+        .select_related('wallet')
+        .order_by('-created_at')[:25]
     )
-    if not recent:
-        return JsonResponse({})
 
-    # "Recent activity" means a habit, not just the single latest item: the
-    # suggested issuer is the one appearing most often across the last 10
-    # items of this type (ties broken by recency), so one odd one-off
-    # doesn't hijack the suggestion. The companion fields (logo, wallet,
-    # currency) then come from the newest item with that issuer, keeping
-    # the suggestion internally consistent rather than a Frankenstein of
-    # unrelated items.
-    counts = {}
-    for item in recent:
-        key = item.issuer.strip().lower()
-        if key:
-            counts[key] = counts.get(key, 0) + 1
-    source = recent[0]
-    if counts:
-        modal_issuer = max(counts, key=lambda key: (counts[key], -next(
-            index for index, item in enumerate(recent) if item.issuer.strip().lower() == key
-        )))
-        source = next(item for item in recent if item.issuer.strip().lower() == modal_issuer)
+    ranked = {}
+    for index, item in enumerate(recent):
+        if field == 'wallet':
+            if not item.wallet_id:
+                continue
+            key = str(item.wallet_id)
+            label = item.wallet.name
+        else:
+            raw = (getattr(item, field) or '').strip()
+            if not raw:
+                continue
+            key = raw.lower()
+            label = raw
+        entry = ranked.setdefault(key, {'count': 0, 'index': index, 'label': label, 'value': key if field == 'wallet' else raw})
+        entry['count'] += 1
 
-    return JsonResponse({
-        'issuer': source.issuer or None,
-        'logo_slug': source.logo_slug or None,
-        'wallet_id': str(source.wallet_id) if source.wallet_id else None,
-        'currency': source.currency or None,
-    })
+    top = sorted(ranked.values(), key=lambda entry: (-entry['count'], entry['index']))[:5]
+    return JsonResponse({'options': [{'value': entry['value'], 'label': entry['label']} for entry in top]})
 
 @require_GET
 @login_required
