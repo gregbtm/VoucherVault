@@ -1,4 +1,13 @@
-## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.65...v1.2.0) (2026-07-17)
+## [1.1.68](https://github.com/gregbtm/VoucherVault/compare/v1.1.67...v1.1.68) (2026-07-18)
+
+
+### Bug Fixes
+
+* **ci:** bump docker/login-action and docker/setup-buildx-action ([baa19b5](https://github.com/gregbtm/VoucherVault/commit/baa19b5e62c168d99741164361381710fb1c9e93))
+
+## [1.1.67](https://github.com/gregbtm/VoucherVault/compare/v1.1.66...v1.1.67) (2026-07-18)
+
+## [1.1.66](https://github.com/gregbtm/VoucherVault/compare/v1.1.65...v1.1.66) (2026-07-17)
 
 
 ### Features
@@ -18,18 +27,4 @@
 ### Features
 
 * settings pass - organised sections, groups, and helper hints ([4bc8221](https://github.com/gregbtm/VoucherVault/commit/4bc8221e9df0a65a7a066f2ce738489973f5eb30))
-
-## [1.1.63](https://github.com/gregbtm/VoucherVault/compare/v1.1.62...v1.1.63) (2026-07-17)
-
-
-### Features
-
-* site-wide motion polish via the vendored Motion library ([a44b03f](https://github.com/gregbtm/VoucherVault/commit/a44b03fe19632ec0125dc6c6fb29dee50fb6474e))
-
-## [1.1.62](https://github.com/gregbtm/VoucherVault/compare/v1.1.61...v1.1.62) (2026-07-17)
-
-
-### Features
-
-* self-learning scan corrections + smarter suggestions + Travel Pass polish ([0052297](https://github.com/gregbtm/VoucherVault/commit/0052297cc248f4fdd6d88c20a41c6a054e57848a))
 
