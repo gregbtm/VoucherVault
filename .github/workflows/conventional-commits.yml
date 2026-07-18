@@ -59,7 +59,13 @@ jobs:
 
   test:
     name: Test Suite
-    needs: [changelog]
+    # No `needs: [changelog]` on purpose - changelog is itself skipped on
+    # pull_request events (see its own `if:`), and GitHub Actions treats a
+    # skipped dependency as unmet, so `needs: [changelog]` here would have
+    # made this job silently skip on every PR too, the exact "looks like a
+    # check but never actually runs" gap this job exists to close. It
+    # doesn't consume any changelog output, so it doesn't need the
+    # dependency - runs unconditionally on both push and pull_request.
     runs-on: ubuntu-latest
 
     steps:
