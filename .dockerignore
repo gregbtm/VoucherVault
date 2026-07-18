@@ -22,3 +22,8 @@ database/uploads/
 
 # Ignore GitHub Actions workflows for Docker images
 .github
+
+# Ignore local JS tooling (Phase 88's jsbuild stage does its own `npm ci`
+# inside the build context, isolated from whatever's on the host)
+node_modules/
+dist/

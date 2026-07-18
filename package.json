@@ -4,9 +4,11 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build": "esbuild myapp/static/assets/js/animations.js myapp/static/assets/js/color-picker.js myapp/static/assets/js/device-detect.js myapp/static/assets/js/main.js myapp/static/assets/js/manual-cache.js myapp/static/assets/js/offline-sync.js myapp/static/assets/js/page-cache-helper.js myapp/static/assets/js/scanner.js myapp/static/assets/js/ui-helpers.js myapp/static/assets/js/voucher-share.js --minify --outdir=dist/js"
   },
   "devDependencies": {
+    "esbuild": "^0.24.2",
     "jsdom": "^25.0.1",
     "vitest": "^2.1.8"
   }

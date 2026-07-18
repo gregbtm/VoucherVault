@@ -59,3 +59,7 @@ acme.json
 
 # ignore JS test harness deps (Phase 87 - see package.json)
 node_modules/
+
+# ignore minified JS build output (Phase 88 - `npm run build`; only the
+# Docker image build stage's copy of this ever ships, never this one)
+/dist/
