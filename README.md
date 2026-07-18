@@ -31,7 +31,7 @@
 > multi-user login with OIDC SSO, and Apprise expiry notifications out of
 > the box (see [Features](#-features) for the complete original list).
 >
-> This fork is a strict superset: **89 rounds of work adding 421
+> This fork is a strict superset: **90 rounds of work adding 424
 > individual features and fixes** on top of upstream's own image, from a
 > full REST API and AI-assisted scanning to shared wallets, digital
 > wallet passes, and a rules-based notification engine — without
