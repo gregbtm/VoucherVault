@@ -1,4 +1,11 @@
-## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.72...v1.2.0) (2026-07-18)
+## [1.1.74](https://github.com/gregbtm/VoucherVault/compare/v1.1.73...v1.1.74) (2026-07-18)
+
+
+### Bug Fixes
+
+* harden header logo layout so it can never crowd out the hamburger (Phase 94) ([3bfa9c8](https://github.com/gregbtm/VoucherVault/commit/3bfa9c8b90719d9b248838967e2f8423e76a831c))
+
+## [1.1.73](https://github.com/gregbtm/VoucherVault/compare/v1.1.72...v1.1.73) (2026-07-18)
 
 
 ### Features
@@ -21,11 +28,4 @@
 * use the mark+wordmark lockup for the nav logo (Phase 90) ([63b87c9](https://github.com/gregbtm/VoucherVault/commit/63b87c9bbc27303be5e26860be3e368a0ca15f47))
 
 ## [1.1.70](https://github.com/gregbtm/VoucherVault/compare/v1.1.69...v1.1.70) (2026-07-18)
-
-## [1.1.69](https://github.com/gregbtm/VoucherVault/compare/v1.1.68...v1.1.69) (2026-07-18)
-
-
-### Features
-
-* minify hand-written JS in the Docker image build (Phase 88) ([1d637ba](https://github.com/gregbtm/VoucherVault/commit/1d637baf1e26f782506027e155cfdfbc2c95ba7c))
 
