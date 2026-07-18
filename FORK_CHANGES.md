@@ -118,6 +118,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 85 — Fix blank-on-load settings pages + tap-to-view help hints](#phase-85--fix-blank-on-load-settings-pages--tap-to-view-help-hints)
 - [Phase 86 — Scan confidence, in-page help, and site-wide polish](#phase-86--scan-confidence-in-page-help-and-site-wide-polish)
 - [Phase 87 — JS test harness](#phase-87--js-test-harness)
+- [Phase 88 — Minified JS build step](#phase-88--minified-js-build-step)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4543,6 +4544,39 @@ ticket coming back wrong to notice.
   Live-verified the extracted `ui-helpers.js` and unchanged `scanner.js`
   both still load and serve correctly from their real static URLs, and
   that `base.html`/`create-item.html` render unchanged.
+
+## Phase 88 — Minified JS build step
+
+`myapp/static/assets/js/` was served exactly as hand-written - uwsgi's
+`static-map` (`docker/docker_uwsgi.ini`) hands the raw source straight to
+every visitor, no `collectstatic`-driven pipeline in between. Fine for a
+few KB, less fine once scanner.js alone is 33KB unminified.
+
+- **A new `jsbuild` Docker build stage** (`docker/Dockerfile`) runs
+  `esbuild` (added as a dev-only Node dependency, `npm run build`) over
+  the ten hand-written app JS files and overlays the minified output
+  onto the exact same served paths in the final image - same filenames,
+  same URLs, same `<script src>` tags in every template, zero changes
+  outside the Dockerfile. `zxing.js` (already a minified vendor bundle)
+  and the unreferenced `offline-integration-examples.js` are left out of
+  the build list.
+- **The git-tracked source stays untouched and unminified** - a local
+  `npm run build` writes to a gitignored `dist/js/`, and Vitest (Phase
+  87) keeps testing the real, readable source either way. Minification
+  is strictly a production-image concern.
+- **~40-55% smaller per file**: `scanner.js` 34KB → 15KB, `voucher-
+  share.js` 10KB → 6KB, `offline-sync.js` 20KB → 9KB, and so on across
+  the other seven files - roughly 118KB combined down to 53KB, before
+  gzip.
+- Vitest's own `*.test.js` files are stripped from the image
+  (`RUN rm -f .../*.test.js` after the overlay) - they'd otherwise sit
+  in the same publicly-served directory uwsgi maps to `/static/`, a
+  latent gap opened by Phase 87 that this phase closes in passing.
+- Full suite: 823 backend tests + 24 JS tests, 0 failures. Verified with
+  a real multi-stage `docker build` (not just a read-through): the
+  `jsbuild` stage's `npm ci` + `npm run build` produced byte-identical
+  output to a host-side run, and the overlay + test-file-strip steps
+  completed cleanly against the actual `myapp/static/assets/js/` tree.
 
 ## New environment variables
 
