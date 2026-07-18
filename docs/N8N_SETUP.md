@@ -105,3 +105,8 @@ No manual per-endpoint wiring.
 [`FIREFLY_III_SETUP.md`](FIREFLY_III_SETUP.md) builds on this doc's
 webhook direction to sync a gift card/voucher's balance into a
 self-hosted [Firefly III](https://www.firefly-iii.org/) budget.
+
+[`RAIL_TICKET_IMPORT_SETUP.md`](RAIL_TICKET_IMPORT_SETUP.md) builds on
+this doc's token/credential setup for one specific workflow: watch an
+inbox for rail eTicket confirmation emails and auto-create a Travel
+Pass item from each one, barcode decoded server-side.

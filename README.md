@@ -14,7 +14,7 @@
       <a target="_blank" href="https://github.com/gregbtm/VoucherVault/network/members"><img src="https://img.shields.io/github/forks/gregbtm/VoucherVault?style=flat-square&color=4154f1" alt="Forks"></a>
     </p>
     <p>
-      <img src="https://img.shields.io/badge/414%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="414 features and fixes added on top of upstream">
+      <img src="https://img.shields.io/badge/419%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="419 features and fixes added on top of upstream">
       <img src="https://img.shields.io/badge/PWA-installable-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="Installable PWA">
       <img src="https://img.shields.io/badge/AI--assisted-scanning-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="AI-assisted scanning">
       <img src="https://img.shields.io/badge/REST-API-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="REST API">
@@ -128,6 +128,7 @@ available.
 - **"Next Up" widget** — point it at one or more wallets (e.g. "Train Tickets") and Inventory highlights a queue of the soonest-expiring items across them (up to 3, configurable), barcode included, ready to scan, with a one-tap "mark as used" on each card. Off by default; opt in from Preferences. Pair it with a "Next Up Item Due Today" notification rule for a same-day reminder.
 - **"Active Today" widget** — built for a daily round-trip ticket (e.g. a train commute): before your configured cutoff time it shows today's outward leg, then automatically switches to the return leg after it, only ever on the day the ticket is actually valid for. Set a home station in Preferences and tag a ticket's Journey From/To fields (auto-filled by "Scan with AI" for a photographed train ticket) to use it. Off by default.
 - **"Travel Pass" item type** — a purpose-built layout for train/transport tickets: Journey From/To and an optional Time of Travel, with Value, Currency, Card Number, and PIN all hidden since they don't apply. Issue Date falls back to the expiry date when left blank (many tickets are valid and expire same-day), and every item of this type is filed straight into a "Travel Pass" wallet automatically.
+- **PDF eTicket import (UK rail)** — "Scan with AI" also accepts a PDF eTicket, not just photos: the Aztec barcode UK rail tickets use is decoded server-side and the journey/price fields pre-filled, ready to review and save. The same endpoint powers a fully unattended n8n workflow that watches an inbox for booking confirmation emails and creates the Travel Pass item automatically — see [`docs/RAIL_TICKET_IMPORT_SETUP.md`](docs/RAIL_TICKET_IMPORT_SETUP.md).
 - **Auto-assign new items to a wallet by issuer** — set a wallet's "auto-assign" match text (e.g. "National Rail") and any new item whose issuer contains it — scanned or typed — is filed straight into that wallet unless you pick one yourself.
 - **Auto-suggest from recent activity** — after "Scan with AI" fills in what it could read from a photo, any of Issuer, Logo, Wallet, or Currency it left blank get suggested from your habits: the issuer you use most across your last 10 items of that type, with the companion fields taken from your newest matching item. Suggestions wear their own dashed-amber styling so they're never mistaken for values read off the photo. Manual entry (no photo scan) is never auto-suggested.
 - **Self-learning scans** — correct a scan's mistake once (a misread operator name, an Aztec code labelled as QR, a blank field you always fill the same way) and it's remembered per-user and silently fixed on every future scan, flagged with a "learned from your past corrections" chip. Keep a scanned value as-is and any stale correction for it is retired automatically.
@@ -216,6 +217,7 @@ A handful of features need a one-time setup by whoever runs the container
 - [`docs/MCP_SERVER_SETUP.md`](docs/MCP_SERVER_SETUP.md) — wiring up an AI assistant
 - [`docs/N8N_SETUP.md`](docs/N8N_SETUP.md) — connecting n8n to the REST API
 - [`docs/FIREFLY_III_SETUP.md`](docs/FIREFLY_III_SETUP.md) — syncing gift card/voucher balances to Firefly III via n8n
+- [`docs/RAIL_TICKET_IMPORT_SETUP.md`](docs/RAIL_TICKET_IMPORT_SETUP.md) — auto-importing UK rail eTickets from email via n8n
 - [`docs/AUTO_DEPLOY.md`](docs/AUTO_DEPLOY.md) — one-click redeploy on every push to `main`
 - [`docs/BACKUP_RESTORE.md`](docs/BACKUP_RESTORE.md) — how scheduled backups work and how to restore one
 - [`docs/UPGRADE.md`](docs/UPGRADE.md) — already running the upstream Docker image? Switching to this fork

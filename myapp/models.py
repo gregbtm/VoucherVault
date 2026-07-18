@@ -340,6 +340,17 @@ class Item(models.Model):
         help_text="Scheduled departure/travel time for a Travel Pass, if known - leave blank "
                    "otherwise (many train tickets are date-only, with no fixed time).",
     )
+    order_id = models.CharField(
+        max_length=100, blank=True, default='',
+        help_text="Merchant/booking order or confirmation reference, if different from the "
+                   "redeem code - e.g. a rail ticket's order ID alongside its separate ticket "
+                   "number. Optional for any item type.",
+    )
+    discount_applied = models.CharField(
+        max_length=100, blank=True, default='',
+        help_text="Discount or railcard applied at purchase, e.g. \"Network Railcard\". "
+                   "Informational only.",
+    )
     created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     objects = ItemQuerySet.as_manager()

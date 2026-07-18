@@ -5,6 +5,8 @@ from django.contrib.auth.models import User
 from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_time
 from django.utils.translation import gettext_lazy as _
 from rest_framework import generics, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -31,10 +33,12 @@ from imports.tasks import process_import_job
 from myapp.analytics import get_expiry_timeline, get_summary_stats
 from myapp.merchant_logos import remember_balance_check_url
 from myapp.models import Item, ItemShare, MerchantProfile, Tag, Transaction, UserPreference, UserProfile, Wallet
+from myapp.pdf_ticket import decode_barcode_from_pdf, pdf_page_to_png_bytes
 from myapp.scan_learning import apply_learned_corrections
 from notify.models import NotificationLog, NotificationRule
 from notify.tasks import notify_balance_changed, notify_item_created, notify_item_shared, notify_item_used, send_test_notification
 from ocr.backends import get_backend, ocr_enabled
+from ocr.backends.base import parse_float_or_none
 
 from .filters import ItemFilter
 from .permissions import IsItemOwnerOrWalletCollaborator, IsOwner, IsWalletOwnerOrReadOnlyCollaborator
@@ -58,6 +62,7 @@ PREVIEW_ROW_LIMIT = 50
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 MAX_OCR_IMAGE_SIZE = 8 * 1024 * 1024  # 8MB
 OCR_ALLOWED_CONTENT_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
+MAX_PDF_UPLOAD_SIZE = 15 * 1024 * 1024  # 15MB
 
 
 class ItemViewSet(viewsets.ModelViewSet):
@@ -504,6 +509,199 @@ class OCRExtractView(APIView):
         result['healed_fields'] = apply_learned_corrections(request.user, result)
 
         return Response(result)
+
+
+class RailTicketImportView(APIView):
+    """
+    POST a PDF eTicket (e.g. an Uber/Omio-issued UK rail booking
+    confirmation), get back extracted ticket fields with the barcode
+    decoded server-side - or, with create=true, have the Item created
+    directly. Two callers share this one endpoint:
+
+    - The create-item "Scan from File" flow (create omitted/false): a
+      human uploads a PDF, reviews the pre-filled form, and submits it
+      themselves - the same "extract now, create later" shape as
+      OCRExtractView/PkpassImportView above.
+    - An unattended pipeline, e.g. n8n polling an inbox for ticket
+      confirmation emails (see docs/N8N_SETUP.md): forwards the PDF with
+      create=true and no human review step. n8n can also POST its own
+      pre-extracted text fields (it's already parsing the email to know to
+      call this endpoint at all) - anything it supplies is used as-is
+      instead of re-derived via OCR, since text pulled directly from the
+      PDF's own text layer is more reliable than a vision model reading a
+      rasterized image of that same text.
+
+    The barcode is always decoded here, server-side, via zxing-cpp
+    (myapp.pdf_ticket) - asking a vision OCR model to *read* a barcode the
+    way it reads other printed fields would be far less reliable than an
+    actual barcode decoder, and it's the one piece of this pipeline no
+    caller can reasonably do for us.
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    _RAIL_TICKET_TEXT_FIELDS = (
+        'name', 'issuer', 'card_number', 'order_id', 'discount_applied',
+        'journey_origin', 'journey_destination', 'travel_time', 'travel_date',
+    )
+
+    @extend_schema(
+        request={'multipart/form-data': inline_serializer(
+            name='RailTicketImportRequest',
+            fields={
+                'file': serializers.FileField(),
+                'create': serializers.BooleanField(required=False, default=False),
+                'name': serializers.CharField(required=False),
+                'issuer': serializers.CharField(required=False),
+                'card_number': serializers.CharField(required=False),
+                'order_id': serializers.CharField(required=False),
+                'discount_applied': serializers.CharField(required=False),
+                'journey_origin': serializers.CharField(required=False),
+                'journey_destination': serializers.CharField(required=False),
+                'travel_time': serializers.CharField(required=False, help_text='24-hour "HH:MM"'),
+                'travel_date': serializers.CharField(required=False, help_text='"YYYY-MM-DD"'),
+                'value': serializers.FloatField(required=False),
+                'currency': serializers.CharField(required=False),
+            },
+        )},
+        responses=inline_serializer(
+            name='RailTicketImportResponse',
+            fields={
+                'created': serializers.BooleanField(),
+                'item': ItemSerializer(required=False),
+                'name': serializers.CharField(allow_null=True),
+                'issuer': serializers.CharField(allow_null=True),
+                'redeem_code': serializers.CharField(allow_null=True),
+                'code_type': serializers.CharField(allow_null=True),
+                'card_number': serializers.CharField(allow_null=True),
+                'order_id': serializers.CharField(allow_null=True),
+                'discount_applied': serializers.CharField(allow_null=True),
+                'journey_origin': serializers.CharField(allow_null=True),
+                'journey_destination': serializers.CharField(allow_null=True),
+                'travel_time': serializers.CharField(allow_null=True),
+                'travel_date': serializers.CharField(allow_null=True),
+                'value': serializers.FloatField(allow_null=True),
+                'currency': serializers.CharField(allow_null=True),
+                'barcode_decoded': serializers.BooleanField(),
+            },
+        ),
+    )
+    def post(self, request):
+        upload = request.FILES.get('file')
+        if not upload:
+            return Response({'file': _('No file uploaded.')}, status=status.HTTP_400_BAD_REQUEST)
+        if upload.size > MAX_PDF_UPLOAD_SIZE:
+            return Response({'file': _('File is too large (max 15MB).')}, status=status.HTTP_400_BAD_REQUEST)
+        if upload.content_type != 'application/pdf':
+            return Response({'file': _('Only PDF files are supported.')}, status=status.HTTP_400_BAD_REQUEST)
+
+        pdf_bytes = upload.read()
+
+        try:
+            redeem_code, code_type = decode_barcode_from_pdf(pdf_bytes)
+        except Exception as exc:
+            logger.warning('Rail ticket barcode decode failed: %s', exc, exc_info=True)
+            redeem_code, code_type = None, None
+
+        fields = {name: (request.data.get(name) or None) for name in self._RAIL_TICKET_TEXT_FIELDS}
+        fields['value'] = parse_float_or_none(request.data.get('value'))
+        fields['currency'] = (request.data.get('currency') or '').upper() or None
+
+        # OCR fills in whatever the caller didn't already supply - the
+        # common case for a manual upload with no pre-extraction step at
+        # all, and a graceful fallback if n8n's own parsing missed a field.
+        if ocr_enabled() and any(value is None for value in fields.values()):
+            try:
+                page_image_bytes = pdf_page_to_png_bytes(pdf_bytes)
+                ocr_result = get_backend().extract(page_image_bytes, 'image/png')
+            except Exception as exc:
+                logger.warning('Rail ticket OCR fallback failed: %s', exc, exc_info=True)
+                ocr_result = {}
+
+            fields['name'] = fields['name'] or ocr_result.get('name')
+            fields['issuer'] = fields['issuer'] or ocr_result.get('issuer')
+            fields['card_number'] = fields['card_number'] or ocr_result.get('card_number')
+            fields['journey_origin'] = fields['journey_origin'] or ocr_result.get('journey_origin')
+            fields['journey_destination'] = fields['journey_destination'] or ocr_result.get('journey_destination')
+            fields['travel_time'] = fields['travel_time'] or ocr_result.get('travel_time')
+            fields['travel_date'] = fields['travel_date'] or ocr_result.get('expiry_date')
+            fields['value'] = fields['value'] if fields['value'] is not None else ocr_result.get('value')
+            fields['currency'] = fields['currency'] or ocr_result.get('currency')
+            if redeem_code is None:
+                redeem_code = ocr_result.get('code')
+                code_type = code_type or ocr_result.get('code_type')
+
+        barcode_decoded = bool(redeem_code) and code_type not in (None, 'none')
+        if not redeem_code:
+            # Nothing decodable and OCR found nothing to read either - fall
+            # back to the ticket number itself as the redeem code, same as
+            # any other "No Barcode" item rather than failing outright.
+            redeem_code = fields['card_number'] or ''
+            code_type = 'none'
+
+        create = str(request.data.get('create', '')).lower() in ('1', 'true', 'yes')
+
+        response_payload = {
+            'created': False,
+            'name': fields['name'],
+            'issuer': fields['issuer'],
+            'redeem_code': redeem_code or None,
+            'code_type': code_type,
+            'card_number': fields['card_number'],
+            'order_id': fields['order_id'],
+            'discount_applied': fields['discount_applied'],
+            'journey_origin': fields['journey_origin'],
+            'journey_destination': fields['journey_destination'],
+            'travel_time': fields['travel_time'],
+            'travel_date': fields['travel_date'],
+            'value': fields['value'],
+            'currency': fields['currency'],
+            'barcode_decoded': barcode_decoded,
+        }
+
+        if not create:
+            return Response(response_payload)
+
+        if not fields['issuer'] or not redeem_code:
+            return Response(
+                {'detail': _(
+                    'Not enough information extracted to create an item '
+                    '(need at least an issuer and a code).'
+                )},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
+        travel_date = parse_date(fields['travel_date']) if fields['travel_date'] else None
+        travel_time = parse_time(fields['travel_time']) if fields['travel_time'] else None
+        travel_day = travel_date or timezone.localdate()
+
+        name = fields['name'] or ' to '.join(
+            part for part in (fields['journey_origin'], fields['journey_destination']) if part
+        ) or _('Train Ticket')
+
+        item = Item.objects.create(
+            user=request.user,
+            type='travelpass',
+            name=name,
+            issuer=fields['issuer'],
+            redeem_code=redeem_code,
+            code_type=code_type or 'none',
+            card_number=fields['card_number'] or '',
+            order_id=fields['order_id'] or '',
+            discount_applied=fields['discount_applied'] or '',
+            journey_origin=fields['journey_origin'] or '',
+            journey_destination=fields['journey_destination'] or '',
+            travel_time=travel_time,
+            issue_date=travel_day,
+            expiry_date=travel_day,
+            value=fields['value'] or 0,
+            currency=fields['currency'] or 'GBP',
+            source='api',
+        )
+
+        response_payload['created'] = True
+        response_payload['item'] = ItemSerializer(item, context={'request': request}).data
+        return Response(response_payload, status=status.HTTP_201_CREATED)
 
 
 class PkpassImportView(APIView):

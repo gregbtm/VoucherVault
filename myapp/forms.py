@@ -49,7 +49,7 @@ class ItemForm(forms.ModelForm):
 
     class Meta:
         model = Item
-        fields = ['name', 'issuer', 'redeem_code', 'card_number', 'pin', 'issue_date', 'expiry_date', 'description', 'logo_slug', 'type', 'value', 'value_type', 'currency', 'file', 'code_type', 'tile_color', 'wallet', 'tags', 'notes', 'notify_days_before', 'balance_check_url', 'journey_origin', 'journey_destination', 'travel_time']
+        fields = ['name', 'issuer', 'redeem_code', 'card_number', 'pin', 'issue_date', 'expiry_date', 'description', 'logo_slug', 'type', 'value', 'value_type', 'currency', 'file', 'code_type', 'tile_color', 'wallet', 'tags', 'notes', 'notify_days_before', 'balance_check_url', 'journey_origin', 'journey_destination', 'travel_time', 'order_id', 'discount_applied']
         widgets = {
             'issue_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
             'expiry_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
@@ -73,6 +73,14 @@ class ItemForm(forms.ModelForm):
                 'placeholder': _('e.g. London Terminals'),
             }),
             'travel_time': forms.TimeInput(attrs={'type': 'time'}, format='%H:%M'),
+            'order_id': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': _('e.g. WEB017891237'),
+            }),
+            'discount_applied': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': _('e.g. Network Railcard'),
+            }),
         }
 
     def __init__(self, *args, user=None, **kwargs):

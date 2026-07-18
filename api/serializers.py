@@ -142,7 +142,8 @@ class ItemSerializer(serializers.ModelSerializer):
             'file', 'qr_code_base64', 'default_expiry_notification_sent',
             'final_expiry_notification_sent', 'days_until_expiry', 'transaction_total',
             'wallet', 'wallet_name', 'tags', 'tag_ids', 'notes', 'notify_days_before', 'source',
-            'last_used_at', 'balance_check_url',
+            'last_used_at', 'balance_check_url', 'journey_origin', 'journey_destination',
+            'travel_time', 'order_id', 'discount_applied',
         ]
         read_only_fields = [
             'id', 'qr_code_base64', 'default_expiry_notification_sent',

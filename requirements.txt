@@ -20,6 +20,8 @@ apprise==1.9.9
 treepoem==3.28.0
 mozilla-django-oidc==5.0.2
 Markdown==3.10.2
+zxing-cpp==3.1.0
+pymupdf==1.28.0
 
 # API
 djangorestframework==3.15.2
