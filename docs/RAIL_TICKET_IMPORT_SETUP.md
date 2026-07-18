@@ -6,6 +6,19 @@ rail bookings, which run on Omio's backend, or a train operator like
 Greater Anglia) and turn each one into a Travel Pass item automatically
 — no manual entry, no photo to take.
 
+**Fastest path:** import
+[`docs/n8n-workflows/vouchervault-rail-ticket-import.json`](n8n-workflows/vouchervault-rail-ticket-import.json)
+directly into n8n (⋯ menu → Import from File) instead of building the
+workflow node-by-node below. It's a complete Gmail-trigger → decode →
+create-item → label workflow, with a sticky note on the canvas covering
+the same credential/label setup as Steps 1 and 6 here. You'll still need
+to: point its HTTP Request node at your own domain, attach your own
+Gmail and Header Auth credentials (the imported nodes reference
+placeholder credential IDs), and adjust the sender filter to match who
+your tickets actually come from. The rest of this doc explains what
+each piece does and walks through building it by hand if you'd rather
+not start from the import.
+
 ## Why this needs its own endpoint
 
 Official ticket-history APIs are a dead end here — Uber, Omio, and UK

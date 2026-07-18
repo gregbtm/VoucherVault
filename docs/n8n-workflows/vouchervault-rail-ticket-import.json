@@ -1,0 +1,236 @@
+{
+  "name": "VoucherVault - Rail eTicket Auto-Import",
+  "nodes": [
+    {
+      "id": "sticky-1",
+      "name": "Setup notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-120, 0],
+      "parameters": {
+        "width": 380,
+        "height": 480,
+        "content": "## Before you activate this\n\n1. **Gmail credential** — the 'Watch for Ticket Emails' node needs a Gmail OAuth2 credential. Add one under Credentials → New → Gmail OAuth2 API, then select it on that node.\n\n2. **VoucherVault API token** — on your VoucherVault server:\n   `docker compose exec app python manage.py drf_create_token <your-username>`\n   Then in n8n: Credentials → New → Header Auth, Name=`Authorization`, Value=`Token <the-token>`. Select it on the 'Create VoucherVault Item' node.\n\n3. **Gmail labels** — create two labels in Gmail first: `VoucherVault-Processed` and `VoucherVault-Failed`. The workflow applies these after each attempt so it never reprocesses an email (the trigger's search query already excludes anything labeled Processed).\n\n4. **Adjust the sender filter** on the trigger node to match who your tickets actually come from — the default targets Uber/Omio/Greater Anglia confirmation emails, edit the `q` field for other operators.\n\n5. **Test with 'Fetch Test Event' first** (right-click the trigger node) against a real ticket email before turning Active on, so you can see the HTTP Request node's actual response before it's creating items unattended.\n\nSee docs/RAIL_TICKET_IMPORT_SETUP.md in the VoucherVault repo for the full walkthrough."
+      }
+    },
+    {
+      "id": "gmail-trigger-1",
+      "name": "Watch for Ticket Emails",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [280, 100],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 15,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "from:(uber.com OR omio.com OR greateranglia.co.uk OR trainline.com) has:attachment filename:pdf -label:VoucherVault-Processed -label:VoucherVault-Failed"
+        },
+        "downloadAttachments": true
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "code-1",
+      "name": "Find PDF Attachment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 100],
+      "parameters": {
+        "jsCode": "// Gmail Trigger names downloaded attachments after their own\n// attachment id, not a fixed key - find whichever binary property is\n// actually a PDF and re-key it to `file` so the HTTP Request node\n// downstream has one predictable field name to send, regardless of\n// how many attachments this specific email had or what they're named.\nfor (const item of $input.all()) {\n  const binary = item.binary || {};\n  const pdfKey = Object.keys(binary).find((key) => {\n    const b = binary[key];\n    return (b.mimeType || '').toLowerCase().includes('pdf')\n      || (b.fileName || '').toLowerCase().endsWith('.pdf');\n  });\n  if (pdfKey && pdfKey !== 'file') {\n    item.binary.file = item.binary[pdfKey];\n  }\n}\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "if-1",
+      "name": "Has PDF?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [760, 100],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $binary.file !== undefined }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "http-1",
+      "name": "Create VoucherVault Item",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 40],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://voucher.nasmatrix.app/api/v1/imports/rail-ticket/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "file"
+            },
+            {
+              "name": "create",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "VoucherVault API Token"
+        }
+      }
+    },
+    {
+      "id": "gmail-label-ok",
+      "name": "Label: Processed",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1260, -60],
+      "parameters": {
+        "resource": "message",
+        "operation": "addLabels",
+        "messageId": "={{ $('Watch for Ticket Emails').item.json.id }}",
+        "labelIds": [],
+        "labelNames": ["VoucherVault-Processed"]
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "gmail-label-fail",
+      "name": "Label: Failed",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1260, 160],
+      "parameters": {
+        "resource": "message",
+        "operation": "addLabels",
+        "messageId": "={{ $('Watch for Ticket Emails').item.json.id }}",
+        "labelIds": [],
+        "labelNames": ["VoucherVault-Failed"]
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "noop-not-pdf",
+      "name": "No PDF - skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1000, 260],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Watch for Ticket Emails": {
+      "main": [
+        [
+          {
+            "node": "Find PDF Attachment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find PDF Attachment": {
+      "main": [
+        [
+          {
+            "node": "Has PDF?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has PDF?": {
+      "main": [
+        [
+          {
+            "node": "Create VoucherVault Item",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No PDF - skip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create VoucherVault Item": {
+      "main": [
+        [
+          {
+            "node": "Label: Processed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Label: Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

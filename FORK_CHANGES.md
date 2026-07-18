@@ -4862,6 +4862,11 @@ exist anywhere in the app yet.
 - New dependencies: `zxing-cpp` (barcode decode) and `pymupdf` (PDF
   rasterization) - both ship self-contained wheels with no system
   package required, same as `treepoem`/`qrcode` already in use.
+- **`docs/n8n-workflows/vouchervault-rail-ticket-import.json`** - a
+  ready-to-import n8n workflow (Gmail trigger → find the PDF attachment
+  → POST to the new endpoint → label the email processed/failed) so
+  setting up the unattended pipeline above doesn't require building it
+  node-by-node from the doc's description.
 - Full suite: 842 backend tests (19 new: 10 for `pdf_ticket.py`'s
   decode/rasterize functions, 9 for the new API endpoint) + 24 JS tests,
   0 failures. Live-verified with a real Playwright browser session
