@@ -256,16 +256,16 @@ body.dark-mode .footer {
   color: #e0e6eb;
 }
 
-/* Theme is an independent toggle from the icon-vs-lockup breakpoint swap
-   in style.css - !important here only ever HIDES the wrong theme's images,
-   never re-shows anything, so it can't fight style.css's role/breakpoint
-   display values for whichever theme is actually active. */
-body:not(.dark-mode) .logo-dark {
-  display: none !important;
+.logo-dark {
+  display: none;
 }
 
 body.dark-mode .logo-light {
-  display: none !important;
+  display: none;
+}
+
+body.dark-mode .logo-dark {
+  display: inline-block;
 }
 
 body.dark-mode .footer .copyright {

@@ -37,10 +37,10 @@ SVGs (via `cairosvg`, no manual editing):
 
 | Generated file | Source | Notes |
 |---|---|---|
-| `../logo.svg` | `mark-color.svg` | Icon-only nav logo below the `lg` breakpoint |
-| `../logo-mono-white.svg` | `mark-mono-white.svg` | Dark-mode/OLED icon-only nav logo |
-| `../logo-lockup-light.svg` | `lockup-light-bg.svg` | Mark+wordmark nav logo at `lg` and up |
-| `../logo-lockup-dark.svg` | `lockup-dark-bg.svg` | Dark-mode/OLED mark+wordmark nav logo at `lg` and up |
+| `../logo.svg` | `mark-color.svg` | Icon-only mark used in the root README's own header image - not used in-app (see the lockup files below for the nav logo) |
+| `../logo-mono-white.svg` | `mark-mono-white.svg` | Icon-only mark used on the login/post-logout pages, which always show mono-white on their fixed dark card regardless of the app's theme toggle |
+| `../logo-lockup-light.svg` | `lockup-light-bg.svg` | Mark+wordmark nav logo, light theme, every viewport width |
+| `../logo-lockup-dark.svg` | `lockup-dark-bg.svg` | Mark+wordmark nav logo, dark/OLED theme, every viewport width |
 | `../logo.png` | `mark-color.svg` | Raster fallback, 1024×1024, README reference |
 | `../favicon.ico` | `favicon.svg` | Multi-size ICO (16/32/48) |
 | `../apple-icon-180.png`, `../apple-touch-icon.png` | `app-icon-light-bg.svg` | 180×180 |

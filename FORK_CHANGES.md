@@ -122,6 +122,8 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 89 — Vendor audit: 86MB → 11MB of static assets](#phase-89--vendor-audit-86mb--11mb-of-static-assets)
 - [Phase 90 — Wire in the mark+wordmark lockup](#phase-90--wire-in-the-markwordmark-lockup)
 - [Phase 91 — CI actually runs the test suites now](#phase-91--ci-actually-runs-the-test-suites-now)
+- [Phase 92 — Mark+wordmark lockup on every viewport width, not just desktop](#phase-92--markwordmark-lockup-on-every-viewport-width-not-just-desktop)
+- [Phase 93 — Item form field scoping, a stray comment, and share-page polish](#phase-93--item-form-field-scoping-a-stray-comment-and-share-page-polish)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4695,6 +4697,75 @@ everything except itself.
   install -r requirements.txt`, `DB_ENGINE=sqlite3 python manage.py
   test`, then `rm -rf node_modules && npm ci && npm test` - both suites
   green (823 + 24, 0 failures) before this ever touched CI for real.
+
+## Phase 92 — Mark+wordmark lockup on every viewport width, not just desktop
+
+Phase 90 swapped between an icon-only mark (below the `lg` breakpoint,
+992px) and the full mark+wordmark lockup (at `lg` and up). A user running
+the app on a phone reported the wordmark missing and asked to see the full
+lockup on mobile too - that was the intended Phase 90 behavior, not a
+regression, but the tradeoff (less header width for the hamburger/theme
+icons at narrow widths) wasn't worth it once actually seen on a real
+phone.
+
+- **One lockup, every width** - `base.html`'s header is back down to two
+  `<img>`s (light/dark), no icon-only fallback and no breakpoint swap.
+  `style.css` sizes it at a flat `max-height: 28px`, chosen by screenshotting
+  real 320/360/390/414/768/1400px viewports and confirming no overlap with
+  the hamburger or dark-mode toggle at the narrowest of them.
+- **`dark-mode.css` simplified back down** - with only one dimension
+  (theme) left to toggle instead of two (theme × breakpoint), the
+  `!important`-based "only ever hide, never reveal" rules from Phase 90
+  are no longer needed; a plain `display: none` / `display: inline-block`
+  pair does the job.
+- `logo.svg` (the icon-only mark, still referenced directly by this
+  file's own header image below) stays - only the in-app header dropped
+  its use of it.
+- Full suite: 823 backend tests + 24 JS tests, 0 failures. Live-verified
+  with real Playwright screenshots at 320px and 1400px - clean lockup,
+  no cramping, both themes.
+
+## Phase 93 — Item form field scoping, a stray comment, and share-page polish
+
+A batch of smaller fixes and enhancements from direct user feedback and a
+screenshot of the live app:
+
+- **Fixed a visible internal comment** - `create-item.html` and
+  `edit-item.html` had a `{# ... #}` comment spanning multiple lines.
+  Django's `{# #}` syntax is single-line only; a multi-line one isn't
+  recognized as a comment at all and renders as literal page text. It was
+  visible directly under the Value field in production. Converted both to
+  `{% comment %}...{% endcomment %}`, which does support multiple lines.
+- **Journey/Time-of-Travel fields now scoped to Travel Pass** - "Journey
+  From", "Journey To", and "Time of Travel" used to show for every item
+  type with only a line of muted help text telling non-travel users to
+  ignore them. They're now wrapped in a `#travel-fields` group that
+  collapses (animated, not just `display: none`) unless `type ===
+  'travelpass'`, matching how the form already scopes Value/Currency to
+  non-travel types and the Balance/Validity Check link to gift cards only.
+  Applied to both the create and edit forms.
+- **A few small animations** - the new travel-fields group animates open
+  with a `.field-toggle` max-height/opacity transition (respecting
+  `prefers-reduced-motion`) instead of an instant jump cut.
+- **Public share page (`public_item.html`) polish** - the read-only page
+  a recipient sees when handed a share link:
+  - The merchant logo (fetched over the network via the
+    `public_item_share_logo` proxy) now shows an inline ring-spinner
+    placeholder while loading instead of a blank gap, then fades the logo
+    in once it's actually decoded - success and failure both settle the
+    spinner so a slow/broken fetch can't spin forever. Built as plain
+    inline CSS (in the spirit of loaders.css / SVG-Loaders, credited by
+    the reporting user) rather than pulling in either library, keeping
+    this already fully self-contained, no-CDN page that way.
+  - The card fades/slides in on load; the barcode image fades in just
+    after; copy buttons get a brief scale pulse on copy; wallet-add
+    buttons and the PIN submit button get press feedback; a wrong PIN now
+    shakes the input instead of only showing red error text. All of it
+    respects `prefers-reduced-motion`.
+- Full suite: 823 backend tests + 24 JS tests, 0 failures. Live-verified
+  with real Playwright screenshots: giftcard vs. travelpass field
+  scoping on both create and edit forms, the comment fix, and the
+  rendered share page.
 
 ## New environment variables
 
