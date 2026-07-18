@@ -1,0 +1,106 @@
+/* Interactive "suggest from your recent items" button + popover.
+   See myapp/static/assets/js/field-suggest.js for the behavior this
+   styles - a small lightbulb button that appears next to a field's label
+   only while the field is empty, opening a popover of up to 5 ranked
+   suggestions on click. Mirrors the color-picker's trigger+popover
+   pattern (color-picker.css) for a consistent feel. */
+
+/* Anchored to the top-right corner of the field's .form-group (which
+   field-suggest.js makes position:relative) rather than inserted inline
+   after the label text - the label itself is display:block and full-width,
+   so an inline sibling would just wrap onto its own line below it; this
+   keeps the button visually "with" the label's row without depending on
+   being a DOM child of it (some labels get their innerHTML replaced
+   wholesale by type-conditional form logic elsewhere on the page). */
+.vv-sg-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #997404;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background 0.15s ease;
+}
+
+.vv-sg-btn:hover,
+.vv-sg-btn[aria-expanded="true"] {
+  background: rgba(255, 193, 7, 0.18);
+}
+
+.vv-sg-btn i {
+  font-size: 0.9rem;
+}
+
+.vv-sg-btn[hidden] {
+  display: none;
+}
+
+/* position:fixed, appended to <body> - top/left/width are computed and set
+   inline by field-suggest.js on open, from the trigger button's actual
+   screen position, so this popover is never clipped by a card's own
+   overflow:hidden (used for its rounded corners) the way an absolutely-
+   positioned popover nested inside that card would be. */
+.vv-sg-popover {
+  position: fixed;
+  z-index: 2000;
+  padding: 0.6rem;
+  border: 1px solid var(--border-color, #dee2e6);
+  border-radius: 12px;
+  background: var(--card-bg, #fff);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.vv-sg-popover-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted, #6c757d);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 0.4rem;
+}
+
+.vv-sg-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.vv-sg-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-color, #1e1e1e);
+  font-size: 0.88rem;
+  cursor: pointer;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.vv-sg-option:hover {
+  background: rgba(65, 84, 241, 0.1);
+}
+
+body.dark-mode .vv-sg-btn {
+  color: #ffd75e;
+}
+
+body.dark-mode .vv-sg-btn:hover,
+body.dark-mode .vv-sg-btn[aria-expanded="true"] {
+  background: rgba(255, 193, 7, 0.22);
+}
+
+body.dark-mode .vv-sg-option:hover {
+  background: rgba(65, 84, 241, 0.22);
+}

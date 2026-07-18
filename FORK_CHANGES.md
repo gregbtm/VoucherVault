@@ -4943,6 +4943,91 @@ setting up a personal automation don't have or want.
   (cancel leaves it alone, confirm removes it) round trip; and both help
   doc modals opening correctly for a non-superuser account.
 
+## Phase 97 — Four layout bugs, and an interactive suggestion engine to replace the silent one
+
+A round of user-reported bugs against the mobile UI, alongside a request to
+turn the "auto-suggest from recent activity" feature from Phase 88 into
+something the user drives explicitly rather than something that happens to
+them silently.
+
+- **Profile dropdown was invisible.** Phase 94's header hardening added
+  `overflow: hidden` to `.header` itself (belt-and-braces on top of `.logo`
+  already having its own) to stop an oversized logo from ever crowding out
+  the hamburger - but `.header` is `position: fixed`, and Bootstrap's
+  dropdown-menu is an absolutely-positioned descendant of it, so that same
+  `overflow: hidden` silently clipped the open profile dropdown to the
+  header's own 60px height. Removed it - `.logo`'s own `overflow: hidden`
+  plus `flex-shrink: 0` on the controls that must stay full-size already
+  fully covers the case it was guarding against.
+- **Time of Travel field cut off on mobile.** The `.field-toggle` class
+  (the animated show/hide wrapper around the travel-fields group) capped
+  `max-height` at 260px - measured against the desktop layout, where
+  Journey From/To sit side by side. On mobile, `.form-row` stacks those two
+  inputs into a column instead, pushing the group's real height to ~367px
+  and clipping the bottom of the Time of Travel field. Raised the ceiling
+  to 600px - it only needs to clear the tallest real layout, not match it,
+  and the collapsed state still animates to 0 either way.
+- **Inventory card pin/share buttons overlapping the item name.** Both
+  buttons are `position: absolute` at the top-right of the card, floating
+  over the content rather than participating in its flex layout - a long
+  issuer/name had no reason not to flow underneath them, and did. Gave
+  `.item-main-info` a `padding-right` sized to the button strip so the text
+  always wraps clear of it, at every viewport (not just while a button
+  happens to be visible - on touch devices both are forced permanently
+  visible, unlike the desktop hover-reveal they were designed around).
+- **Interactive suggestion engine**, replacing the silent one from Phase
+  88's auto-suggest (issuer/logo/wallet/currency quietly filled in after an
+  AI scan, with only a small toast-style chip as a record of what
+  happened): now a small lightbulb button appears next to the label of any
+  suggestible field (issuer, logo slug, wallet, discount applied - not
+  currency, which always has a default selected and so is never actually
+  "empty") the moment that field is blank - never while it already has a
+  value, whatever the source (typed, scanned, or a picked suggestion).
+  Clicking it opens a small popover with up to 5 ranked suggestions from
+  that user's own recent items of the current type, and picking one fills
+  the field - always an explicit choice, never a background fill.
+  - New endpoint `suggest_field_options` replaces the old single-guess
+    `suggest_item_fields` outright (the auto-fill call site it existed for
+    is gone) - given a type and one of the four fields, returns up to 5
+    distinct values ranked by frequency (ties broken by recency, so one
+    habit isn't hijacked by an odd one-off), generalizing the same ranking
+    `suggest_item_fields` used to compute for its single best guess.
+  - New `field-suggest.js`/`field-suggest.css` - a self-initializing,
+    DOM-scan-based progressive enhancement (mirrors `color-picker.js`'s
+    established pattern) that wires up any `[data-vv-suggest-field]`
+    element on the page, so future fields opt in with a data attribute,
+    no per-page JS. Two non-obvious fixes along the way, both caught before
+    they reached a live test:
+    - The button is inserted as the label's next sibling, not a child of
+      it - create/edit-item's type-conditional logic overwrites a few
+      labels' `innerHTML` wholesale (e.g. "Issuer" → "Store" for a loyalty
+      card), which would have silently deleted a button living inside one.
+    - The popover is `position: fixed`, computed from the trigger button's
+      screen position and appended to `<body>`, not positioned relative to
+      an ancestor inside the form - `.form-card` has its own
+      `overflow: hidden` for its rounded corners, which would have clipped
+      a popover opening near the bottom of a tall form the same way
+      `.header`'s did the profile dropdown above. Being fixed rather than
+      absolute means it doesn't track the button on scroll, so it
+      repositions on scroll instead of just closing - closing outright
+      would have closed itself the instant a click on an off-screen button
+      triggered the browser's own smooth-scroll-into-view (`style.css` sets
+      `html { scroll-behavior: smooth }` site-wide), which keeps emitting
+      scroll events for a few hundred ms after the click that opened it.
+- Full suite: 853 backend tests (2 new tests replaced by 6 new ones testing
+  `suggest_field_options`' ranking/capping/wallet-shape/allowlist/scoping/
+  auth behavior) + 36 JS tests (12 new, covering visibility, the label-
+  survives-innerHTML-replacement case, fetch/render/pick, and the
+  scroll-repositions-not-closes regression), 0 failures. Live-verified with
+  a real Playwright session at a 390-430px mobile width: the profile
+  dropdown fully visible and clickable through to API Access on both mobile
+  and desktop; the Time of Travel field's bounding box fully contained
+  within its now-taller container; the inventory card's item name box
+  measured with zero overlap against both buttons' boxes; and the full
+  suggestion round trip for all four fields (including the Travel Pass
+  case, where Wallet is disabled and correctly shows no button at all) in
+  both themes.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

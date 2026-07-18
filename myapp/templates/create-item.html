@@ -87,11 +87,16 @@
 }
 
 /* Animated show/hide for type-conditional field groups (e.g. travel-fields) -
-   max-height caps at real content height so the collapse doesn't clip. */
+   max-height just needs to clear the tallest real layout, not match it
+   exactly: 260px fit the travel-fields group's desktop width (Journey
+   From/To side by side) but clipped it on mobile, where .form-row wraps
+   those two inputs into a stacked column and the group runs well past
+   260px tall - cutting the bottom off the Time of Travel field. A large
+   safe ceiling costs nothing (the collapsed state still animates to 0). */
 .field-toggle {
   transition: opacity 0.25s ease, max-height 0.35s ease, margin 0.25s ease;
   overflow: hidden;
-  max-height: 260px;
+  max-height: 600px;
 }
 
 .field-toggle.is-collapsed {
@@ -196,10 +201,6 @@
   background: rgba(25, 135, 84, 0.12);
   color: #146c43;
 }
-.scan-chip-suggested {
-  background: rgba(255, 193, 7, 0.15);
-  color: #997404;
-}
 .scan-chip-learned {
   background: rgba(111, 66, 193, 0.12);
   color: #59359a;
@@ -209,7 +210,6 @@
   color: #6c757d;
 }
 body.dark-mode .scan-chip-filled { background: rgba(25, 135, 84, 0.25); color: #75d9a6; }
-body.dark-mode .scan-chip-suggested { background: rgba(255, 193, 7, 0.2); color: #ffd75e; }
 body.dark-mode .scan-chip-learned { background: rgba(111, 66, 193, 0.28); color: #c5a3ff; }
 body.dark-mode .scan-chip-empty { background: rgba(108, 117, 125, 0.25); color: #adb5bd; }
 body.dark-mode .modern-input.suggested-fill,
@@ -734,7 +734,8 @@ body.dark-mode .error-alert {
               <label class="form-label" for="issuer">{% trans "Issuer" %} <span class="required">*</span></label>
               <input type="text" class="modern-input" id="issuer" name="issuer" list="issuerDatalist"
                      placeholder="{% trans 'The issuer of the item' %}"
-                     value='{{ form.issuer.value|default_if_none:"" }}' required>
+                     value='{{ form.issuer.value|default_if_none:"" }}' required
+                     data-vv-suggest-field="issuer" data-vv-suggest-url="{% url 'suggest_field_options' %}" data-vv-suggest-type-source="#type">
               <datalist id="issuerDatalist">
                 {% for issuer in known_issuers %}
                 <option value="{{ issuer }}"></option>
@@ -921,7 +922,8 @@ body.dark-mode .error-alert {
 
             <div class="form-group">
               <label class="form-label" for="wallet">{% trans "Wallet" %}</label>
-              <select class="modern-select" id="wallet" name="wallet">
+              <select class="modern-select" id="wallet" name="wallet"
+                      data-vv-suggest-field="wallet" data-vv-suggest-url="{% url 'suggest_field_options' %}" data-vv-suggest-type-source="#type">
                 <option value="">{% trans "No Wallet" %}</option>
                 {% for wallet in form.fields.wallet.queryset %}
                 <option value="{{ wallet.id }}" {% if form.wallet.value|stringformat:"s" == wallet.id|stringformat:"s" %}selected{% endif %}>{{ wallet.name }}</option>
@@ -993,7 +995,8 @@ body.dark-mode .error-alert {
                 <label class="form-label" for="discount_applied">{% trans "Discount Applied" %}</label>
                 <input type="text" class="modern-input" id="discount_applied" name="discount_applied"
                        placeholder="{% trans 'e.g. Network Railcard' %}"
-                       value='{{ form.discount_applied.value|default_if_none:"" }}'>
+                       value='{{ form.discount_applied.value|default_if_none:"" }}'
+                       data-vv-suggest-field="discount_applied" data-vv-suggest-url="{% url 'suggest_field_options' %}" data-vv-suggest-type-source="#type">
               </div>
             </div>
 
@@ -1006,7 +1009,8 @@ body.dark-mode .error-alert {
               </label>
               <input type="text" class="modern-input" id="logo_slug" name="logo_slug"
                      placeholder="amazon.com"
-                     value='{{ form.logo_slug.value|default_if_none:"" }}'>
+                     value='{{ form.logo_slug.value|default_if_none:"" }}'
+                     data-vv-suggest-field="logo_slug" data-vv-suggest-url="{% url 'suggest_field_options' %}" data-vv-suggest-type-source="#type">
             </div>
 
             <div class="form-group">
@@ -1210,6 +1214,11 @@ document.addEventListener("DOMContentLoaded", function () {
       walletField.disabled = false;
       walletField.classList.remove('readonly');
     }
+
+    // Wallet's disabled state above (and the issuer label's text swap
+    // further up, for loyalty cards) both affect whether a suggestion
+    // button should show for those fields right now.
+    if (window.vvRefreshFieldSuggestButtons) window.vvRefreshFieldSuggestButtons();
   }
 
   function toggleValueInput() {
@@ -1694,40 +1703,11 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         checkDuplicateCode();
 
-        // Auto-suggest: fields the AI scan still left blank get filled from
-        // this user's recent activity with this item type - only ever
-        // reached via this AI Scan flow, never plain manual entry.
-        const suggestType = typeField.value;
-        fetch("{% url 'suggest_item_fields' %}?type=" + encodeURIComponent(suggestType))
-          .then(response => (response.ok ? response.json() : {}))
-          .then(suggestion => {
-            const suggested = [];
-            if (suggestion.issuer && !issuerCodeField.value.trim()) {
-              issuerCodeField.value = suggestion.issuer;
-              markSuggested(issuerCodeField);
-              suggested.push("{% trans 'issuer' %}");
-            }
-            if (suggestion.logo_slug && logoSlugField && !logoSlugField.value.trim()) {
-              logoSlugField.value = suggestion.logo_slug;
-              markSuggested(logoSlugField);
-              suggested.push("{% trans 'logo' %}");
-            }
-            if (suggestion.currency && currencyField && !data.currency) {
-              currencyField.value = suggestion.currency;
-              markSuggested(currencyField);
-              suggested.push("{% trans 'currency' %}");
-            }
-            // Travel Pass wallet is fixed - the suggestion never applies there.
-            if (suggestType !== 'travelpass' && suggestion.wallet_id && !walletField.value) {
-              walletField.value = suggestion.wallet_id;
-              markSuggested(walletField);
-              suggested.push("{% trans 'wallet' %}");
-            }
-            if (suggested.length) {
-              statusEl.innerHTML += `<span class="scan-chip scan-chip-suggested" title="{% trans 'Guessed from your recent items of this type - review before saving.' %}"><i class="bi bi-lightbulb"></i> {% trans "Suggested from your recent activity:" %} ${suggested.join(', ')}</span>`;
-            }
-          })
-          .catch(() => {});
+        // Whatever the scan left blank now gets an interactive suggestion
+        // button next to it instead of a silent auto-fill (field-suggest.js) -
+        // fields it just set a value into won't show one; anything still
+        // blank picks up any suggestion history for the now-known type.
+        if (window.vvRefreshFieldSuggestButtons) window.vvRefreshFieldSuggestButtons();
       })
       .catch(() => {
         statusEl.innerHTML = '<span class="text-danger">{% trans "Scan failed. Please try again." %}</span>';

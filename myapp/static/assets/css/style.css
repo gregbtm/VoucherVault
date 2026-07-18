@@ -397,7 +397,11 @@ h6 {
   box-shadow: 0px 2px 20px rgba(1, 41, 112, 0.1);
   background-color: #fff;
   padding-left: 20px;
-  overflow: hidden;
+  /* No overflow:hidden here - .header is position:fixed, and the profile
+     dropdown-menu is an absolutely-positioned descendant of it, so clipping
+     here would clip the open dropdown too. The oversized-logo case this
+     used to guard against (Phase 94) is already fully handled by .logo's
+     own overflow:hidden plus flex-shrink:0 on the controls below. */
   /* Toggle Sidebar Button */
   /* Search Bar */
 }

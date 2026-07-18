@@ -419,41 +419,19 @@ class TravelPassTypeTests(TestCase):
         self.assertEqual(item.wallet.name, 'Travel Pass')
 
 
-class SuggestItemFieldsTests(TestCase):
+class SuggestFieldOptionsTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')
         self.client.login(username='alice', password='pw12345!')
 
-    def test_suggests_from_most_recently_created_item_of_same_type(self):
-        wallet = Wallet.objects.create(user=self.user, name='Groceries')
-        older = Item.objects.create(
-            type='giftcard', name='Older', issuer='Old Issuer', redeem_code='OLD1',
-            expiry_date=date.today(), value=Decimal('10.00'), currency='USD', user=self.user,
-        )
-        Item.objects.filter(pk=older.pk).update(created_at=timezone.now() - timedelta(days=1))
-        Item.objects.create(
-            type='giftcard', name='Newer', issuer='New Issuer', redeem_code='NEW1',
-            expiry_date=date.today(), value=Decimal('10.00'), currency='EUR', user=self.user,
-            wallet=wallet, logo_slug='newissuer.com',
-        )
-
-        response = self.client.get(reverse('suggest_item_fields'), {'type': 'giftcard'})
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data['issuer'], 'New Issuer')
-        self.assertEqual(data['logo_slug'], 'newissuer.com')
-        self.assertEqual(data['currency'], 'EUR')
-        self.assertEqual(data['wallet_id'], str(wallet.id))
-
-    def test_habitual_issuer_beats_a_one_off_newer_item(self):
-        # Two older "National Rail" tickets vs one newer "Greater Anglia"
-        # one-off: the habit wins, and the companion fields come from the
-        # newest National Rail item so the suggestion stays coherent.
+    def test_ranks_by_frequency_then_recency(self):
+        # Two older "National Rail" items vs one newer "Greater Anglia"
+        # one-off: the habit (higher frequency) outranks the more recent
+        # one-off, and both still show up since the list holds up to 5.
         for index, name in enumerate(['A', 'B']):
             item = Item.objects.create(
                 type='giftcard', name=name, issuer='National Rail', redeem_code=f'NR{index}',
                 expiry_date=date.today(), value=Decimal('1.00'), currency='GBP', user=self.user,
-                logo_slug='nationalrail.co.uk',
             )
             Item.objects.filter(pk=item.pk).update(created_at=timezone.now() - timedelta(days=2 - index))
         Item.objects.create(
@@ -461,31 +439,57 @@ class SuggestItemFieldsTests(TestCase):
             expiry_date=date.today(), value=Decimal('1.00'), currency='GBP', user=self.user,
         )
 
-        response = self.client.get(reverse('suggest_item_fields'), {'type': 'giftcard'})
-        data = response.json()
-        self.assertEqual(data['issuer'], 'National Rail')
-        self.assertEqual(data['logo_slug'], 'nationalrail.co.uk')
+        response = self.client.get(reverse('suggest_field_options'), {'type': 'giftcard', 'field': 'issuer'})
+        self.assertEqual(response.status_code, 200)
+        options = response.json()['options']
+        self.assertEqual([opt['value'] for opt in options], ['National Rail', 'Greater Anglia'])
+
+    def test_caps_at_five_options(self):
+        for i in range(7):
+            Item.objects.create(
+                type='giftcard', name=f'Item {i}', issuer=f'Issuer {i}', redeem_code=f'C{i}',
+                expiry_date=date.today(), value=Decimal('1.00'), currency='GBP', user=self.user,
+            )
+
+        response = self.client.get(reverse('suggest_field_options'), {'type': 'giftcard', 'field': 'issuer'})
+        self.assertEqual(len(response.json()['options']), 5)
+
+    def test_wallet_field_returns_id_as_value_and_name_as_label(self):
+        wallet = Wallet.objects.create(user=self.user, name='Groceries')
+        Item.objects.create(
+            type='giftcard', name='With Wallet', issuer='Some Issuer', redeem_code='W1',
+            expiry_date=date.today(), value=Decimal('1.00'), currency='GBP', user=self.user,
+            wallet=wallet,
+        )
+
+        response = self.client.get(reverse('suggest_field_options'), {'type': 'giftcard', 'field': 'wallet'})
+        options = response.json()['options']
+        self.assertEqual(options, [{'value': str(wallet.id), 'label': 'Groceries'}])
+
+    def test_rejects_field_not_in_the_allowlist(self):
+        response = self.client.get(reverse('suggest_field_options'), {'type': 'giftcard', 'field': 'notes'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'options': []})
 
     def test_returns_empty_when_no_items_of_that_type_exist(self):
-        response = self.client.get(reverse('suggest_item_fields'), {'type': 'coupon'})
+        response = self.client.get(reverse('suggest_field_options'), {'type': 'coupon', 'field': 'issuer'})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {})
+        self.assertEqual(response.json(), {'options': []})
 
     def test_does_not_leak_another_users_items(self):
         bob = User.objects.create_user(username='bob', password='pw12345!')
-        item = Item.objects.create(
+        Item.objects.create(
             type='giftcard', name='Bobs Card', issuer='Bob Issuer', redeem_code='BOB1',
             expiry_date=date.today(), value=Decimal('5.00'), currency='GBP', user=bob,
         )
-        Item.objects.filter(pk=item.pk).update(created_at=timezone.now())
 
-        response = self.client.get(reverse('suggest_item_fields'), {'type': 'giftcard'})
+        response = self.client.get(reverse('suggest_field_options'), {'type': 'giftcard', 'field': 'issuer'})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {})
+        self.assertEqual(response.json(), {'options': []})
 
     def test_requires_login(self):
         self.client.logout()
-        response = self.client.get(reverse('suggest_item_fields'), {'type': 'giftcard'})
+        response = self.client.get(reverse('suggest_field_options'), {'type': 'giftcard', 'field': 'issuer'})
         self.assertNotEqual(response.status_code, 200)
 
 
