@@ -24,7 +24,13 @@ The rest of this doc covers the first direction.
 
 Same token used by the [MCP server](MCP_SERVER_SETUP.md) and the mobile/
 scripting use cases — one token per person, full read/write access to
-that person's vault:
+that person's vault.
+
+Easiest: log in to VoucherVault, open the **alice ▾ → API Access** menu
+(top right), and click **Generate API Token**. The token is shown once —
+copy it straight into n8n's credential.
+
+Prefer the command line? Same result:
 
 ```bash
 docker compose exec app python manage.py drf_create_token <your-username>

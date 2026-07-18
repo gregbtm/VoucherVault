@@ -4876,6 +4876,73 @@ exist anywhere in the app yet.
   edit-item path correctly left an item's existing code untouched
   (matching the same rule the photo-scan path already follows).
 
+## Phase 96 — Header control order + a GUI page to generate your own API token
+
+Two smaller usability fixes that came out of actually using the n8n
+integration from Phase 95: the header's icon order didn't match user
+expectation, and getting the API token n8n needs meant either running a
+`docker compose exec` command or `curl`-ing a password to an endpoint -
+both of which assume shell access to the server, which most people
+setting up a personal automation don't have or want.
+
+- **Header control order.** The hamburger/sidebar-toggle button now sits
+  at the far left (before the logo), and the dark-mode toggle moved from
+  its own spot mid-header to sit immediately left of the profile menu at
+  the far right - so the two icon-only controls that aren't navigation
+  bookend the header the way the rest of the icon-button row already
+  reads. The sidebar-toggle's click binding in `main.js` selects by class
+  via `querySelector` (first match only, not delegated), so the reorder
+  had to preserve "hamburger before `#darkModeToggle` in the DOM" even
+  though both share `.toggle-sidebar-btn` for icon-button styling - moving
+  the hamburger after the dark-mode toggle would have silently rebound
+  the sidebar behavior onto the wrong icon. The now-single-purpose
+  `.header-logo-row` wrapper div was removed along with its now-dead CSS,
+  since `.logo`'s own shrink rules (added in Phase 94) already do the job.
+- **API Access page** (`Profile menu → API Access`, `/user/api-access/`) -
+  a self-service settings page any user can reach, not just superusers:
+  - **Generate API Token** creates a DRF auth token for that user and
+    shows the raw key exactly once, in a dismissable reveal box - the
+    same one-shot-reveal convention GitHub/GitLab use, backed by a
+    `request.session` value popped (read-and-clear) on the very next
+    page load. The `Token` model stores the key in plaintext server-side
+    (unlike a password hash), but re-displaying it after the first view
+    would defeat the "if you lost it, you have to know it's compromised
+    and rotate it" property that convention exists for.
+  - Once a token exists, the page shows its creation date plus
+    **Regenerate** (issues a new key, immediately invalidating the old
+    one - the only way DRF's one-token-per-user `Token` model supports
+    rotation) and **Revoke** (deletes it outright), each behind a native
+    `confirm()` since both are destructive to anything currently
+    depending on that token. The confirmation text embeds a translated,
+    apostrophe-containing string ("...it's currently used...") - doing
+    that as an inline `onsubmit="...'{% trans "..." %}'..."` attribute
+    breaks on the quote-nesting alone, so the buttons instead carry
+    `data-confirm="{% trans "..." %}"` (a plain HTML attribute, where
+    Django's autoescaping handles embedded quotes safely) read by a
+    small JS listener that calls `confirm()` itself.
+  - Help links next to the token box point at the existing in-app
+    N8N_SETUP.md/MCP_SERVER_SETUP.md viewers from Phase 87/95 (via the
+    same `#helpDocModal` pattern already used on Site Settings) - both
+    were previously superuser-only like every other help doc, which
+    would have made the links on this page 404 for the regular users
+    it's meant for. Rather than loosening `view_doc`'s permission check
+    for every doc, a `_SELF_SERVICE_DOCS = {'n8n', 'mcp-server'}`
+    allowlist scopes the loosened check to just those two - the
+    genuinely admin-only docs (Google Wallet service-account setup,
+    backup/restore, upstream-sync, etc.) stay superuser-gated exactly as
+    before. Both setup docs were updated to lead with "generate it from
+    the API Access page" ahead of the `drf_create_token`/`curl` fallback
+    they previously opened with.
+- Full suite: 851 backend tests (9 new: 2 covering the `view_doc`
+  permission scoping, 7 covering the API Access view's generate/reveal/
+  regenerate/revoke/per-user-scoping behavior) + 24 JS tests, 0 failures.
+  Live-verified with a real Playwright session: header order at every
+  breakpoint from Phase 94's stress test through desktop, in both themes;
+  the full generate → copy-to-clipboard → reload (reveal box gone, token
+  still active) → regenerate (new key, confirm text correct) → revoke
+  (cancel leaves it alone, confirm removes it) round trip; and both help
+  doc modals opening correctly for a non-superuser account.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

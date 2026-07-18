@@ -359,9 +359,8 @@ h6 {
    to stop an oversized or not-yet-stylesheet-constrained image from pushing
    the hamburger/dark-mode/profile controls off-screen, which is exactly how
    a header can silently break on some viewport or a stale-cache/slow-load
-   edge case CSS alone can't rule out. flex: 0 1 auto lets this row shrink
+   edge case CSS alone can't rule out. flex: 0 1 auto lets the logo shrink
    but never grow into the search bar/nav's space at desktop widths. */
-.header-logo-row,
 .logo {
   min-width: 0;
   flex: 0 1 auto;
@@ -382,8 +381,8 @@ h6 {
    icon-only fallback. Height is fluid (clamp) rather than one fixed number
    so it keeps shrinking gracefully on very narrow phones instead of relying
    on a single value verified at one width holding forever; max-width keeps
-   it from ever exceeding whatever space header-logo-row actually has left
-   after the controls that must stay full-size are laid out. */
+   it from ever exceeding whatever space is actually left after the controls
+   that must stay full-size (hamburger, dark mode, profile) are laid out. */
 .logo img {
   max-width: 100%;
   max-height: clamp(20px, 7vw, 28px);
