@@ -999,6 +999,10 @@ def toggle_item_status(request, item_id):
 
     item.save()
     _queue_google_wallet_update(item)
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({'success': True, 'is_used': item.is_used})
+
     next_url = request.POST.get('next') or request.GET.get('next')
     if next_url:
         return redirect(next_url)

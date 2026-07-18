@@ -1320,7 +1320,126 @@ body.dark-mode .action-btn-danger-outline:hover {
   background: #dc3545;
   color: white !important;
 }
+
+/* Tilt-to-suggest-used banner and its "enable motion access" precursor -
+   mirrors .offline-content-banner's fixed, slide-down pattern (base.html)
+   but in the app's amber "suggestion" color (matches field-suggest.js's
+   lightbulb) rather than that banner's blue/purple, so the two kinds of
+   proactive, dismissible suggestion read as the same family. */
+.tilt-scan-banner {
+  position: fixed;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9997;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #fff8e6;
+  border: 1px solid #ffe08a;
+  color: #664d03;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 14px;
+  max-width: calc(100vw - 24px);
+  animation: tiltBannerSlideDown 0.25s ease-out;
+}
+
+.tilt-scan-banner i {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.tilt-scan-banner .tilt-scan-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.tilt-scan-banner button {
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tilt-scan-banner .tilt-scan-mark-used {
+  background: #ffc107;
+  color: #402d00;
+  font-weight: 600;
+}
+
+.tilt-scan-banner .tilt-scan-dismiss {
+  background: transparent;
+  color: #664d03;
+}
+
+@keyframes tiltBannerSlideDown {
+  from { top: -60px; opacity: 0; }
+  to { top: 70px; opacity: 1; }
+}
+
+.tilt-scan-enable-btn {
+  position: fixed;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9997;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid #ffe08a;
+  background: #fff8e6;
+  color: #664d03;
+  font-size: 13px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
+
+body.dark-mode .tilt-scan-banner {
+  background: #3a2f0a;
+  border-color: #665108;
+  color: #ffd75e;
+}
+
+body.dark-mode .tilt-scan-banner .tilt-scan-dismiss {
+  color: #ffd75e;
+}
+
+body.dark-mode .tilt-scan-enable-btn {
+  background: #3a2f0a;
+  border-color: #665108;
+  color: #ffd75e;
+}
+
+@media (max-width: 768px) {
+  .tilt-scan-banner {
+    left: 10px;
+    right: 10px;
+    transform: none;
+    max-width: none;
+  }
+}
 </style>
+
+{% if preferences.tilt_scan_detection_enabled and can_edit and not item.is_used and item.type != "loyaltycard" and item.code_type != "none" %}
+<button type="button" class="tilt-scan-enable-btn" id="tilt-scan-enable-btn" hidden>
+  <i class="bi bi-phone-vibrate"></i>
+  {% trans "Enable tilt detection" %}
+</button>
+<div class="tilt-scan-banner" id="tilt-scan-banner" role="status" hidden>
+  <i class="bi bi-lightbulb"></i>
+  <span>{% trans "Looks like you scanned this - mark it as used?" %}</span>
+  <div class="tilt-scan-actions">
+    <button type="button" class="tilt-scan-mark-used" id="tilt-scan-mark-used-btn">{% trans "Mark Used" %}</button>
+    <button type="button" class="tilt-scan-dismiss" id="tilt-scan-dismiss-btn">{% trans "Dismiss" %}</button>
+  </div>
+</div>
+{% endif %}
 
 <div class="detail-header">
   <div>
@@ -2208,6 +2327,15 @@ document.querySelectorAll('.editable-date').forEach(span => {
 
   requestWakeLock();
 })();
+</script>
+{% endif %}
+
+{% if preferences.tilt_scan_detection_enabled and can_edit and not item.is_used and item.type != "loyaltycard" and item.code_type != "none" %}
+<script src="{% static 'assets/js/tilt-scan-detect.js' %}"></script>
+<script>
+vvInitTiltScanDetect({
+  toggleUrl: "{% url 'toggle_item_status' item.id %}",
+});
 </script>
 {% endif %}
 

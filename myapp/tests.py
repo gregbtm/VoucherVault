@@ -4453,6 +4453,107 @@ class BlurCodesTogglePreferenceTests(TestCase):
         self.assertFalse(prefs.blur_codes_enabled)
 
 
+class TiltScanDetectionTests(TestCase):
+    """
+    tilt_scan_detection_enabled (opt-in, default off) suggests marking an
+    item Used when the phone is tilted forward - see tilt-scan-detect.js
+    for the client-side motion heuristic this just gates the markup for.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_defaults_to_disabled(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        self.assertFalse(prefs.tilt_scan_detection_enabled)
+
+    def test_banner_absent_by_default(self):
+        item = make_item(self.user, code_type='qrcode')
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertNotContains(response, 'id="tilt-scan-banner"')
+
+    def test_banner_present_when_enabled_and_scannable_and_unused(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        prefs.tilt_scan_detection_enabled = True
+        prefs.save()
+        item = make_item(self.user, code_type='qrcode')
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertContains(response, 'id="tilt-scan-banner"')
+        self.assertContains(response, 'vvInitTiltScanDetect')
+
+    def test_banner_absent_once_item_already_used(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        prefs.tilt_scan_detection_enabled = True
+        prefs.save()
+        item = make_item(self.user, code_type='qrcode')
+        item.is_used = True
+        item.save()
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertNotContains(response, 'id="tilt-scan-banner"')
+
+    def test_banner_absent_for_loyalty_card(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        prefs.tilt_scan_detection_enabled = True
+        prefs.save()
+        item = make_item(self.user, type='loyaltycard', code_type='qrcode')
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertNotContains(response, 'id="tilt-scan-banner"')
+
+    def test_banner_absent_when_no_scannable_code(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        prefs.tilt_scan_detection_enabled = True
+        prefs.save()
+        item = make_item(self.user, code_type='none')
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertNotContains(response, 'id="tilt-scan-banner"')
+
+    def test_toggle_on_saves_via_preferences_form(self):
+        response = self.client.post(reverse('update_user_preferences'), data={
+            'show_expiry_date': 'on', 'show_value': 'on', 'show_description': 'on',
+            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact', 'next_up_max_items': '1',
+            'default_currency': 'GBP', 'keep_screen_awake': 'on', 'offline_cache_enabled': 'on',
+            'blur_codes_enabled': 'on', 'tilt_scan_detection_enabled': 'on',
+        })
+        self.assertRedirects(response, reverse('show_items') + '?prefs_saved=1')
+        prefs = UserPreference.objects.get(user=self.user)
+        self.assertTrue(prefs.tilt_scan_detection_enabled)
+
+
+class ToggleItemStatusAjaxTests(TestCase):
+    """
+    toggle_item_status supports an AJAX JSON round-trip (mirroring
+    toggle_pin_item's existing pattern) so tilt-scan-detect.js's "Mark
+    Used" banner button can flip the status without a full page reload.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_ajax_request_returns_json(self):
+        item = make_item(self.user)
+        response = self.client.post(
+            reverse('toggle_item_status', args=[item.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertTrue(data['is_used'])
+
+        response = self.client.post(
+            reverse('toggle_item_status', args=[item.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertFalse(response.json()['is_used'])
+
+    def test_non_ajax_request_still_redirects(self):
+        item = make_item(self.user)
+        response = self.client.post(reverse('toggle_item_status', args=[item.id]))
+        self.assertRedirects(response, reverse('view_item', kwargs={'item_uuid': item.id}))
+
+
 class PwaCacheClearOnLoginTests(TestCase):
     """
     Regression coverage for a real cross-user data leak: the service

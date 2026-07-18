@@ -5028,6 +5028,68 @@ them silently.
   case, where Wallet is disabled and correctly shows no button at all) in
   both themes.
 
+## Phase 98 — Tilt-to-scan detection: suggest "Mark Used?" from the phone's own motion
+
+A feature request grown from a question about whether the phone's sensors
+could help at all: pull up a Travel Pass, tilt the phone forward to present
+its barcode to a reader (train barriers, a till scanner), and have the app
+notice that motion and offer a one-tap "Mark Used?" prompt - never marking
+anything on its own, only ever suggesting.
+
+- **Opt-in preference**, `UserPreference.tilt_scan_detection_enabled`
+  (default off), alongside `keep_screen_awake` and `blur_codes_enabled` under
+  Preferences → "At the Till". Scoped to any item with a scannable code, not
+  just Travel Pass as literally described - a gift card or coupon barcode
+  presented to a reader benefits from the same nudge, and loyalty cards
+  (which get scanned repeatedly without ever being "used up") and already-
+  used items are excluded.
+- **`tilt-scan-detect.js`**, wired into `view-item.html` behind
+  `{% if preferences.tilt_scan_detection_enabled and can_edit and not
+  item.is_used and item.type != "loyaltycard" and item.code_type != "none"
+  %}` (the same gates already used around the page's own "Mark Used" button
+  and its "more actions" menu). Listens for `deviceorientation` events and
+  watches `event.beta` - the phone's front-to-back tilt, ~90° held upright
+  normally, dropping toward/past 0° when tilted forward to show its screen
+  to a reader. A sustained dip below threshold (configurable, default 25°)
+  held for 350ms shows a dismissible banner with an explicit "Mark Used"
+  button; a 15-second cooldown after any trigger stops it from firing again
+  on every subsequent wobble.
+  - The first check confirmed the "check again on the next event" approach
+    that seemed obvious doesn't hold up: device orientation events aren't
+    guaranteed to keep arriving at any particular rate (iOS throttles them
+    in low-power/background states), so a single sustained tilt with no
+    fresh event to re-trigger the check would never actually fire. Rebuilt
+    around an explicit `setTimeout` scheduled the moment the tilt starts,
+    confirmed against the last known state when it fires - deterministic
+    regardless of how often (or rarely) new events show up.
+  - iOS 13+ gates `DeviceOrientationEvent.requestPermission()` behind an
+    explicit user gesture and won't grant it from a page-load handler; the
+    banner's markup includes an inert "Enable tilt detection" button that
+    only appears when that gate is feature-detected, and attaches
+    immediately everywhere else (Android and other browsers have no such
+    gate).
+  - Mark Used reuses the existing `toggle_item_status` view's redirect
+    behavior for non-JS callers, extended with an AJAX branch (checking
+    `X-Requested-With: XMLHttpRequest`, matching the pattern already
+    established by the pin-toggle on Inventory) so the banner's button can
+    flip the item without a full page navigation, then reload once the
+    server confirms success.
+- Full suite: 862 backend tests (9 new: banner presence/absence across the
+  enabled/scannable/unused matrix, the preference round-tripping through the
+  form, and the new AJAX branch on `toggle_item_status`) + 46 JS tests (10
+  new, covering permission gating on both the iOS-gesture and no-gate paths,
+  the hold-and-cooldown timing logic, and the dismiss/mark-used banner
+  actions), 0 failures. Live-verified with a real Playwright session:
+  dispatched a synthetic `deviceorientation` event at desktop/light and
+  mobile/dark, confirmed the banner appears after the hold, dismisses
+  cleanly, and Mark Used correctly flips the item and makes the banner
+  disappear on the next load.
+- Not yet real-device-tuned: the default threshold (25°), hold (350ms), and
+  cooldown (15s) are reasonable starting points reasoned from how the
+  gesture should look, not calibrated against an actual ticket barrier or
+  till scanner - expect a follow-up pass to adjust `vvInitTiltScanDetect()`'s
+  config once tested against a real reader.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
