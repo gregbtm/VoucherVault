@@ -8,6 +8,7 @@ from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.test import RequestFactory, TestCase, override_settings
@@ -31,6 +32,7 @@ from .merchant_logos import (
     remember_balance_check_url,
 )
 from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
+from .nearby_places import _names_match, _normalize, find_nearby_issuer_matches
 from .imagehash import compute_dhash, hamming_distance
 from .models import AppSettings, Document, Item, ItemPublicShare, MerchantProfile, ScanFieldCorrection, SiteConfiguration, Tag, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, Wallet
 from .scan_learning import apply_learned_corrections, record_scan_corrections
@@ -5141,3 +5143,174 @@ class LoginLockoutTests(TestCase):
 
         response = self.client.post(reverse('login'), {'username': 'bob', 'password': 'bobs-password'})
         self.assertTrue(response.wsgi_request.user.is_authenticated)
+
+
+def _overpass_response(names):
+    """Builds a fake requests.Response-like object for a successful
+    Overpass query returning one named node per name in `names`."""
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json.return_value = {
+        'elements': [{'type': 'node', 'tags': {'name': name}} for name in names]
+        + [{'type': 'node', 'tags': {}}],  # an unnamed POI, which must be skipped
+    }
+    return mock_response
+
+
+class NearbyPlacesMatchingTests(TestCase):
+    """Unit tests for the fuzzy merchant-name matching in nearby_places.py -
+    no network calls, no database."""
+
+    def test_normalize_strips_punctuation_and_case(self):
+        self.assertEqual(_normalize("Tesco's Express!"), 'tescos express')
+
+    def test_names_match_exact(self):
+        self.assertTrue(_names_match(_normalize('Tesco'), 'Tesco'))
+
+    def test_names_match_chain_branch_substring(self):
+        # A chain branch name containing the issuer (or vice versa) is a
+        # confident match - the common real-world case for retail chains.
+        self.assertTrue(_names_match(_normalize('Tesco'), 'Tesco Express'))
+        self.assertTrue(_names_match(_normalize('Tesco Superstore'), 'Tesco'))
+
+    def test_names_match_minor_spelling_difference(self):
+        # Same length, single-character difference, neither a substring of
+        # the other - only the edit-distance fallback catches this.
+        self.assertTrue(_names_match(_normalize('Waitrose'), 'Waltrose'))
+
+    def test_names_match_rejects_unrelated_names(self):
+        self.assertFalse(_names_match(_normalize('Tesco'), 'Sainsburys'))
+
+    def test_names_match_empty_strings(self):
+        self.assertFalse(_names_match('', 'Tesco'))
+        self.assertFalse(_names_match(_normalize('Tesco'), ''))
+
+
+class FindNearbyIssuerMatchesTests(TestCase):
+    """Tests find_nearby_issuer_matches end-to-end against a mocked
+    Overpass response - the only network boundary in this module."""
+
+    def setUp(self):
+        cache.clear()
+        set_site_config(nearby_places_enabled=True)
+
+    def test_returns_matched_issuers(self):
+        with patch('myapp.nearby_places.requests.post') as mock_post:
+            mock_post.return_value = _overpass_response(['Tesco Express', 'Starbucks'])
+            matches = find_nearby_issuer_matches(51.5, -0.12, 150, ['Tesco', 'Greggs'])
+        self.assertEqual(matches, ['Tesco'])
+
+    def test_empty_when_site_wide_disabled(self):
+        set_site_config(nearby_places_enabled=False)
+        with patch('myapp.nearby_places.requests.post') as mock_post:
+            matches = find_nearby_issuer_matches(51.5, -0.12, 150, ['Tesco'])
+        mock_post.assert_not_called()
+        self.assertEqual(matches, [])
+
+    def test_empty_on_request_failure(self):
+        import requests
+        with patch('myapp.nearby_places.requests.post', side_effect=requests.ConnectionError('boom')):
+            matches = find_nearby_issuer_matches(51.5, -0.12, 150, ['Tesco'])
+        self.assertEqual(matches, [])
+
+    def test_empty_issuers_list_short_circuits_without_a_request(self):
+        with patch('myapp.nearby_places.requests.post') as mock_post:
+            matches = find_nearby_issuer_matches(51.5, -0.12, 150, [])
+        mock_post.assert_not_called()
+        self.assertEqual(matches, [])
+
+    def test_result_is_cached_for_the_same_coordinates(self):
+        with patch('myapp.nearby_places.requests.post') as mock_post:
+            mock_post.return_value = _overpass_response(['Tesco Express'])
+            find_nearby_issuer_matches(51.5, -0.12, 150, ['Tesco'])
+            find_nearby_issuer_matches(51.5, -0.12, 150, ['Tesco'])
+        self.assertEqual(mock_post.call_count, 1)
+
+    def test_uses_configured_overpass_url(self):
+        set_site_config(overpass_api_url='https://overpass.example.internal/api/interpreter')
+        with patch('myapp.nearby_places.requests.post') as mock_post:
+            mock_post.return_value = _overpass_response([])
+            find_nearby_issuer_matches(51.5, -0.12, 150, ['Tesco'])
+        called_url = mock_post.call_args[0][0]
+        self.assertEqual(called_url, 'https://overpass.example.internal/api/interpreter')
+
+
+class NearbyItemsViewTests(TestCase):
+    """Tests the nearby_items proxy view: opt-in gating at both the user
+    and site level, coordinate validation, and that only the requesting
+    user's own (or shared-with-them) items are ever returned."""
+
+    def setUp(self):
+        cache.clear()
+        set_site_config(nearby_places_enabled=True)
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+        prefs, _ = UserPreference.objects.get_or_create(user=self.alice)
+        prefs.nearby_items_enabled = True
+        prefs.nearby_radius_m = 150
+        prefs.save()
+
+    def _post(self, lat='51.5', lon='-0.12'):
+        return self.client.post(reverse('nearby_items'), {'lat': lat, 'lon': lon})
+
+    def test_requires_login(self):
+        self.client.logout()
+        response = self._post()
+        self.assertNotEqual(response.status_code, 200)
+
+    def test_empty_when_user_preference_off(self):
+        prefs = UserPreference.objects.get(user=self.alice)
+        prefs.nearby_items_enabled = False
+        prefs.save()
+        with patch('myapp.views.find_nearby_issuer_matches') as mock_find:
+            response = self._post()
+        mock_find.assert_not_called()
+        self.assertEqual(response.json(), {'items': []})
+
+    def test_empty_when_site_disabled(self):
+        set_site_config(nearby_places_enabled=False)
+        with patch('myapp.views.find_nearby_issuer_matches') as mock_find:
+            response = self._post()
+        mock_find.assert_not_called()
+        self.assertEqual(response.json(), {'items': []})
+
+    def test_rejects_invalid_coordinates(self):
+        response = self._post(lat='not-a-number', lon='-0.12')
+        self.assertEqual(response.status_code, 400)
+
+    def test_rejects_out_of_range_coordinates(self):
+        response = self._post(lat='999', lon='-0.12')
+        self.assertEqual(response.status_code, 400)
+
+    def test_returns_matched_items_for_the_requesting_user(self):
+        make_item(self.alice, name='Clubcard', issuer='Tesco', redeem_code='CODE1')
+        make_item(self.alice, name='Unrelated Voucher', issuer='Greggs', redeem_code='CODE2')
+        with patch('myapp.views.find_nearby_issuer_matches', return_value=['Tesco']):
+            response = self._post()
+        data = response.json()
+        self.assertEqual(len(data['items']), 1)
+        self.assertEqual(data['items'][0]['name'], 'Clubcard')
+        self.assertEqual(data['items'][0]['issuer'], 'Tesco')
+        self.assertIn('url', data['items'][0])
+
+    def test_excludes_used_and_archived_items(self):
+        make_item(self.alice, name='Used Card', issuer='Tesco', redeem_code='CODE3', is_used=True)
+        make_item(self.alice, name='Archived Card', issuer='Tesco', redeem_code='CODE4', is_archived=True)
+        with patch('myapp.views.find_nearby_issuer_matches', return_value=['Tesco']):
+            response = self._post()
+        self.assertEqual(response.json()['items'], [])
+
+    def test_never_returns_another_users_items(self):
+        make_item(self.bob, name="Bob's Card", issuer='Tesco', redeem_code='CODE5')
+        with patch('myapp.views.find_nearby_issuer_matches', return_value=['Tesco']):
+            response = self._post()
+        self.assertEqual(response.json()['items'], [])
+
+    def test_passes_users_own_radius_preference(self):
+        prefs = UserPreference.objects.get(user=self.alice)
+        prefs.nearby_radius_m = 400
+        prefs.save()
+        with patch('myapp.views.find_nearby_issuer_matches', return_value=[]) as mock_find:
+            self._post()
+        self.assertEqual(mock_find.call_args[0][2], 400)

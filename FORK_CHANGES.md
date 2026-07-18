@@ -5150,6 +5150,77 @@ sense pass" rather than one at a time.
   zoom-reset icon reads clearly instead of implying a rotate feature that
   isn't there - all confirmed in both light/desktop and dark/mobile.
 
+## Phase 100 — "Nearby" widget: suggest an item when a matching shop is close by
+
+Follow-up to the tilt-scan-detect exploration a few phases back: what else
+could the phone's own sensors reasonably do for this app? Geolocation
+turned out to have a much more useful shape than a naive
+"store every merchant's coordinates" design would suggest.
+
+- **The key design decision was flipping the query.** Geocoding every
+  merchant up front doesn't scale to chains (a "Tesco" gift card should
+  match any Tesco branch, not one fixed address) and needs maintaining.
+  Instead, on Inventory load the client asks "what's near me right now?"
+  once, and the server fuzzy-matches whatever's nearby against the
+  issuers already on the user's own items - no merchant location data to
+  store or keep in sync, ever.
+- **OpenStreetMap's Overpass API**, not a paid Places API, is the
+  built-in default - free, no API key, matching this fork's established
+  preference for a free/self-hostable default with a paid option
+  available but never forced (Tesseract vs. Claude/OpenAI OCR is the same
+  shape). `SiteConfiguration.overpass_api_url` can point at a self-hosted
+  Overpass instance instead of the public one, exactly like
+  `ntfy_default_server` already does for notifications.
+- **New `nearby_places.py`** module: builds an Overpass QL query scoped to
+  retail/food/finance categories (`shop=*` plus a narrow `amenity`
+  allowlist - not parks, schools, or bus stops), fuzzy-matches returned
+  POI names against issuer names by reusing `levenshtein_distance` (the
+  same utility already powering near-duplicate redeem-code detection) with
+  substring containment as the primary signal - "Tesco" matching "Tesco
+  Express" is the common real case a plain edit-distance check would
+  score as very different strings. Results are cached for 5 minutes per
+  ~11m coordinate cell (Django's cache framework, already required
+  site-wide for the public-share rate limiter) so reopening the app from
+  the same spot doesn't repeat the outbound request.
+- **New `nearby_items` proxy view**: the client posts its coordinates
+  once, the server does the Overpass lookup and matching server-side (so
+  the API key/URL config never reaches the client) and returns only
+  matched item IDs - raw coordinates are never stored, logged, or echoed
+  back in any response.
+- **`nearby-items.js`**: a single one-shot `getCurrentPosition()` call
+  (never `watchPosition` - no continuous tracking, no battery cost) when
+  Inventory loads, only if the opt-in preference is on. Fails silently on
+  denial, timeout, or a server error - same "suggestion only, never
+  intrusive" posture as every other opt-in widget in this fork.
+- Two new opt-in toggles, both off/on matching their nearest precedent:
+  `UserPreference.nearby_items_enabled` (per-user, default off, alongside
+  `nearby_radius_m` for tuning match distance) and
+  `SiteConfiguration.nearby_places_enabled` (site-wide kill switch,
+  default on, mirroring `merchant_logos_enabled`'s admin-level control
+  over an outbound third-party call).
+- Caught before it reached a live test: Playwright's `page.route()`
+  couldn't intercept the widget's fetch call for a controlled test
+  response - this app's own service worker (from the offline-cache
+  feature several phases back) sits in the request path and answers
+  before Playwright's network layer gets a look, a known limitation of
+  browser automation against PWAs with an active service worker. Verified
+  end-to-end instead by pointing a real request at a small local stub
+  standing in for Overpass (exercising the exact same
+  `overpass_api_url` override a self-hoster would use), which incidentally
+  gave more confidence than a mocked route would have.
+- Full suite: 892 backend tests (21 new: fuzzy-match unit tests, the
+  Overpass-call/caching/failure-mode tests, and the proxy view's opt-in
+  gating, coordinate validation, and cross-user scoping) + 53 JS tests (7
+  new, covering the geolocation permission gate, the fetch round trip, and
+  render/hide behavior), 0 failures. Live-verified with a real Playwright
+  session, real browser geolocation grant, and a real request through the
+  real view and matching logic (backed by a local Overpass stub after the
+  service-worker interception issue above): the Nearby card renders
+  correctly with the matched item in both light and dark themes, the
+  Preferences and Site Settings pages round-trip the new fields correctly,
+  and pointing `overpass_api_url` at a non-default endpoint actually took
+  effect end-to-end.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

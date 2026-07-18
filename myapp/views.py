@@ -36,6 +36,7 @@ from .decorators import require_authorization_header_with_api_token
 from .analytics import build_expiry_calendar, get_active_today_item, get_expiring_soon_items, get_items_by_wallet, get_next_up_items
 from .avatar import generate_initial_avatar, normalize_logo_image
 from .merchant_logos import fetch_merchant_logo, get_cached_balance_check_url, get_cached_logo, get_cached_logos_for_issuers, merchant_logos_enabled, remember_balance_check_url
+from .nearby_places import find_nearby_issuer_matches, nearby_places_enabled
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .update_check import _is_newer, check_for_update, check_upstream_version
 from .help_docs import render_doc
@@ -2161,6 +2162,52 @@ def toggle_pin_item(request, item_uuid):
     if next_url:
         return redirect(next_url)
     return redirect('show_items')
+
+@require_POST
+@login_required
+def nearby_items(request):
+    """
+    One-shot proxy for the opt-in 'Nearby' widget: the client posts its
+    current coordinates once (never stored, never logged - see
+    nearby_places.py), the server checks OpenStreetMap for a matching shop
+    near that point, and only the matched item IDs come back. Off by
+    default at both the per-user (UserPreference.nearby_items_enabled) and
+    site (SiteConfiguration.nearby_places_enabled) level.
+    """
+    preferences, _ = UserPreference.objects.get_or_create(user=request.user)
+    if not preferences.nearby_items_enabled or not nearby_places_enabled():
+        return JsonResponse({'items': []})
+
+    try:
+        lat = float(request.POST.get('lat', ''))
+        lon = float(request.POST.get('lon', ''))
+    except ValueError:
+        return JsonResponse({'error': 'Invalid coordinates'}, status=400)
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return JsonResponse({'error': 'Invalid coordinates'}, status=400)
+
+    candidates = Item.objects.filter(
+        Q(user=request.user) | Q(wallet__shared_with=request.user),
+        is_used=False, is_archived=False,
+    ).exclude(issuer='').distinct()
+    issuers = list({item.issuer for item in candidates})
+
+    matched_issuers = find_nearby_issuer_matches(lat, lon, preferences.nearby_radius_m, issuers)
+    if not matched_issuers:
+        return JsonResponse({'items': []})
+
+    matched_items = candidates.filter(issuer__in=matched_issuers).order_by('issuer', 'name')
+    return JsonResponse({
+        'items': [
+            {
+                'id': str(item.id),
+                'name': item.name,
+                'issuer': item.issuer,
+                'url': reverse('view_item', kwargs={'item_uuid': item.id}),
+            }
+            for item in matched_items
+        ],
+    })
 
 @require_POST
 @login_required
