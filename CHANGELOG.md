@@ -1,3 +1,10 @@
+## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.68...v1.2.0) (2026-07-18)
+
+
+### Features
+
+* minify hand-written JS in the Docker image build (Phase 88) ([1d637ba](https://github.com/gregbtm/VoucherVault/commit/1d637baf1e26f782506027e155cfdfbc2c95ba7c))
+
 ## [1.1.68](https://github.com/gregbtm/VoucherVault/compare/v1.1.67...v1.1.68) (2026-07-18)
 
 
@@ -20,11 +27,4 @@
 ### Bug Fixes
 
 * settings pages blank on load + help hints not tappable on mobile ([4d8071a](https://github.com/gregbtm/VoucherVault/commit/4d8071ad474e4ee44036ed3305218527822f2551))
-
-## [1.1.64](https://github.com/gregbtm/VoucherVault/compare/v1.1.63...v1.1.64) (2026-07-17)
-
-
-### Features
-
-* settings pass - organised sections, groups, and helper hints ([4bc8221](https://github.com/gregbtm/VoucherVault/commit/4bc8221e9df0a65a7a066f2ce738489973f5eb30))
 
