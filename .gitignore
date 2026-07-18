@@ -56,3 +56,6 @@ acme.json
 
 # ignore file uploads
 **/uploads/**
+
+# ignore JS test harness deps (Phase 87 - see package.json)
+node_modules/

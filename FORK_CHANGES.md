@@ -117,6 +117,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 84 — Settings pass: organised, grouped, and explained](#phase-84--settings-pass-organised-grouped-and-explained)
 - [Phase 85 — Fix blank-on-load settings pages + tap-to-view help hints](#phase-85--fix-blank-on-load-settings-pages--tap-to-view-help-hints)
 - [Phase 86 — Scan confidence, in-page help, and site-wide polish](#phase-86--scan-confidence-in-page-help-and-site-wide-polish)
+- [Phase 87 — JS test harness](#phase-87--js-test-harness)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4509,6 +4510,39 @@ the UI, so there was no way to tell which one you'd gotten.
   response with zero page reload, and a button spinner engaging and
   cleanly clearing itself around a delayed response - all via real
   browser interaction, not just template string matching.
+
+## Phase 87 — JS test harness
+
+Every one of this fork's 823 backend tests runs on every change, but the
+~3,600 lines of hand-written JS behind scanning, sharing, and the UI
+helpers had zero test coverage - including `scanner.js`, the file that
+shipped the exact class-stacking bug fixed in Phase 86. That bug would
+have been caught by a test in seconds; instead it took a real scanned
+ticket coming back wrong to notice.
+
+- **Vitest + jsdom**, added as dev-only Node dependencies
+  (`package.json`, `vitest.config.js`) - zero runtime/production impact,
+  nothing shipped to users changes. Tests live alongside the JS they
+  cover, e.g. `myapp/static/assets/js/scanner.test.js`.
+- **The real production files are under test, not a reimplementation of
+  them** - each `.js` file (still classic `<script src>` files, not ES
+  modules, so the app itself is untouched) is loaded into a test via an
+  indirect `eval`, the same way a browser's `<script>` tag would run it:
+  its `window.*` functions become directly callable and assertable.
+- **`showToast` / `setButtonLoading` extracted out of `base.html`'s
+  inline `<script>` block** into a standalone `myapp/static/assets/js/
+  ui-helpers.js`, purely so they're testable in isolation - same script
+  position, same synchronous load timing, zero behavior change.
+- **24 tests across 3 files**: `scanner.test.js` (12, including a direct
+  regression test for the Phase 86 highlight-class bug and the
+  redeem-code-based type guessing), `ui-helpers.test.js` (7, covering
+  toast rendering/auto-dismiss and button loading-state idempotency),
+  `voucher-share.test.js` (5, covering the shared share-text builder).
+  Run with `npm test`.
+- Full suite: 823 backend tests + 24 new JS tests, 0 failures, 0 errors.
+  Live-verified the extracted `ui-helpers.js` and unchanged `scanner.js`
+  both still load and serve correctly from their real static URLs, and
+  that `base.html`/`create-item.html` render unchanged.
 
 ## New environment variables
 
