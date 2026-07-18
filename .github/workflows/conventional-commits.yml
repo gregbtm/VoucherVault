@@ -79,13 +79,16 @@ jobs:
 
       # ghostscript backs treepoem's real (unmocked) barcode rendering,
       # exercised by any test that creates an Item with a non-QR code
-      # type - not guaranteed present on a bare ubuntu-latest runner, so
-      # install it explicitly rather than gamble on the image's default
-      # software list. tesseract is deliberately NOT installed here: its
-      # one live-integration test (ocr/tests.py) already skips itself
-      # via `@unittest.skipUnless(shutil.which('tesseract'), ...)`.
+      # type. tesseract-ocr backs the real (unmocked) OCR backend
+      # instantiation in ocr.tests.BackendSelectionTests -
+      # test_get_backend_returns_tesseract calls TesseractOCRBackend()
+      # directly, which calls pytesseract.get_tesseract_version() for
+      # real; only the separate TesseractLiveIntegrationTests class
+      # gracefully self-skips via `@unittest.skipUnless(shutil.which(...))`.
+      # Neither is guaranteed present on a bare ubuntu-latest runner, so
+      # both are installed explicitly here, matching docker/Dockerfile.
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y ghostscript
+        run: sudo apt-get update && sudo apt-get install -y ghostscript tesseract-ocr
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
