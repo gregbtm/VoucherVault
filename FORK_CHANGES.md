@@ -4767,6 +4767,48 @@ screenshot of the live app:
   scoping on both create and edit forms, the comment fix, and the
   rendered share page.
 
+## Phase 94 — Header logo can no longer push the hamburger off-screen
+
+Phase 92 made the mark+wordmark lockup show at every viewport width,
+verified with real screenshots at the time - but a user later hit a live
+screenshot where the hamburger menu was clipped off the right edge on
+their phone. Locally, the exact same code rendered correctly at every
+width from 320px to 1400px, in both themes: the most likely explanation is
+a transient stale-cache/deploy-propagation window on that specific device
+(the service worker's "cache forever" static-asset strategy relies on
+`VERSION` bumping to bust it, and there's a real if brief window right
+after a merge before the `release` job's bump commit lands and a redeploy
+picks it up). Rather than chase an unreproducible one-off, the actual
+gap - the header layout had no structural guarantee that an oversized or
+not-yet-CSS-constrained logo image couldn't crowd out the controls - is
+fixed directly:
+
+- **`.logo` and its wrapping row can now actually shrink.** Flexbox items
+  default to `min-width: auto`, meaning "never shrink below content size"
+  - without overriding that, `max-width`/`max-height` on the image were
+    powerless to stop it from pushing siblings around if it were ever
+    larger than expected. Both now get `min-width: 0; flex: 0 1 auto;
+    overflow: hidden`, so the logo is the one thing that yields space, and
+    worst case gets visually clipped rather than shoving anything off
+    the header.
+- **The controls that must always stay usable now refuse to shrink at
+  all.** `flex-shrink: 0` added to `.toggle-sidebar-btn` (hamburger and
+  dark-mode icons) and `.header-nav` (profile menu) - they hold their
+  size unconditionally, at every viewport width.
+- **The logo's height is now fluid instead of one fixed number.**
+  `max-height: clamp(20px, 7vw, 28px)` scales down smoothly on narrower
+  phones instead of relying on a single value that happened to fit every
+  width someone tested it at.
+- Verified with a synthetic stress test in addition to normal-path
+  screenshots: forcing the logo image to a wildly oversized 200px height
+  with no width cap (simulating the worst case the theory above points
+  at) still leaves the hamburger, dark-mode toggle, and profile menu
+  fully on-screen and tappable - only the logo itself clips, which is the
+  intended trade-off.
+- Full suite: 823 backend tests + 24 JS tests, 0 failures. Live-verified
+  with real Playwright screenshots at 320/360/390/412/768/1200/1400px in
+  both themes, plus the oversized-logo stress test above.
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

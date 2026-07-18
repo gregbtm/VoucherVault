@@ -354,6 +354,20 @@ h6 {
 /*--------------------------------------------------------------
 # Header
 --------------------------------------------------------------*/
+/* min-width: 0 overrides the flexbox default of "never shrink below content
+   size" - without it, max-width/max-height on the logo image are powerless
+   to stop an oversized or not-yet-stylesheet-constrained image from pushing
+   the hamburger/dark-mode/profile controls off-screen, which is exactly how
+   a header can silently break on some viewport or a stale-cache/slow-load
+   edge case CSS alone can't rule out. flex: 0 1 auto lets this row shrink
+   but never grow into the search bar/nav's space at desktop widths. */
+.header-logo-row,
+.logo {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
 .logo {
   line-height: 1;
 }
@@ -365,11 +379,16 @@ h6 {
 }
 
 /* The full mark+wordmark lockup, at every viewport width - no separate
-   icon-only fallback. 28px keeps it comfortably clear of the hamburger
-   and dark-mode toggle even at a 320px-wide phone screen (verified with
-   real screenshots, not just math). */
+   icon-only fallback. Height is fluid (clamp) rather than one fixed number
+   so it keeps shrinking gracefully on very narrow phones instead of relying
+   on a single value verified at one width holding forever; max-width keeps
+   it from ever exceeding whatever space header-logo-row actually has left
+   after the controls that must stay full-size are laid out. */
 .logo img {
-  max-height: 28px;
+  max-width: 100%;
+  max-height: clamp(20px, 7vw, 28px);
+  width: auto;
+  height: auto;
 }
 
 .header {
@@ -379,15 +398,23 @@ h6 {
   box-shadow: 0px 2px 20px rgba(1, 41, 112, 0.1);
   background-color: #fff;
   padding-left: 20px;
+  overflow: hidden;
   /* Toggle Sidebar Button */
   /* Search Bar */
 }
 
+/* These are the controls a user must always be able to see and tap - they
+   never shrink or yield space to the logo, regardless of viewport width. */
 .header .toggle-sidebar-btn {
   font-size: 32px;
   padding-left: 10px;
   cursor: pointer;
   color: #1e1e1e;
+  flex-shrink: 0;
+}
+
+.header-nav {
+  flex-shrink: 0;
 }
 
 .header .search-bar {
