@@ -121,6 +121,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 88 — Minified JS build step](#phase-88--minified-js-build-step)
 - [Phase 89 — Vendor audit: 86MB → 11MB of static assets](#phase-89--vendor-audit-86mb--11mb-of-static-assets)
 - [Phase 90 — Wire in the mark+wordmark lockup](#phase-90--wire-in-the-markwordmark-lockup)
+- [Phase 91 — CI actually runs the test suites now](#phase-91--ci-actually-runs-the-test-suites-now)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4662,6 +4663,38 @@ rather than the designer's own baseline-aligned asset.
   with real Playwright screenshots across light/dark × mobile/desktop,
   plus the exact 991px/992px breakpoint boundary and a 320px viewport -
   clean swap, no overlap, no overflow at any width.
+
+## Phase 91 — CI actually runs the test suites now
+
+A gap left over from adding the JS test harness (Phase 87): the `CI`
+workflow ran Bandit/Semgrep/Grype and cut version bumps/releases on
+every push to `main`, but nothing anywhere actually ran either test
+suite. The only thing standing between a real regression and `main`
+was manually running both suites locally before every merge - which is
+exactly the kind of "works until someone forgets" gap this fork has
+spent several phases (87, the whole `verify` skill) trying to close for
+everything except itself.
+
+- **New `test` job** - installs Python + Node, installs `ghostscript`
+  explicitly (backs treepoem's real barcode rendering, which several
+  tests exercise unmocked; not guaranteed present on a bare
+  `ubuntu-latest` runner), runs `python manage.py test` (823 tests),
+  then `npm ci` + `npm test` (24 tests). Runs on every push and PR,
+  right alongside the security scanners.
+- **Unlike the security scanners, this one actually blocks** - both
+  `deploy` (Docker Hub publish) and `release` (VERSION bump + GitHub
+  Release) now `need: [..., test]`. Bandit/Semgrep/Grype stay
+  deliberately un-depended-on by `release` for the reason already
+  documented in that job (they've flaked before and blocking every
+  release on a security-scan false positive was worse than not gating
+  on them at all) - but a failing test means the app is objectively
+  broken, not a false positive, so there's no case where releasing
+  anyway is the right call.
+- Verified by literally running the new job's exact steps locally,
+  matching the runner as closely as this fork could - fresh `pip
+  install -r requirements.txt`, `DB_ENGINE=sqlite3 python manage.py
+  test`, then `rm -rf node_modules && npm ci && npm test` - both suites
+  green (823 + 24, 0 failures) before this ever touched CI for real.
 
 ## New environment variables
 

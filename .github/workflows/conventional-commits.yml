@@ -57,6 +57,50 @@ jobs:
           skip-tag: true
           skip-git-pull: true
 
+  test:
+    name: Test Suite
+    needs: [changelog]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      # ghostscript backs treepoem's real (unmocked) barcode rendering,
+      # exercised by any test that creates an Item with a non-QR code
+      # type - not guaranteed present on a bare ubuntu-latest runner, so
+      # install it explicitly rather than gamble on the image's default
+      # software list. tesseract is deliberately NOT installed here: its
+      # one live-integration test (ocr/tests.py) already skips itself
+      # via `@unittest.skipUnless(shutil.which('tesseract'), ...)`.
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y ghostscript
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Django test suite
+        env:
+          DB_ENGINE: sqlite3
+        run: python manage.py test
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Run JS test suite
+        run: npm test
+
   bandit:
     name: SAST with Bandit
     needs: [changelog]
@@ -135,7 +179,7 @@ jobs:
 
   deploy:
     name: Deploy Image
-    needs: [changelog, bandit, grype, semgrep]
+    needs: [changelog, test, bandit, grype, semgrep]
     if: github.event_name != 'pull_request' && needs.changelog.outputs.skipped == 'false'
     runs-on: ubuntu-latest
 
@@ -191,14 +235,18 @@ jobs:
   # is a git-based Portainer build - see docs/AUTO_DEPLOY.md). Making the
   # version bump and GitHub Release depend on that pipeline meant neither
   # ever happened, since bandit/semgrep have failed on every push to main.
-  # `needs: [changelog]` is kept purely for sequencing (avoids racing its
-  # commit/tag with this job's own push), not for its version output - this
-  # job computes its own version deterministically from the committed
-  # VERSION file so it advances on every merge, independent of whether
-  # commit messages happen to follow Conventional Commits format.
+  # `test` is a different kind of gate, though, and IS required below: a
+  # failing test means the app is objectively broken, not a security-scan
+  # false positive, so there's no case where tagging/releasing anyway is
+  # the right call. `needs: [changelog]` beyond that is kept purely for
+  # sequencing (avoids racing its commit/tag with this job's own push),
+  # not for its version output - this job computes its own version
+  # deterministically from the committed VERSION file so it advances on
+  # every merge, independent of whether commit messages happen to follow
+  # Conventional Commits format.
   release:
     name: Version bump & Release
-    needs: [changelog]
+    needs: [changelog, test]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
 
