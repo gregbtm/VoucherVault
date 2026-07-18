@@ -119,6 +119,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 86 — Scan confidence, in-page help, and site-wide polish](#phase-86--scan-confidence-in-page-help-and-site-wide-polish)
 - [Phase 87 — JS test harness](#phase-87--js-test-harness)
 - [Phase 88 — Minified JS build step](#phase-88--minified-js-build-step)
+- [Phase 89 — Vendor audit: 86MB → 11MB of static assets](#phase-89--vendor-audit-86mb--11mb-of-static-assets)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -4577,6 +4578,56 @@ few KB, less fine once scanner.js alone is 33KB unminified.
   `jsbuild` stage's `npm ci` + `npm run build` produced byte-identical
   output to a host-side run, and the overlay + test-file-strip steps
   completed cleanly against the actual `myapp/static/assets/js/` tree.
+
+## Phase 89 — Vendor audit: 86MB → 11MB of static assets
+
+This app is descended from a general-purpose Bootstrap admin template
+(NiceAdmin), which ships every widget its original demo pages might
+ever need - three charting libraries, three icon sets, a rich text
+editor, a datatables plugin. Only a fraction of that ever got wired
+into VoucherVault. Checked every file against actual `<link>`/`<script>`
+usage across every template, JS file, and the service worker's precache
+list before removing anything.
+
+- **Three charting libraries down to one** - `chart.js` (5.1MB) was
+  loaded on every single page via `base.html` but `new Chart(` was never
+  called anywhere; `apexcharts` (3.5MB) wasn't referenced at all. Only
+  `echarts` is actually used (the analytics dashboard's two charts), and
+  even there only `echarts.min.js` was ever served - the vendored
+  directory also carried every unminified/ESM/"simple"/"common" build
+  variant plus their source maps, 46MB for a library whose real served
+  weight is 1MB. Trimmed to just the one file that's used.
+- **Two of three icon sets removed** - `boxicons` (2.5MB, `<link>`'d on
+  every page including the login/logout pages) and `remixicon` (9.3MB)
+  had zero elements anywhere using their `bx-`/`ri-` classes. Only
+  `bootstrap-icons` (`bi-`, 329 uses) is real. Removed the `<link>` tags
+  and the service worker's precache entries for the unused ones.
+- **A WYSIWYG editor and a datatables plugin that were never wired up**
+  - `quill` (2.1MB) had its CSS linked and three `new Quill(...)` init
+    calls in `main.js`, correctly guarded behind selectors
+    (`.quill-editor-default` etc.) that don't exist in any template, so
+    the code always no-opped - dead weight, never a live bug.
+  - `simple-datatables` (108KB) was the same story: CSS linked and
+    precached by the service worker, `new simpleDatatables.DataTable(...)`
+    gated behind a `.datatable` selector that's never present.
+  - `tinymce` (8.8MB) wasn't linked anywhere at all - just an orphaned
+    "Initiate TinyMCE Editor" comment and two unused `const`s left behind
+    in `main.js` from whenever its real init code was removed.
+- **`php-email-form` (8KB)** - validates a PHP-backend contact form this
+  Django app has never had.
+- **`offline-integration-examples.js` (16KB)** - unreferenced by any
+  template, spotted in passing during Phase 88.
+- Net result: `myapp/static/assets` goes from **86MB to 11MB** (87%
+  smaller) - one `git clone`/Docker build context, no runtime behavior
+  change. Nothing in this list was ever rendered to a user; every
+  removal was checked against every template, JS file, and CSS file
+  first, not just the ones it looked likely to touch.
+- Full suite: 823 backend tests + 24 JS tests, 0 failures. Live-verified
+  with a real headless-browser pass (not just template grep) across
+  inventory, dashboard (the actual `echarts` consumer), create-item
+  (the actual `scanner.js`/`zxing.js` consumer), wallets, tags, login,
+  and the offline fallback page - zero console errors, zero failed
+  requests tied to any removed file.
 
 ## New environment variables
 

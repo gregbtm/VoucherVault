@@ -127,76 +127,6 @@
   })
 
   /**
-   * Initiate quill editors
-   */
-  if (select('.quill-editor-default')) {
-    new Quill('.quill-editor-default', {
-      theme: 'snow'
-    });
-  }
-
-  if (select('.quill-editor-bubble')) {
-    new Quill('.quill-editor-bubble', {
-      theme: 'bubble'
-    });
-  }
-
-  if (select('.quill-editor-full')) {
-    new Quill(".quill-editor-full", {
-      modules: {
-        toolbar: [
-          [{
-            font: []
-          }, {
-            size: []
-          }],
-          ["bold", "italic", "underline", "strike"],
-          [{
-              color: []
-            },
-            {
-              background: []
-            }
-          ],
-          [{
-              script: "super"
-            },
-            {
-              script: "sub"
-            }
-          ],
-          [{
-              list: "ordered"
-            },
-            {
-              list: "bullet"
-            },
-            {
-              indent: "-1"
-            },
-            {
-              indent: "+1"
-            }
-          ],
-          ["direction", {
-            align: []
-          }],
-          ["link", "image", "video"],
-          ["clean"]
-        ]
-      },
-      theme: "snow"
-    });
-  }
-
-  /**
-   * Initiate TinyMCE Editor
-   */
-
-  const useDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const isSmallScreen = window.matchMedia('(max-width: 1023.5px)').matches;
-
-  /**
    * Initiate Bootstrap validation check
    */
   var needsValidation = document.querySelectorAll('.needs-validation')
@@ -212,30 +142,6 @@
         form.classList.add('was-validated')
       }, false)
     })
-
-  /**
-   * Initiate Datatables
-   */
-  const datatables = select('.datatable', true)
-  datatables.forEach(datatable => {
-    new simpleDatatables.DataTable(datatable, {
-      perPageSelect: [5, 10, 15, ["All", -1]],
-      columns: [{
-          select: 2,
-          sortSequence: ["desc", "asc"]
-        },
-        {
-          select: 3,
-          sortSequence: ["desc"]
-        },
-        {
-          select: 4,
-          cellClass: "green",
-          headerClass: "red"
-        }
-      ]
-    });
-  })
 
   /**
    * Autoresize echart charts
