@@ -4809,6 +4809,73 @@ fixed directly:
   with real Playwright screenshots at 320/360/390/412/768/1200/1400px in
   both themes, plus the oversized-logo stress test above.
 
+## Phase 95 — UK rail eTicket import (PDF parsing + server-side Aztec decode)
+
+A user shared a developer brief for extracting UK rail travel tickets
+(Uber's rail bookings run on Omio's backend; direct train-operator
+tickets like Greater Anglia are the same shape) from the PDF eTicket
+every booking confirmation email already contains - official APIs are a
+dead end for this (Uber's Rides API doesn't cover rail; Omio/Trainline
+are B2B-only; train operating companies have no public ticket API), so
+the email/PDF is the only reliable source. Cross-referencing the brief
+against the existing codebase found most of the target data schema
+already covered by Phase 81's Travel Pass type (`journey_origin`,
+`journey_destination`, `travel_time`, `issuer`, `value`/`currency`) and
+by the barcode pipeline already supporting Aztec codes (the symbology
+UK rail tickets use, not QR) end to end for *generating* one - the
+actual gaps were PDF parsing and *decoding* an Aztec code, which didn't
+exist anywhere in the app yet.
+
+- **`myapp/pdf_ticket.py`** - new module: rasterizes a PDF page to an
+  image (PyMuPDF/`fitz`) and decodes any barcode found in it server-side
+  (`zxing-cpp`, the same ZXing decode engine the create-item page's
+  client-side camera/file scan already uses, just callable from Python).
+  This is genuinely new capability - the existing scan flow only ever
+  decoded barcodes in the browser; nothing server-side could read one at
+  all before this.
+- **`order_id` and `discount_applied`** - two new optional `Item`
+  fields (a rail ticket's booking reference and any railcard discount
+  applied), wired into the model, form, API serializer, and view-item
+  detail page the same way every other item field is.
+- **`POST /api/v1/imports/rail-ticket/`** - new endpoint, one PDF in,
+  either extracted fields back out or (with `create=true`) a created
+  Travel Pass item. Two callers share it:
+  - The create-item/edit-item "Scan with AI" upload now accepts PDFs
+    alongside photos - a human uploads a PDF eTicket, reviews the
+    pre-filled form (barcode decoded server-side, text fields filled by
+    the existing OCR vision backend against a rendered page), and
+    submits it themselves, same shape as the existing photo-scan and
+    `.pkpass` import flows.
+  - An unattended pipeline (n8n polling an inbox for ticket confirmation
+    emails, documented in the new `docs/RAIL_TICKET_IMPORT_SETUP.md`)
+    calls it with `create=true` and no human review step, optionally
+    supplying its own pre-extracted text fields (from n8n's own PDF-text
+    node) - anything supplied is used as-is instead of re-derived via
+    OCR, since text pulled directly from the PDF beats a vision model
+    reading a rasterized image of that same text. The barcode is always
+    decoded server-side regardless, since no caller can reasonably do
+    that step for us.
+  - If neither the barcode nor OCR can produce a code, the ticket number
+    becomes the redeem code with `code_type: "none"` rather than failing
+    the import outright - same "No Barcode" fallback every other item
+    type already has.
+- New dependencies: `zxing-cpp` (barcode decode) and `pymupdf` (PDF
+  rasterization) - both ship self-contained wheels with no system
+  package required, same as `treepoem`/`qrcode` already in use.
+- **`docs/n8n-workflows/vouchervault-rail-ticket-import.json`** - a
+  ready-to-import n8n workflow (Gmail trigger → find the PDF attachment
+  → POST to the new endpoint → label the email processed/failed) so
+  setting up the unattended pipeline above doesn't require building it
+  node-by-node from the doc's description.
+- Full suite: 842 backend tests (19 new: 10 for `pdf_ticket.py`'s
+  decode/rasterize functions, 9 for the new API endpoint) + 24 JS tests,
+  0 failures. Live-verified with a real Playwright browser session
+  driving an actual `<input type="file">` upload of a genuine
+  Aztec-barcode PDF through create-item and edit-item: the barcode
+  decoded correctly, item type auto-switched to Travel Pass, and the
+  edit-item path correctly left an item's existing code untouched
+  (matching the same rule the photo-scan path already follows).
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:

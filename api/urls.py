@@ -31,5 +31,6 @@ urlpatterns = [
     path('analytics/expiry-timeline/', views.AnalyticsExpiryTimelineView.as_view(), name='api-analytics-expiry-timeline'),
     path('ocr/extract/', views.OCRExtractView.as_view(), name='api-ocr-extract'),
     path('imports/pkpass/', views.PkpassImportView.as_view(), name='api-pkpass-import'),
+    path('imports/rail-ticket/', views.RailTicketImportView.as_view(), name='api-rail-ticket-import'),
     path('', include(router.urls)),
 ]

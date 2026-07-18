@@ -703,9 +703,9 @@ body.dark-mode .error-alert {
               {% trans "Scan with AI" %}
             </div>
             <p style="color: #6c757d; margin-bottom: 0.75rem; font-size: 0.85rem;">
-              {% trans "Upload a photo or screenshot of the card and we'll pre-fill the fields below." %}
+              {% trans "Upload a photo/screenshot of the card, or a PDF eTicket (e.g. a rail booking confirmation), and we'll pre-fill the fields below." %}
             </p>
-            <input type="file" id="aiScanInput" accept="image/jpeg,image/png,image/webp" class="modern-input">
+            <input type="file" id="aiScanInput" accept="image/jpeg,image/png,image/webp,application/pdf" class="modern-input">
             <div id="aiScanStatus" style="margin-top: 0.75rem; font-size: 0.85rem;"></div>
           </div>
           {% endif %}
@@ -1002,6 +1002,21 @@ body.dark-mode .error-alert {
                         rows="3">{{ item.description }}</textarea>
             </div>
             
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="order_id">{% trans "Order ID" %}</label>
+                <input type="text" class="modern-input" id="order_id" name="order_id"
+                       placeholder="{% trans 'e.g. WEB017891237' %}"
+                       value="{{ item.order_id|default_if_none:'' }}">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="discount_applied">{% trans "Discount Applied" %}</label>
+                <input type="text" class="modern-input" id="discount_applied" name="discount_applied"
+                       placeholder="{% trans 'e.g. Network Railcard' %}"
+                       value="{{ item.discount_applied|default_if_none:'' }}">
+              </div>
+            </div>
+
             <div class="form-group">
               <label class="form-label" for="logo_slug">
                 {% trans "Logo Slug" %}
@@ -1009,8 +1024,8 @@ body.dark-mode .error-alert {
                   <i class="bi bi-info-circle"></i>
                 </a>
               </label>
-              <input type="text" class="modern-input" id="logo_slug" name="logo_slug" 
-                     placeholder="amazon.com" 
+              <input type="text" class="modern-input" id="logo_slug" name="logo_slug"
+                     placeholder="amazon.com"
                      value="{{ item.logo_slug|default_if_none:'' }}">
             </div>
             
@@ -1374,12 +1389,156 @@ document.addEventListener("DOMContentLoaded", function () {
   // printed number, or a listing where the AI decides the answer is
   // "none"). Text-only fields (name, issuer, expiry date) always come
   // from the AI, since the barcode decoder has no idea what those are.
+  // A PDF eTicket (rail booking confirmation etc.) can't go through the
+  // same client-side barcode decode + vision-OCR pair as a photo - there's
+  // no image for ZXing to read yet, and vision models take images, not
+  // PDFs. It gets its own, much simpler path: the whole file goes to the
+  // server (myapp/pdf_ticket.py rasterizes it and decodes the barcode with
+  // zxing-cpp; api-ocr-extract's own backend fills any text fields from
+  // the rasterized page), and the response fills the same-ish set of
+  // fields the photo path does, plus Order ID/Discount Applied and forcing
+  // the item type to Travel Pass - the one thing this endpoint is for.
+  function handlePdfScan(file, statusEl) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    // Editing an existing item - a code/type it already has must never be
+    // silently overwritten by a re-scan, same rule the photo path follows.
+    const codeWasEmpty = redeemCodeField && !redeemCodeField.value;
+
+    fetch("{% url 'api-rail-ticket-import' %}", {
+      method: 'POST',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+      body: formData,
+    })
+      .then(response => response.json().then(data => ({ ok: response.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          statusEl.innerHTML = `<span class="text-danger">${data.detail || data.file || "{% trans 'Scan failed.' %}"}</span>`;
+          return;
+        }
+
+        const filled = [];
+
+        if (typeField && typeField.value !== 'travelpass') {
+          typeField.value = 'travelpass';
+          markAutoFilled(typeField);
+          toggleFields();
+          filled.push("{% trans 'type' %}");
+        }
+
+        if (codeWasEmpty && data.redeem_code) {
+          redeemCodeField.value = data.redeem_code;
+          if (data.barcode_decoded) {
+            markAutoFilled(redeemCodeField);
+          } else {
+            markSuggested(redeemCodeField);
+          }
+          redeemCodeField.dispatchEvent(new Event('input'));
+          filled.push("{% trans 'code' %}");
+        }
+        if (codeWasEmpty && data.code_type && typeof applyDetectedFormat === 'function') {
+          applyDetectedFormat(data.code_type, "{% trans 'PDF eTicket' %}", data.barcode_decoded ? 'exact' : 'guess');
+          filled.push("{% trans 'barcode type' %}");
+        }
+
+        const nameField = document.getElementById('name');
+        if (data.name && nameField && !nameField.value) {
+          nameField.value = data.name;
+          markAutoFilled(nameField);
+          filled.push("{% trans 'name' %}");
+        }
+        if (data.issuer && !issuerCodeField.value) {
+          issuerCodeField.value = data.issuer;
+          markAutoFilled(issuerCodeField);
+          filled.push("{% trans 'issuer' %}");
+        }
+        if (data.card_number && !document.getElementById('card_number').value) {
+          const cardNumberField = document.getElementById('card_number');
+          cardNumberField.value = data.card_number;
+          markAutoFilled(cardNumberField);
+          filled.push("{% trans 'card number' %}");
+        }
+        const orderIdField = document.getElementById('order_id');
+        if (data.order_id && orderIdField && !orderIdField.value) {
+          orderIdField.value = data.order_id;
+          markAutoFilled(orderIdField);
+          filled.push("{% trans 'order ID' %}");
+        }
+        const discountField = document.getElementById('discount_applied');
+        if (data.discount_applied && discountField && !discountField.value) {
+          discountField.value = data.discount_applied;
+          markAutoFilled(discountField);
+          filled.push("{% trans 'discount applied' %}");
+        }
+        const journeyOriginField = document.getElementById('journey_origin');
+        if (data.journey_origin && journeyOriginField && !journeyOriginField.value.trim()) {
+          journeyOriginField.value = data.journey_origin;
+          markAutoFilled(journeyOriginField);
+          filled.push("{% trans 'journey from' %}");
+        }
+        const journeyDestinationField = document.getElementById('journey_destination');
+        if (data.journey_destination && journeyDestinationField && !journeyDestinationField.value.trim()) {
+          journeyDestinationField.value = data.journey_destination;
+          markAutoFilled(journeyDestinationField);
+          filled.push("{% trans 'journey to' %}");
+        }
+        const travelTimeField = document.getElementById('travel_time');
+        if (data.travel_time && travelTimeField && !travelTimeField.value.trim()) {
+          travelTimeField.value = data.travel_time;
+          markAutoFilled(travelTimeField);
+          filled.push("{% trans 'time of travel' %}");
+        }
+        if (data.travel_date) {
+          const issueDateField = document.getElementById('issue_date');
+          const expiryDateField = document.getElementById('expiry_date');
+          if (issueDateField) {
+            issueDateField.value = data.travel_date;
+            issueDateField.dataset.userEdited = 'true';
+            markAutoFilled(issueDateField);
+          }
+          if (expiryDateField) {
+            expiryDateField.value = data.travel_date;
+            markAutoFilled(expiryDateField);
+          }
+          filled.push("{% trans 'travel date' %}");
+        }
+        const valueField = document.getElementById('value');
+        if (data.value != null && valueField && !valueField.value) {
+          valueField.value = data.value;
+          markAutoFilled(valueField);
+          filled.push("{% trans 'value' %}");
+        }
+        const currencyField = document.getElementById('currency');
+        if (data.currency && currencyField) {
+          currencyField.value = data.currency;
+          markAutoFilled(currencyField);
+          filled.push("{% trans 'currency' %}");
+        }
+
+        if (filled.length) {
+          statusEl.innerHTML = `<span class="scan-chip scan-chip-filled"><i class="bi bi-stars"></i> {% trans "Filled from PDF:" %} ${filled.join(', ')}</span>`;
+        } else {
+          statusEl.innerHTML = '<span class="scan-chip scan-chip-empty"><i class="bi bi-eye-slash"></i> {% trans "Nothing could be confidently read from that PDF." %}</span>';
+        }
+        checkDuplicateCode();
+      })
+      .catch(() => {
+        statusEl.innerHTML = '<span class="text-danger">{% trans "Scan failed." %}</span>';
+      });
+  }
+
   document.getElementById('aiScanInput').addEventListener('change', function () {
     const file = this.files[0];
     if (!file) return;
     attachScannedFileIfEmpty(file);
     const statusEl = document.getElementById('aiScanStatus');
     statusEl.innerHTML = '<span class="text-muted"><i class="bi bi-arrow-repeat spin"></i> {% trans "Scanning..." %}</span>';
+
+    if (file.type === 'application/pdf') {
+      handlePdfScan(file, statusEl);
+      return;
+    }
 
     // Captured before the fetch, not re-checked after: on the edit page the
     // redeem code/type already hold this item's real values, so a photo

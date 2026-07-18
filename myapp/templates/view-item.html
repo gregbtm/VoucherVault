@@ -1448,6 +1448,24 @@ body.dark-mode .action-btn-danger-outline:hover {
               <div class="detail-field-value">{{ item.travel_time|time:"H:i" }}</div>
             </div>
             {% endif %}
+
+            {% if item.order_id %}
+            <div class="detail-field">
+              <div class="detail-field-label">
+                <i class="bi bi-receipt"></i> {% trans "Order ID" %}
+              </div>
+              <div class="detail-field-value">{{ item.order_id }}</div>
+            </div>
+            {% endif %}
+
+            {% if item.discount_applied %}
+            <div class="detail-field">
+              <div class="detail-field-label">
+                <i class="bi bi-tag"></i> {% trans "Discount Applied" %}
+              </div>
+              <div class="detail-field-value">{{ item.discount_applied }}</div>
+            </div>
+            {% endif %}
           </div>
           
           <!-- Description -->

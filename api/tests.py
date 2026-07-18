@@ -1,3 +1,4 @@
+import io
 import json
 from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
@@ -892,6 +893,165 @@ class OCRExtractApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['healed_fields'], [])
+
+
+def _ticket_pdf_upload(barcode_data='AABXC5V4LVT', barcode_type='azteccode', name='ticket.pdf'):
+    """A real single-page PDF with a genuine barcode embedded in it - not a
+    fake/stub, so this exercises the actual decode path (myapp.pdf_ticket)
+    end to end rather than mocking it away."""
+    import fitz
+    import treepoem
+
+    barcode = treepoem.generate_barcode(barcode_type=barcode_type, data=barcode_data, scale=2)
+    image_bytes = io.BytesIO()
+    barcode.save(image_bytes, 'PNG')
+
+    doc = fitz.open()
+    page = doc.new_page(width=400, height=400)
+    page.insert_image(fitz.Rect(50, 50, 350, 350), stream=image_bytes.getvalue())
+    pdf_bytes = doc.tobytes()
+    doc.close()
+    return SimpleUploadedFile(name, pdf_bytes, content_type='application/pdf')
+
+
+def _blank_pdf_upload(name='ticket.pdf'):
+    import fitz
+
+    doc = fitz.open()
+    doc.new_page(width=400, height=400)
+    pdf_bytes = doc.tobytes()
+    doc.close()
+    return SimpleUploadedFile(name, pdf_bytes, content_type='application/pdf')
+
+
+class RailTicketImportApiTests(APITestCase):
+    def setUp(self):
+        # This class alone makes several POST calls, enough to push a
+        # shared, un-cleared cache toward WriteRateThrottle's limit and
+        # start throttling unrelated tests later in the same run - see
+        # WriteRateThrottleTests above for the same fix.
+        cache.clear()
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+        set_site_config(ocr_backend='none')
+
+    def test_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.post(
+            '/api/v1/imports/rail-ticket/', {'file': _ticket_pdf_upload()}, format='multipart'
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_no_file_provided(self):
+        response = self.client.post('/api/v1/imports/rail-ticket/', {}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_oversized_file_rejected(self):
+        upload = SimpleUploadedFile(
+            'ticket.pdf', b'%PDF-1.4' + b'0' * (15 * 1024 * 1024), content_type='application/pdf'
+        )
+        response = self.client.post('/api/v1/imports/rail-ticket/', {'file': upload}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_non_pdf_content_type_rejected(self):
+        upload = SimpleUploadedFile('ticket.jpg', b'notapdf', content_type='image/jpeg')
+        response = self.client.post('/api/v1/imports/rail-ticket/', {'file': upload}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_extract_only_decodes_barcode_without_creating_item(self):
+        response = self.client.post(
+            '/api/v1/imports/rail-ticket/', {'file': _ticket_pdf_upload()}, format='multipart'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data['created'])
+        self.assertEqual(response.data['redeem_code'], 'AABXC5V4LVT')
+        self.assertEqual(response.data['code_type'], 'azteccode')
+        self.assertTrue(response.data['barcode_decoded'])
+        self.assertEqual(Item.objects.count(), 0)
+
+    def test_create_mode_creates_travelpass_item_from_supplied_fields(self):
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+            'journey_origin': 'Hatfield Peverel',
+            'journey_destination': 'London Terminals',
+            'travel_date': '2026-07-14',
+            'travel_time': '09:14',
+            'card_number': 'AABXC5V4LVT',
+            'order_id': 'WEB017891237',
+            'discount_applied': 'Network Railcard',
+            'value': '16.25',
+            'currency': 'gbp',
+        }, format='multipart')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data['created'])
+        self.assertEqual(Item.objects.count(), 1)
+
+        item = Item.objects.get()
+        self.assertEqual(item.type, 'travelpass')
+        self.assertEqual(item.issuer, 'Greater Anglia')
+        self.assertEqual(item.journey_origin, 'Hatfield Peverel')
+        self.assertEqual(item.journey_destination, 'London Terminals')
+        self.assertEqual(str(item.issue_date), '2026-07-14')
+        self.assertEqual(str(item.expiry_date), '2026-07-14')
+        self.assertEqual(item.order_id, 'WEB017891237')
+        self.assertEqual(item.discount_applied, 'Network Railcard')
+        self.assertEqual(item.redeem_code, 'AABXC5V4LVT')
+        self.assertEqual(item.code_type, 'azteccode')
+        self.assertEqual(item.currency, 'GBP')
+        self.assertEqual(item.user, self.alice)
+        self.assertEqual(item.source, 'api')
+
+    def test_create_mode_falls_back_to_card_number_when_barcode_undecodable(self):
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _blank_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+            'card_number': 'TICKET99NUMBER',
+        }, format='multipart')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        item = Item.objects.get()
+        self.assertEqual(item.redeem_code, 'TICKET99NUMBER')
+        self.assertEqual(item.code_type, 'none')
+        self.assertFalse(response.data['barcode_decoded'])
+
+    def test_create_mode_requires_issuer_and_code(self):
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _blank_pdf_upload(),
+            'create': 'true',
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+        self.assertEqual(Item.objects.count(), 0)
+
+    def test_missing_fields_fall_back_to_ocr(self):
+        with patch('api.views.ocr_enabled', return_value=True), \
+             patch('api.views.get_backend') as mock_get_backend:
+            mock_backend = MagicMock()
+            mock_backend.extract.return_value = {
+                'name': 'Hatfield Peverel to London Terminals', 'issuer': 'Greater Anglia',
+                'card_number': None, 'journey_origin': 'Hatfield Peverel',
+                'journey_destination': 'London Terminals', 'travel_time': '09:14',
+                'expiry_date': '2026-07-14', 'value': 16.25, 'currency': 'GBP',
+                'code': None, 'code_type': None,
+            }
+            mock_get_backend.return_value = mock_backend
+
+            response = self.client.post(
+                '/api/v1/imports/rail-ticket/', {'file': _ticket_pdf_upload()}, format='multipart'
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['issuer'], 'Greater Anglia')
+        self.assertEqual(response.data['journey_origin'], 'Hatfield Peverel')
+        self.assertEqual(response.data['travel_date'], '2026-07-14')
+        # The barcode decoded fine on its own - OCR's (empty) code/code_type
+        # guess must not clobber the real decode.
+        self.assertEqual(response.data['redeem_code'], 'AABXC5V4LVT')
+        self.assertEqual(response.data['code_type'], 'azteccode')
+        mock_backend.extract.assert_called_once()
 
 
 class PkpassApiTests(APITestCase):
