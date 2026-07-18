@@ -34,10 +34,7 @@ const STATIC_CACHE_URLS = [
     '/static/assets/vendor/motion/motion.min.js',
     '/static/assets/vendor/bootstrap/css/bootstrap.min.css',
     '/static/assets/vendor/bootstrap-icons/bootstrap-icons.css',
-    '/static/assets/vendor/bootstrap/js/bootstrap.bundle.min.js',
-    '/static/assets/vendor/boxicons/css/boxicons.min.css',
-    '/static/assets/vendor/simple-datatables/simple-datatables.js',
-    '/static/assets/vendor/simple-datatables/style.css'
+    '/static/assets/vendor/bootstrap/js/bootstrap.bundle.min.js'
 ];
 
 // Dynamic pages will be cached when visited via navigation handler
