@@ -144,6 +144,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 111 — TOTP Backup Recovery Codes](#phase-111--totp-backup-recovery-codes)
 - [Phase 112 — REST API Coverage (Webhooks, WalletMembership, WalletActivity)](#phase-112--rest-api-coverage-webhooks-walletmembership-walletactivity)
 - [Phase 113 — PWA share_target + MCP server extensions](#phase-113--pwa-share_target--mcp-server-extensions)
+- [Phase 114 — OWASP/NCSC CI compliance hardening](#phase-114--owaspncsc-ci-compliance-hardening)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -5744,6 +5745,76 @@ On top of everything documented in the README, this fork adds:
 | `AXES_COOLOFF_TIME_HOURS` | How many hours a lockout lasts before the account can try again. | `1` |
 
 See `docker/env.example` for the full, commented list.
+
+---
+
+## Phase 114 — OWASP/NCSC CI compliance hardening
+
+### Immediate CVE remediation
+
+- **`requirements.txt`** — Django bumped `5.2.15 → 5.2.16` (three CVEs:
+  cache data leak PYSEC-2026-2090, `DomainNameValidator` header injection,
+  `GDALRaster` out-of-bounds memory read)
+- **`requirements.txt`** — removed `mcp==1.10.1` and `httpx==0.28.1`; these
+  were incorrectly added to the main Django app's requirements in Phase 113 —
+  the MCP server is standalone with its own `mcp_server/requirements.txt`
+  (which already pins `mcp==1.28.1`). The four CVEs in `mcp 1.10.1` were
+  never reachable from the Django process, but the packages had no place here
+
+### CI pipeline additions (`.github/workflows/conventional-commits.yml`)
+
+**Existing job fixes:**
+- `bandit` scope extended: now scans `api/`, `notify/`, `imports/`, `ocr/`
+  in addition to `myapp/` and `myproject/` (four Django apps were previously
+  excluded from all SAST)
+- `semgrep` rule set extended: added `p/django` for Django-specific security
+  patterns (CSRF bypass, ORM injection, unvalidated redirects)
+- All security scan jobs (`bandit`, `grype`, `semgrep`, `pip-audit`,
+  `secret-scan`, `trivy`, `zap-scan`) had `needs: [changelog]` removed —
+  `changelog` skips on `pull_request` events, which silently caused every
+  security job to skip on PRs too (only `test` correctly avoided this, with
+  an explicit comment). Security scans now run on both push and PR
+- `test` job: added `npm audit --audit-level=high` (JS dependency CVEs)
+  and `python manage.py check` (Django system integrity check)
+
+**New blocking jobs (required by `deploy`):**
+
+| Job | Tool | What it covers |
+|-----|------|----------------|
+| `pip-audit` | pip-audit | Python dep CVEs from PyPI advisory DB — fails CI on any finding (OWASP A06 / NCSC P3) |
+| `secret-scan` | TruffleHog | Full git history scanned for leaked credentials and keys — only verified findings block CI (OWASP A02 / NCSC P5) |
+| `trivy` | Aqua Trivy | Filesystem CVEs + Dockerfile/IaC misconfig, HIGH/CRITICAL only (OWASP A05 / NCSC P4) |
+
+**New advisory job (reports but does not block `deploy`):**
+
+| Job | Tool | What it covers |
+|-----|------|----------------|
+| `zap-scan` | OWASP ZAP | DAST baseline scan against a live Django instance; `fail_action: warn` so findings are reported without blocking — change to `fail` once initial baseline is reviewed and `.zap/rules.tsv` suppressions are added (OWASP A04/A05/A07 / NCSC P3) |
+
+### Dependabot (`.github/dependabot.yml`)
+
+Added Dependabot configuration for four ecosystems (weekly, Monday):
+- `pip` at `/` — main Django app Python deps
+- `pip` at `/mcp_server` — standalone MCP server deps
+- `npm` at `/` — JavaScript deps
+- `github-actions` at `/` — action version pins
+
+Dependabot will open PRs automatically when updated versions are available,
+keeping the dependency graph fresh without manual auditing (NCSC Principle 3
+— automated patch management).
+
+### OWASP Top 10 2021 coverage after this phase
+
+| Control | Coverage |
+|---------|----------|
+| A01 Broken Access Control | Semgrep `p/owasp-top-ten` + `_check_item_edit_permission` (Phase 110) |
+| A02 Crypto / Secret Failures | Bandit + TruffleHog (secret-scan) |
+| A03 Injection | Semgrep `p/python` + `p/django` + Bandit |
+| A05 Security Misconfiguration | Trivy config scan + `manage.py check` + Semgrep |
+| A06 Vulnerable Components | pip-audit + npm audit + Grype + Trivy filesystem |
+| A07 Auth Failures | Semgrep + ZAP DAST + TOTP 2FA (Phase 109/111) |
+| A08 Data Integrity | Grype SBOM (Syft) + Trivy |
+| A10 SSRF | Semgrep `p/owasp-top-ten` |
 
 ## Upgrading an existing deployment
 

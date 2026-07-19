@@ -1,0 +1,43 @@
+version: 2
+updates:
+  # Python dependencies — main Django app
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "security"
+      - "dependencies"
+    open-pull-requests-limit: 10
+
+  # Python dependencies — standalone MCP server
+  - package-ecosystem: "pip"
+    directory: "/mcp_server"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "security"
+      - "dependencies"
+      - "mcp"
+
+  # JavaScript / Node dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "security"
+      - "dependencies"
+
+  # GitHub Actions — keep action versions pinned and patched
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "ci"
+      - "dependencies"
