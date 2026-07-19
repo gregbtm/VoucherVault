@@ -674,7 +674,18 @@ def create_item(request):
     else:
         # If not a POST request, initialize form with user's preferred currency
         preferences, _ = UserPreference.objects.get_or_create(user=request.user)
-        form = ItemForm(initial={'currency': preferences.default_currency or 'GBP'}, user=request.user)
+        initial = {'currency': preferences.default_currency or 'GBP'}
+
+        # Pre-populate from Web Share Target params (PWA share_target in manifest.json)
+        shared_title = request.GET.get('shared_title', '').strip()
+        shared_text = request.GET.get('shared_text', '').strip()
+        shared_url = request.GET.get('shared_url', '').strip()
+        if shared_title:
+            initial['name'] = shared_title
+        if shared_text or shared_url:
+            initial['notes'] = '\n'.join(filter(None, [shared_text, shared_url]))
+
+        form = ItemForm(initial=initial, user=request.user)
 
     return render(request, 'create-item.html', {'form': form, 'ocr_enabled': ocr_enabled(), 'known_issuers': _known_issuers(request.user)})
 
@@ -683,6 +694,8 @@ def edit_item(request, item_uuid):
     item = get_object_or_404(Item, id=item_uuid)
     if not has_item_access(item, request.user):
         return HttpResponse("Unauthorized", status=403)
+    if not _check_item_edit_permission(item, request.user):
+        return HttpResponse("Forbidden: viewer role cannot edit items", status=403)
     original_redeem_code = item.redeem_code # Store the original redeem code
     original_code_type = item.code_type  # Store the original code type
     old_file_path = item.file.path if item.file else None  # Store the old file path
@@ -969,6 +982,8 @@ def delete_item(request, item_uuid):
     item = get_object_or_404(Item, id=item_uuid)
     if not has_item_access(item, request.user):
         return HttpResponse("Unauthorized", status=403)
+    if not _check_item_edit_permission(item, request.user):
+        return HttpResponse("Forbidden: viewer role cannot delete items", status=403)
 
     # Delete the associated file if it exists
     if item.file:
@@ -1141,7 +1156,9 @@ def delete_document(request, document_id):
 @require_POST
 @login_required
 def toggle_item_status(request, item_id):
-    item = get_object_or_404(Item, id=item_id, user=request.user)
+    item = get_object_or_404(Item, id=item_id)
+    if not _check_item_edit_permission(item, request.user):
+        return HttpResponse("Forbidden", status=403)
     desc_txt = _('Marked as used, removing remaining value')
 
     if item.is_used:
@@ -2335,6 +2352,8 @@ def toggle_archive_item(request, item_uuid):
     item = get_object_or_404(Item, id=item_uuid)
     if not has_item_access(item, request.user):
         return HttpResponse("Unauthorized", status=403)
+    if not _check_item_edit_permission(item, request.user):
+        return HttpResponse("Forbidden: viewer role cannot archive items", status=403)
 
     item.is_archived = not item.is_archived
     item.save(update_fields=['is_archived'])
@@ -2365,7 +2384,7 @@ def _bulk_selected_items(request):
         data = {}
     item_ids = data.get('item_ids') or []
     items = list(Item.objects.filter(id__in=item_ids))
-    accessible = [item for item in items if has_item_access(item, request.user)]
+    accessible = [item for item in items if _check_item_edit_permission(item, request.user)]
     skipped = len(item_ids) - len(accessible)
     return accessible, skipped, data
 
@@ -2728,7 +2747,8 @@ def _log_wallet_activity(wallet, actor, action, item=None, detail=''):
 def _check_item_edit_permission(item, user):
     """
     Returns True when user may write to item (create/edit/delete/toggle).
-    Viewer-role wallet collaborators are denied write access.
+    Viewer-role WalletMembership collaborators are denied write access.
+    The old wallet.shared_with M2M grants full edit access (backward compat).
     """
     if item.user == user:
         return True
@@ -2738,6 +2758,10 @@ def _check_item_edit_permission(item, user):
         return False
     if item.wallet.user == user:
         return True
+    # Old sharing system: all M2M collaborators have full edit access.
+    if item.wallet.shared_with.filter(pk=user.id).exists():
+        return True
+    # New WalletMembership system: only editors may write.
     try:
         membership = WalletMembership.objects.get(wallet=item.wallet, user=user)
         return membership.role == WalletMembership.ROLE_EDITOR
@@ -2903,6 +2927,32 @@ def custom_login(request):
     return render(request, 'registration/login.html', {'error': error, 'next': next_url})
 
 
+def _generate_totp_backup_codes(device):
+    """Generate 8 single-use backup codes, store as hashed values, return plaintext."""
+    from django.contrib.auth.hashers import make_password
+    import secrets
+    device.backup_codes.all().delete()
+    plaintext = []
+    for _ in range(8):
+        code = secrets.token_hex(4).upper()  # e.g. "A3B70C9D"
+        formatted = f"{code[:4]}-{code[4:]}"
+        device.backup_codes.create(code_hash=make_password(code))
+        plaintext.append(formatted)
+    return plaintext
+
+
+def _consume_totp_backup_code(device, raw_token):
+    """Return True and mark code used if raw_token matches any unused backup code."""
+    from django.contrib.auth.hashers import check_password
+    token = raw_token.upper().replace('-', '').replace(' ', '')
+    for bc in device.backup_codes.filter(used=False):
+        if check_password(token, bc.code_hash):
+            bc.used = True
+            bc.save(update_fields=['used'])
+            return True
+    return False
+
+
 @login_required
 def totp_setup(request):
     """Generate a new TOTP secret, display QR code, wait for confirmation."""
@@ -2924,8 +2974,12 @@ def totp_setup(request):
             device.secret = secret
             device.confirmed = True
             device.save()
+            plaintext_codes = _generate_totp_backup_codes(device)
             messages.success(request, _('Two-factor authentication enabled.'))
-            return redirect('session_management')
+            return render(request, 'totp_setup.html', {
+                'setup_complete': True,
+                'backup_codes': plaintext_codes,
+            })
         else:
             messages.error(request, _('Invalid code. Please try again.'))
 
@@ -2965,8 +3019,10 @@ def totp_verify(request):
         token = request.POST.get('token', '').strip().replace(' ', '')
         try:
             device = user.totp_device
-            totp = pyotp.TOTP(device.secret)
-            if totp.verify(token, valid_window=1):
+            verified = pyotp.TOTP(device.secret).verify(token, valid_window=1)
+            if not verified:
+                verified = _consume_totp_backup_code(device, token)
+            if verified:
                 _login(request, user)
                 del request.session['_totp_user_id']
                 next_url = request.session.pop('_totp_next', '')
@@ -3010,14 +3066,17 @@ def session_management(request):
     try:
         totp_device = request.user.totp_device
         totp_enabled = totp_device.confirmed
+        backup_codes_remaining = totp_device.backup_codes.filter(used=False).count() if totp_enabled else 0
     except TOTPDevice.DoesNotExist:
         totp_enabled = False
+        backup_codes_remaining = 0
 
     recent_logins = LoginAuditLog.objects.filter(user=request.user).order_by('-timestamp')[:20]
 
     return render(request, 'session_management.html', {
         'user_sessions': user_sessions,
         'totp_enabled': totp_enabled,
+        'backup_codes_remaining': backup_codes_remaining,
         'recent_logins': recent_logins,
     })
 

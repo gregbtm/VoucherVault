@@ -5511,7 +5511,10 @@ class TOTPTests(TestCase):
         resp = self.client.post(reverse('totp_setup'), {'token': token, 'secret': secret})
         device.refresh_from_db()
         self.assertTrue(device.confirmed)
-        self.assertRedirects(resp, reverse('session_management'))
+        # After confirmation the view renders the backup-codes page (200) rather than redirecting.
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.context['setup_complete'])
+        self.assertEqual(len(resp.context['backup_codes']), 8)
 
     def test_totp_confirm_with_invalid_token_rejected(self):
         import pyotp

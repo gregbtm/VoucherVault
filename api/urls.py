@@ -9,11 +9,14 @@ router = DefaultRouter()
 router.register('items', views.ItemViewSet, basename='item')
 router.register('transactions', views.TransactionViewSet, basename='transaction')
 router.register('wallets', views.WalletViewSet, basename='wallet')
+router.register('wallet-memberships', views.WalletMembershipViewSet, basename='wallet-membership')
+router.register('wallet-activity', views.WalletActivityViewSet, basename='wallet-activity')
 router.register('tags', views.TagViewSet, basename='tag')
 router.register('notifications/rules', views.NotificationRuleViewSet, basename='notification-rule')
 router.register('notifications/log', views.NotificationLogViewSet, basename='notification-log')
 router.register('imports/jobs', views.ImportJobViewSet, basename='import-job')
 router.register('merchants', views.MerchantProfileViewSet, basename='merchant')
+router.register('webhooks', views.UserWebhookViewSet, basename='webhook')
 
 urlpatterns = [
     path('auth/token/', obtain_auth_token, name='api-token-auth'),

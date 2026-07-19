@@ -66,3 +66,26 @@ class VoucherVaultClient:
 
     def get_analytics_summary(self) -> dict:
         return self._request('GET', 'analytics/summary/')
+
+    def get_expiry_timeline(self) -> dict:
+        return self._request('GET', 'analytics/expiry-timeline/')
+
+    def list_wallets(self) -> dict:
+        return self._request('GET', 'wallets/')
+
+    def create_wallet(self, payload: dict) -> dict:
+        return self._request('POST', 'wallets/', json=payload)
+
+    def list_tags(self) -> dict:
+        return self._request('GET', 'tags/')
+
+    def list_webhooks(self) -> dict:
+        return self._request('GET', 'webhooks/')
+
+    def list_wallet_memberships(self, wallet_id: str | None = None) -> dict:
+        params = {'wallet': wallet_id} if wallet_id else {}
+        return self._request('GET', 'wallet-memberships/', params=params)
+
+    def list_wallet_activity(self, wallet_id: str | None = None) -> dict:
+        params = {'wallet': wallet_id} if wallet_id else {}
+        return self._request('GET', 'wallet-activity/', params=params)

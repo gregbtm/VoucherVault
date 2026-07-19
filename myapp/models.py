@@ -753,6 +753,20 @@ class TOTPDevice(models.Model):
         return f"TOTP for {self.user.username} ({'confirmed' if self.confirmed else 'pending'})"
 
 
+class TOTPBackupCode(models.Model):
+    """Single-use backup code for TOTP recovery. Stored as a Django password hash."""
+    device = models.ForeignKey(TOTPDevice, on_delete=models.CASCADE, related_name='backup_codes')
+    code_hash = models.CharField(max_length=128)
+    used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Backup code for {self.device.user.username} ({'used' if self.used else 'available'})"
+
+
 class LoginAuditLog(models.Model):
     """Immutable record of every login attempt (Phase F)."""
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='login_audit_logs')

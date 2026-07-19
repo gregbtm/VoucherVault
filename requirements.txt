@@ -47,3 +47,7 @@ Pillow==12.3.0
 
 # APPLE WALLET EXPORT
 cryptography==49.0.0
+
+# MCP SERVER
+mcp==1.10.1
+httpx==0.28.1

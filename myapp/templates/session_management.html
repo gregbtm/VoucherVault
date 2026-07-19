@@ -21,10 +21,23 @@
         <div class="card-body">
           <h5 class="card-title"><i class="bi bi-shield-lock me-1"></i> {% trans "Two-Factor Authentication" %}</h5>
           {% if totp_enabled %}
-          <div class="alert alert-success d-flex align-items-center gap-2">
+          <div class="alert alert-success d-flex align-items-center gap-2 mb-2">
             <i class="bi bi-check-circle-fill"></i>
             <span>{% trans "2FA is enabled on your account." %}</span>
           </div>
+          {% if backup_codes_remaining == 0 %}
+          <div class="alert alert-warning d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <span>{% trans "All backup codes have been used. Re-enable 2FA to generate new ones." %}</span>
+          </div>
+          {% elif backup_codes_remaining <= 2 %}
+          <div class="alert alert-warning d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span>{% blocktrans with n=backup_codes_remaining %}Only {{ n }} backup code(s) remaining. Consider regenerating by disabling and re-enabling 2FA.{% endblocktrans %}</span>
+          </div>
+          {% else %}
+          <p class="small text-muted mb-2">{% blocktrans with n=backup_codes_remaining %}{{ n }} backup codes remaining.{% endblocktrans %}</p>
+          {% endif %}
           <form method="POST" action="{% url 'totp_disable' %}" onsubmit="return confirm('{% trans "Disable two-factor authentication? Your account will be less secure." %}')">
             {% csrf_token %}
             <button type="submit" class="btn btn-outline-danger">

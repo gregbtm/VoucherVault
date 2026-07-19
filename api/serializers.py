@@ -8,7 +8,11 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from imports.models import ImportJob
-from myapp.models import Item, ItemShare, MerchantProfile, Tag, Transaction, UserPreference, UserProfile, Wallet
+from myapp.models import (
+    Item, ItemShare, MerchantProfile, Tag, Transaction,
+    UserPreference, UserProfile, UserWebhook, Wallet,
+    WalletActivity, WalletMembership,
+)
 from myapp.utils import generate_code_image_base64
 from notify.models import NotificationLog, NotificationRule
 
@@ -331,4 +335,50 @@ class MerchantProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = MerchantProfile
         fields = ['id', 'name', 'domain', 'logo_url', 'brand_color', 'fetched_at', 'balance_check_url']
+        read_only_fields = fields
+
+
+class UserWebhookSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserWebhook
+        fields = ['id', 'name', 'url', 'secret', 'events', 'enabled', 'created_at']
+        read_only_fields = ['id', 'created_at']
+        extra_kwargs = {'secret': {'write_only': True}}
+
+    def validate_events(self, value):
+        valid = {c[0] for c in UserWebhook.EVENT_CHOICES}
+        bad = [e for e in value if e not in valid]
+        if bad:
+            raise serializers.ValidationError(f"Unknown event types: {bad}")
+        return value
+
+
+class WalletMembershipSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+    wallet_name = serializers.CharField(source='wallet.name', read_only=True)
+    set_username = serializers.CharField(write_only=True, required=False)
+
+    class Meta:
+        model = WalletMembership
+        fields = ['id', 'wallet', 'username', 'wallet_name', 'role', 'joined_at', 'set_username']
+        read_only_fields = ['id', 'username', 'wallet_name', 'joined_at']
+
+    def validate(self, attrs):
+        set_username = attrs.pop('set_username', None)
+        if set_username and not attrs.get('user'):
+            from django.contrib.auth.models import User as _User
+            try:
+                attrs['user'] = _User.objects.get(username=set_username)
+            except _User.DoesNotExist:
+                raise serializers.ValidationError({'set_username': 'User not found.'})
+        return attrs
+
+
+class WalletActivitySerializer(serializers.ModelSerializer):
+    actor_username = serializers.CharField(source='actor.username', read_only=True, default='Deleted user')
+    item_display = serializers.CharField(source='item_name', read_only=True)
+
+    class Meta:
+        model = WalletActivity
+        fields = ['id', 'wallet', 'actor_username', 'action', 'item_display', 'detail', 'timestamp']
         read_only_fields = fields

@@ -140,6 +140,10 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 107 — Advanced Collaboration (Role-based Shared Wallets)](#phase-107--advanced-collaboration-role-based-shared-wallets)
 - [Phase 108 — Integrations & Automation (Outbound Webhooks)](#phase-108--integrations--automation-outbound-webhooks)
 - [Phase 109 — Security & Audit (TOTP 2FA, Login Log, Session Management)](#phase-109--security--audit-totp-2fa-login-log-session-management)
+- [Phase 110 — Hardened Write Permissions (viewer-role enforcement)](#phase-110--hardened-write-permissions-viewer-role-enforcement)
+- [Phase 111 — TOTP Backup Recovery Codes](#phase-111--totp-backup-recovery-codes)
+- [Phase 112 — REST API Coverage (Webhooks, WalletMembership, WalletActivity)](#phase-112--rest-api-coverage-webhooks-walletmembership-walletactivity)
+- [Phase 113 — PWA share_target + MCP server extensions](#phase-113--pwa-share_target--mcp-server-extensions)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -5576,6 +5580,131 @@ active sessions.
   `WalletMembershipTests` (7), `UserWebhookTests` (5), `TOTPTests` (6),
   `SessionManagementTests` (3), `LoginAuditLogTests` (2),
   `CustomLoginTests` (4); all 586 tests pass
+
+## Phase 110 — Hardened Write Permissions (viewer-role enforcement)
+
+Closes the gap where viewer-role wallet members could silently perform write
+operations (edit, delete, archive, bulk actions) on items they were only
+supposed to read.
+
+- **`myapp/views.py`** — `_check_item_edit_permission(item, user)` was already
+  defined but never called from write paths; now invoked explicitly in:
+  - `edit_item` (returns 403 if viewer)
+  - `delete_item` (returns 403 if viewer)
+  - `toggle_item_status` — queryset filter also relaxed from `user=request.user`
+    to allow editor-role wallet collaborators to toggle items they didn't create
+  - `toggle_archive_item` (returns 403 if viewer)
+  - `_bulk_selected_items` — gate changed from read-level `has_item_access` to
+    write-level `_check_item_edit_permission`
+
+- **`myapp/views.py`** — `_check_item_edit_permission` itself updated to
+  also honour the old `wallet.shared_with` M2M (backward compat: legacy
+  collaborators in the M2M are treated as editors)
+
+- **`myapp/tests.py`** — existing `test_collaborator_can_delete_item_in_shared_wallet`
+  continues to pass; no regression to old-style sharing
+
+## Phase 111 — TOTP Backup Recovery Codes
+
+Eliminates the 2FA lockout risk when a user loses their authenticator app.
+Eight single-use recovery codes are generated at setup and accepted as a
+fallback in the verify flow.
+
+- **`myapp/models.py`** — new `TOTPBackupCode(device, code_hash, used,
+  created_at)` model; codes are stored as Django password hashes
+  (`make_password`) so plaintext is never persisted
+
+- **`myapp/migrations/0068_totp_backup_codes.py`** — creates the
+  `TOTPBackupCode` table
+
+- **`myapp/views.py`** — two new helpers:
+  - `_generate_totp_backup_codes(device)` — generates 8 × 8-char hex codes,
+    hashes and stores each via `make_password`, returns plaintext list
+    formatted as `XXXX-XXXX`
+  - `_consume_totp_backup_code(device, raw_token)` — strips dashes, checks
+    each unused code hash via `check_password`, marks the matching code used
+  - `totp_setup` POST success branch now calls `_generate_totp_backup_codes`
+    and renders the backup-codes display page (200) instead of redirecting
+  - `totp_verify` POST now tries `_consume_totp_backup_code` as a fallback
+    when the TOTP token fails
+  - `session_management` now exposes `backup_codes_remaining` to the template
+
+- **`myapp/templates/totp_setup.html`** — rewritten with two branches:
+  `setup_complete=True` shows codes in a dark monospace box with a
+  "Copy all codes" JS button; `setup_complete=False` shows the original
+  QR/confirm form
+
+- **`myapp/templates/session_management.html`** — 2FA card now shows
+  remaining code count, with a warning alert at ≤ 2 and a danger alert at 0
+
+- **`myapp/tests.py`** — `test_totp_confirm_with_valid_token` updated to
+  expect 200 + `setup_complete=True` + 8 backup codes in context
+
+## Phase 112 — REST API Coverage (Webhooks, WalletMembership, WalletActivity)
+
+Three new DRF ViewSets expose the models added in Phases 107-108 over the
+existing REST API, closing the gap so all major entities are API-accessible.
+
+- **`api/serializers.py`** — three new serializers:
+  - `UserWebhookSerializer` — `secret` is write-only; `validate_events`
+    checks against `UserWebhook.EVENT_CHOICES`
+  - `WalletMembershipSerializer` — `set_username` write-only resolves to
+    a `User` on creation; `username` / `wallet_name` read-only
+  - `WalletActivitySerializer` — fully read-only; `actor_username` and
+    `item_display` computed fields
+
+- **`api/views.py`** — three new ViewSets:
+  - `UserWebhookViewSet` — full CRUD; `@action(detail=False)` `test_fire`
+    endpoint sends an HMAC-SHA256 signed dummy payload to the webhook URL
+  - `WalletMembershipViewSet` — scoped to `wallet__user=request.user`;
+    supports `?wallet=` filter; update/destroy guard verifies wallet
+    ownership
+  - `WalletActivityViewSet` — read-only; scoped to wallets owned OR where
+    user is a member; supports `?wallet=` filter; ordered by `-timestamp`
+
+- **`api/urls.py`** — router registrations for `webhooks/`,
+  `wallet-memberships/`, and `wallet-activity/`
+
+## Phase 113 — PWA share_target + MCP server extensions
+
+### PWA share_target
+
+Makes VoucherVault a registered share destination on mobile — Android and
+iOS users can now tap "Share" on any app and send content directly to the
+"Add item" form.
+
+- **`myapp/templates/manifest.json`** (new) — overrides the `django-pwa`
+  package template (Django's template loader finds `myapp`'s copy first
+  since `myapp` precedes `pwa` in `INSTALLED_APPS`). Adds:
+  ```json
+  "share_target": {
+    "action": "/en/items/create/",
+    "method": "GET",
+    "params": { "title": "shared_title", "text": "shared_text", "url": "shared_url" }
+  }
+  ```
+
+- **`myapp/views.py`** — `create_item` GET branch now reads `shared_title`,
+  `shared_text`, and `shared_url` query params and pre-populates `name`
+  and `notes` on the form initial data
+
+### MCP server extensions
+
+The existing `mcp_server/` package is extended with tools for the new API
+endpoints added in Phase 112.
+
+- **`mcp_server/client.py`** — six new methods:
+  `get_expiry_timeline()`, `list_wallets()`, `create_wallet(payload)`,
+  `list_tags()`, `list_webhooks()`, `list_wallet_memberships(wallet_id)`,
+  `list_wallet_activity(wallet_id)`
+
+- **`mcp_server/server.py`** — six new `@mcp.tool()` functions:
+  `get_expiry_timeline`, `list_wallets`, `create_wallet`, `list_tags`,
+  `list_webhooks`, `list_wallet_activity`
+
+- **`mcp_server/run_tests.py`** — 9 new test cases across two new classes
+  (`ToolFunctionTests` additions + `NewClientMethodTests`); all 20 MCP tests
+  pass standalone (`python -m unittest run_tests -v`)
 
 ## New environment variables
 

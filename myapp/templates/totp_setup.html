@@ -16,6 +16,44 @@
 <section class="section">
   <div class="row justify-content-center">
     <div class="col-lg-6">
+
+      {% if setup_complete %}
+      <div class="card border-success">
+        <div class="card-body">
+          <h5 class="card-title text-success"><i class="bi bi-shield-check me-1"></i> {% trans "2FA Enabled" %}</h5>
+          <p>{% trans "Two-factor authentication is now active on your account." %}</p>
+
+          <div class="alert alert-warning">
+            <strong><i class="bi bi-exclamation-triangle me-1"></i> {% trans "Save these backup codes now" %}</strong>
+            <p class="mb-2 small">{% trans "Each code can only be used once. If you lose access to your authenticator app, you can sign in with one of these codes. They will not be shown again." %}</p>
+            <div class="font-monospace bg-dark text-white rounded p-3 mb-2" style="letter-spacing:.1em; line-height:2;">
+              {% for code in backup_codes %}
+              <div>{{ code }}</div>
+              {% endfor %}
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyBackupCodes()">
+              <i class="bi bi-clipboard me-1"></i> {% trans "Copy all codes" %}
+            </button>
+          </div>
+
+          <a href="{% url 'session_management' %}" class="btn btn-primary">
+            <i class="bi bi-arrow-right me-1"></i> {% trans "Done" %}
+          </a>
+        </div>
+      </div>
+
+      <script>
+      function copyBackupCodes() {
+        const codes = {{ backup_codes|safe }};
+        navigator.clipboard.writeText(codes.join('\n')).then(() => {
+          const btn = document.querySelector('[onclick="copyBackupCodes()"]');
+          btn.innerHTML = '<i class="bi bi-check me-1"></i> Copied!';
+          setTimeout(() => btn.innerHTML = '<i class="bi bi-clipboard me-1"></i> Copy all codes', 2000);
+        });
+      }
+      </script>
+
+      {% else %}
       <div class="card">
         <div class="card-body">
           <h5 class="card-title"><i class="bi bi-shield-lock me-1"></i> {% trans "Authenticator App" %}</h5>
@@ -52,6 +90,8 @@
           </form>
         </div>
       </div>
+      {% endif %}
+
     </div>
   </div>
 </section>
