@@ -48,6 +48,7 @@ from imports.tasks import update_google_wallet_pass_task
 from notify.tasks import notify_balance_changed, notify_item_archived, notify_item_created, notify_item_shared, notify_item_used
 from ocr.backends import ocr_enabled
 from django.db.models import Count, Sum, Q
+from django.db.models.functions import TruncMonth
 from django.db.models.functions import Coalesce, Lower, Trim
 from django.db.models import Value
 from django.utils.text import get_valid_filename
@@ -123,20 +124,38 @@ def ping(request):
 def dashboard(request):
     user = request.user
 
-    total_items = Item.objects.filter(user=user, is_used=False).count()
-    available_items = Item.objects.filter(user=user, is_used=False, expiry_date__gte=timezone.now()).count()
-    used_items = Item.objects.filter(user=user, is_used=True).count()
-    expired_items = Item.objects.filter(user=user, expiry_date__lt=timezone.now(), is_used=False).count()
-
-    # Get user preferences for currency settings
+    # Load preferences and site config once — analytics helpers accept explicit
+    # values so they don't each fire their own SiteConfiguration.load() call.
     preferences, _ = UserPreference.objects.get_or_create(user=user)
     fixer_api_key = preferences.fixer_api_key
     default_currency = preferences.default_currency or 'GBP'
 
-    # Get threshold days from environment variable or default to 30
-    threshold_days = SiteConfiguration.load().expiry_threshold_days
-    # Calculate soon-to-expire date (used for both "soon expiring" count and at-risk value)
-    soon_expiry_date = now() + timedelta(days=threshold_days)
+    site_cfg = SiteConfiguration.load()
+    threshold_days = site_cfg.expiry_threshold_days
+    now_dt = timezone.now()
+    soon_expiry_date = now_dt + timedelta(days=threshold_days)
+
+    # Single aggregate replaces 9 separate COUNT queries
+    counts = Item.objects.filter(user=user).aggregate(
+        total_items=Count('id', filter=Q(is_used=False)),
+        available_items=Count('id', filter=Q(is_used=False, expiry_date__gte=now_dt)),
+        used_items=Count('id', filter=Q(is_used=True)),
+        expired_items=Count('id', filter=Q(is_used=False, expiry_date__lt=now_dt)),
+        coupons_count=Count('id', filter=Q(is_used=False, type='coupon', expiry_date__gte=now_dt)),
+        vouchers_count=Count('id', filter=Q(is_used=False, type='voucher', expiry_date__gte=now_dt)),
+        giftcards_count=Count('id', filter=Q(is_used=False, type='giftcard', expiry_date__gte=now_dt)),
+        loyaltycards_count=Count('id', filter=Q(is_used=False, type='loyaltycard', expiry_date__gte=now_dt)),
+        soon_expiring_items=Count('id', filter=Q(is_used=False, expiry_date__gte=now_dt, expiry_date__lt=soon_expiry_date)),
+    )
+    total_items = counts['total_items']
+    available_items = counts['available_items']
+    used_items = counts['used_items']
+    expired_items = counts['expired_items']
+    coupons_count = counts['coupons_count']
+    vouchers_count = counts['vouchers_count']
+    giftcards_count = counts['giftcards_count']
+    loyaltycards_count = counts['loyaltycards_count']
+    soon_expiring_items = counts['soon_expiring_items']
 
     # Calculate the current total value of available money-type items
     items = Item.objects.with_current_balance().filter(
@@ -193,11 +212,6 @@ def dashboard(request):
             # Mixed currencies, no API key
             needs_fixer_key = True
 
-    coupons_count = Item.objects.filter(user=user, type='coupon', is_used=False, expiry_date__gte=timezone.now()).count()
-    vouchers_count = Item.objects.filter(user=user, type='voucher', is_used=False, expiry_date__gte=timezone.now()).count()
-    giftcards_count = Item.objects.filter(user=user, type='giftcard', is_used=False, expiry_date__gte=timezone.now()).count()
-    loyaltycards_count = Item.objects.filter(user=user, type='loyaltycard', is_used=False, expiry_date__gte=timezone.now()).count()
-
     # Count the number of items shared by the user
     shared_items_count_by_you = ItemShare.objects.filter(shared_by=user).values('item').distinct().count()
     shared_items_count_with_you = ItemShare.objects.filter(
@@ -206,15 +220,12 @@ def dashboard(request):
         item__expiry_date__gte=timezone.localtime().date()
     ).exclude(item__user=user).values('item').distinct().count()
 
-    # Count the number of items soon expiring based on EXPIRY_THRESHOLD_DAYS
-    soon_expiring_items = Item.objects.filter(
-        user=user,
-        is_used=False,
-        expiry_date__gte=now(),
-        expiry_date__lt=soon_expiry_date
-    ).count()
-
-    items_by_wallet = get_items_by_wallet(user)
+    # Pass site_cfg values explicitly so helpers skip their own SiteConfiguration.load() calls
+    items_by_wallet = get_items_by_wallet(user, limit=site_cfg.wallet_chart_limit)
+    expiring_soon_list = get_expiring_soon_items(
+        user, days=threshold_days, limit=site_cfg.expiring_soon_limit
+    )
+    expiry_calendar = build_expiry_calendar(user, months_ahead=site_cfg.calendar_months_ahead)
 
     context = {
         'total_items': total_items,
@@ -228,14 +239,14 @@ def dashboard(request):
         'coupons_count': coupons_count,
         'vouchers_count': vouchers_count,
         'giftcards_count': giftcards_count,
-        'loyaltycards_count':loyaltycards_count,
+        'loyaltycards_count': loyaltycards_count,
         'expired_items': expired_items,
-        "soon_expiring_items": soon_expiring_items,
+        'soon_expiring_items': soon_expiring_items,
         'items_by_wallet': items_by_wallet,
         'wallet_chart_height': max(200, len(items_by_wallet) * 40 + 60),
-        'expiring_soon_list': get_expiring_soon_items(user),
+        'expiring_soon_list': expiring_soon_list,
         'expiry_threshold_days': threshold_days,
-        'expiry_calendar': build_expiry_calendar(user),
+        'expiry_calendar': expiry_calendar,
         'shared_items_count_by_you': shared_items_count_by_you,
         'shared_items_count_with_you': shared_items_count_with_you,
     }
@@ -301,20 +312,31 @@ def show_items(request):
     all_accessible_items = Item.objects.filter(Q(user=user) | Q(wallet__shared_with=user)).distinct()
     user_items = all_accessible_items.exclude(is_archived=True)
     threshold_days = SiteConfiguration.load().expiry_threshold_days
-    soon_expiry_date = now() + timedelta(days=threshold_days)
+    now_dt = timezone.now()
+    soon_expiry_date = now_dt + timedelta(days=threshold_days)
 
-    available_count = user_items.filter(is_used=False, expiry_date__gte=timezone.now()).count()
-    soon_expiring_count = user_items.filter(is_used=False, expiry_date__gte=now(), expiry_date__lt=soon_expiry_date).count()
-    used_count = user_items.filter(is_used=True).count()
-    expired_count = user_items.filter(expiry_date__lt=timezone.now(), is_used=False).count()
-    archived_count = all_accessible_items.filter(is_archived=True).count()
+    # Two aggregates replace 9 separate COUNT queries.
+    # COUNT(DISTINCT id) is correct for queries through the wallet M2M join.
+    item_counts = user_items.aggregate(
+        available=Count('id', distinct=True, filter=Q(is_used=False, expiry_date__gte=now_dt)),
+        soon_expiring=Count('id', distinct=True, filter=Q(is_used=False, expiry_date__gte=now_dt, expiry_date__lt=soon_expiry_date)),
+        used=Count('id', distinct=True, filter=Q(is_used=True)),
+        expired=Count('id', distinct=True, filter=Q(is_used=False, expiry_date__lt=now_dt)),
+        voucher=Count('id', distinct=True, filter=Q(is_used=False, expiry_date__gte=now_dt, type='voucher')),
+        giftcard=Count('id', distinct=True, filter=Q(is_used=False, expiry_date__gte=now_dt, type='giftcard')),
+        coupon=Count('id', distinct=True, filter=Q(is_used=False, expiry_date__gte=now_dt, type='coupon')),
+        loyaltycard=Count('id', distinct=True, filter=Q(is_used=False, expiry_date__gte=now_dt, type='loyaltycard')),
+    )
+    archived_count = all_accessible_items.filter(is_archived=True).distinct().count()
 
-    # Type counts (from available items only)
-    available_items_qs = user_items.filter(is_used=False, expiry_date__gte=timezone.now())
-    voucher_count = available_items_qs.filter(type='voucher').count()
-    giftcard_count = available_items_qs.filter(type='giftcard').count()
-    coupon_count = available_items_qs.filter(type='coupon').count()
-    loyaltycard_count = available_items_qs.filter(type='loyaltycard').count()
+    available_count = item_counts['available']
+    soon_expiring_count = item_counts['soon_expiring']
+    used_count = item_counts['used']
+    expired_count = item_counts['expired']
+    voucher_count = item_counts['voucher']
+    giftcard_count = item_counts['giftcard']
+    coupon_count = item_counts['coupon']
+    loyaltycard_count = item_counts['loyaltycard']
 
     # Base query
     if filter_value == 'shared_by_me':
@@ -460,11 +482,13 @@ def expiry_timeline(request):
         .order_by('expiry_date', 'name')
     )
 
+    # Evaluate once — splitting in Python avoids 4 separate DB round-trips
+    all_items = list(base)
     bands = [
-        {'label': 'This week', 'items': list(base.filter(expiry_date__lte=in_7))},
-        {'label': 'This month', 'items': list(base.filter(expiry_date__gt=in_7, expiry_date__lte=in_30))},
-        {'label': 'Next 3 months', 'items': list(base.filter(expiry_date__gt=in_30, expiry_date__lte=in_90))},
-        {'label': 'Beyond 3 months', 'items': list(base.filter(expiry_date__gt=in_90))},
+        {'label': 'This week',       'items': [i for i in all_items if i.expiry_date <= in_7]},
+        {'label': 'This month',      'items': [i for i in all_items if in_7 < i.expiry_date <= in_30]},
+        {'label': 'Next 3 months',   'items': [i for i in all_items if in_30 < i.expiry_date <= in_90]},
+        {'label': 'Beyond 3 months', 'items': [i for i in all_items if i.expiry_date > in_90]},
     ]
 
     issuers = [item.issuer for band in bands for item in band['items']]
@@ -485,7 +509,7 @@ def expiry_timeline(request):
 
 @login_required
 def view_item(request, item_uuid):
-    item = get_object_or_404(Item, id=item_uuid)
+    item = get_object_or_404(Item.objects.select_related('wallet', 'user'), id=item_uuid)
     if not has_item_access(item, request.user):
         return HttpResponse("Unauthorized", status=403)
 
@@ -1510,6 +1534,7 @@ def sharing_center(request):
     shares = ItemShare.objects.filter(
         Q(shared_with_user=current_user) | Q(shared_by=current_user)
     ).select_related('item', 'shared_by', 'shared_with_user') \
+     .prefetch_related('item__transactions') \
      .order_by('item__expiry_date')
 
     unique_items = {}
@@ -2540,3 +2565,121 @@ def delete_tag(request, tag_id):
     tag.delete()  # Items keep existing; only the tag association is removed.
     messages.success(request, _('Tag deleted successfully!'))
     return redirect('manage_tags')
+
+
+@require_GET
+@login_required
+def analytics(request):
+    user = request.user
+    now_dt = timezone.now()
+    today = timezone.localtime(now_dt).date()
+
+    # Build 12-month label sequence, oldest → newest
+    months_seq = []
+    for i in range(11, -1, -1):
+        m_offset = today.month - i
+        y_offset = 0
+        while m_offset <= 0:
+            m_offset += 12
+            y_offset -= 1
+        months_seq.append(dt.date(today.year + y_offset, m_offset, 1).strftime('%b %Y'))
+
+    twelve_months_ago = now_dt - timedelta(days=366)
+
+    monthly_added = (
+        Item.objects.filter(user=user, created_at__gte=twelve_months_ago)
+        .annotate(month=TruncMonth('created_at'))
+        .values('month')
+        .annotate(count=Count('id'))
+        .order_by('month')
+    )
+    added_by_month = {row['month'].strftime('%b %Y'): row['count'] for row in monthly_added if row['month']}
+    monthly_added_data = [added_by_month.get(m, 0) for m in months_seq]
+
+    monthly_used = (
+        Item.objects.filter(user=user, is_used=True, last_used_at__gte=twelve_months_ago)
+        .annotate(month=TruncMonth('last_used_at'))
+        .values('month')
+        .annotate(count=Count('id'))
+        .order_by('month')
+    )
+    used_by_month = {row['month'].strftime('%b %Y'): row['count'] for row in monthly_used if row['month']}
+    monthly_used_data = [used_by_month.get(m, 0) for m in months_seq]
+
+    value_by_type = list(
+        Item.objects.filter(user=user, is_used=False, value_type='money', expiry_date__gte=now_dt)
+        .values('type')
+        .annotate(count=Count('id'), total_value=Sum('value'))
+        .order_by('-total_value')
+    )
+    for row in value_by_type:
+        row['total_value'] = float(row['total_value'] or 0)
+
+    top_issuers = list(
+        Item.objects.filter(user=user, is_used=False)
+        .exclude(issuer='')
+        .values('issuer')
+        .annotate(count=Count('id'))
+        .order_by('-count')[:10]
+    )
+
+    currency_breakdown = list(
+        Item.objects.filter(user=user, is_used=False, value_type='money', expiry_date__gte=now_dt)
+        .exclude(type='loyaltycard')
+        .values('currency')
+        .annotate(count=Count('id'), total=Sum('value'))
+        .order_by('-total')
+    )
+    for row in currency_breakdown:
+        row['total'] = float(row['total'] or 0)
+
+    kpis = Item.objects.filter(user=user).aggregate(
+        total=Count('id'),
+        active=Count('id', filter=Q(is_used=False, expiry_date__gte=now_dt)),
+        used=Count('id', filter=Q(is_used=True)),
+        expired=Count('id', filter=Q(is_used=False, expiry_date__lt=now_dt)),
+        archived=Count('id', filter=Q(is_archived=True)),
+    )
+
+    month_start = now_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    wallet_budgets = []
+    for wallet in Wallet.objects.filter(user=user, budget_amount__isnull=False):
+        spent = abs(
+            Transaction.objects.filter(
+                item__wallet=wallet, item__user=user,
+                date__gte=month_start, value__lt=0,
+            ).aggregate(total=Sum('value'))['total'] or 0
+        )
+        budget = float(wallet.budget_amount)
+        percent = min(int(float(spent) / budget * 100), 100) if budget else 0
+        wallet_budgets.append({
+            'name': wallet.name,
+            'color': wallet.color,
+            'budget': budget,
+            'spent': float(spent),
+            'remaining': max(budget - float(spent), 0),
+            'percent': percent,
+            'over_budget': float(spent) > budget,
+        })
+
+    type_labels = {
+        'voucher': 'Vouchers', 'giftcard': 'Gift Cards', 'coupon': 'Coupons',
+        'loyaltycard': 'Loyalty Cards', 'travelpass': 'Travel Passes',
+    }
+
+    context = {
+        'kpis': kpis,
+        'months_seq_json': json.dumps(months_seq),
+        'monthly_added_json': json.dumps(monthly_added_data),
+        'monthly_used_json': json.dumps(monthly_used_data),
+        'value_by_type': value_by_type,
+        'value_by_type_json': json.dumps([
+            {'type': type_labels.get(r['type'], r['type']), 'value': r['total_value'], 'count': r['count']}
+            for r in value_by_type
+        ]),
+        'top_issuers': top_issuers,
+        'top_issuers_json': json.dumps([{'name': r['issuer'], 'count': r['count']} for r in top_issuers]),
+        'currency_breakdown': currency_breakdown,
+        'wallet_budgets': wallet_budgets,
+    }
+    return render(request, 'analytics.html', context)

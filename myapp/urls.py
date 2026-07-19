@@ -64,6 +64,7 @@ urlpatterns = (
     path('tags/', views.manage_tags, name='manage_tags'),
     path('tags/<int:tag_id>/edit', views.edit_tag, name='edit_tag'),
     path('tags/<int:tag_id>/delete', views.delete_tag, name='delete_tag'),
+    path('analytics/', views.analytics, name='analytics'),
     path('expiry-timeline/', views.expiry_timeline, name='expiry_timeline'),
     path('calendar/download/', views.download_ics, name='download_ics'),
     path('calendar/regenerate-token/', views.regenerate_ics_token, name='regenerate_ics_token'),

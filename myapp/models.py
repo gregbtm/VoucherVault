@@ -398,6 +398,16 @@ class Item(models.Model):
 
     objects = ItemQuerySet.as_manager()
 
+    class Meta:
+        indexes = [
+            # Covers the most common filter: user's active items with expiry
+            models.Index(fields=['user', 'is_used', 'expiry_date'], name='item_user_used_expiry'),
+            # Covers per-type count queries on the dashboard and inventory
+            models.Index(fields=['user', 'type', 'is_used'], name='item_user_type_used'),
+            # Covers archived filter (exclude + filter on is_archived)
+            models.Index(fields=['user', 'is_archived', 'is_used'], name='item_user_archived_used'),
+        ]
+
     def save(self, *args, **kwargs):
         # FieldFile._committed is False exactly when a new upload has just
         # been assigned to `file` and not yet written to storage - this is

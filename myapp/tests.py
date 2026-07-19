@@ -5314,3 +5314,76 @@ class NearbyItemsViewTests(TestCase):
         with patch('myapp.views.find_nearby_issuer_matches', return_value=[]) as mock_find:
             self._post()
         self.assertEqual(mock_find.call_args[0][2], 400)
+
+
+class AnalyticsViewTests(TestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice_an', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob_an', password='pw12345!')
+        self.client.force_login(self.alice)
+
+    def _get(self):
+        return self.client.get(reverse('analytics'))
+
+    def test_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('analytics'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('accounts/login', response['Location'])
+
+    def test_renders_for_empty_user(self):
+        response = self._get()
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'analytics.html')
+
+    def test_kpis_count_correctly(self):
+        today = date.today()
+        make_item(self.alice, name='Active', expiry_date=today + timedelta(days=10), is_used=False)
+        make_item(self.alice, name='Used', is_used=True, expiry_date=today + timedelta(days=10))
+        make_item(self.alice, name='Expired', expiry_date=today - timedelta(days=1), is_used=False)
+        response = self._get()
+        kpis = response.context['kpis']
+        self.assertEqual(kpis['total'], 3)
+        self.assertEqual(kpis['active'], 1)
+        self.assertEqual(kpis['used'], 1)
+        self.assertEqual(kpis['expired'], 1)
+
+    def test_only_own_items_in_context(self):
+        make_item(self.alice, name='Alice item')
+        make_item(self.bob, name='Bob item')
+        response = self._get()
+        kpis = response.context['kpis']
+        self.assertEqual(kpis['total'], 1)
+
+    def test_post_not_allowed(self):
+        response = self.client.post(reverse('analytics'))
+        self.assertEqual(response.status_code, 405)
+
+    def test_currency_breakdown_excludes_loyalty_cards(self):
+        today = date.today()
+        make_item(self.alice, type='giftcard', value='50.00', currency='GBP',
+                  value_type='money', expiry_date=today + timedelta(days=30))
+        make_item(self.alice, type='loyaltycard', value='100.00', currency='GBP',
+                  value_type='money', expiry_date=today + timedelta(days=30))
+        response = self._get()
+        currencies = [r['currency'] for r in response.context['currency_breakdown']]
+        # loyalty card excluded from currency breakdown
+        self.assertEqual(len([c for c in currencies if c == 'GBP']), 1)
+        total = next(r['total'] for r in response.context['currency_breakdown'] if r['currency'] == 'GBP')
+        self.assertAlmostEqual(total, 50.0)
+
+    def test_top_issuers_excludes_blank_issuer(self):
+        today = date.today()
+        make_item(self.alice, issuer='Tesco', expiry_date=today + timedelta(days=10))
+        make_item(self.alice, issuer='', expiry_date=today + timedelta(days=10))
+        response = self._get()
+        issuers = [r['issuer'] for r in response.context['top_issuers']]
+        self.assertIn('Tesco', issuers)
+        self.assertNotIn('', issuers)
+
+    def test_json_context_keys_present(self):
+        response = self._get()
+        for key in ('months_seq_json', 'monthly_added_json', 'monthly_used_json',
+                    'value_by_type_json', 'top_issuers_json'):
+            self.assertIn(key, response.context)
+            json.loads(response.context[key])  # must be valid JSON

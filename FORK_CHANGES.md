@@ -134,6 +134,8 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 101 — Mobile PDF viewer, download blank page, copy-toast overlap, barcode fixes](#phase-101--mobile-pdf-viewer-download-blank-page-copy-toast-overlap-barcode-fixes)
 - [Phase 102 — Full-text search, wallet budgets, expiry timeline, recurring items, document OCR](#phase-102--full-text-search-wallet-budgets-expiry-timeline-recurring-items-document-ocr)
 - [Phase 103 — Comprehensive UI polish pass](#phase-103--comprehensive-ui-polish-pass)
+- [Phase 104 — Dedicated Analytics page](#phase-104--dedicated-analytics-page)
+- [Phase 105 — Performance & query optimisation](#phase-105--performance--query-optimisation)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -5351,6 +5353,67 @@ fix structural HTML issues, and improve mobile behaviour.
 
 - **`.gitignore`** — broadened `database/notes.txt` to `database/notes*.txt`
   to cover scratch files with randomised suffixes.
+
+## Phase 104 — Dedicated Analytics page
+
+A full-page analytics view at `/analytics/` accessible from the sidebar nav.
+
+- **`myapp/views.py`** — new `analytics` view (`@require_GET @login_required`):
+  - Five KPI counts in a single `aggregate()` call (total / active / used /
+    expired / archived)
+  - 12-month trend: items added (`created_at`) and used (`last_used_at`),
+    grouped by month via `TruncMonth`, sparse rows filled to a full
+    12-label sequence
+  - Value by item type (pie chart): monetary active items only, grouped by
+    `type` with sum of `value`
+  - Top 10 issuers: active items, excluding blank `issuer`, ranked by count
+  - Currency breakdown table: grouped `currency` + `count` + `Sum('value')`
+    for non-loyalty monetary items expiring in the future
+  - Wallet budgets bar for each wallet with `budget_amount` set, comparing
+    month-to-date negative transactions against the budget ceiling
+  - All data passed to the template as both Django context objects and
+    pre-serialised JSON for ECharts
+
+- **`myapp/templates/analytics.html`** — new template extending `base.html`:
+  - KPI stat tiles (total / active / used / expired / archived)
+  - 12-month trend: grouped bar (added) + line overlay (used) — ECharts
+  - Value by type: donut pie chart — ECharts
+  - Top issuers: horizontal bar chart — ECharts
+  - Currency breakdown table
+  - Wallet budget progress bars with over-budget colour shift
+  - All charts respond to dark-mode toggle via the `darkModeChange` event
+
+- **`myapp/urls.py`** — `path('analytics/', views.analytics, name='analytics')`
+- **`myapp/templates/base.html`** — Analytics nav link in the sidebar, between
+  Dashboard and Inventory
+- **`myapp/tests.py`** — 8 new `AnalyticsViewTests` covering: login guard,
+  405 on POST, empty-user render, KPI correctness, user isolation, loyalty-card
+  exclusion from currency breakdown, blank-issuer exclusion, and JSON validity
+
+## Phase 105 — Performance & query optimisation
+
+Zero schema changes; all gains are from smarter queryset use.
+
+- **`myapp/models.py`** — three composite indexes on `Item`:
+  - `(user, is_used, expiry_date)` — covers the most common active-items filter
+  - `(user, type, is_used)` — covers per-type count queries on Dashboard and Inventory
+  - `(user, is_archived, is_used)` — covers archived-exclude filter
+  - Migration: `myapp/migrations/0064_item_composite_indexes.py`
+
+- **`myapp/views.py`** — hot-path query consolidation:
+  - **Dashboard**: 9 separate `.count()` calls → one `Item.objects.aggregate()`
+    with conditional `Count('id', filter=Q(...))` per metric; `SiteConfiguration.load()`
+    called once and passed explicitly to analytics helpers to eliminate 3
+    redundant DB reads per request
+  - **Inventory (`show_items`)**: 9 `.count()` calls on an M2M-joined queryset →
+    2 (`aggregate()` with `Count(distinct=True, filter=...)` + one count for
+    archived); `distinct=True` on each `Count` prevents double-counting through
+    the `wallet__shared_with` M2M join
+  - **`view_item`**: `get_object_or_404(Item, ...)` → `get_object_or_404(Item.objects.select_related('wallet', 'user'), ...)`
+  - **`sharing_center`**: added `.prefetch_related('item__transactions')` to the
+    `ItemShare` queryset, eliminating an N+1 on `item.get_current_balance()`
+  - **`expiry_timeline`**: 4 `.filter()` calls on the same base queryset →
+    `list(base)` evaluated once, split into time-bands in Python
 
 ## New environment variables
 

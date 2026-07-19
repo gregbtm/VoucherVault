@@ -1,0 +1,483 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% load static %}
+
+{% block content %}
+
+<style>
+.analytics-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+.analytics-header {
+  margin-bottom: 2rem;
+}
+.analytics-header h1 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--text-color, #212529);
+}
+.analytics-subtitle {
+  color: var(--text-muted, #6c757d);
+  font-size: 0.95rem;
+  margin: 0;
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--border-color, #dee2e6);
+}
+.section-header i {
+  font-size: 1.25rem;
+  color: var(--primary-color, #4154f1);
+}
+.section-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-color, #212529);
+}
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.kpi-card {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #dee2e6);
+  border-radius: 12px;
+  padding: 1.25rem 1rem;
+  text-align: center;
+  transition: box-shadow 0.2s;
+}
+.kpi-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+.kpi-value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 0.35rem;
+  color: var(--primary-color, #4154f1);
+}
+.kpi-label {
+  font-size: 0.78rem;
+  color: var(--text-muted, #6c757d);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.kpi-card.danger .kpi-value { color: #dc3545; }
+.kpi-card.warning .kpi-value { color: #fd7e14; }
+.kpi-card.success .kpi-value { color: #198754; }
+.kpi-card.muted .kpi-value { color: #6c757d; }
+
+.chart-card {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #dee2e6);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.chart-inner {
+  width: 100%;
+  height: 280px;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+@media (max-width: 768px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+.table-card {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #dee2e6);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+.table-card table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.table-card thead th {
+  background: var(--table-head-bg, #f8f9fa);
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #6c757d);
+  border-bottom: 1px solid var(--border-color, #dee2e6);
+}
+.table-card tbody td {
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--border-color, #dee2e6);
+  color: var(--text-color, #212529);
+}
+.table-card tbody tr:last-child td { border-bottom: none; }
+.table-card tbody tr:hover { background: var(--row-hover, rgba(0,0,0,0.02)); }
+
+.budget-bar-wrap {
+  padding: 0 1.5rem 1.5rem;
+}
+.budget-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.budget-label {
+  flex: 0 0 120px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-color, #212529);
+}
+.budget-bar-bg {
+  flex: 1;
+  background: var(--border-color, #dee2e6);
+  border-radius: 6px;
+  height: 10px;
+  overflow: hidden;
+  position: relative;
+}
+.budget-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.6s ease;
+}
+.budget-bar-fill.over { background: #dc3545; }
+.budget-numbers {
+  flex: 0 0 110px;
+  font-size: 0.78rem;
+  color: var(--text-muted, #6c757d);
+  text-align: right;
+}
+.no-data-msg {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--text-muted, #6c757d);
+  font-size: 0.9rem;
+}
+.no-data-msg i {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: 0.5rem;
+  opacity: 0.4;
+}
+
+[data-bs-theme="dark"] .kpi-card,
+.dark-mode .kpi-card,
+body.dark-mode .kpi-card {
+  background: var(--card-bg, #1e1e2e);
+  border-color: var(--border-color, #2d2d3f);
+}
+</style>
+
+<div class="analytics-container">
+
+  <!-- Header -->
+  <div class="analytics-header">
+    <h1><i class="bi bi-bar-chart-line me-2" style="color:var(--primary-color,#4154f1)"></i>{% trans "Analytics" %}</h1>
+    <p class="analytics-subtitle">{% trans "Portfolio health, trends, and value breakdown" %}</p>
+  </div>
+
+  <!-- KPI Row -->
+  <div class="section-header">
+    <i class="bi bi-speedometer2"></i>
+    <h2>{% trans "Summary" %}</h2>
+  </div>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-value">{{ kpis.total }}</div>
+      <div class="kpi-label">{% trans "Total Items" %}</div>
+    </div>
+    <div class="kpi-card success">
+      <div class="kpi-value">{{ kpis.active }}</div>
+      <div class="kpi-label">{% trans "Active" %}</div>
+    </div>
+    <div class="kpi-card warning">
+      <div class="kpi-value">{{ kpis.used }}</div>
+      <div class="kpi-label">{% trans "Used / Redeemed" %}</div>
+    </div>
+    <div class="kpi-card danger">
+      <div class="kpi-value">{{ kpis.expired }}</div>
+      <div class="kpi-label">{% trans "Expired" %}</div>
+    </div>
+    <div class="kpi-card muted">
+      <div class="kpi-value">{{ kpis.archived }}</div>
+      <div class="kpi-label">{% trans "Archived" %}</div>
+    </div>
+  </div>
+
+  <!-- Trend chart -->
+  <div class="section-header">
+    <i class="bi bi-graph-up"></i>
+    <h2>{% trans "12-Month Trend" %}</h2>
+  </div>
+  <div class="chart-card">
+    <div id="trendChart" class="chart-inner"></div>
+  </div>
+
+  <div class="two-col">
+    <!-- Value by Type -->
+    <div>
+      <div class="section-header">
+        <i class="bi bi-pie-chart"></i>
+        <h2>{% trans "Value by Type" %}</h2>
+      </div>
+      <div class="chart-card">
+        {% if value_by_type %}
+          <div id="valueTypeChart" class="chart-inner"></div>
+        {% else %}
+          <div class="no-data-msg"><i class="bi bi-bar-chart"></i>{% trans "No monetary items with value" %}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Top Issuers -->
+    <div>
+      <div class="section-header">
+        <i class="bi bi-building"></i>
+        <h2>{% trans "Top Issuers" %}</h2>
+      </div>
+      <div class="chart-card">
+        {% if top_issuers %}
+          <div id="issuersChart" class="chart-inner"></div>
+        {% else %}
+          <div class="no-data-msg"><i class="bi bi-building"></i>{% trans "No issuer data yet" %}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Currency breakdown -->
+  <div class="section-header">
+    <i class="bi bi-currency-exchange"></i>
+    <h2>{% trans "Value by Currency" %}</h2>
+  </div>
+  {% if currency_breakdown %}
+  <div class="table-card" style="margin-bottom:1.5rem;">
+    <table>
+      <thead>
+        <tr>
+          <th>{% trans "Currency" %}</th>
+          <th class="text-end">{% trans "Items" %}</th>
+          <th class="text-end">{% trans "Total Value" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in currency_breakdown %}
+        <tr>
+          <td><span class="badge text-bg-secondary">{{ row.currency }}</span></td>
+          <td class="text-end">{{ row.count }}</td>
+          <td class="text-end fw-semibold">{{ row.total|floatformat:2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="chart-card">
+    <div class="no-data-msg"><i class="bi bi-currency-exchange"></i>{% trans "No monetary items with active expiry" %}</div>
+  </div>
+  {% endif %}
+
+  <!-- Wallet Budgets -->
+  {% if wallet_budgets %}
+  <div class="section-header">
+    <i class="bi bi-wallet2"></i>
+    <h2>{% trans "Wallet Budgets — This Month" %}</h2>
+  </div>
+  <div class="chart-card" style="padding-bottom:0.5rem;">
+    <div class="budget-bar-wrap">
+      {% for b in wallet_budgets %}
+      <div class="budget-row">
+        <div class="budget-label" title="{{ b.name }}">
+          <span class="me-1" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{{ b.color }};vertical-align:middle;"></span>
+          {{ b.name }}
+        </div>
+        <div class="budget-bar-bg">
+          <div class="budget-bar-fill {% if b.over_budget %}over{% endif %}"
+               style="width:{{ b.percent }}%;background:{% if b.over_budget %}#dc3545{% else %}{{ b.color }}{% endif %};">
+          </div>
+        </div>
+        <div class="budget-numbers">
+          {{ b.spent|floatformat:2 }} / {{ b.budget|floatformat:2 }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+</div><!-- /.analytics-container -->
+
+<script>
+(function() {
+  const isDark = () => localStorage.getItem('darkMode') === 'enabled';
+
+  const commonTooltip = (dark) => ({
+    backgroundColor: dark ? '#2d2d2d' : '#fff',
+    borderColor: dark ? '#404040' : '#e5e7eb',
+    borderWidth: 1,
+    textStyle: { color: dark ? '#e5e7eb' : '#374151' }
+  });
+
+  /* --- Trend chart --- */
+  const trendEl = document.getElementById('trendChart');
+  if (trendEl) {
+    const months = {{ months_seq_json|safe }};
+    const added  = {{ monthly_added_json|safe }};
+    const used   = {{ monthly_used_json|safe }};
+
+    const buildTrendOpts = (dark) => ({
+      grid: { left: 8, right: 8, top: 24, bottom: 8, containLabel: true },
+      tooltip: { trigger: 'axis', ...commonTooltip(dark) },
+      legend: {
+        data: ['{% trans "Added" %}', '{% trans "Used" %}'],
+        textStyle: { color: dark ? '#9ca3af' : '#6b7280' },
+        top: 0
+      },
+      xAxis: {
+        type: 'category',
+        data: months,
+        axisLabel: { color: dark ? '#9ca3af' : '#6b7280', fontSize: 11, rotate: 30 },
+        axisLine: { lineStyle: { color: dark ? '#404040' : '#dee2e6' } }
+      },
+      yAxis: {
+        type: 'value',
+        minInterval: 1,
+        axisLabel: { color: dark ? '#9ca3af' : '#6b7280' },
+        splitLine: { lineStyle: { color: dark ? '#333' : '#f1f3f5' } }
+      },
+      series: [
+        {
+          name: '{% trans "Added" %}',
+          type: 'bar',
+          data: added,
+          barMaxWidth: 28,
+          itemStyle: { color: '#4154f1', borderRadius: [4, 4, 0, 0] }
+        },
+        {
+          name: '{% trans "Used" %}',
+          type: 'line',
+          data: used,
+          smooth: true,
+          symbol: 'circle',
+          symbolSize: 6,
+          lineStyle: { color: '#22c55e', width: 2 },
+          itemStyle: { color: '#22c55e' }
+        }
+      ]
+    });
+
+    const trendChart = echarts.init(trendEl);
+    trendChart.setOption(buildTrendOpts(isDark()));
+    window.addEventListener('resize', () => trendChart.resize());
+    document.addEventListener('darkModeChange', () => {
+      trendChart.setOption(buildTrendOpts(isDark()));
+    });
+  }
+
+  /* --- Value by Type pie --- */
+  const valueTypeEl = document.getElementById('valueTypeChart');
+  if (valueTypeEl) {
+    const vtData = {{ value_by_type_json|safe }};
+    const typeColors = { 'Vouchers': '#eab308', 'Gift Cards': '#ef4444', 'Coupons': '#22c55e', 'Loyalty Cards': '#3b82f6', 'Travel Passes': '#8b5cf6' };
+
+    const buildVTOpts = (dark) => ({
+      tooltip: {
+        trigger: 'item',
+        formatter: p => `${p.name}<br/>${p.marker} ${p.value.toFixed(2)} (${p.data.count} items)`,
+        ...commonTooltip(dark)
+      },
+      legend: {
+        orient: 'vertical',
+        right: 8,
+        top: 'middle',
+        textStyle: { color: dark ? '#9ca3af' : '#6b7280', fontSize: 12 }
+      },
+      series: [{
+        type: 'pie',
+        radius: ['40%', '70%'],
+        center: ['38%', '50%'],
+        avoidLabelOverlap: true,
+        label: { show: false },
+        emphasis: { label: { show: true, fontSize: 13, fontWeight: 'bold' } },
+        data: vtData.map(d => ({
+          name: d.type,
+          value: d.value,
+          count: d.count,
+          itemStyle: { color: typeColors[d.type] || '#9ca3af' }
+        }))
+      }]
+    });
+
+    const vtChart = echarts.init(valueTypeEl);
+    vtChart.setOption(buildVTOpts(isDark()));
+    window.addEventListener('resize', () => vtChart.resize());
+    document.addEventListener('darkModeChange', () => {
+      vtChart.setOption(buildVTOpts(isDark()));
+    });
+  }
+
+  /* --- Top Issuers bar --- */
+  const issuersEl = document.getElementById('issuersChart');
+  if (issuersEl) {
+    const issuers = {{ top_issuers_json|safe }};
+    const names  = issuers.map(r => r.name);
+    const counts = issuers.map(r => r.count);
+    const colors = ['#4154f1','#3b82f6','#22c55e','#eab308','#ef4444','#8b5cf6','#06b6d4','#f97316','#ec4899','#6366f1'];
+
+    const buildIssuersOpts = (dark) => ({
+      grid: { left: 8, right: 8, top: 8, bottom: 8, containLabel: true },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, ...commonTooltip(dark) },
+      xAxis: {
+        type: 'value',
+        minInterval: 1,
+        axisLabel: { color: dark ? '#9ca3af' : '#6b7280' },
+        splitLine: { lineStyle: { color: dark ? '#333' : '#f1f3f5' } }
+      },
+      yAxis: {
+        type: 'category',
+        data: names.slice().reverse(),
+        axisLabel: { color: dark ? '#9ca3af' : '#6b7280', fontSize: 11 },
+        axisLine: { lineStyle: { color: dark ? '#404040' : '#dee2e6' } }
+      },
+      series: [{
+        type: 'bar',
+        data: counts.slice().reverse().map((v, i) => ({
+          value: v,
+          itemStyle: { color: colors[i % colors.length], borderRadius: [0, 4, 4, 0] }
+        })),
+        barMaxWidth: 20
+      }]
+    });
+
+    const issuersChart = echarts.init(issuersEl);
+    issuersChart.setOption(buildIssuersOpts(isDark()));
+    window.addEventListener('resize', () => issuersChart.resize());
+    document.addEventListener('darkModeChange', () => {
+      issuersChart.setOption(buildIssuersOpts(isDark()));
+    });
+  }
+})();
+</script>
+
+{% endblock %}
