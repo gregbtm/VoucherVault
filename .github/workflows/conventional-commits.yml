@@ -283,8 +283,12 @@ jobs:
     # DAST baseline scan against a live Django instance. fail_action: warn means this
     # reports findings without blocking the build; change to 'fail' once you have reviewed
     # and baselined the initial report (add suppressions to .zap/rules.tsv).
+    # continue-on-error: true keeps this advisory-only job from ever turning the PR red —
+    # the ZAP action itself can fail on transient artifact-upload errors even when
+    # fail_action: warn is set and ZAP found zero FAIL-NEW findings.
     name: DAST - OWASP ZAP Baseline
     runs-on: ubuntu-latest
+    continue-on-error: true
 
     steps:
       - name: Checkout code
