@@ -25,6 +25,57 @@ def check_upstream_version_task():
     check_upstream_version()
 
 @shared_task
+def extract_document_text_task(document_id):
+    """
+    Run OCR on a Document file and store the result in Document.extracted_text.
+    Silently no-ops when OCR is disabled; logs and exits on any extraction error
+    so a failure never blocks the upload response.
+    """
+    import logging
+    _log = logging.getLogger(__name__)
+    from ocr.backends import get_backend, ocr_enabled
+    if not ocr_enabled():
+        return
+    from .models import Document
+    try:
+        document = Document.objects.get(pk=document_id)
+    except Document.DoesNotExist:
+        return
+    try:
+        import mimetypes
+        mime_type = mimetypes.guess_type(document.file.name)[0] or 'application/octet-stream'
+        if mime_type == 'application/pdf':
+            # Rasterise page 1 of the PDF to an image, then OCR it.
+            import pypdfium2 as pdfium
+            document.file.seek(0)
+            pdf = pdfium.PdfDocument(document.file.read())
+            page = pdf[0]
+            bitmap = page.render(scale=2)
+            pil_img = bitmap.to_pil()
+            from io import BytesIO
+            buf = BytesIO()
+            pil_img.save(buf, format='PNG')
+            image_bytes = buf.getvalue()
+            ocr_mime = 'image/png'
+        else:
+            document.file.seek(0)
+            image_bytes = document.file.read()
+            ocr_mime = mime_type
+        result = get_backend().extract(image_bytes, ocr_mime)
+        parts = []
+        for key in ('name', 'issuer', 'description', 'notes'):
+            val = result.get(key)
+            if val:
+                parts.append(str(val))
+        if result.get('code'):
+            parts.append(result['code'])
+        text = '\n'.join(parts)
+        Document.objects.filter(pk=document_id).update(extracted_text=text)
+    except Exception:
+        _log.warning('Document OCR failed for document %s', document_id, exc_info=True)
+
+
+@shared_task
 def mark_expired_commute_outward_tickets():
     """
     Bookkeeping companion to analytics.get_active_today_item(): once a

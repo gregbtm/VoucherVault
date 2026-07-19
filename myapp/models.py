@@ -162,6 +162,11 @@ class Wallet(models.Model):
                    "placed in this wallet, unless a wallet was already chosen. E.g. \"National "
                    "Rail\" to route scanned train tickets straight into a \"Train Tickets\" wallet.",
     )
+    budget_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Optional monthly spending budget for this wallet. When set, a progress bar "
+                   "shows how much of the budget has been spent in the current calendar month.",
+    )
 
     class Meta:
         ordering = ['name']
@@ -371,8 +376,37 @@ class Item(models.Model):
                    "Informational only.",
     )
     created_at = models.DateTimeField(auto_now_add=True, null=True)
+    is_recurring = models.BooleanField(
+        default=False,
+        help_text="This item renews periodically (subscription, annual pass, etc.).",
+    )
+    RENEWAL_PERIOD_CHOICES = (
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('biannual', 'Every 6 months'),
+        ('annual', 'Annual'),
+    )
+    renewal_period = models.CharField(
+        max_length=10, blank=True, choices=RENEWAL_PERIOD_CHOICES,
+        help_text="How often this item renews.",
+    )
+    renewal_date = models.DateField(
+        null=True, blank=True,
+        help_text="Next renewal / billing date for recurring items.",
+    )
 
     objects = ItemQuerySet.as_manager()
+
+    class Meta:
+        indexes = [
+            # Covers the most common filter: user's active items with expiry
+            models.Index(fields=['user', 'is_used', 'expiry_date'], name='item_user_used_expiry'),
+            # Covers per-type count queries on the dashboard and inventory
+            models.Index(fields=['user', 'type', 'is_used'], name='item_user_type_used'),
+            # Covers archived filter (exclude + filter on is_archived)
+            models.Index(fields=['user', 'is_archived', 'is_used'], name='item_user_archived_used'),
+        ]
 
     def save(self, *args, **kwargs):
         # FieldFile._committed is False exactly when a new upload has just
@@ -458,6 +492,10 @@ class Document(models.Model):
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='documents')
     file = models.FileField(upload_to=document_upload_path)
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    extracted_text = models.TextField(
+        blank=True, default='',
+        help_text="Text extracted from the document by OCR, populated automatically after upload when OCR is enabled.",
+    )
 
     class Meta:
         ordering = ['-uploaded_at']
@@ -639,6 +677,112 @@ class UpdateCheckStatus(models.Model):
 
     def __str__(self):
         return f"Update check (latest: {self.latest_version or 'unknown'})"
+
+
+# ── Phase C/D/E/F additions ─────────────────────────────────────────────────
+
+class WalletMembership(models.Model):
+    """Role-aware record of a shared-wallet collaboration (Phase D)."""
+    ROLE_VIEWER = 'viewer'
+    ROLE_EDITOR = 'editor'
+    ROLE_CHOICES = [(ROLE_VIEWER, 'Viewer'), (ROLE_EDITOR, 'Editor')]
+
+    wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, related_name='memberships')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='wallet_memberships')
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_EDITOR)
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('wallet', 'user')
+
+    def __str__(self):
+        return f"{self.user.username} on {self.wallet.name} ({self.role})"
+
+
+class WalletActivity(models.Model):
+    """Immutable audit trail for shared-wallet actions (Phase D)."""
+    wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, related_name='activities')
+    actor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='wallet_activities')
+    action = models.CharField(max_length=50)
+    item = models.ForeignKey('Item', on_delete=models.SET_NULL, null=True, blank=True, related_name='wallet_activities')
+    item_name = models.CharField(max_length=255, blank=True)
+    detail = models.CharField(max_length=500, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        actor = self.actor.username if self.actor else '(deleted)'
+        return f"{actor} {self.action} in {self.wallet.name}"
+
+
+class UserWebhook(models.Model):
+    """Per-user outbound webhook fired on item lifecycle events (Phase E)."""
+    EVENT_CHOICES = [
+        ('item_created', 'Item Created'),
+        ('item_used', 'Item Marked Used'),
+        ('item_archived', 'Item Archived'),
+        ('item_balance_changed', 'Balance Updated'),
+        ('item_expiry_warning', 'Expiry Warning'),
+    ]
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='webhooks')
+    name = models.CharField(max_length=100)
+    url = models.URLField()
+    secret = models.CharField(
+        max_length=64, blank=True, default='',
+        help_text="Optional HMAC-SHA256 signing secret. When set, each request includes an X-VoucherVault-Signature header.",
+    )
+    events = models.JSONField(default=list, help_text="List of event types that trigger this webhook.")
+    enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.user.username})"
+
+
+class TOTPDevice(models.Model):
+    """TOTP authenticator app binding for a user (Phase F)."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='totp_device')
+    secret = models.CharField(max_length=32)
+    confirmed = models.BooleanField(default=False)
+    name = models.CharField(max_length=100, default='Authenticator App')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"TOTP for {self.user.username} ({'confirmed' if self.confirmed else 'pending'})"
+
+
+class TOTPBackupCode(models.Model):
+    """Single-use backup code for TOTP recovery. Stored as a Django password hash."""
+    device = models.ForeignKey(TOTPDevice, on_delete=models.CASCADE, related_name='backup_codes')
+    code_hash = models.CharField(max_length=128)
+    used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Backup code for {self.device.user.username} ({'used' if self.used else 'available'})"
+
+
+class LoginAuditLog(models.Model):
+    """Immutable record of every login attempt (Phase F)."""
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='login_audit_logs')
+    username_attempted = models.CharField(max_length=150, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True)
+    success = models.BooleanField()
+    failure_reason = models.CharField(max_length=200, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        status = 'OK' if self.success else 'FAIL'
+        return f"{self.username_attempted} [{status}] at {self.timestamp}"
 
 
 class UpstreamSyncStatus(models.Model):

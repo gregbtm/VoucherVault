@@ -83,8 +83,8 @@ the deep dive.
 <details>
 <summary><strong>🔌 API, Integrations & AI Assistants</strong></summary>
 
-- **Full REST API** — token-authenticated CRUD for items, wallets, tags, and transactions, every endpoint scoped to the authenticated user. Interactive Swagger/OpenAPI docs live at `/api/v1/docs/` — browse and try every endpoint from your browser, no Postman required. Great for a Home Assistant sensor, a personal dashboard, or your own automation. Generate, regenerate, or revoke your own API token from **Profile menu → API Access** — no shell access needed.
-- **MCP server** — a standalone, opt-in service exposing your vault to Claude Desktop, Claude Code, and other [MCP](https://modelcontextprotocol.io/) clients: search items, check what's expiring, log a gift-card spend, or create an item, all through your existing API token. See the [setup guide](docs/MCP_SERVER_SETUP.md).
+- **Full REST API** — token-authenticated CRUD for items, wallets, tags, transactions, webhooks, wallet memberships, and wallet activity, every endpoint scoped to the authenticated user. Interactive Swagger/OpenAPI docs live at `/api/v1/docs/` — browse and try every endpoint from your browser, no Postman required. Great for a Home Assistant sensor, a personal dashboard, or your own automation. Generate, regenerate, or revoke your own API token from **Profile menu → API Access** — no shell access needed.
+- **MCP server** — a standalone, opt-in service exposing your vault to Claude Desktop, Claude Code, and other [MCP](https://modelcontextprotocol.io/) clients: search items, check what's expiring, log a gift-card spend, create items, manage wallets and tags, view webhook config, and browse the wallet activity audit log — all through your existing API token. See the [setup guide](docs/MCP_SERVER_SETUP.md).
 - **Zero-code n8n integration** — the same OpenAPI schema that powers the Swagger docs plugs straight into n8n's HTTP Request Tool or AI Agent node, no custom node needed. See the [setup guide](docs/N8N_SETUP.md). A recipe for syncing gift card/voucher balances to a self-hosted [Firefly III](https://www.firefly-iii.org/) budget is also included — see [`docs/FIREFLY_III_SETUP.md`](docs/FIREFLY_III_SETUP.md).
 - **Webhook lifecycle events** — item created, used, archived, balance changed, or shared, for wiring VoucherVault into n8n, Home Assistant, or anything else that speaks webhooks.
 - Rate limiting on every API write endpoint.
@@ -120,7 +120,7 @@ available.
 - **Wallets** — named folders ("Travel", "Groceries", "Kids' Cards") to group items however makes sense to you.
 - **Tags** — free-form, colour-coded labels, many-to-many with items, with a clickable filter chip row (live counts!) above the Inventory grid.
 - **Notes** — a free-text field on every item for anything the built-in fields don't capture.
-- **Shared wallets** — invite another user by username to collaborate; they get full read/write on every item inside it, no admin access required.
+- **Shared wallets** — invite another user by username to collaborate, with a **viewer or editor role**: editors can create, edit, and delete items; viewers can only read. Both roles can see everything inside the wallet, no admin access required.
 - **Archiving** — retire an item without deleting it, and **last-used tracking** for a real "most recently used" sort.
 - **Bulk actions** — a checkbox select mode with a sticky action bar for archiving, tagging, moving to a wallet, or deleting several items at once.
 - **Card number vs. barcode payload** — a separate field for when a printed member number differs from what's actually encoded in the barcode.
@@ -164,6 +164,7 @@ lifecycle.
 <details>
 <summary><strong>📤 Sharing, Public Links & Merchant Branding</strong></summary>
 
+- **Share content into VoucherVault** — VoucherVault registers as a target in your device's native share sheet (PWA Web Share Target API). Share a retailer page, a confirmation email, or any URL from your browser or another app and it opens the "Add Item" form with the title and URL pre-filled, ready to review and save. Works on Android and desktop Chromium whenever the PWA is installed.
 - **Native OS/browser sharing** — a "Share via…" button hands an item off to your device's real share sheet (Messages, Mail, AirDrop, etc.), with a clipboard-copy fallback on desktop, and a choice between a bare link or one that also includes the code/PIN/balance.
 - A **no-login-required public link** — works for someone with zero VoucherVault account, with view tracking and regenerate/revoke controls. Links auto-expire (configurable), rate-limit repeat requests, and can optionally require an access PIN.
 - Real **merchant brand logos** in link previews on WhatsApp/iMessage/Slack — not a generic icon — without ever exposing the code/PIN/balance to that app's preview crawler.
@@ -206,6 +207,7 @@ lifecycle.
 - **Upstream sync tracking** — see how far behind upstream's latest release this install is, right from Site Settings.
 - Production error logging, so an unhandled exception doesn't just vanish silently.
 - GBP as the default currency for new items and preferences.
+- **TOTP two-factor authentication** — each user can enrol a TOTP authenticator app (Google Authenticator, Authy, etc.) from their **Profile → Security** page. On enrolment, eight single-use backup/recovery codes are shown once for safe offline storage. Session Management lists every active login, device type, and browser, with a one-tap "Sign out everywhere" — useful when you've lost a device. 2FA can be disabled by the user themselves, or by an admin via the Django admin panel.
 - **Login brute-force lockout** — locks an account out after repeated failed login attempts ([django-axes](https://github.com/jazzband/django-axes)), configurable via `AXES_FAILURE_LIMIT`/`AXES_COOLOFF_TIME_HOURS`. Locks by username rather than IP, so one attacker on a shared/CGNAT network can't lock out everyone behind the same address.
 
 </details>

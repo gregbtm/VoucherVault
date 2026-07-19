@@ -160,6 +160,82 @@ class ToolFunctionTests(unittest.TestCase):
         server.set_item_archived('i1', True)
         mock_client.update_item.assert_called_once_with('i1', {'is_archived': True})
 
+    @patch('server._client')
+    def test_list_wallets_unwraps_paginated_results(self, mock_client_factory):
+        mock_client = MagicMock()
+        mock_client.list_wallets.return_value = {'results': [{'id': 'w1', 'name': 'Groceries'}], 'count': 1}
+        mock_client_factory.return_value = mock_client
+
+        result = server.list_wallets()
+        self.assertEqual(result, [{'id': 'w1', 'name': 'Groceries'}])
+
+    @patch('server._client')
+    def test_create_wallet_omits_blank_optionals(self, mock_client_factory):
+        mock_client = MagicMock()
+        mock_client.create_wallet.return_value = {'id': 'w2', 'name': 'Travel'}
+        mock_client_factory.return_value = mock_client
+
+        server.create_wallet('Travel')
+        payload = mock_client.create_wallet.call_args[0][0]
+        self.assertEqual(payload, {'name': 'Travel'})
+        self.assertNotIn('description', payload)
+
+    @patch('server._client')
+    def test_create_wallet_passes_optional_fields(self, mock_client_factory):
+        mock_client = MagicMock()
+        mock_client.create_wallet.return_value = {'id': 'w3'}
+        mock_client_factory.return_value = mock_client
+
+        server.create_wallet('Gifts', description='Gift cards', color='#ff0000')
+        payload = mock_client.create_wallet.call_args[0][0]
+        self.assertEqual(payload['description'], 'Gift cards')
+        self.assertEqual(payload['color'], '#ff0000')
+
+    @patch('server._client')
+    def test_list_tags_unwraps_results(self, mock_client_factory):
+        mock_client = MagicMock()
+        mock_client.list_tags.return_value = {'results': [{'id': 't1', 'name': 'food'}]}
+        mock_client_factory.return_value = mock_client
+
+        result = server.list_tags()
+        self.assertEqual(result, [{'id': 't1', 'name': 'food'}])
+
+    @patch('server._client')
+    def test_list_wallet_activity_passes_wallet_filter(self, mock_client_factory):
+        mock_client = MagicMock()
+        mock_client.list_wallet_activity.return_value = {'results': []}
+        mock_client_factory.return_value = mock_client
+
+        server.list_wallet_activity(wallet_id='w1')
+        mock_client.list_wallet_activity.assert_called_once_with(wallet_id='w1')
+
+
+class NewClientMethodTests(unittest.TestCase):
+    def setUp(self):
+        self.client = VoucherVaultClient(base_url='http://vv.example.com', api_token='tok123')
+
+    @patch('client.requests.request')
+    def test_list_wallets(self, mock_request):
+        mock_request.return_value = _mock_response(200, {'results': []})
+        self.client.list_wallets()
+        args, _ = mock_request.call_args
+        self.assertEqual(args[0], 'GET')
+        self.assertIn('wallets/', args[1])
+
+    @patch('client.requests.request')
+    def test_list_wallet_activity_with_filter(self, mock_request):
+        mock_request.return_value = _mock_response(200, {'results': []})
+        self.client.list_wallet_activity(wallet_id='w99')
+        _args, kwargs = mock_request.call_args
+        self.assertEqual(kwargs['params'], {'wallet': 'w99'})
+
+    @patch('client.requests.request')
+    def test_get_expiry_timeline(self, mock_request):
+        mock_request.return_value = _mock_response(200, [])
+        self.client.get_expiry_timeline()
+        args, _ = mock_request.call_args
+        self.assertIn('expiry-timeline', args[1])
+
 
 if __name__ == '__main__':
     unittest.main()

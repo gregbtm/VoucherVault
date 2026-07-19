@@ -968,6 +968,32 @@ body.dark-mode .error-alert {
                      value='{{ form.notify_days_before.value|default_if_none:"" }}'>
               <small class="form-text text-muted">{% trans "Days before expiry to notify, overriding the global default. Leave blank to use the global setting." %}</small>
             </div>
+
+            <!-- Recurring / Subscription -->
+            <div class="form-group">
+              <div class="d-flex align-items-center gap-2">
+                <input type="checkbox" class="form-check-input" id="is_recurring" name="is_recurring">
+                <label class="form-label mb-0" for="is_recurring">{% trans "Recurring / Subscription" %}</label>
+              </div>
+              <small class="form-text text-muted">{% trans "Check if this item renews periodically (annual pass, subscription, etc.)" %}</small>
+            </div>
+            <div class="form-row" id="recurring-fields" style="display:none">
+              <div class="form-group">
+                <label class="form-label" for="renewal_period">{% trans "Renewal Period" %}</label>
+                <select class="modern-select" id="renewal_period" name="renewal_period">
+                  <option value="">---------</option>
+                  {% for val, label in form.fields.renewal_period.choices %}
+                  {% if val %}
+                  <option value="{{ val }}">{{ label }}</option>
+                  {% endif %}
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="renewal_date">{% trans "Next Renewal Date" %}</label>
+                <input type="date" class="modern-input" id="renewal_date" name="renewal_date">
+              </div>
+            </div>
           </div>
 
           <!-- Additional Info Section -->
@@ -1054,6 +1080,16 @@ function handleSubmitButton() {
     document.getElementById('loadingOverlay').style.display = 'none';
   }
 }
+
+(function () {
+  const cb = document.getElementById('is_recurring');
+  const fields = document.getElementById('recurring-fields');
+  if (cb && fields) {
+    cb.addEventListener('change', function () {
+      fields.style.display = this.checked ? '' : 'none';
+    });
+  }
+})();
 
 function resetTileColor() {
   const tileColorInput = document.getElementById('tile_color');

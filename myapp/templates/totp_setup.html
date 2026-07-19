@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{% trans "Set Up Two-Factor Authentication" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'session_management' %}">{% trans "Security" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "2FA Setup" %}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="row justify-content-center">
+    <div class="col-lg-6">
+
+      {% if setup_complete %}
+      <div class="card border-success">
+        <div class="card-body">
+          <h5 class="card-title text-success"><i class="bi bi-shield-check me-1"></i> {% trans "2FA Enabled" %}</h5>
+          <p>{% trans "Two-factor authentication is now active on your account." %}</p>
+
+          <div class="alert alert-warning">
+            <strong><i class="bi bi-exclamation-triangle me-1"></i> {% trans "Save these backup codes now" %}</strong>
+            <p class="mb-2 small">{% trans "Each code can only be used once. If you lose access to your authenticator app, you can sign in with one of these codes. They will not be shown again." %}</p>
+            <div class="font-monospace bg-dark text-white rounded p-3 mb-2" style="letter-spacing:.1em; line-height:2;">
+              {% for code in backup_codes %}
+              <div>{{ code }}</div>
+              {% endfor %}
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyBackupCodes()">
+              <i class="bi bi-clipboard me-1"></i> {% trans "Copy all codes" %}
+            </button>
+          </div>
+
+          <a href="{% url 'session_management' %}" class="btn btn-primary">
+            <i class="bi bi-arrow-right me-1"></i> {% trans "Done" %}
+          </a>
+        </div>
+      </div>
+
+      <script>
+      function copyBackupCodes() {
+        const codes = {{ backup_codes|safe }};
+        navigator.clipboard.writeText(codes.join('\n')).then(() => {
+          const btn = document.querySelector('[onclick="copyBackupCodes()"]');
+          btn.innerHTML = '<i class="bi bi-check me-1"></i> Copied!';
+          setTimeout(() => btn.innerHTML = '<i class="bi bi-clipboard me-1"></i> Copy all codes', 2000);
+        });
+      }
+      </script>
+
+      {% else %}
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-shield-lock me-1"></i> {% trans "Authenticator App" %}</h5>
+
+          <ol class="mb-4">
+            <li class="mb-2">{% trans "Install an authenticator app (Google Authenticator, Authy, etc.) on your phone." %}</li>
+            <li class="mb-2">{% trans "Scan the QR code below, or enter the secret key manually." %}</li>
+            <li class="mb-2">{% trans "Enter the 6-digit code shown in the app to confirm." %}</li>
+          </ol>
+
+          <div class="text-center mb-3">
+            <img src="data:image/png;base64,{{ qr_b64 }}" alt="{% trans 'QR Code' %}" class="img-fluid" style="max-width:220px; border:8px solid #fff; border-radius:8px;">
+          </div>
+
+          <div class="mb-3 text-center">
+            <small class="text-muted">{% trans "Manual entry key:" %}</small><br>
+            <code class="fs-6 user-select-all">{{ secret }}</code>
+          </div>
+
+          <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="secret" value="{{ secret }}">
+            <div class="mb-3">
+              <label for="token" class="form-label">{% trans "Verification Code" %}</label>
+              <input type="text" id="token" name="token" class="form-control form-control-lg text-center"
+                     maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code"
+                     placeholder="000000" autofocus required>
+            </div>
+            <div class="d-grid">
+              <button type="submit" class="btn btn-primary btn-lg">
+                <i class="bi bi-shield-check me-1"></i> {% trans "Enable 2FA" %}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+</section>
+{% endblock %}

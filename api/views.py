@@ -32,7 +32,11 @@ from imports.pkpass_import import PkpassImportError, extract_pkpass_fields
 from imports.tasks import process_import_job
 from myapp.analytics import get_expiry_timeline, get_summary_stats
 from myapp.merchant_logos import remember_balance_check_url
-from myapp.models import Item, ItemShare, MerchantProfile, Tag, Transaction, UserPreference, UserProfile, Wallet
+from myapp.models import (
+    Item, ItemShare, MerchantProfile, Tag, Transaction,
+    UserPreference, UserProfile, UserWebhook, Wallet,
+    WalletActivity, WalletMembership,
+)
 from myapp.pdf_ticket import decode_barcode_from_pdf, pdf_page_to_png_bytes
 from myapp.scan_learning import apply_learned_corrections
 from notify.models import NotificationLog, NotificationRule
@@ -53,6 +57,9 @@ from .serializers import (
     TransactionSerializer,
     UserPreferenceSerializer,
     UserProfileSerializer,
+    UserWebhookSerializer,
+    WalletActivitySerializer,
+    WalletMembershipSerializer,
     WalletSerializer,
 )
 
@@ -852,3 +859,92 @@ class AnalyticsExpiryTimelineView(APIView):
         except ValueError:
             return Response({'months': 'Must be an integer.'}, status=status.HTTP_400_BAD_REQUEST)
         return Response(get_expiry_timeline(request.user, months_ahead=months))
+
+
+class UserWebhookViewSet(viewsets.ModelViewSet):
+    """CRUD for outbound webhooks owned by the authenticated user."""
+    serializer_class = UserWebhookSerializer
+    permission_classes = [IsAuthenticated, IsOwner]
+
+    def get_queryset(self):
+        return UserWebhook.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='test')
+    def test_fire(self, request, pk=None):
+        """Fire a synthetic test payload to the webhook URL."""
+        from myapp.webhooks import fire_user_webhooks
+        hook = self.get_object()
+        from myapp.models import Item as _Item
+        dummy = _Item(name='Test Item', issuer='VoucherVault', redeem_code='TEST123', value=10)
+        fire_user_webhooks.__wrapped__ = getattr(fire_user_webhooks, '__wrapped__', None)
+        import threading, json, hashlib, hmac, datetime, requests as _requests
+        payload = {
+            'event': 'test',
+            'timestamp': datetime.datetime.utcnow().isoformat() + 'Z',
+            'item': {'name': 'Test Item', 'issuer': 'VoucherVault', 'code': 'TEST123'},
+        }
+        body = json.dumps(payload, ensure_ascii=False).encode()
+        sig = ''
+        if hook.secret:
+            sig = 'sha256=' + hmac.new(hook.secret.encode(), body, hashlib.sha256).hexdigest()
+        headers = {
+            'Content-Type': 'application/json',
+            'X-VoucherVault-Event': 'test',
+            'X-VoucherVault-Signature': sig,
+        }
+        try:
+            resp = _requests.post(hook.url, data=body, headers=headers, timeout=10)
+            return Response({'status_code': resp.status_code, 'ok': resp.ok})
+        except Exception as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+class WalletMembershipViewSet(viewsets.ModelViewSet):
+    """Manage collaborators on wallets you own. Filter by ?wallet=<id>."""
+    serializer_class = WalletMembershipSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = WalletMembership.objects.filter(wallet__user=self.request.user).select_related('user', 'wallet')
+        wallet_id = self.request.query_params.get('wallet')
+        if wallet_id:
+            qs = qs.filter(wallet_id=wallet_id)
+        return qs
+
+    def perform_create(self, serializer):
+        wallet = get_object_or_404(Wallet, pk=self.request.data.get('wallet'), user=self.request.user)
+        serializer.save(wallet=wallet)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.wallet.user != request.user:
+            return Response({'detail': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.wallet.user != request.user:
+            return Response({'detail': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
+
+
+class WalletActivityViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only activity feed for wallets you own or are a member of. Filter by ?wallet=<id>."""
+    serializer_class = WalletActivitySerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [OrderingFilter]
+    ordering = ['-timestamp']
+
+    def get_queryset(self):
+        from django.db.models import Q as _Q
+        qs = WalletActivity.objects.filter(
+            _Q(wallet__user=self.request.user) |
+            _Q(wallet__memberships__user=self.request.user)
+        ).select_related('actor', 'wallet').distinct()
+        wallet_id = self.request.query_params.get('wallet')
+        if wallet_id:
+            qs = qs.filter(wallet_id=wallet_id)
+        return qs

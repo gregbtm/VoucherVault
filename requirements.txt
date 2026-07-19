@@ -1,5 +1,5 @@
 # DEFAULT LIBS
-Django==5.2.15
+Django==5.2.16
 pytz==2026.1.post1
 python-dotenv==1.2.2
 psycopg2-binary==2.9.11
@@ -13,6 +13,7 @@ django-pwa==2.0.1
 
 # AUTH / LOGIN BRUTE-FORCE PROTECTION
 django-axes==8.3.1
+pyotp==2.9.0
 
 # APP SPECIFIC
 qrcode==8.2
@@ -46,3 +47,4 @@ Pillow==12.3.0
 
 # APPLE WALLET EXPORT
 cryptography==49.0.0
+

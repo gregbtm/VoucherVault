@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{% trans "Expiry Timeline" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Inventory" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "Expiry Timeline" %}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="row">
+    <div class="col-12">
+
+      {% for band in bands %}
+      {% if band.items %}
+      <div class="card mb-4">
+        <div class="card-body">
+          <h5 class="card-title">
+            {% if band.label == 'This week' %}<i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>{% endif %}
+            {% if band.label == 'This month' %}<i class="bi bi-clock-history text-warning me-2"></i>{% endif %}
+            {% if band.label == 'Next 3 months' %}<i class="bi bi-calendar-check text-info me-2"></i>{% endif %}
+            {% if band.label == 'Beyond 3 months' %}<i class="bi bi-calendar text-secondary me-2"></i>{% endif %}
+            {% trans band.label %} <span class="badge bg-secondary ms-2">{{ band.items|length }}</span>
+          </h5>
+
+          <div class="list-group list-group-flush">
+            {% for entry in band.items_with_logos %}
+            {% with item=entry.item logo=entry.merchant_logo_url %}
+            <a href="{% url 'view_item' item_uuid=item.id %}" class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3">
+
+              {% if logo %}
+              <img src="{{ logo }}" alt="{{ item.issuer }}" class="timeline-logo rounded">
+              {% else %}
+              <div class="timeline-logo-placeholder rounded d-flex align-items-center justify-content-center">
+                <i class="bi bi-tag-fill"></i>
+              </div>
+              {% endif %}
+
+              <div class="flex-grow-1 overflow-hidden">
+                <div class="fw-semibold text-truncate">{{ item.name }}</div>
+                <div class="text-muted small text-truncate">{{ item.issuer }}</div>
+              </div>
+
+              <div class="text-end flex-shrink-0">
+                <div class="small fw-semibold
+                  {% if band.label == 'This week' %}text-danger{% elif band.label == 'This month' %}text-warning{% else %}text-muted{% endif %}">
+                  {{ item.expiry_date }}
+                </div>
+                {% if item.wallet %}
+                <div class="small text-muted text-truncate" style="max-width:100px;">{{ item.wallet.name }}</div>
+                {% endif %}
+              </div>
+
+            </a>
+            {% endwith %}
+            {% endfor %}
+          </div>
+
+        </div>
+      </div>
+      {% endif %}
+      {% endfor %}
+
+      {% if not bands.0.items and not bands.1.items and not bands.2.items and not bands.3.items %}
+      <div class="card">
+        <div class="card-body text-center py-5 text-muted">
+          <i class="bi bi-check2-all display-4 d-block mb-3"></i>
+          {% trans "No active items to show." %}
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+</section>
+
+<style>
+.timeline-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.timeline-logo-placeholder {
+  width: 40px;
+  height: 40px;
+  background: var(--bs-secondary-bg, #f3f4f6);
+  color: var(--bs-secondary-color, #6c757d);
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+</style>
+{% endblock %}

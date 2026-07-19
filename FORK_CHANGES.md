@@ -124,6 +124,27 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 91 — CI actually runs the test suites now](#phase-91--ci-actually-runs-the-test-suites-now)
 - [Phase 92 — Mark+wordmark lockup on every viewport width, not just desktop](#phase-92--markwordmark-lockup-on-every-viewport-width-not-just-desktop)
 - [Phase 93 — Item form field scoping, a stray comment, and share-page polish](#phase-93--item-form-field-scoping-a-stray-comment-and-share-page-polish)
+- [Phase 94 — Header logo can no longer push the hamburger off-screen](#phase-94--header-logo-can-no-longer-push-the-hamburger-off-screen)
+- [Phase 95 — UK rail eTicket import (PDF parsing + server-side Aztec decode)](#phase-95--uk-rail-eticket-import-pdf-parsing--server-side-aztec-decode)
+- [Phase 96 — Header control order + a GUI page to generate your own API token](#phase-96--header-control-order--a-gui-page-to-generate-your-own-api-token)
+- [Phase 97 — Four layout bugs, and an interactive suggestion engine to replace the silent one](#phase-97--four-layout-bugs-and-an-interactive-suggestion-engine-to-replace-the-silent-one)
+- [Phase 98 — Tilt-to-scan detection: suggest "Mark Used?" from the phone's own motion](#phase-98--tilt-to-scan-detection-suggest-mark-used-from-the-phones-own-motion)
+- [Phase 99 — A "common sense pass": file preview, barcode-only blur, tap-to-copy codes](#phase-99--a-common-sense-pass-file-preview-barcode-only-blur-tap-to-copy-codes)
+- [Phase 100 — "Nearby" widget: suggest an item when a matching shop is close by](#phase-100--nearby-widget-suggest-an-item-when-a-matching-shop-is-close-by)
+- [Phase 101 — Mobile PDF viewer, download blank page, copy-toast overlap, barcode fixes](#phase-101--mobile-pdf-viewer-download-blank-page-copy-toast-overlap-barcode-fixes)
+- [Phase 102 — Full-text search, wallet budgets, expiry timeline, recurring items, document OCR](#phase-102--full-text-search-wallet-budgets-expiry-timeline-recurring-items-document-ocr)
+- [Phase 103 — Comprehensive UI polish pass](#phase-103--comprehensive-ui-polish-pass)
+- [Phase 104 — Dedicated Analytics page](#phase-104--dedicated-analytics-page)
+- [Phase 105 — Performance & query optimisation](#phase-105--performance--query-optimisation)
+- [Phase 106 — Mobile PWA Enhancement](#phase-106--mobile-pwa-enhancement)
+- [Phase 107 — Advanced Collaboration (Role-based Shared Wallets)](#phase-107--advanced-collaboration-role-based-shared-wallets)
+- [Phase 108 — Integrations & Automation (Outbound Webhooks)](#phase-108--integrations--automation-outbound-webhooks)
+- [Phase 109 — Security & Audit (TOTP 2FA, Login Log, Session Management)](#phase-109--security--audit-totp-2fa-login-log-session-management)
+- [Phase 110 — Hardened Write Permissions (viewer-role enforcement)](#phase-110--hardened-write-permissions-viewer-role-enforcement)
+- [Phase 111 — TOTP Backup Recovery Codes](#phase-111--totp-backup-recovery-codes)
+- [Phase 112 — REST API Coverage (Webhooks, WalletMembership, WalletActivity)](#phase-112--rest-api-coverage-webhooks-walletmembership-walletactivity)
+- [Phase 113 — PWA share_target + MCP server extensions](#phase-113--pwa-share_target--mcp-server-extensions)
+- [Phase 114 — OWASP/NCSC CI compliance hardening](#phase-114--owaspncsc-ci-compliance-hardening)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -5221,6 +5242,471 @@ turned out to have a much more useful shape than a naive
   and pointing `overpass_api_url` at a non-default endpoint actually took
   effect end-to-end.
 
+## Phase 101 — Mobile PDF viewer, download blank page, copy-toast overlap, barcode fixes
+
+Six mobile UX bugs fixed:
+
+- **PDF blocked on mobile.** On Android/iOS, browsers block PDFs rendered
+  inside an `<iframe>` with "This content is blocked." The view-item PDF
+  viewer now detects touch-primary devices
+  (`window.matchMedia('(pointer: coarse)').matches`) and opens the file in
+  a new tab instead of trying to inline it; desktop users still see the
+  iframe preview unchanged.
+- **Download leaves a blank page.** Tapping "Download file" navigated the
+  main window to the download URL; cancelling the browser's download prompt
+  left an empty page that required a full refresh to recover. Fixed by
+  adding `target="_blank" rel="noopener"` so the download URL opens in a
+  new tab that immediately closes, keeping the item-detail page intact.
+- **"Copied!" toast overlaps other text.** The previous implementation
+  used `height: 0` to hide the confirmation badge, which let the text
+  overflow its zero-height box and collide with the surrounding code block.
+  Replaced with `position: absolute` so the badge floats over the
+  code block without affecting layout, and added `user-select: none` on the
+  tappable container to suppress the browser's native text-selection UI on
+  long-press.
+- **Barcode key box misaligned.** The barcode/QR panel's "code" text was
+  not centred inside its container. Fixed with explicit `text-align: center`
+  and `align-items: center` on the key box.
+- **Barcode rotation broken.** The rotate slider was overwriting the
+  `transform` set by the zoom slider (and vice versa), so only the
+  last-moved control took effect. Both controls now write a combined
+  `scale(…) rotate(…)` transform in a single assignment.
+- **FORK_CHANGES.md TOC gap.** Phases 94–100 existed in the body but were
+  missing from the table of contents. All seven entries added.
+
+## Phase 102 — Full-text search, wallet budgets, expiry timeline, recurring items, document OCR
+
+Five features that address the most common inventory-management gaps:
+
+- **Full-text search.** The inventory search box previously matched only
+  `name` and `issuer`. It now also searches `redeem_code`, `card_number`,
+  `description`, and `notes`, so "SAVE10" or a partial order number finds
+  the right item immediately. Search placeholder updated accordingly.
+- **Wallet spending budgets.** `Wallet` gains an optional `budget_amount`
+  (decimal). When set, the inventory page shows a colour-coded progress bar
+  below the wallet filter: green → yellow (≥ 80 %) → red (over budget),
+  displaying "X spent / Y budget" for the current calendar month. Spend is
+  derived from the existing `Transaction` ledger (negative-value rows =
+  debits). The `WalletForm` exposes the new field in the wallet edit UI.
+- **Expiry timeline view.** New `/expiry-timeline/` page groups every
+  active, non-archived item (including items in shared wallets) into four
+  bands — "This week", "This month", "Next 3 months", "Beyond 3 months" —
+  each sorted by expiry date. Items show their merchant logo, name, issuer,
+  expiry date, and wallet. An "Timeline" chip in the inventory filter bar
+  links directly to the page.
+- **Recurring / subscription tracking.** `Item` gains three new fields:
+  `is_recurring` (boolean), `renewal_period` (weekly / monthly / quarterly
+  / every 6 months / annual), and `renewal_date` (date). The create- and
+  edit-item forms expose a "Recurring / Subscription" checkbox that
+  conditionally reveals the period select and renewal-date picker. The
+  item-detail page shows a labelled badge row when the item is recurring.
+- **Document/receipt OCR.** After a document is attached to an item, a
+  Celery task (`extract_document_text_task`) runs OCR on it in the
+  background and stores the result in `Document.extracted_text`. PDF
+  attachments are rasterised via `pypdfium2` before OCR. The item-detail
+  page shows an expandable "Extracted text" `<details>` element under each
+  document that has recognised text, making attachment content searchable
+  and readable without downloading the file. Requires `OCR_BACKEND` to be
+  configured; silently skips if OCR is disabled.
+
+**Migration:** `0063_phase102_budget_recurring_ocr` — adds `budget_amount`
+to `wallet`, `is_recurring` / `renewal_period` / `renewal_date` to `item`,
+and `extracted_text` to `document`.
+
+## Phase 103 — Comprehensive UI polish pass
+
+A sweep across every management and settings page to unify alignment,
+fix structural HTML issues, and improve mobile behaviour.
+
+**Changes per file:**
+
+- **`imports/templates/imports/upload.html`** — wrapped the Recent Import
+  Jobs table in `<div class="table-responsive">` so it scrolls cleanly on
+  narrow screens instead of overflowing the card.
+
+- **`myapp/static/assets/css/dark-mode.css`** — added explicit dark-mode
+  overrides for three Phase 102 elements (`budget-bar-wrapper` border,
+  `doc-ocr-pre` background/text, `timeline-logo-placeholder` background)
+  that previously used Bootstrap CSS variables (`--bs-border-color`,
+  `--bs-secondary-bg`) not covered by the app's `body.dark-mode`
+  class-based approach.
+
+- **`myapp/templates/manage-wallets.html`** — wrapped both the "Your
+  Wallets" table and the "Shared With You" table in
+  `<div class="table-responsive">`.
+
+- **`myapp/templates/update_apprise_urls.html`** — full structural rewrite:
+  added missing `<h1>` in the pagetitle block, upgraded `<h6>` card
+  heading to `<h5>`, fixed broken orphaned `<p>` elements (the old
+  template used `<span>text</span><p>` which is invalid HTML), replaced
+  the old Bootstrap horizontal form layout (`col-sm-2` / `col-sm-10`)
+  with a clean vertical layout in a `col-lg-7` column, and added a
+  `.catch()` handler on the AJAX send-test fetch.
+
+- **`myapp/templates/update_preferences.html`** — replaced two hard-coded
+  `style="max-width: 200px;"` inline widths (on the `next_up_max_items`
+  and `nearby_radius_m` inputs) with responsive Bootstrap column classes
+  (`col-md-3` and `col-md-4`) so they scale correctly on small screens.
+
+- **`notify/templates/notify/log.html`** — added a `<h5 class="card-title">`
+  heading inside the card body (previously the card had no visible title),
+  and wrapped the log table in `<div class="table-responsive">`.
+
+- **`notify/templates/notify/rules.html`** — added inline validation error
+  `<div>` elements beneath each backend-specific field (`ntfy_server`,
+  `ntfy_topic`, `webhook_url`, `apprise_urls`) so field-level Django form
+  errors are shown to the user; added `(optional)` label hints for
+  `ntfy_token`, `webhook_header_name`, and `webhook_header_value`; added
+  "One URL per line." help text under `apprise_urls`; wrapped the rules
+  table in `<div class="table-responsive">`.
+
+- **`.gitignore`** — broadened `database/notes.txt` to `database/notes*.txt`
+  to cover scratch files with randomised suffixes.
+
+## Phase 104 — Dedicated Analytics page
+
+A full-page analytics view at `/analytics/` accessible from the sidebar nav.
+
+- **`myapp/views.py`** — new `analytics` view (`@require_GET @login_required`):
+  - Five KPI counts in a single `aggregate()` call (total / active / used /
+    expired / archived)
+  - 12-month trend: items added (`created_at`) and used (`last_used_at`),
+    grouped by month via `TruncMonth`, sparse rows filled to a full
+    12-label sequence
+  - Value by item type (pie chart): monetary active items only, grouped by
+    `type` with sum of `value`
+  - Top 10 issuers: active items, excluding blank `issuer`, ranked by count
+  - Currency breakdown table: grouped `currency` + `count` + `Sum('value')`
+    for non-loyalty monetary items expiring in the future
+  - Wallet budgets bar for each wallet with `budget_amount` set, comparing
+    month-to-date negative transactions against the budget ceiling
+  - All data passed to the template as both Django context objects and
+    pre-serialised JSON for ECharts
+
+- **`myapp/templates/analytics.html`** — new template extending `base.html`:
+  - KPI stat tiles (total / active / used / expired / archived)
+  - 12-month trend: grouped bar (added) + line overlay (used) — ECharts
+  - Value by type: donut pie chart — ECharts
+  - Top issuers: horizontal bar chart — ECharts
+  - Currency breakdown table
+  - Wallet budget progress bars with over-budget colour shift
+  - All charts respond to dark-mode toggle via the `darkModeChange` event
+
+- **`myapp/urls.py`** — `path('analytics/', views.analytics, name='analytics')`
+- **`myapp/templates/base.html`** — Analytics nav link in the sidebar, between
+  Dashboard and Inventory
+- **`myapp/tests.py`** — 8 new `AnalyticsViewTests` covering: login guard,
+  405 on POST, empty-user render, KPI correctness, user isolation, loyalty-card
+  exclusion from currency breakdown, blank-issuer exclusion, and JSON validity
+
+## Phase 105 — Performance & query optimisation
+
+Zero schema changes; all gains are from smarter queryset use.
+
+- **`myapp/models.py`** — three composite indexes on `Item`:
+  - `(user, is_used, expiry_date)` — covers the most common active-items filter
+  - `(user, type, is_used)` — covers per-type count queries on Dashboard and Inventory
+  - `(user, is_archived, is_used)` — covers archived-exclude filter
+  - Migration: `myapp/migrations/0064_item_composite_indexes.py`
+
+- **`myapp/views.py`** — hot-path query consolidation:
+  - **Dashboard**: 9 separate `.count()` calls → one `Item.objects.aggregate()`
+    with conditional `Count('id', filter=Q(...))` per metric; `SiteConfiguration.load()`
+    called once and passed explicitly to analytics helpers to eliminate 3
+    redundant DB reads per request
+  - **Inventory (`show_items`)**: 9 `.count()` calls on an M2M-joined queryset →
+    2 (`aggregate()` with `Count(distinct=True, filter=...)` + one count for
+    archived); `distinct=True` on each `Count` prevents double-counting through
+    the `wallet__shared_with` M2M join
+  - **`view_item`**: `get_object_or_404(Item, ...)` → `get_object_or_404(Item.objects.select_related('wallet', 'user'), ...)`
+  - **`sharing_center`**: added `.prefetch_related('item__transactions')` to the
+    `ItemShare` queryset, eliminating an N+1 on `item.get_current_balance()`
+  - **`expiry_timeline`**: 4 `.filter()` calls on the same base queryset →
+    `list(base)` evaluated once, split into time-bands in Python
+
+## Phase 106 — Mobile PWA Enhancement
+
+- **`myapp/static/assets/js/pwa-install.js`** (new) — install-prompt banner:
+  - Captures the browser's `beforeinstallprompt` event and defers it
+  - Shows a fixed bottom banner after a 2.5-second delay (avoids obscuring
+    page content on initial load); banner height ≥ 56 px, touch targets ≥ 44 px
+  - "Install" button calls `deferredPrompt.prompt()` and awaits `userChoice`
+  - "Dismiss" (×) button sets a `pwa_install_dismissed` key in `localStorage`
+    with the current timestamp; banner is suppressed for 30 days after dismissal
+  - `appinstalled` event also dismisses and clears the deferred prompt
+  - IIFE, no dependencies beyond Bootstrap Icons already on the page
+
+- **`myapp/templates/base.html`** — added `<script>` tag loading
+  `pwa-install.js` after the existing `page-cache-helper.js`
+
+## Phase 107 — Advanced Collaboration (Role-based Shared Wallets)
+
+New `WalletMembership` model stores per-user roles (viewer/editor) on shared
+wallets. New `WalletActivity` model provides an immutable audit trail of all
+actions taken within a wallet by any member.
+
+- **`myapp/models.py`** — two new models appended after `UpdateCheckStatus`:
+  - `WalletMembership(wallet, user, role, joined_at)` — `unique_together`
+    on `(wallet, user)`; roles are `viewer` and `editor`
+  - `WalletActivity(wallet, actor, action, item, item_name, detail, timestamp)`
+    — `actor` is `SET_NULL` on delete; `item` is `SET_NULL` on delete with
+    `item_name` copied at write time so the log survives item deletion
+
+- **`myapp/migrations/0065_wallet_membership_activity.py`** — creates both
+  tables; `RunPython(populate_wallet_memberships)` bootstraps `WalletMembership`
+  rows from existing `Wallet.shared_with` M2M entries (default `editor` role)
+
+- **`myapp/views.py`** — collaboration view changes:
+  - `_log_wallet_activity(wallet, actor, action, item=None, detail='')` helper
+  - `_check_item_edit_permission(item, user)` — returns `True` for the wallet
+    owner or any member with `editor` role; `False` for `viewer` members
+  - `share_wallet` — also creates/updates a `WalletMembership` row with the
+    posted `role` field and logs a `member_added` activity entry
+  - `unshare_wallet` — also deletes the corresponding `WalletMembership` and
+    logs a `member_removed` activity entry
+  - `leave_shared_wallet` — also deletes the `WalletMembership`
+  - `wallet_activity_feed(request, wallet_id)` — paginated chronological feed;
+    only accessible to the wallet owner or any member
+
+- **`myapp/templates/manage-wallets.html`** — collaborator card (edit mode):
+  - Share form gains a `<select name="role">` (Editor / Viewer) inline
+  - Collaborator list loops over `memberships.select_related` instead of
+    `shared_with.all`; shows role badge (blue for editor, grey for viewer)
+  - "View Activity" link to `wallet_activity_feed`
+
+- **`myapp/templates/wallet_activity.html`** (new) — extends `base.html`;
+  Bootstrap Icons per action type (`item_added`, `item_edited`, `item_deleted`,
+  `item_used`, `item_archived`, `member_added`, `member_removed`)
+
+- **`myapp/urls.py`** — `path('wallets/<int:wallet_id>/activity/', ..., name='wallet_activity_feed')`
+
+## Phase 108 — Integrations & Automation (Outbound Webhooks)
+
+Users can register multiple webhook endpoints that are called automatically on
+item lifecycle events. Each hook is HMAC-SHA256 signed and dispatched in a
+daemon thread to avoid blocking the request.
+
+- **`myapp/models.py`** — `UserWebhook(user, name, url, secret, events,
+  enabled, created_at)` appended after `WalletActivity`:
+  - `events` is a `JSONField(default=list)` storing a list of subscribed event
+    type strings
+  - Choices: `item_created`, `item_used`, `item_archived`,
+    `item_balance_changed`, `item_expiry_warning`
+
+- **`myapp/migrations/0066_user_webhook.py`** — creates `UserWebhook` table
+
+- **`myapp/webhooks.py`** (new):
+  - `fire_user_webhooks(user, event_type, item)` — public entry point; loads
+    enabled matching hooks and dispatches in a daemon thread
+  - `_build_payload(event_type, item)` — assembles a JSON-serialisable dict
+    with event type, ISO timestamp, and item fields
+  - `_send_one(hook, payload)` — serialises to JSON bytes, computes
+    `X-VoucherVault-Signature: sha256=<hmac>` header, POSTs with 10 s timeout
+  - Signing: `hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()`
+
+- **`myapp/views.py`** — webhook lifecycle hooks added to four existing paths:
+  item create (`item_created`), balance change (`item_balance_changed`), item
+  mark-used (`item_used`), item archive (`item_archived`); plus new CRUD views:
+  - `manage_webhooks` — list view (GET) / create (POST)
+  - `edit_webhook`, `delete_webhook`, `test_webhook` (fires a dummy payload)
+
+- **`myapp/templates/webhooks.html`** (new) — extends `base.html`; create form
+  on the left; webhook list on the right with inline `<details>` edit form,
+  Test and Delete buttons
+
+- **`myapp/urls.py`** — five new URL patterns under `webhooks/`
+- **`myapp/templates/base.html`** — "Webhooks" link added to user dropdown
+
+## Phase 109 — Security & Audit (TOTP 2FA, Login Log, Session Management)
+
+Full TOTP two-factor authentication, a login audit log driven by Django
+signals, and a session-management page where users can view and revoke their
+active sessions.
+
+- **`requirements.txt`** — `pyotp==2.9.0` added; `qrcode==8.2` was already
+  present
+
+- **`myapp/models.py`** — two new models appended after `UserWebhook`:
+  - `TOTPDevice(user, secret, confirmed, name, created_at)` —
+    `OneToOneField`; `confirmed=False` until the user verifies the first token
+  - `LoginAuditLog(user, username_attempted, ip_address, user_agent, success,
+    failure_reason, timestamp)` — `user` is `SET_NULL` on delete
+
+- **`myapp/migrations/0067_totp_login_audit.py`** — creates both tables
+
+- **`myapp/signals.py`** — two new receivers:
+  - `audit_login_success` on `user_logged_in` → writes `LoginAuditLog(success=True)`
+  - `audit_login_failure` on `user_login_failed` → writes
+    `LoginAuditLog(success=False, failure_reason='Invalid credentials')`
+  - `_client_ip(request)` helper reads `HTTP_X_FORWARDED_FOR` then
+    `REMOTE_ADDR`
+
+- **`myproject/urls.py`** — `path('accounts/login/', myapp_views.custom_login,
+  name='login')` registered BEFORE `include('django.contrib.auth.urls')` so
+  the custom view wins
+
+- **`myapp/views.py`** — new security views:
+  - `custom_login` — standard `authenticate()`; if the user has a confirmed
+    `TOTPDevice`, stores `_totp_user_id` in the session and redirects to
+    `totp_verify` without calling `auth.login()`; otherwise completes login
+    normally
+  - `totp_verify` — reads `_totp_user_id`, validates the posted 6-digit token
+    via `pyotp.TOTP(secret).verify(token, valid_window=1)`, calls
+    `auth.login()`, clears the session staging key
+  - `totp_setup` — generates a QR code URI via `pyotp`, renders it as a
+    base64 PNG (`qrcode.make(...)`), creates an unconfirmed `TOTPDevice`;
+    on valid POST token sets `confirmed=True`
+  - `totp_disable` — `@require_POST`; deletes the `TOTPDevice`
+  - `session_management` — queries `django.contrib.sessions.models.Session`,
+    decodes each via `.get_decoded()`, filters to `_auth_user_id == str(user.pk)`;
+    shows TOTP status and the last 50 `LoginAuditLog` entries
+  - `revoke_session` — deletes a session by key (guards against revoking the
+    current session)
+
+- **`myapp/templates/totp_setup.html`** (new) — setup page; shows QR code
+  (`data:image/png;base64,...`), the manual secret key, and a 6-digit
+  confirmation input
+- **`myapp/templates/totp_verify.html`** (new) — standalone verify page (does
+  not extend `base.html`; user is not yet authenticated); dark login aesthetic;
+  "Cancel & sign out" link
+- **`myapp/templates/session_management.html`** (new) — two-column layout:
+  2FA status + active sessions on the left, login history table on the right
+- **`myapp/templates/base.html`** — "Security" link added to user dropdown
+
+- **`myapp/urls.py`** — seven new URL patterns:
+  `totp_setup`, `totp_verify`, `totp_disable`, `session_management`,
+  `revoke_session`, `wallet_activity_feed`, plus webhook group
+
+- **`myapp/tests.py`** — 28 new tests across 6 new test classes:
+  `WalletMembershipTests` (7), `UserWebhookTests` (5), `TOTPTests` (6),
+  `SessionManagementTests` (3), `LoginAuditLogTests` (2),
+  `CustomLoginTests` (4); all 586 tests pass
+
+## Phase 110 — Hardened Write Permissions (viewer-role enforcement)
+
+Closes the gap where viewer-role wallet members could silently perform write
+operations (edit, delete, archive, bulk actions) on items they were only
+supposed to read.
+
+- **`myapp/views.py`** — `_check_item_edit_permission(item, user)` was already
+  defined but never called from write paths; now invoked explicitly in:
+  - `edit_item` (returns 403 if viewer)
+  - `delete_item` (returns 403 if viewer)
+  - `toggle_item_status` — queryset filter also relaxed from `user=request.user`
+    to allow editor-role wallet collaborators to toggle items they didn't create
+  - `toggle_archive_item` (returns 403 if viewer)
+  - `_bulk_selected_items` — gate changed from read-level `has_item_access` to
+    write-level `_check_item_edit_permission`
+
+- **`myapp/views.py`** — `_check_item_edit_permission` itself updated to
+  also honour the old `wallet.shared_with` M2M (backward compat: legacy
+  collaborators in the M2M are treated as editors)
+
+- **`myapp/tests.py`** — existing `test_collaborator_can_delete_item_in_shared_wallet`
+  continues to pass; no regression to old-style sharing
+
+## Phase 111 — TOTP Backup Recovery Codes
+
+Eliminates the 2FA lockout risk when a user loses their authenticator app.
+Eight single-use recovery codes are generated at setup and accepted as a
+fallback in the verify flow.
+
+- **`myapp/models.py`** — new `TOTPBackupCode(device, code_hash, used,
+  created_at)` model; codes are stored as Django password hashes
+  (`make_password`) so plaintext is never persisted
+
+- **`myapp/migrations/0068_totp_backup_codes.py`** — creates the
+  `TOTPBackupCode` table
+
+- **`myapp/views.py`** — two new helpers:
+  - `_generate_totp_backup_codes(device)` — generates 8 × 8-char hex codes,
+    hashes and stores each via `make_password`, returns plaintext list
+    formatted as `XXXX-XXXX`
+  - `_consume_totp_backup_code(device, raw_token)` — strips dashes, checks
+    each unused code hash via `check_password`, marks the matching code used
+  - `totp_setup` POST success branch now calls `_generate_totp_backup_codes`
+    and renders the backup-codes display page (200) instead of redirecting
+  - `totp_verify` POST now tries `_consume_totp_backup_code` as a fallback
+    when the TOTP token fails
+  - `session_management` now exposes `backup_codes_remaining` to the template
+
+- **`myapp/templates/totp_setup.html`** — rewritten with two branches:
+  `setup_complete=True` shows codes in a dark monospace box with a
+  "Copy all codes" JS button; `setup_complete=False` shows the original
+  QR/confirm form
+
+- **`myapp/templates/session_management.html`** — 2FA card now shows
+  remaining code count, with a warning alert at ≤ 2 and a danger alert at 0
+
+- **`myapp/tests.py`** — `test_totp_confirm_with_valid_token` updated to
+  expect 200 + `setup_complete=True` + 8 backup codes in context
+
+## Phase 112 — REST API Coverage (Webhooks, WalletMembership, WalletActivity)
+
+Three new DRF ViewSets expose the models added in Phases 107-108 over the
+existing REST API, closing the gap so all major entities are API-accessible.
+
+- **`api/serializers.py`** — three new serializers:
+  - `UserWebhookSerializer` — `secret` is write-only; `validate_events`
+    checks against `UserWebhook.EVENT_CHOICES`
+  - `WalletMembershipSerializer` — `set_username` write-only resolves to
+    a `User` on creation; `username` / `wallet_name` read-only
+  - `WalletActivitySerializer` — fully read-only; `actor_username` and
+    `item_display` computed fields
+
+- **`api/views.py`** — three new ViewSets:
+  - `UserWebhookViewSet` — full CRUD; `@action(detail=False)` `test_fire`
+    endpoint sends an HMAC-SHA256 signed dummy payload to the webhook URL
+  - `WalletMembershipViewSet` — scoped to `wallet__user=request.user`;
+    supports `?wallet=` filter; update/destroy guard verifies wallet
+    ownership
+  - `WalletActivityViewSet` — read-only; scoped to wallets owned OR where
+    user is a member; supports `?wallet=` filter; ordered by `-timestamp`
+
+- **`api/urls.py`** — router registrations for `webhooks/`,
+  `wallet-memberships/`, and `wallet-activity/`
+
+## Phase 113 — PWA share_target + MCP server extensions
+
+### PWA share_target
+
+Makes VoucherVault a registered share destination on mobile — Android and
+iOS users can now tap "Share" on any app and send content directly to the
+"Add item" form.
+
+- **`myapp/templates/manifest.json`** (new) — overrides the `django-pwa`
+  package template (Django's template loader finds `myapp`'s copy first
+  since `myapp` precedes `pwa` in `INSTALLED_APPS`). Adds:
+  ```json
+  "share_target": {
+    "action": "/en/items/create/",
+    "method": "GET",
+    "params": { "title": "shared_title", "text": "shared_text", "url": "shared_url" }
+  }
+  ```
+
+- **`myapp/views.py`** — `create_item` GET branch now reads `shared_title`,
+  `shared_text`, and `shared_url` query params and pre-populates `name`
+  and `notes` on the form initial data
+
+### MCP server extensions
+
+The existing `mcp_server/` package is extended with tools for the new API
+endpoints added in Phase 112.
+
+- **`mcp_server/client.py`** — six new methods:
+  `get_expiry_timeline()`, `list_wallets()`, `create_wallet(payload)`,
+  `list_tags()`, `list_webhooks()`, `list_wallet_memberships(wallet_id)`,
+  `list_wallet_activity(wallet_id)`
+
+- **`mcp_server/server.py`** — six new `@mcp.tool()` functions:
+  `get_expiry_timeline`, `list_wallets`, `create_wallet`, `list_tags`,
+  `list_webhooks`, `list_wallet_activity`
+
+- **`mcp_server/run_tests.py`** — 9 new test cases across two new classes
+  (`ToolFunctionTests` additions + `NewClientMethodTests`); all 20 MCP tests
+  pass standalone (`python -m unittest run_tests -v`)
+
 ## New environment variables
 
 On top of everything documented in the README, this fork adds:
@@ -5259,6 +5745,76 @@ On top of everything documented in the README, this fork adds:
 | `AXES_COOLOFF_TIME_HOURS` | How many hours a lockout lasts before the account can try again. | `1` |
 
 See `docker/env.example` for the full, commented list.
+
+---
+
+## Phase 114 — OWASP/NCSC CI compliance hardening
+
+### Immediate CVE remediation
+
+- **`requirements.txt`** — Django bumped `5.2.15 → 5.2.16` (three CVEs:
+  cache data leak PYSEC-2026-2090, `DomainNameValidator` header injection,
+  `GDALRaster` out-of-bounds memory read)
+- **`requirements.txt`** — removed `mcp==1.10.1` and `httpx==0.28.1`; these
+  were incorrectly added to the main Django app's requirements in Phase 113 —
+  the MCP server is standalone with its own `mcp_server/requirements.txt`
+  (which already pins `mcp==1.28.1`). The four CVEs in `mcp 1.10.1` were
+  never reachable from the Django process, but the packages had no place here
+
+### CI pipeline additions (`.github/workflows/conventional-commits.yml`)
+
+**Existing job fixes:**
+- `bandit` scope extended: now scans `api/`, `notify/`, `imports/`, `ocr/`
+  in addition to `myapp/` and `myproject/` (four Django apps were previously
+  excluded from all SAST)
+- `semgrep` rule set extended: added `p/django` for Django-specific security
+  patterns (CSRF bypass, ORM injection, unvalidated redirects)
+- All security scan jobs (`bandit`, `grype`, `semgrep`, `pip-audit`,
+  `secret-scan`, `trivy`, `zap-scan`) had `needs: [changelog]` removed —
+  `changelog` skips on `pull_request` events, which silently caused every
+  security job to skip on PRs too (only `test` correctly avoided this, with
+  an explicit comment). Security scans now run on both push and PR
+- `test` job: added `npm audit --audit-level=high` (JS dependency CVEs)
+  and `python manage.py check` (Django system integrity check)
+
+**New blocking jobs (required by `deploy`):**
+
+| Job | Tool | What it covers |
+|-----|------|----------------|
+| `pip-audit` | pip-audit | Python dep CVEs from PyPI advisory DB — fails CI on any finding (OWASP A06 / NCSC P3) |
+| `secret-scan` | TruffleHog | Full git history scanned for leaked credentials and keys — only verified findings block CI (OWASP A02 / NCSC P5) |
+| `trivy` | Aqua Trivy | Filesystem CVEs + Dockerfile/IaC misconfig, HIGH/CRITICAL only (OWASP A05 / NCSC P4) |
+
+**New advisory job (reports but does not block `deploy`):**
+
+| Job | Tool | What it covers |
+|-----|------|----------------|
+| `zap-scan` | OWASP ZAP | DAST baseline scan against a live Django instance; `fail_action: warn` so findings are reported without blocking — change to `fail` once initial baseline is reviewed and `.zap/rules.tsv` suppressions are added (OWASP A04/A05/A07 / NCSC P3) |
+
+### Dependabot (`.github/dependabot.yml`)
+
+Added Dependabot configuration for four ecosystems (weekly, Monday):
+- `pip` at `/` — main Django app Python deps
+- `pip` at `/mcp_server` — standalone MCP server deps
+- `npm` at `/` — JavaScript deps
+- `github-actions` at `/` — action version pins
+
+Dependabot will open PRs automatically when updated versions are available,
+keeping the dependency graph fresh without manual auditing (NCSC Principle 3
+— automated patch management).
+
+### OWASP Top 10 2021 coverage after this phase
+
+| Control | Coverage |
+|---------|----------|
+| A01 Broken Access Control | Semgrep `p/owasp-top-ten` + `_check_item_edit_permission` (Phase 110) |
+| A02 Crypto / Secret Failures | Bandit + TruffleHog (secret-scan) |
+| A03 Injection | Semgrep `p/python` + `p/django` + Bandit |
+| A05 Security Misconfiguration | Trivy config scan + `manage.py check` + Semgrep |
+| A06 Vulnerable Components | pip-audit + npm audit + Grype + Trivy filesystem |
+| A07 Auth Failures | Semgrep + ZAP DAST + TOTP 2FA (Phase 109/111) |
+| A08 Data Integrity | Grype SBOM (Syft) + Trivy |
+| A10 SSRF | Semgrep `p/owasp-top-ten` |
 
 ## Upgrading an existing deployment
 

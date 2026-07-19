@@ -553,6 +553,27 @@ body.dark-mode #qr-close-btn:hover {
 }
 
 /*--------------------------------------------------------------
+# Phase 102 — budget / timeline / OCR elements
+# These use Bootstrap CSS vars (--bs-border-color, --bs-secondary-bg)
+# that this app never repoints for dark mode (it uses body.dark-mode
+# class overrides, not data-bs-theme), so each element needs an
+# explicit dark-mode rule.
+--------------------------------------------------------------*/
+body.dark-mode .budget-bar-wrapper {
+  border-top-color: rgba(255, 255, 255, 0.12);
+}
+
+body.dark-mode .doc-ocr-pre {
+  background: rgba(255, 255, 255, 0.06);
+  color: #c9d1d9;
+}
+
+body.dark-mode .timeline-logo-placeholder {
+  background: rgba(255, 255, 255, 0.08);
+  color: #8b949e;
+}
+
+/*--------------------------------------------------------------
 # OLED true-black variant (layers on top of body.dark-mode)
 --------------------------------------------------------------*/
 body.oled-dark {

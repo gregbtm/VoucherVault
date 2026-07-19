@@ -41,13 +41,15 @@ from .portainer import PortainerRedeployError, trigger_redeploy
 from .update_check import _is_newer, check_for_update, check_upstream_version
 from .help_docs import render_doc
 from .public_share import is_link_preview_bot, pin_attempt_rate_limited, view_rate_limited
-from .tasks import fetch_merchant_logo_task
+from .tasks import extract_document_text_task, fetch_merchant_logo_task
 from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
 from imports.exporters.pkpass import generate_pkpass, pkpass_enabled
 from imports.tasks import update_google_wallet_pass_task
 from notify.tasks import notify_balance_changed, notify_item_archived, notify_item_created, notify_item_shared, notify_item_used
+from .webhooks import fire_user_webhooks
 from ocr.backends import ocr_enabled
 from django.db.models import Count, Sum, Q
+from django.db.models.functions import TruncMonth
 from django.db.models.functions import Coalesce, Lower, Trim
 from django.db.models import Value
 from django.utils.text import get_valid_filename
@@ -123,20 +125,38 @@ def ping(request):
 def dashboard(request):
     user = request.user
 
-    total_items = Item.objects.filter(user=user, is_used=False).count()
-    available_items = Item.objects.filter(user=user, is_used=False, expiry_date__gte=timezone.now()).count()
-    used_items = Item.objects.filter(user=user, is_used=True).count()
-    expired_items = Item.objects.filter(user=user, expiry_date__lt=timezone.now(), is_used=False).count()
-
-    # Get user preferences for currency settings
+    # Load preferences and site config once — analytics helpers accept explicit
+    # values so they don't each fire their own SiteConfiguration.load() call.
     preferences, _ = UserPreference.objects.get_or_create(user=user)
     fixer_api_key = preferences.fixer_api_key
     default_currency = preferences.default_currency or 'GBP'
 
-    # Get threshold days from environment variable or default to 30
-    threshold_days = SiteConfiguration.load().expiry_threshold_days
-    # Calculate soon-to-expire date (used for both "soon expiring" count and at-risk value)
-    soon_expiry_date = now() + timedelta(days=threshold_days)
+    site_cfg = SiteConfiguration.load()
+    threshold_days = site_cfg.expiry_threshold_days
+    now_dt = timezone.now()
+    soon_expiry_date = now_dt + timedelta(days=threshold_days)
+
+    # Single aggregate replaces 9 separate COUNT queries
+    counts = Item.objects.filter(user=user).aggregate(
+        total_items=Count('id', filter=Q(is_used=False)),
+        available_items=Count('id', filter=Q(is_used=False, expiry_date__gte=now_dt)),
+        used_items=Count('id', filter=Q(is_used=True)),
+        expired_items=Count('id', filter=Q(is_used=False, expiry_date__lt=now_dt)),
+        coupons_count=Count('id', filter=Q(is_used=False, type='coupon', expiry_date__gte=now_dt)),
+        vouchers_count=Count('id', filter=Q(is_used=False, type='voucher', expiry_date__gte=now_dt)),
+        giftcards_count=Count('id', filter=Q(is_used=False, type='giftcard', expiry_date__gte=now_dt)),
+        loyaltycards_count=Count('id', filter=Q(is_used=False, type='loyaltycard', expiry_date__gte=now_dt)),
+        soon_expiring_items=Count('id', filter=Q(is_used=False, expiry_date__gte=now_dt, expiry_date__lt=soon_expiry_date)),
+    )
+    total_items = counts['total_items']
+    available_items = counts['available_items']
+    used_items = counts['used_items']
+    expired_items = counts['expired_items']
+    coupons_count = counts['coupons_count']
+    vouchers_count = counts['vouchers_count']
+    giftcards_count = counts['giftcards_count']
+    loyaltycards_count = counts['loyaltycards_count']
+    soon_expiring_items = counts['soon_expiring_items']
 
     # Calculate the current total value of available money-type items
     items = Item.objects.with_current_balance().filter(
@@ -193,11 +213,6 @@ def dashboard(request):
             # Mixed currencies, no API key
             needs_fixer_key = True
 
-    coupons_count = Item.objects.filter(user=user, type='coupon', is_used=False, expiry_date__gte=timezone.now()).count()
-    vouchers_count = Item.objects.filter(user=user, type='voucher', is_used=False, expiry_date__gte=timezone.now()).count()
-    giftcards_count = Item.objects.filter(user=user, type='giftcard', is_used=False, expiry_date__gte=timezone.now()).count()
-    loyaltycards_count = Item.objects.filter(user=user, type='loyaltycard', is_used=False, expiry_date__gte=timezone.now()).count()
-
     # Count the number of items shared by the user
     shared_items_count_by_you = ItemShare.objects.filter(shared_by=user).values('item').distinct().count()
     shared_items_count_with_you = ItemShare.objects.filter(
@@ -206,15 +221,12 @@ def dashboard(request):
         item__expiry_date__gte=timezone.localtime().date()
     ).exclude(item__user=user).values('item').distinct().count()
 
-    # Count the number of items soon expiring based on EXPIRY_THRESHOLD_DAYS
-    soon_expiring_items = Item.objects.filter(
-        user=user,
-        is_used=False,
-        expiry_date__gte=now(),
-        expiry_date__lt=soon_expiry_date
-    ).count()
-
-    items_by_wallet = get_items_by_wallet(user)
+    # Pass site_cfg values explicitly so helpers skip their own SiteConfiguration.load() calls
+    items_by_wallet = get_items_by_wallet(user, limit=site_cfg.wallet_chart_limit)
+    expiring_soon_list = get_expiring_soon_items(
+        user, days=threshold_days, limit=site_cfg.expiring_soon_limit
+    )
+    expiry_calendar = build_expiry_calendar(user, months_ahead=site_cfg.calendar_months_ahead)
 
     context = {
         'total_items': total_items,
@@ -228,18 +240,54 @@ def dashboard(request):
         'coupons_count': coupons_count,
         'vouchers_count': vouchers_count,
         'giftcards_count': giftcards_count,
-        'loyaltycards_count':loyaltycards_count,
+        'loyaltycards_count': loyaltycards_count,
         'expired_items': expired_items,
-        "soon_expiring_items": soon_expiring_items,
+        'soon_expiring_items': soon_expiring_items,
         'items_by_wallet': items_by_wallet,
         'wallet_chart_height': max(200, len(items_by_wallet) * 40 + 60),
-        'expiring_soon_list': get_expiring_soon_items(user),
+        'expiring_soon_list': expiring_soon_list,
         'expiry_threshold_days': threshold_days,
-        'expiry_calendar': build_expiry_calendar(user),
+        'expiry_calendar': expiry_calendar,
         'shared_items_count_by_you': shared_items_count_by_you,
         'shared_items_count_with_you': shared_items_count_with_you,
     }
     return render(request, 'dashboard.html', context)
+
+def _get_wallet_budget(wallet_id, user):
+    """
+    Returns a dict {budget, spent, percent, remaining} for the selected wallet
+    if it has a budget set, or None.  `spent` is the absolute value of all
+    negative transactions on items in that wallet during the current calendar
+    month.
+    """
+    if not wallet_id or not str(wallet_id).isdigit():
+        return None
+    try:
+        wallet = Wallet.objects.get(pk=wallet_id, user=user)
+    except Wallet.DoesNotExist:
+        return None
+    if not wallet.budget_amount:
+        return None
+    month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    spent = (
+        Transaction.objects.filter(
+            item__wallet=wallet,
+            item__user=user,
+            date__gte=month_start,
+            value__lt=0,
+        ).aggregate(total=Sum('value'))['total'] or 0
+    )
+    spent = abs(spent)
+    budget = wallet.budget_amount
+    percent = min(int(spent / budget * 100), 100) if budget else 0
+    return {
+        'budget': budget,
+        'spent': spent,
+        'remaining': max(budget - spent, 0),
+        'percent': percent,
+        'over_budget': spent > budget,
+    }
+
 
 @require_GET
 @login_required
@@ -265,20 +313,31 @@ def show_items(request):
     all_accessible_items = Item.objects.filter(Q(user=user) | Q(wallet__shared_with=user)).distinct()
     user_items = all_accessible_items.exclude(is_archived=True)
     threshold_days = SiteConfiguration.load().expiry_threshold_days
-    soon_expiry_date = now() + timedelta(days=threshold_days)
+    now_dt = timezone.now()
+    soon_expiry_date = now_dt + timedelta(days=threshold_days)
 
-    available_count = user_items.filter(is_used=False, expiry_date__gte=timezone.now()).count()
-    soon_expiring_count = user_items.filter(is_used=False, expiry_date__gte=now(), expiry_date__lt=soon_expiry_date).count()
-    used_count = user_items.filter(is_used=True).count()
-    expired_count = user_items.filter(expiry_date__lt=timezone.now(), is_used=False).count()
-    archived_count = all_accessible_items.filter(is_archived=True).count()
+    # Two aggregates replace 9 separate COUNT queries.
+    # COUNT(DISTINCT id) is correct for queries through the wallet M2M join.
+    item_counts = user_items.aggregate(
+        available=Count('id', distinct=True, filter=Q(is_used=False, expiry_date__gte=now_dt)),
+        soon_expiring=Count('id', distinct=True, filter=Q(is_used=False, expiry_date__gte=now_dt, expiry_date__lt=soon_expiry_date)),
+        used=Count('id', distinct=True, filter=Q(is_used=True)),
+        expired=Count('id', distinct=True, filter=Q(is_used=False, expiry_date__lt=now_dt)),
+        voucher=Count('id', distinct=True, filter=Q(is_used=False, expiry_date__gte=now_dt, type='voucher')),
+        giftcard=Count('id', distinct=True, filter=Q(is_used=False, expiry_date__gte=now_dt, type='giftcard')),
+        coupon=Count('id', distinct=True, filter=Q(is_used=False, expiry_date__gte=now_dt, type='coupon')),
+        loyaltycard=Count('id', distinct=True, filter=Q(is_used=False, expiry_date__gte=now_dt, type='loyaltycard')),
+    )
+    archived_count = all_accessible_items.filter(is_archived=True).distinct().count()
 
-    # Type counts (from available items only)
-    available_items_qs = user_items.filter(is_used=False, expiry_date__gte=timezone.now())
-    voucher_count = available_items_qs.filter(type='voucher').count()
-    giftcard_count = available_items_qs.filter(type='giftcard').count()
-    coupon_count = available_items_qs.filter(type='coupon').count()
-    loyaltycard_count = available_items_qs.filter(type='loyaltycard').count()
+    available_count = item_counts['available']
+    soon_expiring_count = item_counts['soon_expiring']
+    used_count = item_counts['used']
+    expired_count = item_counts['expired']
+    voucher_count = item_counts['voucher']
+    giftcard_count = item_counts['giftcard']
+    coupon_count = item_counts['coupon']
+    loyaltycard_count = item_counts['loyaltycard']
 
     # Base query
     if filter_value == 'shared_by_me':
@@ -321,7 +380,11 @@ def show_items(request):
     if search_query:
         items = items.filter(
             Q(name__icontains=search_query) |
-            Q(issuer__icontains=search_query)
+            Q(issuer__icontains=search_query) |
+            Q(redeem_code__icontains=search_query) |
+            Q(card_number__icontains=search_query) |
+            Q(description__icontains=search_query) |
+            Q(notes__icontains=search_query)
         )
 
     # Apply sorting based on user preference
@@ -386,6 +449,7 @@ def show_items(request):
         # Wallet filter
         'wallets': Wallet.objects.filter(Q(user=user) | Q(shared_with=user)).distinct().annotate(item_count=Count('items')),
         'selected_wallet_id': int(wallet_id) if wallet_id and wallet_id.isdigit() else None,
+        'wallet_budget': _get_wallet_budget(wallet_id, user),
         # Tag filter — counts reflect the user's own non-archived accessible
         # items, same base set "All Items" browses by default
         'all_tags': Tag.objects.filter(user=user).annotate(
@@ -399,9 +463,54 @@ def show_items(request):
     }
     return render(request, 'inventory.html', context)
 
+
+@require_GET
+@login_required
+def expiry_timeline(request):
+    """Expiry timeline view: items grouped into time bands for a quick at-a-glance."""
+    user = request.user
+    today = timezone.localtime().date()
+    in_7 = today + dt.timedelta(days=7)
+    in_30 = today + dt.timedelta(days=30)
+    in_90 = today + dt.timedelta(days=90)
+
+    base = (
+        Item.objects.filter(Q(user=user) | Q(wallet__shared_with=user))
+        .filter(is_used=False, is_archived=False, expiry_date__gte=today)
+        .distinct()
+        .select_related('wallet')
+        .prefetch_related('tags')
+        .order_by('expiry_date', 'name')
+    )
+
+    # Evaluate once — splitting in Python avoids 4 separate DB round-trips
+    all_items = list(base)
+    bands = [
+        {'label': 'This week',       'items': [i for i in all_items if i.expiry_date <= in_7]},
+        {'label': 'This month',      'items': [i for i in all_items if in_7 < i.expiry_date <= in_30]},
+        {'label': 'Next 3 months',   'items': [i for i in all_items if in_30 < i.expiry_date <= in_90]},
+        {'label': 'Beyond 3 months', 'items': [i for i in all_items if i.expiry_date > in_90]},
+    ]
+
+    issuers = [item.issuer for band in bands for item in band['items']]
+    merchant_logos = get_cached_logos_for_issuers(issuers)
+
+    for band in bands:
+        band['items_with_logos'] = [
+            {'item': item, 'merchant_logo_url': merchant_logos.get(item.issuer.strip().lower())}
+            for item in band['items']
+        ]
+
+    return render(request, 'expiry-timeline.html', {
+        'bands': bands,
+        'today': today,
+        'current_date': timezone.now(),
+    })
+
+
 @login_required
 def view_item(request, item_uuid):
-    item = get_object_or_404(Item, id=item_uuid)
+    item = get_object_or_404(Item.objects.select_related('wallet', 'user'), id=item_uuid)
     if not has_item_access(item, request.user):
         return HttpResponse("Unauthorized", status=403)
 
@@ -434,11 +543,13 @@ def view_item(request, item_uuid):
             transaction.save()
             total_value += transaction.value
             notify_balance_changed(item, transaction)
+            fire_user_webhooks(item.user, 'item_balance_changed', item)
 
             if total_value <= 0:
                 item.is_used = True
                 item.save()
                 notify_item_used(item)
+                fire_user_webhooks(item.user, 'item_used', item)
             _queue_google_wallet_update(item)
             return redirect('view_item', item_uuid=item.id)
     else:
@@ -554,6 +665,7 @@ def create_item(request):
             remember_balance_check_url(item.issuer, item.balance_check_url)
             _record_scan_learning(request, item)
             notify_item_created(item)
+            fire_user_webhooks(item.user, 'item_created', item)
 
             return redirect('show_items')
         else:
@@ -562,7 +674,18 @@ def create_item(request):
     else:
         # If not a POST request, initialize form with user's preferred currency
         preferences, _ = UserPreference.objects.get_or_create(user=request.user)
-        form = ItemForm(initial={'currency': preferences.default_currency or 'GBP'}, user=request.user)
+        initial = {'currency': preferences.default_currency or 'GBP'}
+
+        # Pre-populate from Web Share Target params (PWA share_target in manifest.json)
+        shared_title = request.GET.get('shared_title', '').strip()
+        shared_text = request.GET.get('shared_text', '').strip()
+        shared_url = request.GET.get('shared_url', '').strip()
+        if shared_title:
+            initial['name'] = shared_title
+        if shared_text or shared_url:
+            initial['notes'] = '\n'.join(filter(None, [shared_text, shared_url]))
+
+        form = ItemForm(initial=initial, user=request.user)
 
     return render(request, 'create-item.html', {'form': form, 'ocr_enabled': ocr_enabled(), 'known_issuers': _known_issuers(request.user)})
 
@@ -571,6 +694,8 @@ def edit_item(request, item_uuid):
     item = get_object_or_404(Item, id=item_uuid)
     if not has_item_access(item, request.user):
         return HttpResponse("Unauthorized", status=403)
+    if not _check_item_edit_permission(item, request.user):
+        return HttpResponse("Forbidden: viewer role cannot edit items", status=403)
     original_redeem_code = item.redeem_code # Store the original redeem code
     original_code_type = item.code_type  # Store the original code type
     old_file_path = item.file.path if item.file else None  # Store the old file path
@@ -857,6 +982,8 @@ def delete_item(request, item_uuid):
     item = get_object_or_404(Item, id=item_uuid)
     if not has_item_access(item, request.user):
         return HttpResponse("Unauthorized", status=403)
+    if not _check_item_edit_permission(item, request.user):
+        return HttpResponse("Forbidden: viewer role cannot delete items", status=403)
 
     # Delete the associated file if it exists
     if item.file:
@@ -988,6 +1115,10 @@ def upload_document(request, item_uuid):
         document = form.save(commit=False)
         document.item = item
         document.save()
+        try:
+            extract_document_text_task.delay(document.id)
+        except Exception:
+            pass
         messages.success(request, _('Document uploaded successfully!'))
     else:
         for error in form.errors.get('file', []):
@@ -1025,7 +1156,9 @@ def delete_document(request, document_id):
 @require_POST
 @login_required
 def toggle_item_status(request, item_id):
-    item = get_object_or_404(Item, id=item_id, user=request.user)
+    item = get_object_or_404(Item, id=item_id)
+    if not _check_item_edit_permission(item, request.user):
+        return HttpResponse("Forbidden", status=403)
     desc_txt = _('Marked as used, removing remaining value')
 
     if item.is_used:
@@ -1048,6 +1181,7 @@ def toggle_item_status(request, item_id):
         )
         transaction.save()
         notify_item_used(item)
+        fire_user_webhooks(item.user, 'item_used', item)
 
     item.save()
     _queue_google_wallet_update(item)
@@ -1422,6 +1556,7 @@ def sharing_center(request):
     shares = ItemShare.objects.filter(
         Q(shared_with_user=current_user) | Q(shared_by=current_user)
     ).select_related('item', 'shared_by', 'shared_with_user') \
+     .prefetch_related('item__transactions') \
      .order_by('item__expiry_date')
 
     unique_items = {}
@@ -2217,11 +2352,14 @@ def toggle_archive_item(request, item_uuid):
     item = get_object_or_404(Item, id=item_uuid)
     if not has_item_access(item, request.user):
         return HttpResponse("Unauthorized", status=403)
+    if not _check_item_edit_permission(item, request.user):
+        return HttpResponse("Forbidden: viewer role cannot archive items", status=403)
 
     item.is_archived = not item.is_archived
     item.save(update_fields=['is_archived'])
     if item.is_archived:
         notify_item_archived(item)
+        fire_user_webhooks(item.user, 'item_archived', item)
     _queue_google_wallet_update(item)
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -2246,7 +2384,7 @@ def _bulk_selected_items(request):
         data = {}
     item_ids = data.get('item_ids') or []
     items = list(Item.objects.filter(id__in=item_ids))
-    accessible = [item for item in items if has_item_access(item, request.user)]
+    accessible = [item for item in items if _check_item_edit_permission(item, request.user)]
     skipped = len(item_ids) - len(accessible)
     return accessible, skipped, data
 
@@ -2385,7 +2523,19 @@ def share_wallet(request, wallet_id):
     wallet = get_object_or_404(Wallet, id=wallet_id, user=request.user)
     form = WalletShareForm(request.POST, wallet=wallet)
     if form.is_valid():
-        wallet.shared_with.add(form.cleaned_data['user'])
+        collaborator = form.cleaned_data['user']
+        role = request.POST.get('role', WalletMembership.ROLE_EDITOR)
+        if role not in (WalletMembership.ROLE_VIEWER, WalletMembership.ROLE_EDITOR):
+            role = WalletMembership.ROLE_EDITOR
+        wallet.shared_with.add(collaborator)
+        WalletMembership.objects.update_or_create(
+            wallet=wallet, user=collaborator,
+            defaults={'role': role},
+        )
+        WalletActivity.objects.create(
+            wallet=wallet, actor=request.user, action='member_added',
+            detail=f"{collaborator.username} ({role})",
+        )
         messages.success(request, _('Wallet shared with %(username)s.') % {'username': form.cleaned_data['username']})
     else:
         for error in form.errors.get('username', []):
@@ -2399,6 +2549,11 @@ def unshare_wallet(request, wallet_id, user_id):
     wallet = get_object_or_404(Wallet, id=wallet_id, user=request.user)
     collaborator = get_object_or_404(User, id=user_id)
     wallet.shared_with.remove(collaborator)
+    WalletMembership.objects.filter(wallet=wallet, user=collaborator).delete()
+    WalletActivity.objects.create(
+        wallet=wallet, actor=request.user, action='member_removed',
+        detail=collaborator.username,
+    )
     messages.success(request, _('Removed %(username)s from this wallet.') % {'username': collaborator.username})
     return redirect('edit_wallet', wallet_id=wallet.id)
 
@@ -2408,6 +2563,7 @@ def leave_shared_wallet(request, wallet_id):
     """A collaborator removes themselves from a wallet shared with them."""
     wallet = get_object_or_404(Wallet, id=wallet_id, shared_with=request.user)
     wallet.shared_with.remove(request.user)
+    WalletMembership.objects.filter(wallet=wallet, user=request.user).delete()
     messages.success(request, _('You have left the wallet "%(name)s".') % {'name': wallet.name})
     return redirect('manage_wallets')
 
@@ -2452,3 +2608,488 @@ def delete_tag(request, tag_id):
     tag.delete()  # Items keep existing; only the tag association is removed.
     messages.success(request, _('Tag deleted successfully!'))
     return redirect('manage_tags')
+
+
+@require_GET
+@login_required
+def analytics(request):
+    user = request.user
+    now_dt = timezone.now()
+    today = timezone.localtime(now_dt).date()
+
+    # Build 12-month label sequence, oldest → newest
+    months_seq = []
+    for i in range(11, -1, -1):
+        m_offset = today.month - i
+        y_offset = 0
+        while m_offset <= 0:
+            m_offset += 12
+            y_offset -= 1
+        months_seq.append(dt.date(today.year + y_offset, m_offset, 1).strftime('%b %Y'))
+
+    twelve_months_ago = now_dt - timedelta(days=366)
+
+    monthly_added = (
+        Item.objects.filter(user=user, created_at__gte=twelve_months_ago)
+        .annotate(month=TruncMonth('created_at'))
+        .values('month')
+        .annotate(count=Count('id'))
+        .order_by('month')
+    )
+    added_by_month = {row['month'].strftime('%b %Y'): row['count'] for row in monthly_added if row['month']}
+    monthly_added_data = [added_by_month.get(m, 0) for m in months_seq]
+
+    monthly_used = (
+        Item.objects.filter(user=user, is_used=True, last_used_at__gte=twelve_months_ago)
+        .annotate(month=TruncMonth('last_used_at'))
+        .values('month')
+        .annotate(count=Count('id'))
+        .order_by('month')
+    )
+    used_by_month = {row['month'].strftime('%b %Y'): row['count'] for row in monthly_used if row['month']}
+    monthly_used_data = [used_by_month.get(m, 0) for m in months_seq]
+
+    value_by_type = list(
+        Item.objects.filter(user=user, is_used=False, value_type='money', expiry_date__gte=now_dt)
+        .values('type')
+        .annotate(count=Count('id'), total_value=Sum('value'))
+        .order_by('-total_value')
+    )
+    for row in value_by_type:
+        row['total_value'] = float(row['total_value'] or 0)
+
+    top_issuers = list(
+        Item.objects.filter(user=user, is_used=False)
+        .exclude(issuer='')
+        .values('issuer')
+        .annotate(count=Count('id'))
+        .order_by('-count')[:10]
+    )
+
+    currency_breakdown = list(
+        Item.objects.filter(user=user, is_used=False, value_type='money', expiry_date__gte=now_dt)
+        .exclude(type='loyaltycard')
+        .values('currency')
+        .annotate(count=Count('id'), total=Sum('value'))
+        .order_by('-total')
+    )
+    for row in currency_breakdown:
+        row['total'] = float(row['total'] or 0)
+
+    kpis = Item.objects.filter(user=user).aggregate(
+        total=Count('id'),
+        active=Count('id', filter=Q(is_used=False, expiry_date__gte=now_dt)),
+        used=Count('id', filter=Q(is_used=True)),
+        expired=Count('id', filter=Q(is_used=False, expiry_date__lt=now_dt)),
+        archived=Count('id', filter=Q(is_archived=True)),
+    )
+
+    month_start = now_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    wallet_budgets = []
+    for wallet in Wallet.objects.filter(user=user, budget_amount__isnull=False):
+        spent = abs(
+            Transaction.objects.filter(
+                item__wallet=wallet, item__user=user,
+                date__gte=month_start, value__lt=0,
+            ).aggregate(total=Sum('value'))['total'] or 0
+        )
+        budget = float(wallet.budget_amount)
+        percent = min(int(float(spent) / budget * 100), 100) if budget else 0
+        wallet_budgets.append({
+            'name': wallet.name,
+            'color': wallet.color,
+            'budget': budget,
+            'spent': float(spent),
+            'remaining': max(budget - float(spent), 0),
+            'percent': percent,
+            'over_budget': float(spent) > budget,
+        })
+
+    type_labels = {
+        'voucher': 'Vouchers', 'giftcard': 'Gift Cards', 'coupon': 'Coupons',
+        'loyaltycard': 'Loyalty Cards', 'travelpass': 'Travel Passes',
+    }
+
+    context = {
+        'kpis': kpis,
+        'months_seq_json': json.dumps(months_seq),
+        'monthly_added_json': json.dumps(monthly_added_data),
+        'monthly_used_json': json.dumps(monthly_used_data),
+        'value_by_type': value_by_type,
+        'value_by_type_json': json.dumps([
+            {'type': type_labels.get(r['type'], r['type']), 'value': r['total_value'], 'count': r['count']}
+            for r in value_by_type
+        ]),
+        'top_issuers': top_issuers,
+        'top_issuers_json': json.dumps([{'name': r['issuer'], 'count': r['count']} for r in top_issuers]),
+        'currency_breakdown': currency_breakdown,
+        'wallet_budgets': wallet_budgets,
+    }
+    return render(request, 'analytics.html', context)
+
+
+# ── Phase D: Advanced Collaboration ─────────────────────────────────────────
+
+def _log_wallet_activity(wallet, actor, action, item=None, detail=''):
+    """Record a WalletActivity row; silently no-op if wallet is None."""
+    if wallet is None:
+        return
+    WalletActivity.objects.create(
+        wallet=wallet,
+        actor=actor,
+        action=action,
+        item=item,
+        item_name=item.name if item else '',
+        detail=detail,
+    )
+
+
+def _check_item_edit_permission(item, user):
+    """
+    Returns True when user may write to item (create/edit/delete/toggle).
+    Viewer-role WalletMembership collaborators are denied write access.
+    The old wallet.shared_with M2M grants full edit access (backward compat).
+    """
+    if item.user == user:
+        return True
+    if item.shared_with.filter(shared_with_user=user).exists():
+        return True
+    if item.wallet is None:
+        return False
+    if item.wallet.user == user:
+        return True
+    # Old sharing system: all M2M collaborators have full edit access.
+    if item.wallet.shared_with.filter(pk=user.id).exists():
+        return True
+    # New WalletMembership system: only editors may write.
+    try:
+        membership = WalletMembership.objects.get(wallet=item.wallet, user=user)
+        return membership.role == WalletMembership.ROLE_EDITOR
+    except WalletMembership.DoesNotExist:
+        return False
+
+
+@login_required
+def wallet_activity_feed(request, wallet_id):
+    wallet = get_object_or_404(Wallet, id=wallet_id)
+    if not has_wallet_access(wallet, request.user):
+        return HttpResponse("Unauthorized", status=403)
+    activities = wallet.activities.select_related('actor', 'item').order_by('-timestamp')[:100]
+    return render(request, 'wallet_activity.html', {'wallet': wallet, 'activities': activities})
+
+
+# ── Phase E: Integrations & Automation (Webhooks) ────────────────────────────
+
+class _WebhookForm:
+    """Minimal in-view form helper for UserWebhook — no Django Form subclass needed."""
+    ALL_EVENTS = [e[0] for e in UserWebhook.EVENT_CHOICES]
+
+    @staticmethod
+    def from_post(post, instance=None):
+        errors = {}
+        name = post.get('name', '').strip()
+        url = post.get('url', '').strip()
+        secret = post.get('secret', '').strip()
+        events = [e for e in _WebhookForm.ALL_EVENTS if post.get(f'event_{e}')]
+        enabled = bool(post.get('enabled'))
+
+        if not name:
+            errors['name'] = 'Name is required.'
+        if not url or not url.startswith(('http://', 'https://')):
+            errors['url'] = 'A valid URL is required.'
+        if not events:
+            errors['events'] = 'Select at least one event.'
+        return {
+            'name': name, 'url': url, 'secret': secret,
+            'events': events, 'enabled': enabled,
+        }, errors
+
+
+@login_required
+def manage_webhooks(request):
+    hooks = UserWebhook.objects.filter(user=request.user).order_by('-created_at')
+    return render(request, 'webhooks.html', {
+        'hooks': hooks,
+        'event_choices': UserWebhook.EVENT_CHOICES,
+    })
+
+
+@require_POST
+@login_required
+def create_webhook(request):
+    data, errors = _WebhookForm.from_post(request.POST)
+    if errors:
+        for msg in errors.values():
+            messages.error(request, msg)
+    else:
+        UserWebhook.objects.create(user=request.user, **data)
+        messages.success(request, _('Webhook created.'))
+    return redirect('manage_webhooks')
+
+
+@require_POST
+@login_required
+def edit_webhook(request, webhook_id):
+    hook = get_object_or_404(UserWebhook, id=webhook_id, user=request.user)
+    data, errors = _WebhookForm.from_post(request.POST)
+    if errors:
+        for msg in errors.values():
+            messages.error(request, msg)
+    else:
+        for k, v in data.items():
+            setattr(hook, k, v)
+        hook.save()
+        messages.success(request, _('Webhook updated.'))
+    return redirect('manage_webhooks')
+
+
+@require_POST
+@login_required
+def delete_webhook(request, webhook_id):
+    hook = get_object_or_404(UserWebhook, id=webhook_id, user=request.user)
+    hook.delete()
+    messages.success(request, _('Webhook deleted.'))
+    return redirect('manage_webhooks')
+
+
+@require_POST
+@login_required
+def test_webhook(request, webhook_id):
+    hook = get_object_or_404(UserWebhook, id=webhook_id, user=request.user)
+    import hmac as _hmac, hashlib as _hashlib, requests as _rq
+    payload = json.dumps({
+        'event': 'test',
+        'message': 'VoucherVault test webhook delivery',
+        'webhook_id': hook.id,
+    }).encode()
+    headers = {'Content-Type': 'application/json', 'X-VoucherVault-Event': 'test'}
+    if hook.secret:
+        sig = _hmac.new(hook.secret.encode(), payload, _hashlib.sha256).hexdigest()
+        headers['X-VoucherVault-Signature'] = f"sha256={sig}"
+    try:
+        resp = _rq.post(hook.url, data=payload, headers=headers, timeout=10)
+        if resp.ok:
+            messages.success(request, _('Test delivery succeeded (HTTP %(status)s).') % {'status': resp.status_code})
+        else:
+            messages.warning(request, _('Test delivered but got HTTP %(status)s.') % {'status': resp.status_code})
+    except Exception as exc:
+        messages.error(request, _('Test delivery failed: %(err)s') % {'err': str(exc)})
+    return redirect('manage_webhooks')
+
+
+# ── Phase F: Security & Audit ─────────────────────────────────────────────────
+
+import pyotp
+import qrcode as _qrcode
+import io as _io
+import base64 as _base64
+from django.contrib.auth import authenticate as _authenticate, login as _login
+from django.contrib.sessions.models import Session as _Session
+from django.utils.http import url_has_allowed_host_and_scheme as _safe_redirect
+
+
+def _client_ip_view(request):
+    x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    if x_forwarded:
+        return x_forwarded.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR') or None
+
+
+def custom_login(request):
+    """TOTP-aware login view. Replaces django.contrib.auth.views.LoginView."""
+    from django.contrib.auth import REDIRECT_FIELD_NAME
+    if request.user.is_authenticated:
+        return redirect('show_items')
+
+    next_url = request.POST.get(REDIRECT_FIELD_NAME) or request.GET.get(REDIRECT_FIELD_NAME, '')
+    error = None
+
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+        user = _authenticate(request, username=username, password=password)
+        if user is not None:
+            try:
+                device = user.totp_device
+                if device.confirmed:
+                    request.session['_totp_user_id'] = user.pk
+                    if next_url:
+                        request.session['_totp_next'] = next_url
+                    return redirect('totp_verify')
+            except TOTPDevice.DoesNotExist:
+                pass
+            _login(request, user)
+            if next_url and _safe_redirect(next_url, allowed_hosts={request.get_host()}):
+                return redirect(next_url)
+            return redirect('show_items')
+        error = _('Invalid username or password.')
+
+    return render(request, 'registration/login.html', {'error': error, 'next': next_url})
+
+
+def _generate_totp_backup_codes(device):
+    """Generate 8 single-use backup codes, store as hashed values, return plaintext."""
+    from django.contrib.auth.hashers import make_password
+    import secrets
+    device.backup_codes.all().delete()
+    plaintext = []
+    for _ in range(8):
+        code = secrets.token_hex(4).upper()  # e.g. "A3B70C9D"
+        formatted = f"{code[:4]}-{code[4:]}"
+        device.backup_codes.create(code_hash=make_password(code))
+        plaintext.append(formatted)
+    return plaintext
+
+
+def _consume_totp_backup_code(device, raw_token):
+    """Return True and mark code used if raw_token matches any unused backup code."""
+    from django.contrib.auth.hashers import check_password
+    token = raw_token.upper().replace('-', '').replace(' ', '')
+    for bc in device.backup_codes.filter(used=False):
+        if check_password(token, bc.code_hash):
+            bc.used = True
+            bc.save(update_fields=['used'])
+            return True
+    return False
+
+
+@login_required
+def totp_setup(request):
+    """Generate a new TOTP secret, display QR code, wait for confirmation."""
+    try:
+        device = request.user.totp_device
+        if device.confirmed:
+            messages.info(request, _('Two-factor authentication is already enabled.'))
+            return redirect('session_management')
+    except TOTPDevice.DoesNotExist:
+        device = None
+
+    if request.method == 'POST':
+        token = request.POST.get('token', '').strip().replace(' ', '')
+        secret = request.POST.get('secret', '').strip()
+        totp = pyotp.TOTP(secret)
+        if totp.verify(token, valid_window=1):
+            if device is None:
+                device = TOTPDevice(user=request.user)
+            device.secret = secret
+            device.confirmed = True
+            device.save()
+            plaintext_codes = _generate_totp_backup_codes(device)
+            messages.success(request, _('Two-factor authentication enabled.'))
+            return render(request, 'totp_setup.html', {
+                'setup_complete': True,
+                'backup_codes': plaintext_codes,
+            })
+        else:
+            messages.error(request, _('Invalid code. Please try again.'))
+
+    secret = pyotp.random_base32()
+    if device and not device.confirmed:
+        secret = device.secret
+    else:
+        device = TOTPDevice.objects.create(user=request.user, secret=secret, confirmed=False) if device is None else device
+        device.secret = secret
+        device.save()
+
+    totp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
+        name=request.user.email or request.user.username,
+        issuer_name='VoucherVault Plus+',
+    )
+    qr_img = _qrcode.make(totp_uri)
+    buf = _io.BytesIO()
+    qr_img.save(buf, format='PNG')
+    qr_b64 = _base64.b64encode(buf.getvalue()).decode()
+
+    return render(request, 'totp_setup.html', {'secret': secret, 'qr_b64': qr_b64})
+
+
+def totp_verify(request):
+    """Second-factor gate after password auth; used in the login flow."""
+    user_id = request.session.get('_totp_user_id')
+    if not user_id:
+        return redirect('login')
+    try:
+        from django.contrib.auth.models import User as _User
+        user = _User.objects.get(pk=user_id)
+    except _User.DoesNotExist:
+        return redirect('login')
+
+    error = None
+    if request.method == 'POST':
+        token = request.POST.get('token', '').strip().replace(' ', '')
+        try:
+            device = user.totp_device
+            verified = pyotp.TOTP(device.secret).verify(token, valid_window=1)
+            if not verified:
+                verified = _consume_totp_backup_code(device, token)
+            if verified:
+                _login(request, user)
+                del request.session['_totp_user_id']
+                next_url = request.session.pop('_totp_next', '')
+                if next_url and _safe_redirect(next_url, allowed_hosts={request.get_host()}):
+                    return redirect(next_url)
+                return redirect('show_items')
+        except TOTPDevice.DoesNotExist:
+            return redirect('login')
+        error = _('Invalid code. Please try again.')
+
+    return render(request, 'totp_verify.html', {'error': error})
+
+
+@require_POST
+@login_required
+def totp_disable(request):
+    try:
+        request.user.totp_device.delete()
+        messages.success(request, _('Two-factor authentication disabled.'))
+    except TOTPDevice.DoesNotExist:
+        pass
+    return redirect('session_management')
+
+
+@login_required
+def session_management(request):
+    """List the user's active sessions; allow revoking individual ones."""
+    current_key = request.session.session_key
+    user_sessions = []
+    for s in _Session.objects.filter(expire_date__gt=timezone.now()):
+        data = s.get_decoded()
+        if str(data.get('_auth_user_id')) == str(request.user.pk):
+            user_sessions.append({
+                'key': s.session_key,
+                'expire_date': s.expire_date,
+                'is_current': s.session_key == current_key,
+                'created': data.get('_session_created'),
+            })
+    user_sessions.sort(key=lambda x: x['expire_date'], reverse=True)
+
+    try:
+        totp_device = request.user.totp_device
+        totp_enabled = totp_device.confirmed
+        backup_codes_remaining = totp_device.backup_codes.filter(used=False).count() if totp_enabled else 0
+    except TOTPDevice.DoesNotExist:
+        totp_enabled = False
+        backup_codes_remaining = 0
+
+    recent_logins = LoginAuditLog.objects.filter(user=request.user).order_by('-timestamp')[:20]
+
+    return render(request, 'session_management.html', {
+        'user_sessions': user_sessions,
+        'totp_enabled': totp_enabled,
+        'backup_codes_remaining': backup_codes_remaining,
+        'recent_logins': recent_logins,
+    })
+
+
+@require_POST
+@login_required
+def revoke_session(request):
+    key = request.POST.get('session_key', '')
+    if key and key != request.session.session_key:
+        _Session.objects.filter(session_key=key).delete()
+        messages.success(request, _('Session revoked.'))
+    return redirect('session_management')
+
+
+# ── Phase C: PWA Install prompt ───────────────────────────────────────────────
+# (No server-side view needed — fully client-side in pwa-install.js)

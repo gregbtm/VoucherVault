@@ -51,6 +51,12 @@
   border-color: var(--primary-color, #4154f1);
 }
 
+.budget-bar-wrapper {
+  padding: 0.5rem 0.25rem 0.25rem;
+  border-top: 1px solid var(--bs-border-color, #dee2e6);
+  margin-top: 0.5rem;
+}
+
 /* Search and Filter Bar */
 .filter-bar {
   background: var(--card-bg, #fff);
@@ -1102,7 +1108,7 @@ body.dark-mode .next-up-card {
                name="query" 
                id="searchInput" 
                class="search-input" 
-               placeholder="{% trans 'Search by name or issuer...' %}" 
+               placeholder="{% trans 'Search by name, issuer, code...' %}"
                value="{{ search_query }}"
                autocomplete="off">
       </div>
@@ -1184,6 +1190,12 @@ body.dark-mode .next-up-card {
           <i class="bi bi-star"></i> {% trans "Loyalty" %}
           <span class="count">{{ loyaltycard_count }}</span>
         </a>
+
+        <span class="filter-divider"></span>
+
+        <a href="{% url 'expiry_timeline' %}" class="filter-chip">
+          <i class="bi bi-calendar3"></i> {% trans "Timeline" %}
+        </a>
       </div>
 
       {% if wallets %}
@@ -1197,6 +1209,30 @@ body.dark-mode .next-up-card {
           </option>
           {% endfor %}
         </select>
+      </div>
+      {% endif %}
+
+      {% if wallet_budget %}
+      <!-- Budget progress bar -->
+      <div class="budget-bar-wrapper">
+        <div class="d-flex justify-content-between align-items-baseline mb-1">
+          <span class="small text-muted">{% trans "Monthly budget" %}</span>
+          <span class="small {% if wallet_budget.over_budget %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+            {{ wallet_budget.spent|floatformat:2 }} / {{ wallet_budget.budget|floatformat:2 }}
+          </span>
+        </div>
+        <div class="progress" style="height:6px;">
+          <div class="progress-bar {% if wallet_budget.over_budget %}bg-danger{% elif wallet_budget.percent >= 80 %}bg-warning{% else %}bg-success{% endif %}"
+               role="progressbar"
+               style="width: {{ wallet_budget.percent }}%"
+               aria-valuenow="{{ wallet_budget.percent }}"
+               aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+        {% if wallet_budget.over_budget %}
+        <div class="small text-danger mt-1">{% trans "Over budget" %}</div>
+        {% else %}
+        <div class="small text-muted mt-1">{{ wallet_budget.remaining|floatformat:2 }} {% trans "remaining" %}</div>
+        {% endif %}
       </div>
       {% endif %}
 

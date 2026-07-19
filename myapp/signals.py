@@ -1,10 +1,53 @@
 # myapp/signals.py
 
 from django.db.models.signals import post_save
-from django.contrib.auth.signals import user_logged_in
+from django.contrib.auth.signals import user_logged_in, user_login_failed
 from django.dispatch import receiver
 from django.contrib.auth.models import User
 from .models import *
+
+
+def _client_ip(request):
+    x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    if x_forwarded:
+        return x_forwarded.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR') or None
+
+
+@receiver(user_logged_in)
+def audit_login_success(sender, request, user, **kwargs):
+    try:
+        LoginAuditLog.objects.create(
+            user=user,
+            username_attempted=user.username,
+            ip_address=_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],
+            success=True,
+        )
+    except Exception:
+        pass
+
+
+@receiver(user_login_failed)
+def audit_login_failure(sender, credentials, request, **kwargs):
+    try:
+        username = credentials.get('username', '')
+        from django.contrib.auth.models import User as _User
+        user = None
+        try:
+            user = _User.objects.get(username=username)
+        except _User.DoesNotExist:
+            pass
+        LoginAuditLog.objects.create(
+            user=user,
+            username_attempted=username[:150],
+            ip_address=_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],
+            success=False,
+            failure_reason='Invalid credentials',
+        )
+    except Exception:
+        pass
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):

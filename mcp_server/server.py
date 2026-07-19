@@ -114,5 +114,62 @@ def set_item_archived(item_id: str, archived: bool) -> dict:
     return _client().update_item(item_id, {'is_archived': archived})
 
 
+@mcp.tool()
+def get_expiry_timeline() -> dict:
+    """Expiry counts grouped by week for the next 12 weeks — useful for spotting upcoming crunch points."""
+    return _client().get_expiry_timeline()
+
+
+@mcp.tool()
+def list_wallets() -> list[dict]:
+    """List all wallets (collections of items) belonging to the authenticated user."""
+    result = _client().list_wallets()
+    return result.get('results', result)
+
+
+@mcp.tool()
+def create_wallet(name: str, description: str | None = None, color: str | None = None) -> dict:
+    """
+    Create a new wallet. Useful for grouping items by category (e.g. "Supermarkets", "Travel").
+
+    Args:
+        name:        Unique wallet name.
+        description: Optional short description.
+        color:       Optional hex color string, e.g. "#4154f1".
+    """
+    payload: dict = {'name': name}
+    if description:
+        payload['description'] = description
+    if color:
+        payload['color'] = color
+    return _client().create_wallet(payload)
+
+
+@mcp.tool()
+def list_tags() -> list[dict]:
+    """List all tags belonging to the authenticated user, including item counts."""
+    result = _client().list_tags()
+    return result.get('results', result)
+
+
+@mcp.tool()
+def list_webhooks() -> list[dict]:
+    """List all outbound webhooks configured by the authenticated user."""
+    result = _client().list_webhooks()
+    return result.get('results', result)
+
+
+@mcp.tool()
+def list_wallet_activity(wallet_id: str | None = None) -> list[dict]:
+    """
+    List the audit log of actions taken on items inside a wallet (or all wallets).
+
+    Args:
+        wallet_id: Filter to a specific wallet UUID (optional).
+    """
+    result = _client().list_wallet_activity(wallet_id=wallet_id)
+    return result.get('results', result)
+
+
 if __name__ == '__main__':
     mcp.run(transport='streamable-http')

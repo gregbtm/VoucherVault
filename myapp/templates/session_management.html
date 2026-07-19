@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{% trans "Security" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "Security" %}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="row">
+    <div class="col-lg-6">
+
+      <!-- Two-Factor Authentication -->
+      <div class="card mb-4">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-shield-lock me-1"></i> {% trans "Two-Factor Authentication" %}</h5>
+          {% if totp_enabled %}
+          <div class="alert alert-success d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-check-circle-fill"></i>
+            <span>{% trans "2FA is enabled on your account." %}</span>
+          </div>
+          {% if backup_codes_remaining == 0 %}
+          <div class="alert alert-warning d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <span>{% trans "All backup codes have been used. Re-enable 2FA to generate new ones." %}</span>
+          </div>
+          {% elif backup_codes_remaining <= 2 %}
+          <div class="alert alert-warning d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span>{% blocktrans with n=backup_codes_remaining %}Only {{ n }} backup code(s) remaining. Consider regenerating by disabling and re-enabling 2FA.{% endblocktrans %}</span>
+          </div>
+          {% else %}
+          <p class="small text-muted mb-2">{% blocktrans with n=backup_codes_remaining %}{{ n }} backup codes remaining.{% endblocktrans %}</p>
+          {% endif %}
+          <form method="POST" action="{% url 'totp_disable' %}" onsubmit="return confirm('{% trans "Disable two-factor authentication? Your account will be less secure." %}')">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger">
+              <i class="bi bi-shield-x me-1"></i> {% trans "Disable 2FA" %}
+            </button>
+          </form>
+          {% else %}
+          <p class="text-muted">{% trans "Add a second layer of security with an authenticator app." %}</p>
+          <a href="{% url 'totp_setup' %}" class="btn btn-primary">
+            <i class="bi bi-shield-plus me-1"></i> {% trans "Enable 2FA" %}
+          </a>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Active Sessions -->
+      <div class="card mb-4">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-laptop me-1"></i> {% trans "Active Sessions" %}</h5>
+          <p class="text-muted small">{% trans "These are all sessions currently signed in to your account. Revoke any you don't recognise." %}</p>
+          {% for s in user_sessions %}
+          <div class="d-flex justify-content-between align-items-start mb-2 pb-2 border-bottom">
+            <div>
+              {% if s.is_current %}
+              <span class="badge bg-primary me-1">{% trans "Current" %}</span>
+              {% endif %}
+              <small class="text-muted">{% trans "Expires" %}: {{ s.expire_date|date:"d M Y H:i" }}</small>
+            </div>
+            {% if not s.is_current %}
+            <form method="POST" action="{% url 'revoke_session' %}">
+              {% csrf_token %}
+              <input type="hidden" name="session_key" value="{{ s.key }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger">{% trans "Revoke" %}</button>
+            </form>
+            {% endif %}
+          </div>
+          {% empty %}
+          <p class="text-muted">{% trans "No active sessions found." %}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+    </div>
+
+    <div class="col-lg-6">
+      <!-- Login History -->
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-clock-history me-1"></i> {% trans "Recent Login Activity" %}</h5>
+          {% if recent_logins %}
+          <div class="table-responsive">
+            <table class="table table-sm table-hover">
+              <thead>
+                <tr>
+                  <th>{% trans "When" %}</th>
+                  <th>{% trans "IP" %}</th>
+                  <th>{% trans "Result" %}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for log in recent_logins %}
+                <tr>
+                  <td class="small text-muted">{{ log.timestamp|date:"d M H:i" }}</td>
+                  <td class="small">{{ log.ip_address|default:"—" }}</td>
+                  <td>
+                    {% if log.success %}
+                    <span class="badge bg-success">{% trans "OK" %}</span>
+                    {% else %}
+                    <span class="badge bg-danger">{% trans "Failed" %}</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <p class="text-muted">{% trans "No login history yet." %}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+{% endblock %}
