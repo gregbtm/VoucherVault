@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{% trans "Outbound Webhooks" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "Webhooks" %}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="row">
+
+    <!-- Create webhook form -->
+    <div class="col-lg-5">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">{% trans "New Webhook" %}</h5>
+          <form method="POST" action="{% url 'create_webhook' %}">
+            {% csrf_token %}
+            <div class="mb-3">
+              <label class="form-label">{% trans "Name" %}</label>
+              <input type="text" name="name" class="form-control" placeholder="{% trans 'e.g. My n8n Workflow' %}" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">{% trans "URL" %}</label>
+              <input type="url" name="url" class="form-control" placeholder="https://" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">{% trans "Signing Secret" %} <span class="text-muted small">({% trans "optional" %})</span></label>
+              <input type="text" name="secret" class="form-control" placeholder="{% trans 'HMAC-SHA256 secret' %}">
+              <small class="text-muted">{% trans "When set, each delivery includes an X-VoucherVault-Signature header." %}</small>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">{% trans "Trigger Events" %}</label>
+              {% for value, label in event_choices %}
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="event_{{ value }}" id="ev_{{ value }}" value="1" checked>
+                <label class="form-check-label" for="ev_{{ value }}">{{ label }}</label>
+              </div>
+              {% endfor %}
+            </div>
+            <div class="form-check mb-3">
+              <input class="form-check-input" type="checkbox" name="enabled" id="enabled" value="1" checked>
+              <label class="form-check-label" for="enabled">{% trans "Enabled" %}</label>
+            </div>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-plus-circle me-1"></i> {% trans "Create" %}</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Webhook list -->
+    <div class="col-lg-7">
+      {% if hooks %}
+      {% for hook in hooks %}
+      <div class="card mb-3">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <h6 class="mb-0">{{ hook.name }}
+                {% if hook.enabled %}<span class="badge bg-success ms-1">{% trans "Active" %}</span>
+                {% else %}<span class="badge bg-secondary ms-1">{% trans "Disabled" %}</span>{% endif %}
+              </h6>
+              <small class="text-muted text-break">{{ hook.url }}</small><br>
+              <small class="text-muted">
+                {% trans "Events" %}: {{ hook.events|join:", " }}
+              </small>
+            </div>
+            <div class="d-flex gap-1 ms-2">
+              <form method="POST" action="{% url 'test_webhook' hook.id %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-secondary" title="{% trans 'Send test' %}">
+                  <i class="bi bi-send"></i>
+                </button>
+              </form>
+              <form method="POST" action="{% url 'delete_webhook' hook.id %}"
+                    onsubmit="return confirm('{% trans "Delete this webhook?" %}')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-danger" title="{% trans 'Delete' %}">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </div>
+          </div>
+          <!-- Edit form (inline) -->
+          <details class="mt-2">
+            <summary class="text-primary small" style="cursor:pointer;">{% trans "Edit" %}</summary>
+            <form method="POST" action="{% url 'edit_webhook' hook.id %}" class="mt-2">
+              {% csrf_token %}
+              <div class="row g-2 mb-2">
+                <div class="col"><input type="text" name="name" class="form-control form-control-sm" value="{{ hook.name }}" required></div>
+                <div class="col"><input type="url" name="url" class="form-control form-control-sm" value="{{ hook.url }}" required></div>
+              </div>
+              <input type="text" name="secret" class="form-control form-control-sm mb-2" value="{{ hook.secret }}" placeholder="{% trans 'Signing secret' %}">
+              <div class="mb-2">
+                {% for value, label in event_choices %}
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" name="event_{{ value }}" value="1"
+                    {% if value in hook.events %}checked{% endif %}>
+                  <label class="form-check-label small">{{ label }}</label>
+                </div>
+                {% endfor %}
+              </div>
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" name="enabled" value="1" {% if hook.enabled %}checked{% endif %}>
+                <label class="form-check-label small">{% trans "Enabled" %}</label>
+              </div>
+              <button type="submit" class="btn btn-sm btn-primary">{% trans "Save" %}</button>
+            </form>
+          </details>
+        </div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="card">
+        <div class="card-body text-center text-muted py-5">
+          <i class="bi bi-plug fs-1 d-block mb-2"></i>
+          <p>{% trans "No webhooks yet. Create one to start receiving item event notifications in your own systems." %}</p>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+</section>
+{% endblock %}

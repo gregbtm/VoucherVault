@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{{ wallet.name }} — {% trans "Activity" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'manage_wallets' %}">{% trans "Wallets" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "Activity" %}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-activity me-1"></i> {% trans "Recent Activity" %}</h5>
+          {% if activities %}
+          <div class="timeline">
+            {% for activity in activities %}
+            <div class="d-flex gap-3 pb-3 border-bottom mb-3">
+              <div class="flex-shrink-0">
+                {% if activity.action == 'item_added' %}
+                  <i class="bi bi-plus-circle text-success fs-5"></i>
+                {% elif activity.action == 'item_edited' %}
+                  <i class="bi bi-pencil text-primary fs-5"></i>
+                {% elif activity.action == 'item_deleted' %}
+                  <i class="bi bi-trash text-danger fs-5"></i>
+                {% elif activity.action == 'item_used' %}
+                  <i class="bi bi-check-circle text-warning fs-5"></i>
+                {% elif activity.action == 'item_archived' %}
+                  <i class="bi bi-archive text-secondary fs-5"></i>
+                {% elif activity.action == 'member_added' %}
+                  <i class="bi bi-person-plus text-info fs-5"></i>
+                {% elif activity.action == 'member_removed' %}
+                  <i class="bi bi-person-dash text-danger fs-5"></i>
+                {% else %}
+                  <i class="bi bi-dot fs-5"></i>
+                {% endif %}
+              </div>
+              <div class="flex-grow-1">
+                <div class="d-flex justify-content-between">
+                  <strong>{{ activity.actor.username|default:"Deleted user" }}</strong>
+                  <small class="text-muted">{{ activity.timestamp|date:"d M Y H:i" }}</small>
+                </div>
+                <div class="text-muted small">
+                  {{ activity.action|title|cut:"_" }}
+                  {% if activity.item_name %}: <em>{{ activity.item_name }}</em>{% endif %}
+                  {% if activity.detail %} — {{ activity.detail }}{% endif %}
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="text-muted text-center py-4">{% trans "No activity recorded yet." %}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

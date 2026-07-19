@@ -34,7 +34,7 @@ from .merchant_logos import (
 from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
 from .nearby_places import _names_match, _normalize, find_nearby_issuer_matches
 from .imagehash import compute_dhash, hamming_distance
-from .models import AppSettings, Document, Item, ItemPublicShare, MerchantProfile, ScanFieldCorrection, SiteConfiguration, Tag, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, Wallet
+from .models import AppSettings, Document, Item, ItemPublicShare, LoginAuditLog, MerchantProfile, ScanFieldCorrection, SiteConfiguration, Tag, TOTPDevice, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, UserWebhook, Wallet, WalletActivity, WalletMembership
 from .scan_learning import apply_learned_corrections, record_scan_corrections
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .test_utils import set_site_config
@@ -5387,3 +5387,203 @@ class AnalyticsViewTests(TestCase):
                     'value_by_type_json', 'top_issuers_json'):
             self.assertIn(key, response.context)
             json.loads(response.context[key])  # must be valid JSON
+
+
+# ── Phase C/D/E/F Tests ─────────────────────────────────────────────────────
+
+class WalletMembershipTests(TestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user('alice_wm', 'a@ex.com', 'pw')
+        self.bob = User.objects.create_user('bob_wm', 'b@ex.com', 'pw')
+        self.wallet = Wallet.objects.create(user=self.alice, name='WM Wallet')
+        self.client.force_login(self.alice)
+
+    def _share(self, role='editor'):
+        return self.client.post(
+            reverse('share_wallet', kwargs={'wallet_id': self.wallet.id}),
+            {'username': 'bob_wm', 'role': role},
+        )
+
+    def test_share_creates_membership(self):
+        self._share(role='viewer')
+        self.assertTrue(WalletMembership.objects.filter(wallet=self.wallet, user=self.bob, role='viewer').exists())
+        self.assertIn(self.bob, self.wallet.shared_with.all())
+
+    def test_share_logs_activity(self):
+        self._share()
+        self.assertTrue(WalletActivity.objects.filter(wallet=self.wallet, action='member_added').exists())
+
+    def test_unshare_removes_membership(self):
+        self._share()
+        self.client.post(reverse('unshare_wallet', kwargs={'wallet_id': self.wallet.id, 'user_id': self.bob.id}))
+        self.assertFalse(WalletMembership.objects.filter(wallet=self.wallet, user=self.bob).exists())
+
+    def test_leave_removes_membership(self):
+        self._share()
+        self.client.force_login(self.bob)
+        self.client.post(reverse('leave_shared_wallet', kwargs={'wallet_id': self.wallet.id}))
+        self.assertFalse(WalletMembership.objects.filter(wallet=self.wallet, user=self.bob).exists())
+
+    def test_activity_feed_requires_login(self):
+        self.client.logout()
+        resp = self.client.get(reverse('wallet_activity_feed', kwargs={'wallet_id': self.wallet.id}))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('accounts/login', resp['Location'])
+
+    def test_activity_feed_owner_sees_feed(self):
+        WalletActivity.objects.create(wallet=self.wallet, actor=self.alice, action='item_added', item_name='Test')
+        resp = self.client.get(reverse('wallet_activity_feed', kwargs={'wallet_id': self.wallet.id}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Test')
+
+    def test_activity_feed_non_member_rejected(self):
+        self.client.force_login(self.bob)
+        resp = self.client.get(reverse('wallet_activity_feed', kwargs={'wallet_id': self.wallet.id}))
+        self.assertEqual(resp.status_code, 403)
+
+
+class UserWebhookTests(TestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user('alice_wh', 'a@ex.com', 'pw')
+        self.bob = User.objects.create_user('bob_wh', 'b@ex.com', 'pw')
+        self.client.force_login(self.alice)
+
+    def test_webhook_list_requires_login(self):
+        self.client.logout()
+        resp = self.client.get(reverse('manage_webhooks'))
+        self.assertEqual(resp.status_code, 302)
+
+    def test_create_webhook(self):
+        resp = self.client.post(reverse('create_webhook'), {
+            'name': 'My Hook',
+            'url': 'https://example.com/hook',
+            'secret': '',
+            'event_item_created': '1',
+            'enabled': '1',
+        })
+        self.assertRedirects(resp, reverse('manage_webhooks'))
+        self.assertTrue(UserWebhook.objects.filter(user=self.alice, name='My Hook').exists())
+
+    def test_create_webhook_requires_event(self):
+        self.client.post(reverse('create_webhook'), {
+            'name': 'No Events',
+            'url': 'https://example.com/hook',
+        })
+        self.assertFalse(UserWebhook.objects.filter(name='No Events').exists())
+
+    def test_delete_webhook(self):
+        hook = UserWebhook.objects.create(
+            user=self.alice, name='Del Hook',
+            url='https://x.com', events=['item_created'],
+        )
+        self.client.post(reverse('delete_webhook', kwargs={'webhook_id': hook.id}))
+        self.assertFalse(UserWebhook.objects.filter(id=hook.id).exists())
+
+    def test_bob_cannot_delete_alices_webhook(self):
+        hook = UserWebhook.objects.create(
+            user=self.alice, name='Private',
+            url='https://x.com', events=['item_created'],
+        )
+        self.client.force_login(self.bob)
+        resp = self.client.post(reverse('delete_webhook', kwargs={'webhook_id': hook.id}))
+        self.assertEqual(resp.status_code, 404)
+
+
+class TOTPTests(TestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user('alice_totp', 'a@ex.com', 'AlicePw123!')
+        self.client.force_login(self.alice)
+
+    def test_totp_setup_page_accessible(self):
+        resp = self.client.get(reverse('totp_setup'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'data:image/png;base64,')
+
+    def test_totp_setup_creates_unconfirmed_device(self):
+        self.client.get(reverse('totp_setup'))
+        self.assertTrue(TOTPDevice.objects.filter(user=self.alice, confirmed=False).exists())
+
+    def test_totp_confirm_with_valid_token(self):
+        import pyotp
+        secret = pyotp.random_base32()
+        device = TOTPDevice.objects.create(user=self.alice, secret=secret, confirmed=False)
+        token = pyotp.TOTP(secret).now()
+        resp = self.client.post(reverse('totp_setup'), {'token': token, 'secret': secret})
+        device.refresh_from_db()
+        self.assertTrue(device.confirmed)
+        self.assertRedirects(resp, reverse('session_management'))
+
+    def test_totp_confirm_with_invalid_token_rejected(self):
+        import pyotp
+        secret = pyotp.random_base32()
+        TOTPDevice.objects.create(user=self.alice, secret=secret, confirmed=False)
+        resp = self.client.post(reverse('totp_setup'), {'token': '000000', 'secret': secret})
+        self.assertFalse(TOTPDevice.objects.get(user=self.alice).confirmed)
+        self.assertEqual(resp.status_code, 200)
+
+    def test_totp_disable(self):
+        import pyotp
+        TOTPDevice.objects.create(user=self.alice, secret=pyotp.random_base32(), confirmed=True)
+        self.client.post(reverse('totp_disable'))
+        self.assertFalse(TOTPDevice.objects.filter(user=self.alice).exists())
+
+    def test_totp_verify_requires_session_key(self):
+        resp = self.client.get(reverse('totp_verify'))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('login', resp['Location'])
+
+
+class SessionManagementTests(TestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user('alice_sm', 'a@ex.com', 'pw')
+        self.client.force_login(self.alice)
+
+    def test_session_management_requires_login(self):
+        self.client.logout()
+        resp = self.client.get(reverse('session_management'))
+        self.assertEqual(resp.status_code, 302)
+
+    def test_session_management_200(self):
+        resp = self.client.get(reverse('session_management'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Active Sessions')
+
+    def test_session_management_shows_totp_status(self):
+        resp = self.client.get(reverse('session_management'))
+        self.assertContains(resp, 'Two-Factor')
+
+
+class LoginAuditLogTests(TestCase):
+    def test_successful_login_creates_log(self):
+        User.objects.create_user('audit_user', 'a@ex.com', 'AuditPw123!')
+        self.client.post(reverse('login'), {'username': 'audit_user', 'password': 'AuditPw123!'})
+        self.assertTrue(LoginAuditLog.objects.filter(username_attempted='audit_user', success=True).exists())
+
+    def test_failed_login_creates_log(self):
+        self.client.post(reverse('login'), {'username': 'nobody', 'password': 'wrong'})
+        self.assertTrue(LoginAuditLog.objects.filter(username_attempted='nobody', success=False).exists())
+
+
+class CustomLoginTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user('cl_user', 'x@ex.com', 'GoodPw123!')
+
+    def test_login_redirects_authenticated_user(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('login'))
+        self.assertEqual(resp.status_code, 302)
+
+    def test_login_with_bad_credentials_returns_error(self):
+        resp = self.client.post(reverse('login'), {'username': 'cl_user', 'password': 'wrong'})
+        self.assertEqual(resp.status_code, 200)
+
+    def test_login_without_totp_succeeds(self):
+        resp = self.client.post(reverse('login'), {'username': 'cl_user', 'password': 'GoodPw123!'})
+        self.assertRedirects(resp, reverse('show_items'))
+
+    def test_login_with_totp_redirects_to_verify(self):
+        import pyotp
+        TOTPDevice.objects.create(user=self.user, secret=pyotp.random_base32(), confirmed=True)
+        resp = self.client.post(reverse('login'), {'username': 'cl_user', 'password': 'GoodPw123!'})
+        self.assertRedirects(resp, reverse('totp_verify'))
+        self.assertIn('_totp_user_id', self.client.session)

@@ -25,6 +25,8 @@ urlpatterns = i18n_patterns(
     path("", include("myapp.urls")),
     path('notifications/', include('notify.urls')),
     path('import-export/', include('imports.urls')),
+    # Custom TOTP-aware login overrides django.contrib.auth.urls 'login' URL
+    path('accounts/login/', myapp_views.custom_login, name='login'),
     path('accounts/', include('django.contrib.auth.urls')),
     path("i18n/", include("django.conf.urls.i18n")),
 )

@@ -13,6 +13,7 @@ django-pwa==2.0.1
 
 # AUTH / LOGIN BRUTE-FORCE PROTECTION
 django-axes==8.3.1
+pyotp==2.9.0
 
 # APP SPECIFIC
 qrcode==8.2

@@ -1,0 +1,50 @@
+{% load static %}
+{% load i18n %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoucherVault Plus+ — 2FA</title>
+    <link href="{% static 'assets/img/favicon.ico' %}" rel="shortcut icon">
+    <link rel="stylesheet" href="{% static 'assets/css/style.css' %}">
+    <link rel="stylesheet" href="{% static 'assets/css/dark-mode.css' %}">
+    <link href="{% static 'assets/vendor/bootstrap/css/bootstrap.min.css' %}" rel="stylesheet">
+    <link href="{% static 'assets/vendor/bootstrap-icons/bootstrap-icons.css' %}" rel="stylesheet">
+    <style>
+        body { display:flex; justify-content:center; align-items:flex-start; height:100vh; margin:0; background-color:#0f0f0f; }
+        .container { margin-top:10vh; width:340px; padding:28px; background:linear-gradient(145deg,#1b1b1b,#1f1f1f); border-radius:12px; position:relative; }
+        .container::before { content:''; position:absolute; top:-2px; left:-2px; right:-2px; bottom:-2px; border-radius:12px; background:linear-gradient(45deg,#ff0057,#0099ff,#00ff99,#ffcc00); background-size:400% 400%; animation:neon-border 8s infinite; z-index:-1; }
+        @keyframes neon-border { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+        label, p { color:#fff; }
+        .form-control { background:#333; color:#fff; border:none; border-radius:5px; }
+        .form-control:focus { background:#525252; color:#fff; border-color:#fff; box-shadow:none; }
+        .btn-primary { background:linear-gradient(45deg,#6c63ff,#00c9ff); border:none; width:100%; padding:10px; border-radius:5px; }
+        .logo-container { display:flex; justify-content:center; margin-bottom:20px; }
+        .error-msg { color:#ff6b6b; font-size:.9rem; margin-top:.5rem; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="logo-container">
+        <img src="{% static 'assets/img/logo-mono-white.svg' %}" width="50px" alt="VoucherVault Plus+">
+    </div>
+    <p class="text-center mb-3"><i class="bi bi-shield-lock"></i> {% trans "Enter your 2FA code" %}</p>
+    {% if error %}<p class="error-msg text-center">{{ error }}</p>{% endif %}
+    <form method="POST" action="{% url 'totp_verify' %}">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label for="token">{% trans "Authentication Code" %}</label>
+            <input type="text" id="token" name="token" class="form-control text-center fs-4 mt-1"
+                   maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code"
+                   placeholder="000000" autofocus required>
+        </div>
+        <button type="submit" class="btn btn-primary mt-2">{% trans "Verify" %}</button>
+    </form>
+    <p class="text-center mt-3" style="font-size:.8rem; color:#888;">
+        <a href="{% url 'logout' %}" style="color:#aaa;">{% trans "Cancel & sign out" %}</a>
+    </p>
+</div>
+</body>
+</html>

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{% trans "Set Up Two-Factor Authentication" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'session_management' %}">{% trans "Security" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "2FA Setup" %}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="row justify-content-center">
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-shield-lock me-1"></i> {% trans "Authenticator App" %}</h5>
+
+          <ol class="mb-4">
+            <li class="mb-2">{% trans "Install an authenticator app (Google Authenticator, Authy, etc.) on your phone." %}</li>
+            <li class="mb-2">{% trans "Scan the QR code below, or enter the secret key manually." %}</li>
+            <li class="mb-2">{% trans "Enter the 6-digit code shown in the app to confirm." %}</li>
+          </ol>
+
+          <div class="text-center mb-3">
+            <img src="data:image/png;base64,{{ qr_b64 }}" alt="{% trans 'QR Code' %}" class="img-fluid" style="max-width:220px; border:8px solid #fff; border-radius:8px;">
+          </div>
+
+          <div class="mb-3 text-center">
+            <small class="text-muted">{% trans "Manual entry key:" %}</small><br>
+            <code class="fs-6 user-select-all">{{ secret }}</code>
+          </div>
+
+          <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="secret" value="{{ secret }}">
+            <div class="mb-3">
+              <label for="token" class="form-label">{% trans "Verification Code" %}</label>
+              <input type="text" id="token" name="token" class="form-control form-control-lg text-center"
+                     maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code"
+                     placeholder="000000" autofocus required>
+            </div>
+            <div class="d-grid">
+              <button type="submit" class="btn btn-primary btn-lg">
+                <i class="bi bi-shield-check me-1"></i> {% trans "Enable 2FA" %}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -46,6 +46,7 @@ from imports.exporters.google_wallet import generate_google_wallet_save_url, goo
 from imports.exporters.pkpass import generate_pkpass, pkpass_enabled
 from imports.tasks import update_google_wallet_pass_task
 from notify.tasks import notify_balance_changed, notify_item_archived, notify_item_created, notify_item_shared, notify_item_used
+from .webhooks import fire_user_webhooks
 from ocr.backends import ocr_enabled
 from django.db.models import Count, Sum, Q
 from django.db.models.functions import TruncMonth
@@ -542,11 +543,13 @@ def view_item(request, item_uuid):
             transaction.save()
             total_value += transaction.value
             notify_balance_changed(item, transaction)
+            fire_user_webhooks(item.user, 'item_balance_changed', item)
 
             if total_value <= 0:
                 item.is_used = True
                 item.save()
                 notify_item_used(item)
+                fire_user_webhooks(item.user, 'item_used', item)
             _queue_google_wallet_update(item)
             return redirect('view_item', item_uuid=item.id)
     else:
@@ -662,6 +665,7 @@ def create_item(request):
             remember_balance_check_url(item.issuer, item.balance_check_url)
             _record_scan_learning(request, item)
             notify_item_created(item)
+            fire_user_webhooks(item.user, 'item_created', item)
 
             return redirect('show_items')
         else:
@@ -1160,6 +1164,7 @@ def toggle_item_status(request, item_id):
         )
         transaction.save()
         notify_item_used(item)
+        fire_user_webhooks(item.user, 'item_used', item)
 
     item.save()
     _queue_google_wallet_update(item)
@@ -2335,6 +2340,7 @@ def toggle_archive_item(request, item_uuid):
     item.save(update_fields=['is_archived'])
     if item.is_archived:
         notify_item_archived(item)
+        fire_user_webhooks(item.user, 'item_archived', item)
     _queue_google_wallet_update(item)
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -2498,7 +2504,19 @@ def share_wallet(request, wallet_id):
     wallet = get_object_or_404(Wallet, id=wallet_id, user=request.user)
     form = WalletShareForm(request.POST, wallet=wallet)
     if form.is_valid():
-        wallet.shared_with.add(form.cleaned_data['user'])
+        collaborator = form.cleaned_data['user']
+        role = request.POST.get('role', WalletMembership.ROLE_EDITOR)
+        if role not in (WalletMembership.ROLE_VIEWER, WalletMembership.ROLE_EDITOR):
+            role = WalletMembership.ROLE_EDITOR
+        wallet.shared_with.add(collaborator)
+        WalletMembership.objects.update_or_create(
+            wallet=wallet, user=collaborator,
+            defaults={'role': role},
+        )
+        WalletActivity.objects.create(
+            wallet=wallet, actor=request.user, action='member_added',
+            detail=f"{collaborator.username} ({role})",
+        )
         messages.success(request, _('Wallet shared with %(username)s.') % {'username': form.cleaned_data['username']})
     else:
         for error in form.errors.get('username', []):
@@ -2512,6 +2530,11 @@ def unshare_wallet(request, wallet_id, user_id):
     wallet = get_object_or_404(Wallet, id=wallet_id, user=request.user)
     collaborator = get_object_or_404(User, id=user_id)
     wallet.shared_with.remove(collaborator)
+    WalletMembership.objects.filter(wallet=wallet, user=collaborator).delete()
+    WalletActivity.objects.create(
+        wallet=wallet, actor=request.user, action='member_removed',
+        detail=collaborator.username,
+    )
     messages.success(request, _('Removed %(username)s from this wallet.') % {'username': collaborator.username})
     return redirect('edit_wallet', wallet_id=wallet.id)
 
@@ -2521,6 +2544,7 @@ def leave_shared_wallet(request, wallet_id):
     """A collaborator removes themselves from a wallet shared with them."""
     wallet = get_object_or_404(Wallet, id=wallet_id, shared_with=request.user)
     wallet.shared_with.remove(request.user)
+    WalletMembership.objects.filter(wallet=wallet, user=request.user).delete()
     messages.success(request, _('You have left the wallet "%(name)s".') % {'name': wallet.name})
     return redirect('manage_wallets')
 
@@ -2683,3 +2707,330 @@ def analytics(request):
         'wallet_budgets': wallet_budgets,
     }
     return render(request, 'analytics.html', context)
+
+
+# ── Phase D: Advanced Collaboration ─────────────────────────────────────────
+
+def _log_wallet_activity(wallet, actor, action, item=None, detail=''):
+    """Record a WalletActivity row; silently no-op if wallet is None."""
+    if wallet is None:
+        return
+    WalletActivity.objects.create(
+        wallet=wallet,
+        actor=actor,
+        action=action,
+        item=item,
+        item_name=item.name if item else '',
+        detail=detail,
+    )
+
+
+def _check_item_edit_permission(item, user):
+    """
+    Returns True when user may write to item (create/edit/delete/toggle).
+    Viewer-role wallet collaborators are denied write access.
+    """
+    if item.user == user:
+        return True
+    if item.shared_with.filter(shared_with_user=user).exists():
+        return True
+    if item.wallet is None:
+        return False
+    if item.wallet.user == user:
+        return True
+    try:
+        membership = WalletMembership.objects.get(wallet=item.wallet, user=user)
+        return membership.role == WalletMembership.ROLE_EDITOR
+    except WalletMembership.DoesNotExist:
+        return False
+
+
+@login_required
+def wallet_activity_feed(request, wallet_id):
+    wallet = get_object_or_404(Wallet, id=wallet_id)
+    if not has_wallet_access(wallet, request.user):
+        return HttpResponse("Unauthorized", status=403)
+    activities = wallet.activities.select_related('actor', 'item').order_by('-timestamp')[:100]
+    return render(request, 'wallet_activity.html', {'wallet': wallet, 'activities': activities})
+
+
+# ── Phase E: Integrations & Automation (Webhooks) ────────────────────────────
+
+class _WebhookForm:
+    """Minimal in-view form helper for UserWebhook — no Django Form subclass needed."""
+    ALL_EVENTS = [e[0] for e in UserWebhook.EVENT_CHOICES]
+
+    @staticmethod
+    def from_post(post, instance=None):
+        errors = {}
+        name = post.get('name', '').strip()
+        url = post.get('url', '').strip()
+        secret = post.get('secret', '').strip()
+        events = [e for e in _WebhookForm.ALL_EVENTS if post.get(f'event_{e}')]
+        enabled = bool(post.get('enabled'))
+
+        if not name:
+            errors['name'] = 'Name is required.'
+        if not url or not url.startswith(('http://', 'https://')):
+            errors['url'] = 'A valid URL is required.'
+        if not events:
+            errors['events'] = 'Select at least one event.'
+        return {
+            'name': name, 'url': url, 'secret': secret,
+            'events': events, 'enabled': enabled,
+        }, errors
+
+
+@login_required
+def manage_webhooks(request):
+    hooks = UserWebhook.objects.filter(user=request.user).order_by('-created_at')
+    return render(request, 'webhooks.html', {
+        'hooks': hooks,
+        'event_choices': UserWebhook.EVENT_CHOICES,
+    })
+
+
+@require_POST
+@login_required
+def create_webhook(request):
+    data, errors = _WebhookForm.from_post(request.POST)
+    if errors:
+        for msg in errors.values():
+            messages.error(request, msg)
+    else:
+        UserWebhook.objects.create(user=request.user, **data)
+        messages.success(request, _('Webhook created.'))
+    return redirect('manage_webhooks')
+
+
+@require_POST
+@login_required
+def edit_webhook(request, webhook_id):
+    hook = get_object_or_404(UserWebhook, id=webhook_id, user=request.user)
+    data, errors = _WebhookForm.from_post(request.POST)
+    if errors:
+        for msg in errors.values():
+            messages.error(request, msg)
+    else:
+        for k, v in data.items():
+            setattr(hook, k, v)
+        hook.save()
+        messages.success(request, _('Webhook updated.'))
+    return redirect('manage_webhooks')
+
+
+@require_POST
+@login_required
+def delete_webhook(request, webhook_id):
+    hook = get_object_or_404(UserWebhook, id=webhook_id, user=request.user)
+    hook.delete()
+    messages.success(request, _('Webhook deleted.'))
+    return redirect('manage_webhooks')
+
+
+@require_POST
+@login_required
+def test_webhook(request, webhook_id):
+    hook = get_object_or_404(UserWebhook, id=webhook_id, user=request.user)
+    import hmac as _hmac, hashlib as _hashlib, requests as _rq
+    payload = json.dumps({
+        'event': 'test',
+        'message': 'VoucherVault test webhook delivery',
+        'webhook_id': hook.id,
+    }).encode()
+    headers = {'Content-Type': 'application/json', 'X-VoucherVault-Event': 'test'}
+    if hook.secret:
+        sig = _hmac.new(hook.secret.encode(), payload, _hashlib.sha256).hexdigest()
+        headers['X-VoucherVault-Signature'] = f"sha256={sig}"
+    try:
+        resp = _rq.post(hook.url, data=payload, headers=headers, timeout=10)
+        if resp.ok:
+            messages.success(request, _('Test delivery succeeded (HTTP %(status)s).') % {'status': resp.status_code})
+        else:
+            messages.warning(request, _('Test delivered but got HTTP %(status)s.') % {'status': resp.status_code})
+    except Exception as exc:
+        messages.error(request, _('Test delivery failed: %(err)s') % {'err': str(exc)})
+    return redirect('manage_webhooks')
+
+
+# ── Phase F: Security & Audit ─────────────────────────────────────────────────
+
+import pyotp
+import qrcode as _qrcode
+import io as _io
+import base64 as _base64
+from django.contrib.auth import authenticate as _authenticate, login as _login
+from django.contrib.sessions.models import Session as _Session
+from django.utils.http import url_has_allowed_host_and_scheme as _safe_redirect
+
+
+def _client_ip_view(request):
+    x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    if x_forwarded:
+        return x_forwarded.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR') or None
+
+
+def custom_login(request):
+    """TOTP-aware login view. Replaces django.contrib.auth.views.LoginView."""
+    from django.contrib.auth import REDIRECT_FIELD_NAME
+    if request.user.is_authenticated:
+        return redirect('show_items')
+
+    next_url = request.POST.get(REDIRECT_FIELD_NAME) or request.GET.get(REDIRECT_FIELD_NAME, '')
+    error = None
+
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+        user = _authenticate(request, username=username, password=password)
+        if user is not None:
+            try:
+                device = user.totp_device
+                if device.confirmed:
+                    request.session['_totp_user_id'] = user.pk
+                    if next_url:
+                        request.session['_totp_next'] = next_url
+                    return redirect('totp_verify')
+            except TOTPDevice.DoesNotExist:
+                pass
+            _login(request, user)
+            if next_url and _safe_redirect(next_url, allowed_hosts={request.get_host()}):
+                return redirect(next_url)
+            return redirect('show_items')
+        error = _('Invalid username or password.')
+
+    return render(request, 'registration/login.html', {'error': error, 'next': next_url})
+
+
+@login_required
+def totp_setup(request):
+    """Generate a new TOTP secret, display QR code, wait for confirmation."""
+    try:
+        device = request.user.totp_device
+        if device.confirmed:
+            messages.info(request, _('Two-factor authentication is already enabled.'))
+            return redirect('session_management')
+    except TOTPDevice.DoesNotExist:
+        device = None
+
+    if request.method == 'POST':
+        token = request.POST.get('token', '').strip().replace(' ', '')
+        secret = request.POST.get('secret', '').strip()
+        totp = pyotp.TOTP(secret)
+        if totp.verify(token, valid_window=1):
+            if device is None:
+                device = TOTPDevice(user=request.user)
+            device.secret = secret
+            device.confirmed = True
+            device.save()
+            messages.success(request, _('Two-factor authentication enabled.'))
+            return redirect('session_management')
+        else:
+            messages.error(request, _('Invalid code. Please try again.'))
+
+    secret = pyotp.random_base32()
+    if device and not device.confirmed:
+        secret = device.secret
+    else:
+        device = TOTPDevice.objects.create(user=request.user, secret=secret, confirmed=False) if device is None else device
+        device.secret = secret
+        device.save()
+
+    totp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
+        name=request.user.email or request.user.username,
+        issuer_name='VoucherVault Plus+',
+    )
+    qr_img = _qrcode.make(totp_uri)
+    buf = _io.BytesIO()
+    qr_img.save(buf, format='PNG')
+    qr_b64 = _base64.b64encode(buf.getvalue()).decode()
+
+    return render(request, 'totp_setup.html', {'secret': secret, 'qr_b64': qr_b64})
+
+
+def totp_verify(request):
+    """Second-factor gate after password auth; used in the login flow."""
+    user_id = request.session.get('_totp_user_id')
+    if not user_id:
+        return redirect('login')
+    try:
+        from django.contrib.auth.models import User as _User
+        user = _User.objects.get(pk=user_id)
+    except _User.DoesNotExist:
+        return redirect('login')
+
+    error = None
+    if request.method == 'POST':
+        token = request.POST.get('token', '').strip().replace(' ', '')
+        try:
+            device = user.totp_device
+            totp = pyotp.TOTP(device.secret)
+            if totp.verify(token, valid_window=1):
+                _login(request, user)
+                del request.session['_totp_user_id']
+                next_url = request.session.pop('_totp_next', '')
+                if next_url and _safe_redirect(next_url, allowed_hosts={request.get_host()}):
+                    return redirect(next_url)
+                return redirect('show_items')
+        except TOTPDevice.DoesNotExist:
+            return redirect('login')
+        error = _('Invalid code. Please try again.')
+
+    return render(request, 'totp_verify.html', {'error': error})
+
+
+@require_POST
+@login_required
+def totp_disable(request):
+    try:
+        request.user.totp_device.delete()
+        messages.success(request, _('Two-factor authentication disabled.'))
+    except TOTPDevice.DoesNotExist:
+        pass
+    return redirect('session_management')
+
+
+@login_required
+def session_management(request):
+    """List the user's active sessions; allow revoking individual ones."""
+    current_key = request.session.session_key
+    user_sessions = []
+    for s in _Session.objects.filter(expire_date__gt=timezone.now()):
+        data = s.get_decoded()
+        if str(data.get('_auth_user_id')) == str(request.user.pk):
+            user_sessions.append({
+                'key': s.session_key,
+                'expire_date': s.expire_date,
+                'is_current': s.session_key == current_key,
+                'created': data.get('_session_created'),
+            })
+    user_sessions.sort(key=lambda x: x['expire_date'], reverse=True)
+
+    try:
+        totp_device = request.user.totp_device
+        totp_enabled = totp_device.confirmed
+    except TOTPDevice.DoesNotExist:
+        totp_enabled = False
+
+    recent_logins = LoginAuditLog.objects.filter(user=request.user).order_by('-timestamp')[:20]
+
+    return render(request, 'session_management.html', {
+        'user_sessions': user_sessions,
+        'totp_enabled': totp_enabled,
+        'recent_logins': recent_logins,
+    })
+
+
+@require_POST
+@login_required
+def revoke_session(request):
+    key = request.POST.get('session_key', '')
+    if key and key != request.session.session_key:
+        _Session.objects.filter(session_key=key).delete()
+        messages.success(request, _('Session revoked.'))
+    return redirect('session_management')
+
+
+# ── Phase C: PWA Install prompt ───────────────────────────────────────────────
+# (No server-side view needed — fully client-side in pwa-install.js)

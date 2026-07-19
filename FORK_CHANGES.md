@@ -136,6 +136,10 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 103 — Comprehensive UI polish pass](#phase-103--comprehensive-ui-polish-pass)
 - [Phase 104 — Dedicated Analytics page](#phase-104--dedicated-analytics-page)
 - [Phase 105 — Performance & query optimisation](#phase-105--performance--query-optimisation)
+- [Phase 106 — Mobile PWA Enhancement](#phase-106--mobile-pwa-enhancement)
+- [Phase 107 — Advanced Collaboration (Role-based Shared Wallets)](#phase-107--advanced-collaboration-role-based-shared-wallets)
+- [Phase 108 — Integrations & Automation (Outbound Webhooks)](#phase-108--integrations--automation-outbound-webhooks)
+- [Phase 109 — Security & Audit (TOTP 2FA, Login Log, Session Management)](#phase-109--security--audit-totp-2fa-login-log-session-management)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -5414,6 +5418,164 @@ Zero schema changes; all gains are from smarter queryset use.
     `ItemShare` queryset, eliminating an N+1 on `item.get_current_balance()`
   - **`expiry_timeline`**: 4 `.filter()` calls on the same base queryset →
     `list(base)` evaluated once, split into time-bands in Python
+
+## Phase 106 — Mobile PWA Enhancement
+
+- **`myapp/static/assets/js/pwa-install.js`** (new) — install-prompt banner:
+  - Captures the browser's `beforeinstallprompt` event and defers it
+  - Shows a fixed bottom banner after a 2.5-second delay (avoids obscuring
+    page content on initial load); banner height ≥ 56 px, touch targets ≥ 44 px
+  - "Install" button calls `deferredPrompt.prompt()` and awaits `userChoice`
+  - "Dismiss" (×) button sets a `pwa_install_dismissed` key in `localStorage`
+    with the current timestamp; banner is suppressed for 30 days after dismissal
+  - `appinstalled` event also dismisses and clears the deferred prompt
+  - IIFE, no dependencies beyond Bootstrap Icons already on the page
+
+- **`myapp/templates/base.html`** — added `<script>` tag loading
+  `pwa-install.js` after the existing `page-cache-helper.js`
+
+## Phase 107 — Advanced Collaboration (Role-based Shared Wallets)
+
+New `WalletMembership` model stores per-user roles (viewer/editor) on shared
+wallets. New `WalletActivity` model provides an immutable audit trail of all
+actions taken within a wallet by any member.
+
+- **`myapp/models.py`** — two new models appended after `UpdateCheckStatus`:
+  - `WalletMembership(wallet, user, role, joined_at)` — `unique_together`
+    on `(wallet, user)`; roles are `viewer` and `editor`
+  - `WalletActivity(wallet, actor, action, item, item_name, detail, timestamp)`
+    — `actor` is `SET_NULL` on delete; `item` is `SET_NULL` on delete with
+    `item_name` copied at write time so the log survives item deletion
+
+- **`myapp/migrations/0065_wallet_membership_activity.py`** — creates both
+  tables; `RunPython(populate_wallet_memberships)` bootstraps `WalletMembership`
+  rows from existing `Wallet.shared_with` M2M entries (default `editor` role)
+
+- **`myapp/views.py`** — collaboration view changes:
+  - `_log_wallet_activity(wallet, actor, action, item=None, detail='')` helper
+  - `_check_item_edit_permission(item, user)` — returns `True` for the wallet
+    owner or any member with `editor` role; `False` for `viewer` members
+  - `share_wallet` — also creates/updates a `WalletMembership` row with the
+    posted `role` field and logs a `member_added` activity entry
+  - `unshare_wallet` — also deletes the corresponding `WalletMembership` and
+    logs a `member_removed` activity entry
+  - `leave_shared_wallet` — also deletes the `WalletMembership`
+  - `wallet_activity_feed(request, wallet_id)` — paginated chronological feed;
+    only accessible to the wallet owner or any member
+
+- **`myapp/templates/manage-wallets.html`** — collaborator card (edit mode):
+  - Share form gains a `<select name="role">` (Editor / Viewer) inline
+  - Collaborator list loops over `memberships.select_related` instead of
+    `shared_with.all`; shows role badge (blue for editor, grey for viewer)
+  - "View Activity" link to `wallet_activity_feed`
+
+- **`myapp/templates/wallet_activity.html`** (new) — extends `base.html`;
+  Bootstrap Icons per action type (`item_added`, `item_edited`, `item_deleted`,
+  `item_used`, `item_archived`, `member_added`, `member_removed`)
+
+- **`myapp/urls.py`** — `path('wallets/<int:wallet_id>/activity/', ..., name='wallet_activity_feed')`
+
+## Phase 108 — Integrations & Automation (Outbound Webhooks)
+
+Users can register multiple webhook endpoints that are called automatically on
+item lifecycle events. Each hook is HMAC-SHA256 signed and dispatched in a
+daemon thread to avoid blocking the request.
+
+- **`myapp/models.py`** — `UserWebhook(user, name, url, secret, events,
+  enabled, created_at)` appended after `WalletActivity`:
+  - `events` is a `JSONField(default=list)` storing a list of subscribed event
+    type strings
+  - Choices: `item_created`, `item_used`, `item_archived`,
+    `item_balance_changed`, `item_expiry_warning`
+
+- **`myapp/migrations/0066_user_webhook.py`** — creates `UserWebhook` table
+
+- **`myapp/webhooks.py`** (new):
+  - `fire_user_webhooks(user, event_type, item)` — public entry point; loads
+    enabled matching hooks and dispatches in a daemon thread
+  - `_build_payload(event_type, item)` — assembles a JSON-serialisable dict
+    with event type, ISO timestamp, and item fields
+  - `_send_one(hook, payload)` — serialises to JSON bytes, computes
+    `X-VoucherVault-Signature: sha256=<hmac>` header, POSTs with 10 s timeout
+  - Signing: `hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()`
+
+- **`myapp/views.py`** — webhook lifecycle hooks added to four existing paths:
+  item create (`item_created`), balance change (`item_balance_changed`), item
+  mark-used (`item_used`), item archive (`item_archived`); plus new CRUD views:
+  - `manage_webhooks` — list view (GET) / create (POST)
+  - `edit_webhook`, `delete_webhook`, `test_webhook` (fires a dummy payload)
+
+- **`myapp/templates/webhooks.html`** (new) — extends `base.html`; create form
+  on the left; webhook list on the right with inline `<details>` edit form,
+  Test and Delete buttons
+
+- **`myapp/urls.py`** — five new URL patterns under `webhooks/`
+- **`myapp/templates/base.html`** — "Webhooks" link added to user dropdown
+
+## Phase 109 — Security & Audit (TOTP 2FA, Login Log, Session Management)
+
+Full TOTP two-factor authentication, a login audit log driven by Django
+signals, and a session-management page where users can view and revoke their
+active sessions.
+
+- **`requirements.txt`** — `pyotp==2.9.0` added; `qrcode==8.2` was already
+  present
+
+- **`myapp/models.py`** — two new models appended after `UserWebhook`:
+  - `TOTPDevice(user, secret, confirmed, name, created_at)` —
+    `OneToOneField`; `confirmed=False` until the user verifies the first token
+  - `LoginAuditLog(user, username_attempted, ip_address, user_agent, success,
+    failure_reason, timestamp)` — `user` is `SET_NULL` on delete
+
+- **`myapp/migrations/0067_totp_login_audit.py`** — creates both tables
+
+- **`myapp/signals.py`** — two new receivers:
+  - `audit_login_success` on `user_logged_in` → writes `LoginAuditLog(success=True)`
+  - `audit_login_failure` on `user_login_failed` → writes
+    `LoginAuditLog(success=False, failure_reason='Invalid credentials')`
+  - `_client_ip(request)` helper reads `HTTP_X_FORWARDED_FOR` then
+    `REMOTE_ADDR`
+
+- **`myproject/urls.py`** — `path('accounts/login/', myapp_views.custom_login,
+  name='login')` registered BEFORE `include('django.contrib.auth.urls')` so
+  the custom view wins
+
+- **`myapp/views.py`** — new security views:
+  - `custom_login` — standard `authenticate()`; if the user has a confirmed
+    `TOTPDevice`, stores `_totp_user_id` in the session and redirects to
+    `totp_verify` without calling `auth.login()`; otherwise completes login
+    normally
+  - `totp_verify` — reads `_totp_user_id`, validates the posted 6-digit token
+    via `pyotp.TOTP(secret).verify(token, valid_window=1)`, calls
+    `auth.login()`, clears the session staging key
+  - `totp_setup` — generates a QR code URI via `pyotp`, renders it as a
+    base64 PNG (`qrcode.make(...)`), creates an unconfirmed `TOTPDevice`;
+    on valid POST token sets `confirmed=True`
+  - `totp_disable` — `@require_POST`; deletes the `TOTPDevice`
+  - `session_management` — queries `django.contrib.sessions.models.Session`,
+    decodes each via `.get_decoded()`, filters to `_auth_user_id == str(user.pk)`;
+    shows TOTP status and the last 50 `LoginAuditLog` entries
+  - `revoke_session` — deletes a session by key (guards against revoking the
+    current session)
+
+- **`myapp/templates/totp_setup.html`** (new) — setup page; shows QR code
+  (`data:image/png;base64,...`), the manual secret key, and a 6-digit
+  confirmation input
+- **`myapp/templates/totp_verify.html`** (new) — standalone verify page (does
+  not extend `base.html`; user is not yet authenticated); dark login aesthetic;
+  "Cancel & sign out" link
+- **`myapp/templates/session_management.html`** (new) — two-column layout:
+  2FA status + active sessions on the left, login history table on the right
+- **`myapp/templates/base.html`** — "Security" link added to user dropdown
+
+- **`myapp/urls.py`** — seven new URL patterns:
+  `totp_setup`, `totp_verify`, `totp_disable`, `session_management`,
+  `revoke_session`, `wallet_activity_feed`, plus webhook group
+
+- **`myapp/tests.py`** — 28 new tests across 6 new test classes:
+  `WalletMembershipTests` (7), `UserWebhookTests` (5), `TOTPTests` (6),
+  `SessionManagementTests` (3), `LoginAuditLogTests` (2),
+  `CustomLoginTests` (4); all 586 tests pass
 
 ## New environment variables
 
