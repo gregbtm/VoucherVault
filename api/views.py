@@ -1,6 +1,7 @@
 import json
 import logging
 
+import requests
 from django.contrib.auth.models import User
 from django.db.models import Count, Q
 from django.http import HttpResponse
@@ -111,6 +112,76 @@ class ItemViewSet(viewsets.ModelViewSet):
         item.save(update_fields=['is_used'])
         notify_item_used(item)
         return Response(self.get_serializer(item).data)
+
+    @action(detail=True, methods=['post'], url_path='firefly-link')
+    def firefly_link(self, request, pk=None):
+        """
+        Auto-create a Firefly III asset account for this item and store the
+        account ID on the item.  Reads url/token from the user's first enabled
+        Firefly notification rule so no extra config is needed here.
+        """
+        item = self.get_object()
+
+        rule = (
+            request.user.notification_rules
+            .filter(backend='firefly', enabled=True)
+            .first()
+        )
+        if rule is None:
+            return Response(
+                {'detail': _('No enabled Firefly III notification rule found. Create one first.')},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        url = (rule.config.get('url') or '').rstrip('/')
+        token = rule.config.get('token', '')
+        if not url or not token:
+            return Response(
+                {'detail': _('Firefly III rule is missing url or token.')},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        account_name = f'{item.name} ({item.issuer})' if item.issuer else item.name
+        payload = {
+            'name': account_name,
+            'type': 'asset',
+            'account_role': 'defaultAsset',
+            'currency_code': item.currency,
+            'opening_balance': str(item.value or 0),
+            'opening_balance_date': str(item.issue_date or timezone.localtime().date()),
+            'notes': f'Created by VoucherVault for item {item.pk}',
+        }
+        headers = {
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        }
+
+        try:
+            resp = requests.post(
+                f'{url}/api/v1/accounts',
+                json=payload,
+                headers=headers,
+                timeout=10,
+            )
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            return Response(
+                {'detail': _('Firefly III request failed: %(error)s') % {'error': str(exc)}},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        try:
+            account_id = str(resp.json()['data']['id'])
+        except (KeyError, ValueError):
+            return Response(
+                {'detail': _('Unexpected response from Firefly III.')},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        item.firefly_account_id = account_id
+        item.save(update_fields=['firefly_account_id'])
+        return Response({'firefly_account_id': account_id})
 
     @action(detail=True, methods=['get', 'post'], url_path='transactions')
     def transactions(self, request, pk=None):

@@ -380,6 +380,30 @@ class Item(models.Model):
                    "Informational only.",
     )
     created_at = models.DateTimeField(auto_now_add=True, null=True)
+    minimum_spend = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Minimum basket value required to redeem this voucher or coupon.",
+    )
+    points_balance = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Current points or stamps total on a loyalty card. Updated manually.",
+    )
+    membership_tier = models.CharField(
+        max_length=50, blank=True, default='',
+        help_text="Loyalty scheme tier, e.g. Silver, Gold, Platinum.",
+    )
+    initial_value = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Face/loaded value when purchased — useful for tracking discount or spend on gift cards.",
+    )
+    seat_number = models.CharField(
+        max_length=50, blank=True, default='',
+        help_text="Seat or coach reservation on a travel ticket, e.g. Coach C, Seat 42.",
+    )
+    firefly_account_id = models.CharField(
+        max_length=50, blank=True, default='',
+        help_text="Firefly III asset account ID linked to this item. Set via 'Link to Firefly III' or enter manually.",
+    )
     is_recurring = models.BooleanField(
         default=False,
         help_text="This item renews periodically (subscription, annual pass, etc.).",

@@ -1,11 +1,13 @@
 from .apprise_backend import AppriseBackend
 from .base import NotificationBackend
+from .firefly_backend import FireflyBackend
 from .ntfy import NtfyBackend
 from .webhook import WebhookBackend
 from .webpush import WebPushBackend, get_vapid_public_key, webpush_enabled
 
 BACKENDS = {
     'apprise': AppriseBackend,
+    'firefly': FireflyBackend,
     'ntfy': NtfyBackend,
     'webhook': WebhookBackend,
     'webpush': WebPushBackend,

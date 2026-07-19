@@ -795,11 +795,13 @@ body.dark-mode .error-alert {
               <small class="form-text text-warning" id="ocr-confidence-warning" style="display:none;"></small>
             </div>
 
-            <div class="form-group">
-              <label class="form-label" for="card_number">{% trans "Card / Member Number" %}</label>
-              <input type="text" class="modern-input" id="card_number" name="card_number"
-                     placeholder="{% trans 'Leave blank to display the redeem code instead' %}"
-                     value="{{ item.card_number|default_if_none:'' }}">
+            <div class="field-toggle" id="card-number-wrap">
+              <div class="form-group">
+                <label class="form-label" for="card_number" id="card-number-label">{% trans "Card / Member Number" %}</label>
+                <input type="text" class="modern-input" id="card_number" name="card_number"
+                       placeholder="{% trans 'Leave blank to display the redeem code instead' %}"
+                       value="{{ item.card_number|default_if_none:'' }}">
+              </div>
             </div>
 
             <div id="travel-fields" class="field-toggle">
@@ -827,6 +829,24 @@ body.dark-mode .error-alert {
               </p>
             </div>
 
+            <div class="field-toggle is-collapsed" id="seat-number-wrap">
+              <div class="form-group">
+                <label class="form-label" for="seat_number">{% trans "Seat / Coach" %}</label>
+                <input type="text" class="modern-input" id="seat_number" name="seat_number"
+                       placeholder="{% trans 'e.g. Coach C, Seat 42' %}"
+                       value="{{ item.seat_number|default_if_none:'' }}">
+              </div>
+            </div>
+
+            <div class="field-toggle is-collapsed" id="membership-tier-wrap">
+              <div class="form-group">
+                <label class="form-label" for="membership_tier">{% trans "Membership Tier" %}</label>
+                <input type="text" class="modern-input" id="membership_tier" name="membership_tier"
+                       placeholder="{% trans 'e.g. Silver, Gold, Platinum' %}"
+                       value="{{ item.membership_tier|default_if_none:'' }}">
+              </div>
+            </div>
+
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label" for="code_type">{% trans "Code Type" %} <span class="required">*</span></label>
@@ -851,10 +871,10 @@ body.dark-mode .error-alert {
                 <p class="text-muted small mt-1 mb-0" id="codeTypeHint" style="display:none;"></p>
               </div>
               
-              <div class="form-group">
+              <div class="form-group" id="pin-group">
                 <label class="form-label" for="pin">{% trans "PIN Code" %}</label>
-                <input type="text" class="modern-input" id="pin" name="pin" 
-                       placeholder="{% trans 'The pin code of the item' %}" 
+                <input type="text" class="modern-input" id="pin" name="pin"
+                       placeholder="{% trans 'The pin code of the item' %}"
                        value="{{ item.pin|default_if_none:'' }}">
               </div>
             </div>
@@ -932,6 +952,42 @@ body.dark-mode .error-alert {
               <small class="form-text" id="balance-check-suggestion" style="display:none;">
                 {% trans "Suggested from a previous card with this issuer." %}
               </small>
+            </div>
+
+            <div class="field-toggle is-collapsed" id="initial-value-wrap">
+              <div class="form-group">
+                <label class="form-label" for="initial_value">{% trans "Face Value (at purchase)" %}</label>
+                <input type="number" class="modern-input" id="initial_value" name="initial_value"
+                       placeholder="{% trans 'e.g. 50.00' %}" step="0.01" min="0"
+                       value="{{ item.initial_value|default_if_none:'' }}">
+                <small class="form-text text-muted">{% trans "The card's loaded value when purchased — useful for tracking spend." %}</small>
+              </div>
+            </div>
+
+            <div class="field-toggle is-collapsed" id="points-balance-wrap">
+              <div class="form-group">
+                <label class="form-label" for="points_balance">{% trans "Points Balance" %}</label>
+                <input type="number" class="modern-input" id="points_balance" name="points_balance"
+                       placeholder="{% trans 'Current points or stamps total' %}" min="0"
+                       value="{{ item.points_balance|default_if_none:'' }}">
+              </div>
+            </div>
+
+            <div class="field-toggle is-collapsed" id="firefly-account-wrap">
+              <div class="form-group">
+                <label class="form-label" for="firefly_account_id">{% trans "Firefly III Account ID" %}</label>
+                <div class="d-flex gap-2 align-items-center">
+                  <input type="text" class="modern-input flex-grow-1" id="firefly_account_id" name="firefly_account_id"
+                         placeholder="{% trans 'Linked Firefly III asset account ID' %}"
+                         value="{{ item.firefly_account_id|default_if_none:'' }}">
+                  <button type="button" class="btn btn-outline-secondary btn-sm text-nowrap" id="firefly-link-btn"
+                          data-item-id="{{ item.id }}"
+                          title="{% trans 'Auto-create an asset account in Firefly III and store its ID here' %}">
+                    <i class="bi bi-link-45deg"></i> {% trans "Link to Firefly III" %}
+                  </button>
+                </div>
+                <small class="form-text text-muted">{% trans "When the Firefly III notification backend fires, it posts a withdrawal to this account. Use the button to auto-create the account." %}</small>
+              </div>
             </div>
           </div>
 
@@ -1040,20 +1096,33 @@ body.dark-mode .error-alert {
                         placeholder="{% trans 'The description of the item' %}"
                         rows="3">{{ item.description }}</textarea>
             </div>
-            
-            <div class="form-row">
+
+            <div class="field-toggle" id="order-id-wrap">
               <div class="form-group">
-                <label class="form-label" for="order_id">{% trans "Order ID" %}</label>
+                <label class="form-label" for="order_id">{% trans "Order / Booking Reference" %}</label>
                 <input type="text" class="modern-input" id="order_id" name="order_id"
                        placeholder="{% trans 'e.g. WEB017891237' %}"
                        value="{{ item.order_id|default_if_none:'' }}">
               </div>
+            </div>
+
+            <div class="field-toggle" id="discount-applied-wrap">
               <div class="form-group">
-                <label class="form-label" for="discount_applied">{% trans "Discount Applied" %}</label>
+                <label class="form-label" for="discount_applied">{% trans "Discount / Railcard Applied" %}</label>
                 <input type="text" class="modern-input" id="discount_applied" name="discount_applied"
-                       placeholder="{% trans 'e.g. Network Railcard' %}"
+                       placeholder="{% trans 'e.g. Network Railcard, 10% off' %}"
                        value="{{ item.discount_applied|default_if_none:'' }}"
                        data-vv-suggest-field="discount_applied" data-vv-suggest-url="{% url 'suggest_field_options' %}" data-vv-suggest-type-source="#type">
+              </div>
+            </div>
+
+            <div class="field-toggle is-collapsed" id="minimum-spend-wrap">
+              <div class="form-group">
+                <label class="form-label" for="minimum_spend">{% trans "Minimum Spend" %}</label>
+                <input type="number" class="modern-input" id="minimum_spend" name="minimum_spend"
+                       placeholder="{% trans 'e.g. 50.00' %}" step="0.01" min="0"
+                       value="{{ item.minimum_spend|default_if_none:'' }}">
+                <small class="form-text text-muted">{% trans "Minimum basket value required to redeem this voucher or coupon." %}</small>
               </div>
             </div>
 
@@ -1141,9 +1210,7 @@ document.addEventListener("DOMContentLoaded", function () {
     nameField.value = issuerCodeField.value;
     issuerCodeField.value = tmp;
   });
-  const pinFieldContainer = pinField.closest('.form-group');
   const valueFieldContainer = valueField.closest('.form-section');
-  const cardNumberFieldContainer = document.getElementById('card_number').closest('.form-group');
   const issuerLabel = document.querySelector('label[for="issuer"]');
   const redeemCodeLabel = document.querySelector('label[for="redeem_code"]');
   const valueTypeIcon = document.getElementById('value-type-icon');
@@ -1203,12 +1270,55 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function toggleFields() {
-    // Journey From/To and Time of Travel only make sense for a travel pass -
-    // every other type collapses this group out (animated via .field-toggle
-    // in style.css) instead of leaving it visible and unused.
-    travelFieldsContainer.classList.toggle('is-collapsed', typeField.value !== 'travelpass');
+    const t = typeField.value;
 
-    if (typeField.value === 'loyaltycard') {
+    // ── Travel fields (journey origin / destination / time) ──────────────
+    travelFieldsContainer.classList.toggle('is-collapsed', t !== 'travelpass');
+
+    // ── Card / Member Number ─────────────────────────────────────────────
+    // Shown for Gift Card and Loyalty Card only; hidden for all others.
+    const cardNumberWrap = document.getElementById('card-number-wrap');
+    if (cardNumberWrap) {
+      cardNumberWrap.classList.toggle('is-collapsed', t !== 'giftcard' && t !== 'loyaltycard');
+    }
+    const cardNumberLabel = document.getElementById('card-number-label');
+    if (cardNumberLabel) {
+      cardNumberLabel.textContent = (t === 'loyaltycard')
+        ? "{% trans 'Membership / Account Number' %}"
+        : "{% trans 'Card / Member Number' %}";
+    }
+
+    // ── PIN ──────────────────────────────────────────────────────────────
+    const pinGroup = document.getElementById('pin-group');
+    if (pinGroup) {
+      pinGroup.style.display = (t === 'travelpass' || t === 'coupon') ? 'none' : '';
+    }
+
+    // ── Type-specific new fields ─────────────────────────────────────────
+    const seatNumberWrap = document.getElementById('seat-number-wrap');
+    const membershipTierWrap = document.getElementById('membership-tier-wrap');
+    const initialValueWrap = document.getElementById('initial-value-wrap');
+    const pointsBalanceWrap = document.getElementById('points-balance-wrap');
+    const orderIdWrap = document.getElementById('order-id-wrap');
+    const discountAppliedWrap = document.getElementById('discount-applied-wrap');
+    const minimumSpendWrap = document.getElementById('minimum-spend-wrap');
+    const fireflyAccountWrap = document.getElementById('firefly-account-wrap');
+
+    if (seatNumberWrap) seatNumberWrap.classList.toggle('is-collapsed', t !== 'travelpass');
+    if (membershipTierWrap) membershipTierWrap.classList.toggle('is-collapsed', t !== 'loyaltycard');
+    if (initialValueWrap) initialValueWrap.classList.toggle('is-collapsed', t !== 'giftcard');
+    if (pointsBalanceWrap) pointsBalanceWrap.classList.toggle('is-collapsed', t !== 'loyaltycard');
+    // Order ID / Booking Reference: useful for Gift Cards and Travel Passes
+    if (orderIdWrap) orderIdWrap.classList.toggle('is-collapsed', t !== 'giftcard' && t !== 'travelpass');
+    // Discount Applied: relevant for Voucher, Coupon, Travel Pass
+    if (discountAppliedWrap) discountAppliedWrap.classList.toggle('is-collapsed', t !== 'travelpass');
+    // Minimum Spend: Voucher and Coupon only
+    if (minimumSpendWrap) minimumSpendWrap.classList.toggle('is-collapsed', t !== 'voucher' && t !== 'coupon');
+    // Firefly III: Gift Card and Voucher only (items with spendable balances)
+    if (fireflyAccountWrap) fireflyAccountWrap.classList.toggle('is-collapsed', t !== 'giftcard' && t !== 'voucher');
+
+    // ── Value / Currency / Balance Check ─────────────────────────────────
+    if (t === 'loyaltycard') {
       pinField.readOnly = true;
       valueField.readOnly = true;
       pinField.classList.add('readonly');
@@ -1221,12 +1331,9 @@ document.addEventListener("DOMContentLoaded", function () {
       valueFieldContainer.style.display = '';
       document.getElementById('currency-field').style.display = 'none';
       document.getElementById('balance-check-field').style.display = 'none';
-      cardNumberFieldContainer.style.display = '';
-    } else if (typeField.value === 'travelpass') {
-      // Value/currency/card number/PIN don't apply to a travel pass -
-      // journey_origin/journey_destination/travel_time above cover what a
-      // ticket actually needs. Value is still forced to 0 (readonly,
-      // hidden) so a non-JS submission matches what clean() expects.
+    } else if (t === 'travelpass') {
+      // Value/currency don't apply to a travel pass - forced to 0
+      // (readonly, section hidden) so a non-JS submission still passes clean().
       pinField.readOnly = true;
       valueField.readOnly = true;
       pinField.classList.add('readonly');
@@ -1237,8 +1344,6 @@ document.addEventListener("DOMContentLoaded", function () {
       redeemCodeLabel.innerHTML = "{% trans 'Redeem Code' %} <span class='required'>*</span>";
       redeemCodeField.placeholder = "{% trans 'The redeem code of the item' %}";
       valueFieldContainer.style.display = 'none';
-      cardNumberFieldContainer.style.display = 'none';
-      pinFieldContainer.style.display = 'none';
     } else {
       pinField.readOnly = false;
       valueField.readOnly = false;
@@ -1249,27 +1354,17 @@ document.addEventListener("DOMContentLoaded", function () {
       redeemCodeLabel.innerHTML = "{% trans 'Redeem Code' %} <span class='required'>*</span>";
       redeemCodeField.placeholder = "{% trans 'The redeem code of the item' %}";
       valueFieldContainer.style.display = '';
-      cardNumberFieldContainer.style.display = '';
-      const currencyField = document.getElementById('currency-field');
       if (valueTypeField.value === 'money') {
-        currencyField.style.display = '';
+        document.getElementById('currency-field').style.display = '';
       }
-      document.getElementById('balance-check-field').style.display = (typeField.value === 'giftcard') ? '' : 'none';
+      document.getElementById('balance-check-field').style.display = (t === 'giftcard') ? '' : 'none';
     }
 
-    // pinFieldContainer is only ever hidden for travelpass above - every
-    // other branch (including loyaltycard, which just makes it readonly)
-    // needs it visible.
-    if (typeField.value !== 'travelpass') {
-      pinFieldContainer.style.display = '';
-    }
-
+    // ── Issue Date ────────────────────────────────────────────────────────
     // Train tickets are frequently valid and expire on the same day -
     // Issue Date is optional for a travel pass, and (unless the user has
-    // deliberately edited it) tracks Expiry Date automatically, so leaving
-    // it alone actually produces "same as expiry" rather than silently
-    // defaulting to today and ending up after Expiry Date.
-    if (typeField.value === 'travelpass') {
+    // deliberately edited it) tracks Expiry Date automatically.
+    if (t === 'travelpass') {
       issueDateField.required = false;
       if (!skipInitialTravelPassSync && !issueDateField.dataset.userEdited && expiryDateField.value) {
         issueDateField.value = expiryDateField.value;
@@ -1278,16 +1373,11 @@ document.addEventListener("DOMContentLoaded", function () {
       issueDateField.required = true;
     }
 
-    if (typeField.value === 'coupon') {
-      toggleValueTypeBtn.classList.remove('d-none');
-    } else {
-      toggleValueTypeBtn.classList.add('d-none');
-    }
+    // ── Coupon: value type toggle ─────────────────────────────────────────
+    toggleValueTypeBtn.classList.toggle('d-none', t !== 'coupon');
 
-    // Wallet is always visible, but for a travel pass it's locked to the
-    // "Travel Pass" wallet (created lazily server-side in Item.save()) -
-    // see the model-level enforcement, not just this UI hint.
-    if (typeField.value === 'travelpass') {
+    // ── Wallet: travel pass auto-assigns ──────────────────────────────────
+    if (t === 'travelpass') {
       if (walletField.dataset.locked !== 'travelpass') {
         walletField.innerHTML = '<option value="" selected>{% trans "Travel Pass (auto-assigned)" %}</option>';
         walletField.dataset.locked = 'travelpass';
@@ -1301,9 +1391,7 @@ document.addEventListener("DOMContentLoaded", function () {
       walletField.classList.remove('readonly');
     }
 
-    // Wallet's disabled state above (and the issuer label's text swap
-    // further up, for loyalty cards) both affect whether a suggestion
-    // button should show for those fields right now.
+    // Wallet's disabled state and issuer label swap affect suggestion buttons.
     if (window.vvRefreshFieldSuggestButtons) window.vvRefreshFieldSuggestButtons();
   }
 
@@ -1371,6 +1459,38 @@ document.addEventListener("DOMContentLoaded", function () {
   balanceCheckField.addEventListener('input', function () {
     balanceCheckSuggestion.style.display = 'none';
   });
+
+  // ── Firefly III — "Link" button ───────────────────────────────────────
+  const fireflyLinkBtn = document.getElementById('firefly-link-btn');
+  if (fireflyLinkBtn) {
+    fireflyLinkBtn.addEventListener('click', function () {
+      const itemId = fireflyLinkBtn.dataset.itemId;
+      const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+      fireflyLinkBtn.disabled = true;
+      fireflyLinkBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+      fetch('/api/v1/items/' + itemId + '/firefly-link/', {
+        method: 'POST',
+        headers: {'X-CSRFToken': csrfToken, 'Content-Type': 'application/json'},
+      })
+        .then(function (r) { return r.json().then(function (d) { return {ok: r.ok, data: d}; }); })
+        .then(function (res) {
+          if (res.ok) {
+            document.getElementById('firefly_account_id').value = res.data.firefly_account_id;
+            fireflyLinkBtn.innerHTML = '<i class="bi bi-check-lg"></i> {% trans "Linked" %}';
+            fireflyLinkBtn.classList.replace('btn-outline-secondary', 'btn-outline-success');
+          } else {
+            fireflyLinkBtn.disabled = false;
+            fireflyLinkBtn.innerHTML = '<i class="bi bi-link-45deg"></i> {% trans "Link to Firefly III" %}';
+            alert(res.data.detail || '{% trans "Firefly III link failed." %}');
+          }
+        })
+        .catch(function () {
+          fireflyLinkBtn.disabled = false;
+          fireflyLinkBtn.innerHTML = '<i class="bi bi-link-45deg"></i> {% trans "Link to Firefly III" %}';
+          alert('{% trans "Network error — could not reach Firefly III." %}');
+        });
+    });
+  }
 
   // Warns (never blocks) when the code just typed or scanned matches a
   // *different* active item already in the user's vault - excludes this
