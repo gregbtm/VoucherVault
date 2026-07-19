@@ -110,6 +110,17 @@ jobs:
       - name: Run JS test suite
         run: npm test
 
+      # OWASP A06 / NCSC dependency management: fail on HIGH or CRITICAL npm advisories.
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high
+
+      # Django's own deployment checklist: catches missing ALLOWED_HOSTS,
+      # weak SECRET_KEY, debug flags, and broken URL/model config.
+      - name: Django system check
+        env:
+          DB_ENGINE: sqlite3
+        run: python manage.py check
+
   bandit:
     name: SAST with Bandit
     needs: [changelog]
@@ -134,7 +145,7 @@ jobs:
           # fixture passwords (e.g. 'pw12345!') trip B106/B105 at Low
           # severity on ~180 lines; they're test-only credentials, not a
           # real secret, and would otherwise fail this job on every push.
-          bandit -r myapp myproject -ll -f html -o bandit_report.html
+          bandit -r myapp myproject api notify imports ocr -ll -f html -o bandit_report.html
 
       - name: Upload Bandit report
         if: failure()
@@ -186,9 +197,143 @@ jobs:
             --config "p/xss" \
             --severity ERROR --error
 
+  pip-audit:
+    # OWASP A06 (Vulnerable and Outdated Components) / NCSC Principle 3 (dependency management).
+    # Fails if any known CVE is present in requirements.txt. Add --ignore-vuln VULN-ID
+    # for accepted/mitigated findings with a comment explaining why.
+    name: Python Dependency Audit (pip-audit)
+    needs: [changelog]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Audit Python dependencies
+        run: |
+          pip-audit -r requirements.txt --desc --format markdown | tee pip_audit_report.md
+          pip-audit -r requirements.txt
+
+      - name: Upload pip-audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report
+          path: pip_audit_report.md
+
+  secret-scan:
+    # OWASP A02 (Cryptographic Failures - leaked secrets) / NCSC Principle 5 (protect secrets).
+    # Scans the full commit history for accidentally committed credentials, tokens, and keys.
+    name: Secret Scanning (TruffleHog)
+    needs: [changelog]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog OSS
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+  trivy:
+    # OWASP A05 (Security Misconfiguration) / NCSC Principle 4 (secure deployment infrastructure).
+    # Scans the filesystem (Python + OS packages) and Dockerfile/IaC config for HIGH+ issues.
+    name: Container & Config Scan (Trivy)
+    needs: [changelog]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Trivy filesystem scan (dependency CVEs)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          format: 'table'
+          skip-dirs: '.venv,node_modules'
+
+      - name: Trivy config scan (Dockerfile / IaC misconfigurations)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+
+  zap-scan:
+    # OWASP A04/A05/A07 (Insecure Design, Misconfiguration, Auth Failures) / NCSC Principle 3.
+    # DAST baseline scan against a live Django instance. fail_action: warn means this
+    # reports findings without blocking the build; change to 'fail' once you have reviewed
+    # and baselined the initial report (add suppressions to .zap/rules.tsv).
+    name: DAST - OWASP ZAP Baseline
+    needs: [changelog]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y ghostscript tesseract-ocr
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Set up database and start server
+        env:
+          DB_ENGINE: sqlite3
+          SECRET_KEY: 'ci-zap-scan-key-not-used-in-production-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+          ALLOWED_HOSTS: 'localhost,127.0.0.1,0.0.0.0'
+          DEBUG: 'False'
+        run: |
+          python manage.py migrate --run-syncdb
+          nohup python manage.py runserver 0.0.0.0:8000 > /tmp/zap_server.log 2>&1 &
+          until curl -sf http://localhost:8000/en/accounts/login/ > /dev/null; do sleep 1; done
+          echo "Server ready for ZAP scan"
+
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: 'http://localhost:8000/en/'
+          fail_action: warn
+          allow_issue_writing: false
+          artifact_name: zap-baseline-report
+          cmd_options: '-a -j'
+
+      - name: Upload ZAP server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-server-log
+          path: /tmp/zap_server.log
+
   deploy:
     name: Deploy Image
-    needs: [changelog, test, bandit, grype, semgrep]
+    needs: [changelog, test, bandit, grype, semgrep, pip-audit, secret-scan, trivy]
     if: github.event_name != 'pull_request' && needs.changelog.outputs.skipped == 'false'
     runs-on: ubuntu-latest
 
