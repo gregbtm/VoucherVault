@@ -8,9 +8,29 @@
       "typeVersion": 1,
       "position": [-120, 0],
       "parameters": {
-        "width": 380,
-        "height": 480,
-        "content": "## Before you activate this\n\n1. **Gmail credential** — the 'Watch for Ticket Emails' node needs a Gmail OAuth2 credential. Add one under Credentials → New → Gmail OAuth2 API, then select it on that node.\n\n2. **VoucherVault API token** — on your VoucherVault server:\n   `docker compose exec app python manage.py drf_create_token <your-username>`\n   Then in n8n: Credentials → New → Header Auth, Name=`Authorization`, Value=`Token <the-token>`. Select it on the 'Create VoucherVault Item' node.\n\n3. **Gmail labels** — create two labels in Gmail first: `VoucherVault-Processed` and `VoucherVault-Failed`. The workflow applies these after each attempt so it never reprocesses an email (the trigger's search query already excludes anything labeled Processed).\n\n4. **Adjust the sender filter** on the trigger node to match who your tickets actually come from — the default targets Uber/Omio/Greater Anglia confirmation emails, edit the `q` field for other operators.\n\n5. **Test with 'Fetch Test Event' first** (right-click the trigger node) against a real ticket email before turning Active on, so you can see the HTTP Request node's actual response before it's creating items unattended.\n\nSee docs/RAIL_TICKET_IMPORT_SETUP.md in the VoucherVault repo for the full walkthrough."
+        "width": 420,
+        "height": 560,
+        "content": "## Before you activate this\n\n1. **Gmail credential** — the 'Watch for Ticket Emails' node needs a Gmail OAuth2 credential. Add one under Credentials → New → Gmail OAuth2 API, then select it on that node.\n\n2. **VoucherVault API token** — on your VoucherVault server:\n   `docker compose exec app python manage.py drf_create_token <your-username>`\n   Then in n8n: Credentials → New → Header Auth, Name=`Authorization`, Value=`Token <the-token>`. Select it on the 'Create VoucherVault Item' node.\n\n3. **Gmail labels** — create two labels in Gmail first: `VoucherVault-Processed` and `VoucherVault-Failed`. The workflow applies these after each attempt so it never reprocesses an email (the trigger's search query already excludes anything labeled Processed).\n\n4. **Failure notifications (optional)** — set the `ntfy_topic` variable in the 'Config' node to your ntfy topic (e.g. `my-vv-alerts`). Leave blank to skip push notifications on failure.\n\n5. **Adjust the sender filter** on the trigger node to match who your tickets actually come from — the default targets Uber/Omio/Greater Anglia confirmation emails, edit the `q` field for other operators.\n\n6. **409 = duplicate** — if VoucherVault returns 409 it means a ticket with the same order ID already exists. The workflow treats this as 'already processed' and applies the Processed label so the email is skipped on future runs.\n\n7. **Test with 'Fetch Test Event' first** (right-click the trigger node) against a real ticket email before turning Active on, so you can see the HTTP Request node's actual response before it's creating items unattended.\n\nSee docs/RAIL_TICKET_IMPORT_SETUP.md in the VoucherVault repo for the full walkthrough."
+      }
+    },
+    {
+      "id": "config-1",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [280, 260],
+      "parameters": {
+        "mode": "manual",
+        "fields": {
+          "values": [
+            {
+              "name": "ntfy_topic",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        },
+        "options": {}
       }
     },
     {
@@ -120,11 +140,39 @@
       }
     },
     {
+      "id": "if-error-type",
+      "name": "Duplicate or real error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1260, 160],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-dup",
+              "leftValue": "={{ $json.error.statusCode }}",
+              "rightValue": 409,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
       "id": "gmail-label-ok",
       "name": "Label: Processed",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [1260, -60],
+      "position": [1520, -60],
       "parameters": {
         "resource": "message",
         "operation": "addLabels",
@@ -144,7 +192,7 @@
       "name": "Label: Failed",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [1260, 160],
+      "position": [1520, 280],
       "parameters": {
         "resource": "message",
         "operation": "addLabels",
@@ -156,6 +204,69 @@
         "gmailOAuth2": {
           "id": "REPLACE_ME",
           "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "if-ntfy-configured",
+      "name": "ntfy configured?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1760, 280],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-ntfy",
+              "leftValue": "={{ $('Config').first().json.ntfy_topic }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "http-ntfy",
+      "name": "Notify: Import Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 220],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://ntfy.sh/{{ $('Config').first().json.ntfy_topic }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Title",
+              "value": "VoucherVault: rail ticket import failed"
+            },
+            {
+              "name": "Priority",
+              "value": "high"
+            },
+            {
+              "name": "Tags",
+              "value": "warning,train"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "text/plain",
+        "body": "=A rail ticket email could not be imported. Check Gmail for emails labelled VoucherVault-Failed.\n\nError: {{ $('Create VoucherVault Item').item.json.error.message || 'unknown' }}\nSubject: {{ $('Watch for Ticket Emails').item.json.subject || '(unknown)' }}",
+        "options": {
+          "timeout": 10000
         }
       }
     },
@@ -220,11 +331,52 @@
         ],
         [
           {
+            "node": "Duplicate or real error?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Duplicate or real error?": {
+      "main": [
+        [
+          {
+            "node": "Label: Processed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Label: Failed",
             "type": "main",
             "index": 0
           }
         ]
+      ]
+    },
+    "Label: Failed": {
+      "main": [
+        [
+          {
+            "node": "ntfy configured?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ntfy configured?": {
+      "main": [
+        [
+          {
+            "node": "Notify: Import Failed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     }
   },
