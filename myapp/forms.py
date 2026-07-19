@@ -49,7 +49,7 @@ class ItemForm(forms.ModelForm):
 
     class Meta:
         model = Item
-        fields = ['name', 'issuer', 'redeem_code', 'card_number', 'pin', 'issue_date', 'expiry_date', 'description', 'logo_slug', 'type', 'value', 'value_type', 'currency', 'file', 'code_type', 'tile_color', 'wallet', 'tags', 'notes', 'share_message', 'notify_days_before', 'balance_check_url', 'journey_origin', 'journey_destination', 'travel_time', 'order_id', 'discount_applied', 'is_recurring', 'renewal_period', 'renewal_date']
+        fields = ['name', 'issuer', 'redeem_code', 'card_number', 'pin', 'issue_date', 'expiry_date', 'description', 'logo_slug', 'type', 'value', 'value_type', 'currency', 'file', 'code_type', 'tile_color', 'wallet', 'tags', 'notes', 'share_message', 'notify_days_before', 'balance_check_url', 'journey_origin', 'journey_destination', 'travel_time', 'order_id', 'discount_applied', 'is_recurring', 'renewal_period', 'renewal_date', 'minimum_spend', 'points_balance', 'membership_tier', 'initial_value', 'seat_number']
         widgets = {
             'issue_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
             'expiry_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
