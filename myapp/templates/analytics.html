@@ -328,6 +328,9 @@ body.dark-mode .kpi-card {
 
 </div><!-- /.analytics-container -->
 
+{% endblock %}
+
+{% block extra_scripts %}
 <script>
 (function() {
   const isDark = () => localStorage.getItem('darkMode') === 'enabled';
@@ -479,5 +482,4 @@ body.dark-mode .kpi-card {
   }
 })();
 </script>
-
 {% endblock %}

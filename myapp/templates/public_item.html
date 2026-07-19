@@ -111,6 +111,7 @@
             .card, .code-img, .logo-spinner, .copy-btn.copied, .pin-input.shake {
                 animation: none !important; transition: none !important;
             }
+            .code-img { opacity: 1; }
         }
         .field { text-align: left; margin-bottom: 14px; }
         .field-label {
@@ -210,6 +211,10 @@
             </div>
             <p class="merchant">{{ item.issuer }}</p>
             <p class="item-name">{{ item.name }} &middot; {{ item.get_type_display }}</p>
+
+            {% if item.share_message %}
+            <p style="color:var(--text);font-size:0.95rem;line-height:1.5;margin:0 0 18px;text-align:left;border-left:3px solid var(--accent);padding-left:12px;">{{ item.share_message }}</p>
+            {% endif %}
 
             {% if show_balance %}
             <p class="balance">{{ current_balance }} {{ item.currency }}</p>

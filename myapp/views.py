@@ -1927,7 +1927,10 @@ def public_item_share(request, share_id):
     - A separate, looser rate limit caps how often the full content can be
       fetched at all, independent of the PIN.
     """
-    share = get_object_or_404(ItemPublicShare.objects.select_related('item'), id=share_id)
+    try:
+        share = ItemPublicShare.objects.select_related('item').get(id=share_id)
+    except (ItemPublicShare.DoesNotExist, ValueError):
+        return render(request, 'public_item_revoked.html', {}, status=410)
     item = share.item
 
     if is_link_preview_bot(request.META.get('HTTP_USER_AGENT', '')):
