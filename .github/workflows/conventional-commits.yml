@@ -318,17 +318,20 @@ jobs:
           echo "Server ready for ZAP scan"
 
       - name: OWASP ZAP Baseline Scan
-        # artifact_name intentionally omitted — the built-in upload inside
-        # zaproxy/action-baseline@v0.12.0 uses a deprecated Node 20 runner
-        # and produces a spurious HTTP 400 on artifact-container creation,
-        # causing the job to fail even though ZAP found 0 FAIL-NEW results.
-        # We upload the report ourselves in the step below instead.
-        uses: zaproxy/action-baseline@v0.12.0
-        with:
-          target: 'http://localhost:8000/en/'
-          fail_action: warn
-          allow_issue_writing: false
-          cmd_options: '-a -j'
+        # Run ZAP directly via Docker to avoid zaproxy/action-baseline@v0.12.0
+        # which internally calls the deprecated @actions/artifact@1.x upload API
+        # (GitHub artifact service returns HTTP 400 on artifact-container creation
+        # from the Node 20 runner, failing the job even with fail_action: warn).
+        # -I: ignore warnings (equivalent to fail_action: warn — exit 0 on WARN)
+        # -a: include Alpha passive rules; -j: Ajax Spider
+        run: |
+          docker run --rm --network=host \
+            -v "$PWD:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+              -t http://localhost:8000/en/ \
+              -r zap_report.html \
+              -a -j -I
 
       - name: Upload ZAP report
         if: always()
