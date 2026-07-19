@@ -1236,7 +1236,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (initialValueWrap) initialValueWrap.classList.toggle('is-collapsed', t !== 'giftcard');
     if (pointsBalanceWrap) pointsBalanceWrap.classList.toggle('is-collapsed', t !== 'loyaltycard');
     if (orderIdWrap) orderIdWrap.classList.toggle('is-collapsed', t !== 'giftcard' && t !== 'travelpass');
-    if (discountAppliedWrap) discountAppliedWrap.classList.toggle('is-collapsed', t === 'giftcard' || t === 'loyaltycard');
+    if (discountAppliedWrap) discountAppliedWrap.classList.toggle('is-collapsed', t !== 'travelpass');
     if (minimumSpendWrap) minimumSpendWrap.classList.toggle('is-collapsed', t !== 'voucher' && t !== 'coupon');
 
     // Value / Currency / Balance Check

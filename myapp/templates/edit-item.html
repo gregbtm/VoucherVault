@@ -1293,7 +1293,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // Order ID / Booking Reference: useful for Gift Cards and Travel Passes
     if (orderIdWrap) orderIdWrap.classList.toggle('is-collapsed', t !== 'giftcard' && t !== 'travelpass');
     // Discount Applied: relevant for Voucher, Coupon, Travel Pass
-    if (discountAppliedWrap) discountAppliedWrap.classList.toggle('is-collapsed', t === 'giftcard' || t === 'loyaltycard');
+    if (discountAppliedWrap) discountAppliedWrap.classList.toggle('is-collapsed', t !== 'travelpass');
     // Minimum Spend: Voucher and Coupon only
     if (minimumSpendWrap) minimumSpendWrap.classList.toggle('is-collapsed', t !== 'voucher' && t !== 'coupon');
 
