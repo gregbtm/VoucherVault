@@ -1,113 +1,104 @@
-# Syncing gift card / voucher balances to Firefly III
+# Syncing gift card / voucher spend to Firefly III
 
-A recipe for keeping a [Firefly III](https://www.firefly-iii.org/) asset
-account's balance in sync with a gift card or voucher's remaining value
-in VoucherVault Plus+ — zero VoucherVault code, built entirely on the
-existing webhook notification backend and an n8n workflow, the same
-"VoucherVault pushes to n8n" direction described in
-[`N8N_SETUP.md`](N8N_SETUP.md).
+VoucherVault Plus+ has a **native Firefly III notification backend** that posts
+a withdrawal transaction directly to your Firefly III instance every time a
+spend transaction is recorded against a gift card or voucher. No n8n, no
+middleware — just two config values and one click per card.
 
-## Why a webhook, not a Firefly III import parser
+---
 
-Firefly III has no concept of a "gift card" — the closest fit is a small
-[asset account](https://docs.firefly-iii.org/references/firefly-iii/account-types/)
-you spend down over time, exactly like a bank account. VoucherVault
-already fires a `balance_changed` event (see `FORK_CHANGES.md`'s Phase
-12.2 section) every time a transaction is recorded against an item —
-that's the same moment a matching Firefly asset account's balance should
-move, so this wires the existing event straight through rather than
-building a new sync mechanism.
+## How it works
 
-## Step 1 — Create a dedicated notification rule
+When you record a spend transaction against a gift card or voucher, VoucherVault
+fires a `balance_changed` event. If a **Firefly III** notification rule is
+enabled for that event, the backend:
 
-Don't reuse an existing webhook rule for other things (ntfy alerts,
-n8n automations, etc.) — create one scoped to just this event, so the
-payload arriving at your Firefly workflow is never mixed with unrelated
-noise:
+1. Looks up the item's `Firefly III Account ID` (stored per-item).
+2. Posts a `withdrawal` transaction to `/api/v1/transactions` on your Firefly
+   instance, using that asset account as the source.
+3. Sets `destination_name` to the item's issuer (e.g. "Starbucks"), so spend
+   appears as a named expense category in your budget.
+
+The withdrawal amount equals `abs(transaction.value)` — the exact amount spent,
+not a recalculated balance. Each spend creates one Firefly transaction, giving
+you a full history in Firefly rather than just a running total.
+
+---
+
+## Step 1 — Create a Firefly III notification rule
 
 1. **Notifications → Rules → New Rule**
-2. Backend: **Webhook (n8n etc.)**
+2. Backend: **Firefly III**
 3. Event types: check **only** `Balance Changed`
-4. URL: the n8n Webhook trigger node's URL (Step 2 below) — n8n gives
-   you this once the node is added
+4. Config:
+   - `url`: base URL of your Firefly III instance, e.g.
+     `https://firefly.example.com` (no trailing slash)
+   - `token`: a Firefly III Personal Access Token — create one at
+     **Firefly III → Options → Profile → OAuth → Personal Access Tokens**
 
-The webhook POSTs this JSON body (see `notify/backends/webhook.py`):
+> The `url` and `token` are shared across all items that use this rule. You
+> don't need one rule per card.
 
-```json
-{
-  "title": "💷 Coffee Gift Card balance changed",
-  "message": "Latte: -4.50\nNew balance: 15.50 GBP",
-  "item": {
-    "id": "3f2e...-uuid",
-    "name": "Coffee Gift Card",
-    "type": "giftcard",
-    "code": "GC12345",
-    "expiry_date": "2026-12-31",
-    "value": "20.00",
-    "currency": "GBP"
-  }
-}
-```
+---
 
-`item.value` is the item's original/starting value, not the live
-remaining balance — pull the current balance from `item.message` (it's
-appended after "New balance:") or, more reliably, call
-`GET /api/v1/items/{id}/` (see [`N8N_SETUP.md`](N8N_SETUP.md) for
-token setup) from within the n8n workflow to read
-`current_balance` directly.
+## Step 2 — Link each gift card to a Firefly III account
 
-## Step 2 — Add the n8n side
+Each gift card or voucher needs its own Firefly III asset account. The
+**Firefly III Account ID** field is on the card's edit form (visible only
+for Gift Card and Voucher types).
 
-1. **Webhook** trigger node — copy its Production URL into the
-   VoucherVault rule from Step 1.
-2. **HTTP Request** node calling VoucherVault's API to get the
-   authoritative current balance:
-   - Method: `GET`
-   - URL: `https://<your-vouchervault-domain>/api/v1/items/{{ $json.body.item.id }}/`
-   - Authentication: Header Auth credential (see
-     [`N8N_SETUP.md`](N8N_SETUP.md) Step 2)
-3. **HTTP Request** node calling Firefly III to update the matching
-   asset account:
-   - Method: `PUT`
-   - URL: `https://<your-firefly-domain>/api/v1/accounts/<account-id>`
-   - Authentication: Header Auth credential with `Authorization: Bearer
-     <Firefly Personal Access Token>` (Firefly III → Options → Profile →
-     OAuth → Personal Access Tokens)
-   - Body: `{"opening_balance": "{{ $json.current_balance }}", "opening_balance_date": "{{ $now.toISODate() }}"}`
-     (Firefly represents an asset account's balance via its opening
-     balance plus every transaction against it — the simplest correct
-     sync is periodically resetting the opening balance to match, rather
-     than trying to replay individual spend transactions)
+### Option A — Auto-link (recommended)
 
-## Mapping items to accounts
+On the edit form for your gift card:
 
-VoucherVault has no concept of a Firefly account ID, so the workflow
-needs to know which Firefly account belongs to which item. Two
-reasonable starting points, in order of effort:
+1. Make sure the Firefly III Account ID field is visible (it appears when the
+   type is Gift Card or Voucher).
+2. Click **Link to Firefly III**.
 
-- **One pooled "Gift Cards & Vouchers" asset account.** Simplest: every
-  `balance_changed` event just re-sums all your active gift cards'
-  current balances (one more `GET /api/v1/items/?type=giftcard` call)
-  and writes that total as the account's opening balance. You lose
-  per-card detail in Firefly, but it's a five-minute setup.
-- **One Firefly account per VoucherVault wallet.** Add a **Switch** node
-  keyed on `item.wallet` (include it in the webhook payload by editing
-  the rule's config, or fetch it via the item API call in Step 2) that
-  routes to the right Firefly account ID. More setup, but each wallet's
-  spend tracks independently in your budget.
+VoucherVault will:
+- Call `POST /api/v1/accounts` on your Firefly III instance.
+- Create an asset account named after the card (e.g. "Amazon Gift Card (Amazon)").
+- Set the opening balance to the card's current value.
+- Store the returned account ID in the item's **Firefly III Account ID** field.
 
-Either way, this is a workflow-side mapping table you maintain in n8n —
-VoucherVault has no opinion on it.
+### Option B — Manual
+
+If you already have a Firefly III asset account for this card, find its
+numeric ID (visible in the account URL on Firefly III, e.g. `.../accounts/42`)
+and paste it into the **Firefly III Account ID** field on the edit form.
+
+---
+
+## Verifying it works
+
+After linking a card, record a spend transaction (Spend → enter an amount).
+Then check Firefly III — a new withdrawal should appear under the linked
+asset account, with:
+- Amount: the exact spend amount
+- Description: the transaction description (or card name if blank)
+- Source: the asset account you linked
+- Destination: the card's issuer (or "Uncategorised" if blank)
+- Currency: the card's currency
+
+---
 
 ## Limitations
 
-- **One-way only.** Spending against the card in Firefly III (if you
-  ever record a transaction there directly) doesn't flow back to
-  VoucherVault — the sync only ever pushes VoucherVault's state out.
-- **No delete/expiry handling.** If an item is deleted or archived in
-  VoucherVault, its Firefly asset account isn't touched — that's a
-  manual cleanup in Firefly, or an extra webhook rule on `item_archived`
-  if you want to automate zeroing it out.
-- Same reachability note as `N8N_SETUP.md`: keep both instances able to
-  reach each other (same network/VPN/reverse proxy), and don't expose
-  either API token publicly.
+- **One-way only.** Spending recorded in Firefly III directly doesn't flow
+  back to VoucherVault.
+- **balance\_changed events only.** Creating, archiving, or deleting an item
+  doesn't touch Firefly — only spend transactions trigger withdrawals.
+- **Negative transactions are skipped.** The backend only posts when
+  `abs(transaction.value) > 0`. If you record a zero-value correction it's
+  silently ignored.
+- **No delete/archive cleanup.** If you delete or archive a VoucherVault item,
+  its Firefly asset account isn't touched.
+
+---
+
+## Legacy n8n approach
+
+The previous version of this document described a webhook → n8n → Firefly III
+pipeline. That approach still works for users who prefer it — see
+[`N8N_SETUP.md`](N8N_SETUP.md). The native backend is simpler and requires no
+n8n instance.

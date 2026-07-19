@@ -400,6 +400,10 @@ class Item(models.Model):
         max_length=50, blank=True, default='',
         help_text="Seat or coach reservation on a travel ticket, e.g. Coach C, Seat 42.",
     )
+    firefly_account_id = models.CharField(
+        max_length=50, blank=True, default='',
+        help_text="Firefly III asset account ID linked to this item. Set via 'Link to Firefly III' or enter manually.",
+    )
     is_recurring = models.BooleanField(
         default=False,
         help_text="This item renews periodically (subscription, annual pass, etc.).",

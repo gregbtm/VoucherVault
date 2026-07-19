@@ -21,6 +21,7 @@ from myapp.test_utils import set_site_config
 
 from .backends import get_backend
 from .backends.apprise_backend import AppriseBackend
+from .backends.firefly_backend import FireflyBackend
 from .backends.ntfy import NtfyBackend
 from .backends.webhook import WebhookBackend
 from .backends.webpush import WebPushBackend, get_vapid_public_key, webpush_enabled
@@ -60,6 +61,7 @@ def make_rule(user, backend='ntfy', event_types=None, digest_frequency='immediat
         'webhook': {'url': 'https://n8n.example.com/webhook/vv'},
         'apprise': {'urls': 'json://example.com/notify'},
         'webpush': {},
+        'firefly': {'url': 'https://firefly.example.com', 'token': 'secret-token'},
     }[backend]
     config.update(config_overrides)
     return NotificationRule.objects.create(
@@ -160,6 +162,133 @@ class BackendTests(TestCase):
         backend = get_backend(rule)
         self.assertIsInstance(backend, WebPushBackend)
         self.assertEqual(backend.config['user_id'], user.id)
+
+    def test_get_backend_dispatches_to_firefly(self):
+        user = User.objects.create_user(username='erin', password='pw12345!')
+        rule = make_rule(user, backend='firefly')
+        backend = get_backend(rule)
+        self.assertIsInstance(backend, FireflyBackend)
+
+
+class FireflyBackendTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='fiona', password='pw12345!')
+        self.item = make_item(self.user, type='giftcard', value='50.00', firefly_account_id='7')
+
+    def _make_transaction(self):
+        return Transaction.objects.create(
+            item=self.item, date=date.today(), description='Spent at shop', value='-10.00',
+        )
+
+    def test_missing_url_returns_false(self):
+        backend = FireflyBackend({'token': 'tok'})
+        self.assertFalse(backend.send('title', 'msg', item=self.item))
+
+    def test_missing_token_returns_false(self):
+        backend = FireflyBackend({'url': 'https://firefly.example.com'})
+        self.assertFalse(backend.send('title', 'msg', item=self.item))
+
+    def test_null_item_returns_true_without_calling_api(self):
+        backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
+        self.assertTrue(backend.send('title', 'msg', item=None))
+
+    def test_no_account_id_returns_true_without_calling_api(self):
+        item_no_account = make_item(self.user, name='No Account', firefly_account_id='')
+        backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
+        self.assertTrue(backend.send('title', 'msg', item=item_no_account))
+
+    def test_no_transaction_returns_true_without_calling_api(self):
+        backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
+        self.assertTrue(backend.send('title', 'msg', item=self.item))
+
+    @patch('notify.backends.firefly_backend.requests.post')
+    def test_successful_send_posts_withdrawal(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200)
+        self._make_transaction()
+        backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
+        result = backend.send('title', 'msg', item=self.item)
+        self.assertTrue(result)
+        args, kwargs = mock_post.call_args
+        self.assertEqual(args[0], 'https://firefly.example.com/api/v1/transactions')
+        tx = kwargs['json']['transactions'][0]
+        self.assertEqual(tx['type'], 'withdrawal')
+        self.assertEqual(tx['source_id'], '7')
+        self.assertEqual(tx['amount'], '10.00')
+        self.assertEqual(kwargs['headers']['Authorization'], 'Bearer tok')
+
+    @patch('notify.backends.firefly_backend.requests.post')
+    def test_network_error_returns_false(self, mock_post):
+        import requests as requests_lib
+        mock_post.side_effect = requests_lib.RequestException('timeout')
+        self._make_transaction()
+        backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
+        result = backend.send('title', 'msg', item=self.item)
+        self.assertFalse(result)
+
+    @patch('notify.backends.firefly_backend.requests.post')
+    def test_http_error_returns_false(self, mock_post):
+        import requests as requests_lib
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = requests_lib.HTTPError('403 Forbidden')
+        mock_post.return_value = mock_response
+        self._make_transaction()
+        backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
+        result = backend.send('title', 'msg', item=self.item)
+        self.assertFalse(result)
+
+
+class FireflyLinkActionTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='george', password='pw12345!')
+        self.client.login(username='george', password='pw12345!')
+        self.item = make_item(self.user, type='giftcard', value='50.00')
+        from rest_framework.authtoken.models import Token
+        token, _ = Token.objects.get_or_create(user=self.user)
+        self.auth = f'Token {token.key}'
+
+    def _make_firefly_rule(self, **overrides):
+        config = {'url': 'https://firefly.example.com', 'token': 'secret'}
+        config.update(overrides)
+        return NotificationRule.objects.create(
+            user=self.user, name='firefly rule', backend='firefly',
+            config=config, enabled=True, event_types=['balance_changed'],
+        )
+
+    def test_returns_400_when_no_firefly_rule(self):
+        url = f'/api/v1/items/{self.item.pk}/firefly-link/'
+        resp = self.client.post(url, HTTP_AUTHORIZATION=self.auth)
+        self.assertEqual(resp.status_code, 400)
+
+    @patch('api.views.requests.post')
+    def test_creates_account_and_stores_id(self, mock_post):
+        self._make_firefly_rule()
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {'data': {'id': '42'}}
+        mock_post.return_value = mock_resp
+        url = f'/api/v1/items/{self.item.pk}/firefly-link/'
+        resp = self.client.post(url, HTTP_AUTHORIZATION=self.auth)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['firefly_account_id'], '42')
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.firefly_account_id, '42')
+
+    @patch('api.views.requests.post')
+    def test_502_on_network_error(self, mock_post):
+        import requests as requests_lib
+        self._make_firefly_rule()
+        mock_post.side_effect = requests_lib.RequestException('timeout')
+        url = f'/api/v1/items/{self.item.pk}/firefly-link/'
+        resp = self.client.post(url, HTTP_AUTHORIZATION=self.auth)
+        self.assertEqual(resp.status_code, 502)
+
+    def test_other_user_cannot_link(self):
+        other = User.objects.create_user(username='harry', password='pw12345!')
+        from rest_framework.authtoken.models import Token
+        other_token, _ = Token.objects.get_or_create(user=other)
+        url = f'/api/v1/items/{self.item.pk}/firefly-link/'
+        resp = self.client.post(url, HTTP_AUTHORIZATION=f'Token {other_token.key}')
+        self.assertEqual(resp.status_code, 404)
 
 
 class WebPushBackendTests(TestCase):

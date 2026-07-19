@@ -948,6 +948,16 @@ body.dark-mode .error-alert {
                        value='{{ form.points_balance.value|default_if_none:"" }}'>
               </div>
             </div>
+
+            <div class="field-toggle is-collapsed" id="firefly-account-wrap">
+              <div class="form-group">
+                <label class="form-label" for="firefly_account_id">{% trans "Firefly III Account ID" %}</label>
+                <input type="text" class="modern-input" id="firefly_account_id" name="firefly_account_id"
+                       placeholder="{% trans 'Linked Firefly III asset account ID (optional)' %}"
+                       value='{{ form.firefly_account_id.value|default_if_none:"" }}'>
+                <small class="form-text text-muted">{% trans "Used by the Firefly III notification backend to post withdrawal transactions when you spend from this card. You can also link this after saving via the edit form." %}</small>
+              </div>
+            </div>
           </div>
 
           <!-- Organization Section -->
@@ -1230,6 +1240,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const orderIdWrap = document.getElementById('order-id-wrap');
     const discountAppliedWrap = document.getElementById('discount-applied-wrap');
     const minimumSpendWrap = document.getElementById('minimum-spend-wrap');
+    const fireflyAccountWrap = document.getElementById('firefly-account-wrap');
 
     if (seatNumberWrap) seatNumberWrap.classList.toggle('is-collapsed', t !== 'travelpass');
     if (membershipTierWrap) membershipTierWrap.classList.toggle('is-collapsed', t !== 'loyaltycard');
@@ -1238,6 +1249,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (orderIdWrap) orderIdWrap.classList.toggle('is-collapsed', t !== 'giftcard' && t !== 'travelpass');
     if (discountAppliedWrap) discountAppliedWrap.classList.toggle('is-collapsed', t !== 'travelpass');
     if (minimumSpendWrap) minimumSpendWrap.classList.toggle('is-collapsed', t !== 'voucher' && t !== 'coupon');
+    if (fireflyAccountWrap) fireflyAccountWrap.classList.toggle('is-collapsed', t !== 'giftcard' && t !== 'voucher');
 
     // Value / Currency / Balance Check
     if (t === 'loyaltycard') {

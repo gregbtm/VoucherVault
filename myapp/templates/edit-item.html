@@ -972,6 +972,23 @@ body.dark-mode .error-alert {
                        value="{{ item.points_balance|default_if_none:'' }}">
               </div>
             </div>
+
+            <div class="field-toggle is-collapsed" id="firefly-account-wrap">
+              <div class="form-group">
+                <label class="form-label" for="firefly_account_id">{% trans "Firefly III Account ID" %}</label>
+                <div class="d-flex gap-2 align-items-center">
+                  <input type="text" class="modern-input flex-grow-1" id="firefly_account_id" name="firefly_account_id"
+                         placeholder="{% trans 'Linked Firefly III asset account ID' %}"
+                         value="{{ item.firefly_account_id|default_if_none:'' }}">
+                  <button type="button" class="btn btn-outline-secondary btn-sm text-nowrap" id="firefly-link-btn"
+                          data-item-id="{{ item.id }}"
+                          title="{% trans 'Auto-create an asset account in Firefly III and store its ID here' %}">
+                    <i class="bi bi-link-45deg"></i> {% trans "Link to Firefly III" %}
+                  </button>
+                </div>
+                <small class="form-text text-muted">{% trans "When the Firefly III notification backend fires, it posts a withdrawal to this account. Use the button to auto-create the account." %}</small>
+              </div>
+            </div>
           </div>
 
           <!-- Organization Section -->
@@ -1285,6 +1302,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const orderIdWrap = document.getElementById('order-id-wrap');
     const discountAppliedWrap = document.getElementById('discount-applied-wrap');
     const minimumSpendWrap = document.getElementById('minimum-spend-wrap');
+    const fireflyAccountWrap = document.getElementById('firefly-account-wrap');
 
     if (seatNumberWrap) seatNumberWrap.classList.toggle('is-collapsed', t !== 'travelpass');
     if (membershipTierWrap) membershipTierWrap.classList.toggle('is-collapsed', t !== 'loyaltycard');
@@ -1296,6 +1314,8 @@ document.addEventListener("DOMContentLoaded", function () {
     if (discountAppliedWrap) discountAppliedWrap.classList.toggle('is-collapsed', t !== 'travelpass');
     // Minimum Spend: Voucher and Coupon only
     if (minimumSpendWrap) minimumSpendWrap.classList.toggle('is-collapsed', t !== 'voucher' && t !== 'coupon');
+    // Firefly III: Gift Card and Voucher only (items with spendable balances)
+    if (fireflyAccountWrap) fireflyAccountWrap.classList.toggle('is-collapsed', t !== 'giftcard' && t !== 'voucher');
 
     // ── Value / Currency / Balance Check ─────────────────────────────────
     if (t === 'loyaltycard') {
@@ -1439,6 +1459,38 @@ document.addEventListener("DOMContentLoaded", function () {
   balanceCheckField.addEventListener('input', function () {
     balanceCheckSuggestion.style.display = 'none';
   });
+
+  // ── Firefly III — "Link" button ───────────────────────────────────────
+  const fireflyLinkBtn = document.getElementById('firefly-link-btn');
+  if (fireflyLinkBtn) {
+    fireflyLinkBtn.addEventListener('click', function () {
+      const itemId = fireflyLinkBtn.dataset.itemId;
+      const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+      fireflyLinkBtn.disabled = true;
+      fireflyLinkBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+      fetch('/api/v1/items/' + itemId + '/firefly-link/', {
+        method: 'POST',
+        headers: {'X-CSRFToken': csrfToken, 'Content-Type': 'application/json'},
+      })
+        .then(function (r) { return r.json().then(function (d) { return {ok: r.ok, data: d}; }); })
+        .then(function (res) {
+          if (res.ok) {
+            document.getElementById('firefly_account_id').value = res.data.firefly_account_id;
+            fireflyLinkBtn.innerHTML = '<i class="bi bi-check-lg"></i> {% trans "Linked" %}';
+            fireflyLinkBtn.classList.replace('btn-outline-secondary', 'btn-outline-success');
+          } else {
+            fireflyLinkBtn.disabled = false;
+            fireflyLinkBtn.innerHTML = '<i class="bi bi-link-45deg"></i> {% trans "Link to Firefly III" %}';
+            alert(res.data.detail || '{% trans "Firefly III link failed." %}');
+          }
+        })
+        .catch(function () {
+          fireflyLinkBtn.disabled = false;
+          fireflyLinkBtn.innerHTML = '<i class="bi bi-link-45deg"></i> {% trans "Link to Firefly III" %}';
+          alert('{% trans "Network error — could not reach Firefly III." %}');
+        });
+    });
+  }
 
   // Warns (never blocks) when the code just typed or scanned matches a
   // *different* active item already in the user's vault - excludes this

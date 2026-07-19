@@ -149,6 +149,7 @@ class ItemSerializer(serializers.ModelSerializer):
             'last_used_at', 'balance_check_url', 'journey_origin', 'journey_destination',
             'travel_time', 'order_id', 'discount_applied',
             'minimum_spend', 'points_balance', 'membership_tier', 'initial_value', 'seat_number',
+            'firefly_account_id',
         ]
         read_only_fields = [
             'id', 'qr_code_base64', 'default_expiry_notification_sent',
@@ -308,6 +309,8 @@ class NotificationRuleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'config': _('webhook config requires "url".')})
         elif backend == 'apprise' and not config.get('urls'):
             raise serializers.ValidationError({'config': _('apprise config requires "urls".')})
+        elif backend == 'firefly' and not (config.get('url') and config.get('token')):
+            raise serializers.ValidationError({'config': _('Firefly III config requires "url" and "token".')})
 
         return attrs
 
