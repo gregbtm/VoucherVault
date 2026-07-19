@@ -243,11 +243,12 @@ jobs:
           fetch-depth: 0
 
       - name: TruffleHog OSS
+        # No explicit base/head — TruffleHog auto-detects from the event:
+        # push → github.event.before..github.sha; PR → base.sha..head.sha.
+        # Passing base: default_branch caused base==head on a push to main
+        # (both resolve to the merge commit), which TruffleHog rejects.
         uses: trufflesecurity/trufflehog@main
         with:
-          path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
           extra_args: --only-verified
 
   trivy:
