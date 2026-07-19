@@ -34,7 +34,7 @@ database/*.png
 database/*.pdf
 database/*.jpg
 database/*.jpeg
-database/notes.txt
+database/notes*.txt
 encrypted.data
 
 # throwaway local settings override used for sandbox/dev verification

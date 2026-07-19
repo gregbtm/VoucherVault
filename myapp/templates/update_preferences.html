@@ -168,7 +168,7 @@
                 {{ form.next_up_wallets }}
                 {% if form.next_up_wallets.errors %}<div class="text-danger small">{{ form.next_up_wallets.errors }}</div>{% endif %}
               </div>
-              <div class="mb-3" style="max-width: 200px;">
+              <div class="mb-3 col-md-3 ps-0">
                 <label for="{{ form.next_up_max_items.id_for_label }}" class="form-label">{{ form.next_up_max_items.label }}</label>
                 {{ form.next_up_max_items }}
                 <small class="form-text text-muted">{% trans "Soonest first, up to 3." %}</small>
@@ -212,7 +212,7 @@
                 <label class="form-check-label" for="{{ form.nearby_items_enabled.id_for_label }}">{% trans "Enable Nearby widget" %}</label>
                 {% if form.nearby_items_enabled.errors %}<div class="text-danger small">{{ form.nearby_items_enabled.errors }}</div>{% endif %}
               </div>
-              <div class="mb-3" style="max-width: 200px;">
+              <div class="mb-3 col-md-4 ps-0">
                 <label for="{{ form.nearby_radius_m.id_for_label }}" class="form-label">{% trans "Search radius (metres)" %}</label>
                 {{ form.nearby_radius_m }}
                 <small class="form-text text-muted">{% trans "25-1000m. Smaller avoids matching the wrong nearby shop; larger covers a bigger store or car park." %}</small>

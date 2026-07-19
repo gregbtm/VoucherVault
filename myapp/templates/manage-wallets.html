@@ -84,6 +84,7 @@
           <h5 class="card-title">{% trans "Your Wallets" %}</h5>
 
           {% if wallets %}
+          <div class="table-responsive">
           <table class="table table-hover align-middle">
             <thead>
               <tr>
@@ -122,6 +123,7 @@
               {% endfor %}
             </tbody>
           </table>
+          </div>
           {% else %}
           <p class="text-muted">{% trans "You haven't created any wallets yet." %}</p>
           {% endif %}
@@ -132,6 +134,7 @@
       <div class="card mt-4">
         <div class="card-body">
           <h5 class="card-title"><i class="bi bi-people me-1"></i> {% trans "Shared With You" %}</h5>
+          <div class="table-responsive">
           <table class="table table-hover align-middle">
             <thead>
               <tr>
@@ -161,6 +164,7 @@
               {% endfor %}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
       {% endif %}

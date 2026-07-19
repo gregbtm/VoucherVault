@@ -107,6 +107,7 @@
           <h5 class="card-title">{% trans "Recent Import Jobs" %}</h5>
 
           {% if jobs %}
+          <div class="table-responsive">
           <table class="table table-hover align-middle">
             <thead>
               <tr>
@@ -141,6 +142,7 @@
               {% endfor %}
             </tbody>
           </table>
+          </div>
           {% else %}
           <p class="text-muted">{% trans "No imports yet." %}</p>
           {% endif %}

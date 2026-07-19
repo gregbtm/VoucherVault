@@ -53,46 +53,60 @@
             </div>
 
             <div id="backend-fields-ntfy" class="backend-fields">
-              <h6 class="text-muted mt-3">{% trans "ntfy Settings" %}</h6>
+              <h6 class="text-muted mt-3 mb-2">{% trans "ntfy Settings" %}</h6>
               <div class="mb-2">
                 <label class="form-label">{{ form.ntfy_server.label }}</label>
                 {{ form.ntfy_server }}
+                {% if form.ntfy_server.errors %}<div class="text-danger small mt-1">{{ form.ntfy_server.errors }}</div>{% endif %}
               </div>
               <div class="mb-2">
                 <label class="form-label">{{ form.ntfy_topic.label }}</label>
                 {{ form.ntfy_topic }}
+                {% if form.ntfy_topic.errors %}<div class="text-danger small mt-1">{{ form.ntfy_topic.errors }}</div>{% endif %}
               </div>
               <div class="mb-2">
                 <label class="form-label">{{ form.ntfy_priority.label }}</label>
                 {{ form.ntfy_priority }}
               </div>
               <div class="mb-2">
-                <label class="form-label">{{ form.ntfy_token.label }}</label>
+                <label class="form-label">
+                  {{ form.ntfy_token.label }}
+                  <span class="text-muted small fw-normal">{% trans "(optional)" %}</span>
+                </label>
                 {{ form.ntfy_token }}
               </div>
             </div>
 
             <div id="backend-fields-webhook" class="backend-fields">
-              <h6 class="text-muted mt-3">{% trans "Webhook Settings" %}</h6>
+              <h6 class="text-muted mt-3 mb-2">{% trans "Webhook Settings" %}</h6>
               <div class="mb-2">
                 <label class="form-label">{{ form.webhook_url.label }}</label>
                 {{ form.webhook_url }}
+                {% if form.webhook_url.errors %}<div class="text-danger small mt-1">{{ form.webhook_url.errors }}</div>{% endif %}
               </div>
               <div class="mb-2">
-                <label class="form-label">{{ form.webhook_header_name.label }}</label>
+                <label class="form-label">
+                  {{ form.webhook_header_name.label }}
+                  <span class="text-muted small fw-normal">{% trans "(optional)" %}</span>
+                </label>
                 {{ form.webhook_header_name }}
               </div>
               <div class="mb-2">
-                <label class="form-label">{{ form.webhook_header_value.label }}</label>
+                <label class="form-label">
+                  {{ form.webhook_header_value.label }}
+                  <span class="text-muted small fw-normal">{% trans "(optional)" %}</span>
+                </label>
                 {{ form.webhook_header_value }}
               </div>
             </div>
 
             <div id="backend-fields-apprise" class="backend-fields">
-              <h6 class="text-muted mt-3">{% trans "Apprise Settings" %}</h6>
+              <h6 class="text-muted mt-3 mb-2">{% trans "Apprise Settings" %}</h6>
               <div class="mb-2">
                 <label class="form-label">{{ form.apprise_urls.label }}</label>
                 {{ form.apprise_urls }}
+                {% if form.apprise_urls.errors %}<div class="text-danger small mt-1">{{ form.apprise_urls.errors }}</div>{% endif %}
+                <small class="form-text text-muted">{% trans "One URL per line." %}</small>
               </div>
             </div>
 
@@ -136,6 +150,7 @@
           </div>
 
           {% if rules %}
+          <div class="table-responsive">
           <table class="table table-hover align-middle">
             <thead>
               <tr>
@@ -181,6 +196,7 @@
               {% endfor %}
             </tbody>
           </table>
+          </div>
           {% else %}
           <p class="text-muted">{% trans "You haven't created any notification rules yet." %}</p>
           {% endif %}

@@ -133,6 +133,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 100 — "Nearby" widget: suggest an item when a matching shop is close by](#phase-100--nearby-widget-suggest-an-item-when-a-matching-shop-is-close-by)
 - [Phase 101 — Mobile PDF viewer, download blank page, copy-toast overlap, barcode fixes](#phase-101--mobile-pdf-viewer-download-blank-page-copy-toast-overlap-barcode-fixes)
 - [Phase 102 — Full-text search, wallet budgets, expiry timeline, recurring items, document OCR](#phase-102--full-text-search-wallet-budgets-expiry-timeline-recurring-items-document-ocr)
+- [Phase 103 — Comprehensive UI polish pass](#phase-103--comprehensive-ui-polish-pass)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -5300,6 +5301,56 @@ Five features that address the most common inventory-management gaps:
 **Migration:** `0063_phase102_budget_recurring_ocr` — adds `budget_amount`
 to `wallet`, `is_recurring` / `renewal_period` / `renewal_date` to `item`,
 and `extracted_text` to `document`.
+
+## Phase 103 — Comprehensive UI polish pass
+
+A sweep across every management and settings page to unify alignment,
+fix structural HTML issues, and improve mobile behaviour.
+
+**Changes per file:**
+
+- **`imports/templates/imports/upload.html`** — wrapped the Recent Import
+  Jobs table in `<div class="table-responsive">` so it scrolls cleanly on
+  narrow screens instead of overflowing the card.
+
+- **`myapp/static/assets/css/dark-mode.css`** — added explicit dark-mode
+  overrides for three Phase 102 elements (`budget-bar-wrapper` border,
+  `doc-ocr-pre` background/text, `timeline-logo-placeholder` background)
+  that previously used Bootstrap CSS variables (`--bs-border-color`,
+  `--bs-secondary-bg`) not covered by the app's `body.dark-mode`
+  class-based approach.
+
+- **`myapp/templates/manage-wallets.html`** — wrapped both the "Your
+  Wallets" table and the "Shared With You" table in
+  `<div class="table-responsive">`.
+
+- **`myapp/templates/update_apprise_urls.html`** — full structural rewrite:
+  added missing `<h1>` in the pagetitle block, upgraded `<h6>` card
+  heading to `<h5>`, fixed broken orphaned `<p>` elements (the old
+  template used `<span>text</span><p>` which is invalid HTML), replaced
+  the old Bootstrap horizontal form layout (`col-sm-2` / `col-sm-10`)
+  with a clean vertical layout in a `col-lg-7` column, and added a
+  `.catch()` handler on the AJAX send-test fetch.
+
+- **`myapp/templates/update_preferences.html`** — replaced two hard-coded
+  `style="max-width: 200px;"` inline widths (on the `next_up_max_items`
+  and `nearby_radius_m` inputs) with responsive Bootstrap column classes
+  (`col-md-3` and `col-md-4`) so they scale correctly on small screens.
+
+- **`notify/templates/notify/log.html`** — added a `<h5 class="card-title">`
+  heading inside the card body (previously the card had no visible title),
+  and wrapped the log table in `<div class="table-responsive">`.
+
+- **`notify/templates/notify/rules.html`** — added inline validation error
+  `<div>` elements beneath each backend-specific field (`ntfy_server`,
+  `ntfy_topic`, `webhook_url`, `apprise_urls`) so field-level Django form
+  errors are shown to the user; added `(optional)` label hints for
+  `ntfy_token`, `webhook_header_name`, and `webhook_header_value`; added
+  "One URL per line." help text under `apprise_urls`; wrapped the rules
+  table in `<div class="table-responsive">`.
+
+- **`.gitignore`** — broadened `database/notes.txt` to `database/notes*.txt`
+  to cover scratch files with randomised suffixes.
 
 ## New environment variables
 
