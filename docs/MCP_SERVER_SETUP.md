@@ -20,17 +20,35 @@ them seeing and editing the same vault.
 
 ## What it can do
 
-Read: search items, get an item's full details, list items expiring soon,
-get the analytics summary (KPI counts, value by currency).
+**Items**
+- `search_items` — search by keyword, type, used/archived status
+- `get_item` — full details for a single item
+- `get_expiring_items` — unused, non-archived items expiring within N days (default 30), ordered by expiry date
+- `create_item` — create a new item (voucher, giftcard, coupon, loyaltycard)
+- `add_transaction` — record a spend against a gift card's balance
+- `mark_item_used` — mark an item as used/redeemed
+- `set_item_archived` — archive or unarchive an item
 
-Write: create an item, record a transaction (spend) against a gift card,
-mark an item used/redeemed, archive/unarchive an item.
+**Wallets**
+- `list_wallets` — list all wallets belonging to your account
+- `create_wallet` — create a new wallet with an optional description and hex colour
+
+**Tags**
+- `list_tags` — list all your tags including item counts
+
+**Analytics**
+- `get_analytics_summary` — KPI tiles: item counts by status and type, value at risk by currency
+- `get_expiry_timeline` — expiry counts grouped by week for the next 12 weeks
+
+**Webhooks & Activity**
+- `list_webhooks` — list all outbound webhooks you have configured
+- `list_wallet_activity` — wallet audit log (all wallets, or filtered to one)
 
 Every tool call is just an HTTP request to your existing `/api/v1/`
 endpoints — the same permission checks, validation rules, and side effects
-(QR/barcode generation, webhook events from Phase 12.2, etc.) that already
-apply to the web UI and REST API apply here too. The MCP server has no
-direct database access and no special privileges of its own.
+(QR/barcode generation, webhook events, etc.) that already apply to the
+web UI and REST API apply here too. The MCP server has no direct database
+access and no special privileges of its own.
 
 ## Step 1 — Generate an API token for yourself
 
