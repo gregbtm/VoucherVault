@@ -982,6 +982,14 @@ body.dark-mode .error-alert {
                         rows="3">{{ item.notes }}</textarea>
             </div>
 
+            <div class="form-group">
+              <label class="form-label" for="share_message">{% trans "Share Message" %}</label>
+              <textarea class="modern-textarea" id="share_message" name="share_message"
+                        placeholder="{% trans 'Optional note shown on the public share page (e.g. valid until Dec, buy in store only)' %}"
+                        rows="2">{{ item.share_message }}</textarea>
+              <small class="form-text text-muted">{% trans "Visible to anyone with your public share link." %}</small>
+            </div>
+
             <!-- Recurring / Subscription -->
             <div class="form-group">
               <div class="d-flex align-items-center gap-2">

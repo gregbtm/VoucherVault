@@ -2121,7 +2121,7 @@ class PublicShareLinkTests(TestCase):
 
         self.client.logout()
         old_response = self.client.get(reverse('public_item_share', args=[old_share_id]))
-        self.assertEqual(old_response.status_code, 404)
+        self.assertEqual(old_response.status_code, 410)
 
     def test_revoke_deletes_link(self):
         item = make_item(self.alice)
@@ -2157,10 +2157,10 @@ class PublicShareLinkTests(TestCase):
         share.refresh_from_db()
         self.assertEqual(share.view_count, 2)
 
-    def test_public_page_unknown_token_404s(self):
+    def test_public_page_unknown_token_returns_revoked_page(self):
         self.client.logout()
         response = self.client.get(reverse('public_item_share', args=[uuid.uuid4()]))
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 410)
 
     def test_public_page_excludes_notes(self):
         item = make_item(self.alice, notes='Secret redemption instructions nobody else should see')

@@ -1,0 +1,90 @@
+{% load static %}
+{% load i18n %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Link Revoked - VoucherVault Plus+</title>
+    <link href="{% static 'assets/img/favicon.ico' %}" rel="shortcut icon">
+    <link href="{% static 'assets/img/apple-touch-icon.png' %}" rel="apple-touch-icon">
+    <link href="{% static 'assets/vendor/bootstrap-icons/bootstrap-icons.css' %}" rel="stylesheet">
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: #f2f4f7;
+            --card-bg: #ffffff;
+            --text: #1b1f27;
+            --muted: #6b7280;
+            --border: #e5e7eb;
+            --accent: #4f46e5;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #101114;
+                --card-bg: #1b1c20;
+                --text: #f2f3f5;
+                --muted: #9aa0ab;
+                --border: #2c2d33;
+                --accent: #818cf8;
+            }
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            padding: 24px 16px 48px;
+        }
+        .wrap { width: 100%; max-width: 420px; }
+        .brand {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            margin-bottom: 18px; color: var(--muted); font-size: 0.85rem;
+        }
+        .brand img { height: 20px; width: 20px; }
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 40px 24px;
+            text-align: center;
+        }
+        .icon {
+            font-size: 3rem;
+            color: var(--muted);
+            opacity: 0.5;
+            margin-bottom: 16px;
+        }
+        .title { font-size: 1.3rem; font-weight: 700; margin: 0 0 8px; }
+        .subtitle { color: var(--muted); font-size: 0.95rem; margin: 0; line-height: 1.5; }
+        .footer {
+            text-align: center; margin-top: 20px; font-size: 0.8rem; color: var(--muted);
+        }
+        .footer a { color: var(--accent); text-decoration: none; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="brand">
+        <img src="{% static 'assets/img/favicon.ico' %}" alt="">
+        <span>{% trans "Shared via VoucherVault Plus+" %}</span>
+    </div>
+
+    <div class="card">
+        <div class="icon"><i class="bi bi-link-45deg"></i></div>
+        <p class="title">{% trans "Link revoked" %}</p>
+        <p class="subtitle">{% trans "This share link has been revoked by its owner. Ask them for a new one." %}</p>
+    </div>
+
+    <p class="footer">
+        <a href="{% url 'show_items' %}">VoucherVault Plus+</a>
+    </p>
+</div>
+</body>
+</html>
