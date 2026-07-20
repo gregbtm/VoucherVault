@@ -17,7 +17,7 @@ class NtfyBackend(NotificationBackend):
         token:    optional bearer token for authenticated/protected topics
     """
 
-    def send(self, title: str, message: str, item=None) -> bool:
+    def send(self, title: str, message: str, item=None, transaction=None) -> bool:
         server = (self.config.get('server') or '').rstrip('/')
         topic = self.config.get('topic')
         if not server or not topic:

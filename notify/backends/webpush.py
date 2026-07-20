@@ -28,7 +28,7 @@ class WebPushBackend(NotificationBackend):
     config, since a user may be subscribed from several browsers/devices.
     """
 
-    def send(self, title: str, message: str, item=None) -> bool:
+    def send(self, title: str, message: str, item=None, transaction=None) -> bool:
         config = SiteConfiguration.load()
         vapid_private_key = config.webpush_vapid_private_key
         if not vapid_private_key:

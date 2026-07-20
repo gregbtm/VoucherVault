@@ -24,4 +24,4 @@ def get_backend(rule) -> NotificationBackend:
         # webpush has no per-rule destination in config — it delivers to
         # every subscription the rule's owner has registered.
         config['user_id'] = rule.user_id
-    return backend_cls(config)
+    return backend_cls(config, rule_id=rule.id)

@@ -167,6 +167,11 @@ class Wallet(models.Model):
         help_text="Optional monthly spending budget for this wallet. When set, a progress bar "
                    "shows how much of the budget has been spent in the current calendar month.",
     )
+    firefly_rule = models.ForeignKey(
+        'notify.NotificationRule',
+        null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+        help_text="Firefly III notification rule used for items in this wallet. Overrides user default; overridden by per-item setting.",
+    )
 
     class Meta:
         ordering = ['name']
@@ -404,6 +409,11 @@ class Item(models.Model):
         max_length=50, blank=True, default='',
         help_text="Firefly III asset account ID linked to this item. Set via 'Link to Firefly III' or enter manually.",
     )
+    firefly_rule = models.ForeignKey(
+        'notify.NotificationRule',
+        null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+        help_text="Override which Firefly III notification rule handles this item's balance sync. Falls back to wallet-level rule, then user's first enabled Firefly rule.",
+    )
     notifications_muted = models.BooleanField(
         default=False,
         help_text="Suppress all notification rules for this item (expiry warnings, renewal alerts, etc.).",
@@ -429,6 +439,11 @@ class Item(models.Model):
     )
 
     objects = ItemQuerySet.as_manager()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Cache the value at load time so Item.save() can detect changes.
+        self._original_value = self.value
 
     class Meta:
         indexes = [
@@ -605,9 +620,13 @@ class Transaction(models.Model):
     date = models.DateTimeField(default=timezone.now)
     description = models.CharField(max_length=255)
     value = models.DecimalField(max_digits=10, decimal_places=2)
+    firefly_transaction_id = models.CharField(
+        max_length=64, blank=True, default='',
+        help_text="Firefly III transaction ID after a successful sync. Blank means unsynced or Firefly not configured.",
+    )
 
     def __str__(self):
-        return f"{self.description} ({self.value})"      
+        return f"{self.description} ({self.value})"
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)

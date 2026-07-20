@@ -41,7 +41,12 @@ from myapp.models import (
 from myapp.pdf_ticket import decode_barcode_from_pdf, pdf_page_to_png_bytes
 from myapp.scan_learning import apply_learned_corrections
 from notify.models import NotificationLog, NotificationRule
-from notify.tasks import notify_balance_changed, notify_item_created, notify_item_shared, notify_item_used, send_test_notification
+from notify.tasks import (
+    backfill_firefly_transactions,
+    notify_balance_changed, notify_item_created, notify_item_shared, notify_item_used,
+    send_test_notification,
+    _find_firefly_rule,
+)
 from ocr.backends import get_backend, ocr_enabled
 from ocr.backends.base import parse_float_or_none
 
@@ -122,11 +127,7 @@ class ItemViewSet(viewsets.ModelViewSet):
         """
         item = self.get_object()
 
-        rule = (
-            request.user.notification_rules
-            .filter(backend='firefly', enabled=True)
-            .first()
-        )
+        rule = _find_firefly_rule(item)
         if rule is None:
             return Response(
                 {'detail': _('No enabled Firefly III notification rule found. Create one first.')},
@@ -142,6 +143,36 @@ class ItemViewSet(viewsets.ModelViewSet):
             )
 
         account_name = f'{item.name} ({item.issuer})' if item.issuer else item.name
+        headers = {
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        }
+
+        # Search for an existing asset account with the same name before creating,
+        # so re-clicking the button doesn't silently duplicate the account in Firefly.
+        try:
+            search_resp = requests.get(
+                f'{url}/api/v1/search/accounts',
+                params={'query': account_name, 'field': 'name', 'type': 'asset'},
+                headers=headers,
+                timeout=10,
+            )
+            search_resp.raise_for_status()
+            results = search_resp.json().get('data', [])
+            for acct in results:
+                if acct.get('attributes', {}).get('name') == account_name:
+                    account_id = str(acct['id'])
+                    item.firefly_account_id = account_id
+                    item.save(update_fields=['firefly_account_id'])
+                    try:
+                        backfill_firefly_transactions.delay(str(item.pk), rule.id)
+                    except Exception:
+                        pass
+                    return Response({'firefly_account_id': account_id, 'existing': True})
+        except requests.RequestException:
+            pass  # If the search fails, fall through to create
+
         payload = {
             'name': account_name,
             'type': 'asset',
@@ -150,11 +181,6 @@ class ItemViewSet(viewsets.ModelViewSet):
             'opening_balance': str(item.value or 0),
             'opening_balance_date': str(item.issue_date or timezone.localtime().date()),
             'notes': f'Created by VoucherVault for item {item.pk}',
-        }
-        headers = {
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
         }
 
         try:
@@ -181,7 +207,11 @@ class ItemViewSet(viewsets.ModelViewSet):
 
         item.firefly_account_id = account_id
         item.save(update_fields=['firefly_account_id'])
-        return Response({'firefly_account_id': account_id})
+        try:
+            backfill_firefly_transactions.delay(str(item.pk), rule.id)
+        except Exception:
+            pass
+        return Response({'firefly_account_id': account_id, 'existing': False})
 
     @action(detail=True, methods=['get', 'post'], url_path='transactions')
     def transactions(self, request, pk=None):
@@ -621,6 +651,7 @@ class RailTicketImportView(APIView):
     _RAIL_TICKET_TEXT_FIELDS = (
         'name', 'issuer', 'card_number', 'order_id', 'discount_applied',
         'journey_origin', 'journey_destination', 'travel_time', 'travel_date',
+        'seat_number',
     )
 
     @extend_schema(
@@ -670,7 +701,9 @@ class RailTicketImportView(APIView):
             return Response({'file': _('No file uploaded.')}, status=status.HTTP_400_BAD_REQUEST)
         if upload.size > MAX_PDF_UPLOAD_SIZE:
             return Response({'file': _('File is too large (max 15MB).')}, status=status.HTTP_400_BAD_REQUEST)
-        if upload.content_type != 'application/pdf':
+        is_pdf_content_type = upload.content_type in ('application/pdf', 'application/octet-stream')
+        is_pdf_extension = upload.name.lower().endswith('.pdf')
+        if not (is_pdf_content_type or is_pdf_extension):
             return Response({'file': _('Only PDF files are supported.')}, status=status.HTTP_400_BAD_REQUEST)
 
         pdf_bytes = upload.read()
@@ -702,7 +735,7 @@ class RailTicketImportView(APIView):
             fields['journey_origin'] = fields['journey_origin'] or ocr_result.get('journey_origin')
             fields['journey_destination'] = fields['journey_destination'] or ocr_result.get('journey_destination')
             fields['travel_time'] = fields['travel_time'] or ocr_result.get('travel_time')
-            fields['travel_date'] = fields['travel_date'] or ocr_result.get('expiry_date')
+            fields['travel_date'] = fields['travel_date'] or ocr_result.get('travel_date') or ocr_result.get('expiry_date')
             fields['value'] = fields['value'] if fields['value'] is not None else ocr_result.get('value')
             fields['currency'] = fields['currency'] or ocr_result.get('currency')
             if redeem_code is None:

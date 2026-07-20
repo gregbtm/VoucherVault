@@ -8,6 +8,7 @@ urlpatterns = [
     path('<int:rule_id>/delete', views.delete_rule, name='delete_notification_rule'),
     path('<int:rule_id>/test', views.test_rule, name='test_notification_rule'),
     path('log/', views.notification_log, name='notification_log'),
+    path('firefly-test-connection/', views.firefly_test_connection, name='firefly_test_connection'),
     path('webpush/subscribe/', views.webpush_subscribe, name='webpush_subscribe'),
     path('webpush/unsubscribe/', views.webpush_unsubscribe, name='webpush_unsubscribe'),
 ]

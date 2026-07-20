@@ -1,5 +1,6 @@
 import json
 
+import requests as req_lib
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -74,6 +75,31 @@ def test_rule(request, rule_id):
     else:
         messages.error(request, _('Test notification failed: %(detail)s') % {'detail': detail or _('unknown error')})
     return redirect('manage_notification_rules')
+
+
+@require_POST
+@login_required
+def firefly_test_connection(request):
+    """AJAX endpoint: test a Firefly III URL + token by calling its /api/v1/about."""
+    url = (request.POST.get('url') or '').rstrip('/')
+    token = (request.POST.get('token') or '').strip()
+    if not url or not token:
+        return JsonResponse({'ok': False, 'error': _('URL and token are required.')})
+    try:
+        import requests as req_lib
+        resp = req_lib.get(
+            f'{url}/api/v1/about',
+            headers={'Authorization': f'Bearer {token}', 'Accept': 'application/json'},
+            timeout=8,
+        )
+        if resp.status_code == 200:
+            version = resp.json().get('data', {}).get('version', 'unknown')
+            return JsonResponse({'ok': True, 'version': version})
+        if resp.status_code in (401, 403):
+            return JsonResponse({'ok': False, 'error': _('Authentication failed — check your token.')})
+        return JsonResponse({'ok': False, 'error': _('Server returned HTTP %(code)s.') % {'code': resp.status_code}})
+    except Exception as exc:
+        return JsonResponse({'ok': False, 'error': _('Cannot reach server: %(detail)s') % {'detail': str(exc)}})
 
 
 @login_required

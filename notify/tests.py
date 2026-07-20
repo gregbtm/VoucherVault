@@ -6,6 +6,8 @@ import re
 from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 
+from django.utils import timezone
+
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from django.contrib.auth.models import User
@@ -28,6 +30,9 @@ from .backends.webpush import WebPushBackend, get_vapid_public_key, webpush_enab
 from .forms import NotificationRuleForm
 from .models import DigestEntry, NotificationLog, NotificationRule, WebPushSubscription
 from .tasks import (
+    _find_firefly_rule,
+    advance_recurring_items,
+    backfill_firefly_transactions,
     check_and_notify_expiry,
     check_next_up_reminders,
     fire_notifications,
@@ -36,6 +41,8 @@ from .tasks import (
     notify_item_created,
     notify_item_shared,
     notify_item_used,
+    push_transaction_to_firefly,
+    retry_failed_firefly_pushes,
     send_daily_digests,
     send_test_notification,
 )
@@ -177,7 +184,7 @@ class FireflyBackendTests(TestCase):
 
     def _make_transaction(self):
         return Transaction.objects.create(
-            item=self.item, date=date.today(), description='Spent at shop', value='-10.00',
+            item=self.item, date=timezone.now(), description='Spent at shop', value='-10.00',
         )
 
     def test_missing_url_returns_false(self):
@@ -203,26 +210,53 @@ class FireflyBackendTests(TestCase):
 
     @patch('notify.backends.firefly_backend.requests.post')
     def test_successful_send_posts_withdrawal(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=200)
-        self._make_transaction()
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {'data': {'id': '99'}})
+        tx = self._make_transaction()
         backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
-        result = backend.send('title', 'msg', item=self.item)
+        result = backend.send('title', 'msg', item=self.item, transaction=tx)
         self.assertTrue(result)
         args, kwargs = mock_post.call_args
         self.assertEqual(args[0], 'https://firefly.example.com/api/v1/transactions')
-        tx = kwargs['json']['transactions'][0]
-        self.assertEqual(tx['type'], 'withdrawal')
-        self.assertEqual(tx['source_id'], '7')
-        self.assertEqual(tx['amount'], '10.00')
+        tx_row = kwargs['json']['transactions'][0]
+        self.assertEqual(tx_row['type'], 'withdrawal')
+        self.assertEqual(tx_row['source_id'], '7')
+        self.assertEqual(tx_row['amount'], '10.00')
         self.assertEqual(kwargs['headers']['Authorization'], 'Bearer tok')
+
+    @patch('notify.backends.firefly_backend.requests.post')
+    def test_deposit_direction_for_positive_transaction(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {'data': {'id': '100'}})
+        tx = Transaction.objects.create(
+            item=self.item, date=timezone.now(), description='Top-up', value='20.00',
+        )
+        backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
+        result = backend.send('title', 'msg', item=self.item, transaction=tx)
+        self.assertTrue(result)
+        tx_row = mock_post.call_args[1]['json']['transactions'][0]
+        self.assertEqual(tx_row['type'], 'deposit')
+        self.assertEqual(tx_row['destination_id'], '7')
+        self.assertEqual(tx_row['amount'], '20.00')
+
+    @patch('notify.backends.firefly_backend.requests.post')
+    def test_tags_and_category_included(self, mock_post):
+        from myapp.models import Tag
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {'data': {'id': '101'}})
+        tag = Tag.objects.create(user=self.user, name='groceries')
+        self.item.tags.add(tag)
+        tx = self._make_transaction()
+        backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
+        backend.send('title', 'msg', item=self.item, transaction=tx)
+        tx_row = mock_post.call_args[1]['json']['transactions'][0]
+        self.assertIn('groceries', tx_row.get('tags', []))
+        self.assertEqual(tx_row.get('category_name'), 'Gift Cards')
 
     @patch('notify.backends.firefly_backend.requests.post')
     def test_network_error_returns_false(self, mock_post):
         import requests as requests_lib
         mock_post.side_effect = requests_lib.RequestException('timeout')
-        self._make_transaction()
+        tx = self._make_transaction()
         backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
-        result = backend.send('title', 'msg', item=self.item)
+        result = backend.send('title', 'msg', item=self.item, transaction=tx)
         self.assertFalse(result)
 
     @patch('notify.backends.firefly_backend.requests.post')
@@ -231,9 +265,9 @@ class FireflyBackendTests(TestCase):
         mock_response = MagicMock()
         mock_response.raise_for_status.side_effect = requests_lib.HTTPError('403 Forbidden')
         mock_post.return_value = mock_response
-        self._make_transaction()
+        tx = self._make_transaction()
         backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
-        result = backend.send('title', 'msg', item=self.item)
+        result = backend.send('title', 'msg', item=self.item, transaction=tx)
         self.assertFalse(result)
 
 
@@ -260,23 +294,53 @@ class FireflyLinkActionTests(TestCase):
         self.assertEqual(resp.status_code, 400)
 
     @patch('api.views.requests.post')
-    def test_creates_account_and_stores_id(self, mock_post):
+    @patch('api.views.requests.get')
+    def test_creates_account_and_stores_id(self, mock_get, mock_post):
         self._make_firefly_rule()
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status.return_value = None
-        mock_resp.json.return_value = {'data': {'id': '42'}}
-        mock_post.return_value = mock_resp
+        # Search returns no match — triggers create
+        mock_get_resp = MagicMock()
+        mock_get_resp.raise_for_status.return_value = None
+        mock_get_resp.json.return_value = {'data': []}
+        mock_get.return_value = mock_get_resp
+        # Create succeeds
+        mock_post_resp = MagicMock()
+        mock_post_resp.raise_for_status.return_value = None
+        mock_post_resp.json.return_value = {'data': {'id': '42'}}
+        mock_post.return_value = mock_post_resp
         url = f'/api/v1/items/{self.item.pk}/firefly-link/'
         resp = self.client.post(url, HTTP_AUTHORIZATION=self.auth)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()['firefly_account_id'], '42')
+        self.assertFalse(resp.json().get('existing'))
         self.item.refresh_from_db()
         self.assertEqual(self.item.firefly_account_id, '42')
 
     @patch('api.views.requests.post')
-    def test_502_on_network_error(self, mock_post):
+    @patch('api.views.requests.get')
+    def test_returns_existing_account_without_creating(self, mock_get, mock_post):
+        self._make_firefly_rule()
+        # The view computes account_name as "Name (Issuer)" when issuer is set
+        account_name = (
+            f'{self.item.name} ({self.item.issuer})' if self.item.issuer else self.item.name
+        )
+        mock_get_resp = MagicMock()
+        mock_get_resp.raise_for_status.return_value = None
+        mock_get_resp.json.return_value = {'data': [{'id': '77', 'attributes': {'name': account_name}}]}
+        mock_get.return_value = mock_get_resp
+        url = f'/api/v1/items/{self.item.pk}/firefly-link/'
+        resp = self.client.post(url, HTTP_AUTHORIZATION=self.auth)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['firefly_account_id'], '77')
+        self.assertTrue(resp.json().get('existing'))
+        mock_post.assert_not_called()
+
+    @patch('api.views.requests.post')
+    @patch('api.views.requests.get')
+    def test_502_on_network_error(self, mock_get, mock_post):
         import requests as requests_lib
         self._make_firefly_rule()
+        # Search fails (caught), then create fails
+        mock_get.side_effect = requests_lib.RequestException('network error')
         mock_post.side_effect = requests_lib.RequestException('timeout')
         url = f'/api/v1/items/{self.item.pk}/firefly-link/'
         resp = self.client.post(url, HTTP_AUTHORIZATION=self.auth)
@@ -379,6 +443,406 @@ class WebPushBackendTests(TestCase):
         payload = json.loads(call_kwargs.kwargs.get('data') or call_kwargs[1]['data'])
         self.assertIn('url', payload)
         self.assertIn(str(item.id), payload['url'])
+
+
+class FireflyTransactionIdTests(TestCase):
+    """Transaction.firefly_transaction_id writeback via _do_firefly_push."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='firefly_tx_user', password='pw12345!')
+        self.item = make_item(self.user, type='giftcard', value='50.00', firefly_account_id='99')
+
+    @patch('notify.backends.firefly_backend.requests.post')
+    def test_firefly_transaction_id_written_back_on_success(self, mock_post):
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            raise_for_status=MagicMock(),
+            json=MagicMock(return_value={'data': {'id': 'FF-123'}}),
+        )
+        tx = Transaction.objects.create(
+            item=self.item, date=timezone.now(), description='Spent', value='-5.00',
+        )
+        backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
+        backend.send('title', 'msg', item=self.item, transaction=tx)
+        tx.refresh_from_db()
+        self.assertEqual(tx.firefly_transaction_id, 'FF-123')
+
+    @patch('notify.backends.firefly_backend.requests.post')
+    def test_firefly_transaction_id_not_written_on_failure(self, mock_post):
+        import requests as requests_lib
+        mock_post.side_effect = requests_lib.RequestException('timeout')
+        tx = Transaction.objects.create(
+            item=self.item, date=timezone.now(), description='Spent', value='-5.00',
+        )
+        backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
+        backend.send('title', 'msg', item=self.item, transaction=tx)
+        tx.refresh_from_db()
+        self.assertEqual(tx.firefly_transaction_id, '')
+
+    def test_firefly_transaction_id_in_transaction_serializer(self):
+        from api.serializers import TransactionSerializer
+        tx = Transaction.objects.create(
+            item=self.item, date=timezone.now(), description='Spent', value='-5.00',
+            firefly_transaction_id='FF-456',
+        )
+        data = TransactionSerializer(tx).data
+        self.assertIn('firefly_transaction_id', data)
+        self.assertEqual(data['firefly_transaction_id'], 'FF-456')
+
+
+class FireflyAsyncDispatchTests(TestCase):
+    """FireflyBackend.send dispatches to Celery when rule_id is set."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='async_user', password='pw12345!')
+        self.item = make_item(self.user, type='giftcard', value='50.00', firefly_account_id='7')
+        self.rule = make_rule(self.user, backend='firefly', event_types=['balance_changed'])
+
+    @patch('notify.tasks.push_transaction_to_firefly.delay')
+    def test_async_path_dispatches_celery_task(self, mock_delay):
+        tx = Transaction.objects.create(
+            item=self.item, date=timezone.now(), description='Async push', value='-10.00',
+        )
+        backend = FireflyBackend(
+            {'url': 'https://firefly.example.com', 'token': 'tok'},
+            rule_id=self.rule.id,
+        )
+        result = backend.send('title', 'msg', item=self.item, transaction=tx)
+        self.assertTrue(result)
+        mock_delay.assert_called_once_with(self.rule.id, str(self.item.pk), str(tx.pk))
+
+    @patch('notify.backends.firefly_backend.requests.post')
+    def test_sync_fallback_when_no_rule_id(self, mock_post):
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            raise_for_status=MagicMock(),
+            json=MagicMock(return_value={'data': {'id': 'FF-789'}}),
+        )
+        tx = Transaction.objects.create(
+            item=self.item, date=timezone.now(), description='Sync push', value='-10.00',
+        )
+        backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
+        result = backend.send('title', 'msg', item=self.item, transaction=tx)
+        self.assertTrue(result)
+        mock_post.assert_called_once()
+
+
+class FireflyBackfillTests(TestCase):
+    """backfill_firefly_transactions queues pushes for all unsynced transactions."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='backfill_user', password='pw12345!')
+        self.item = make_item(self.user, type='giftcard', value='100.00', firefly_account_id='5')
+        self.rule = make_rule(self.user, backend='firefly', event_types=['balance_changed'])
+
+    @patch('notify.tasks.push_transaction_to_firefly.delay')
+    def test_backfill_queues_unsynced_transactions(self, mock_delay):
+        tx1 = Transaction.objects.create(item=self.item, date=timezone.now(), description='A', value='-10.00')
+        tx2 = Transaction.objects.create(item=self.item, date=timezone.now(), description='B', value='-20.00')
+        Transaction.objects.create(
+            item=self.item, date=timezone.now(), description='C', value='-5.00',
+            firefly_transaction_id='already-synced',
+        )
+        backfill_firefly_transactions(str(self.item.pk), self.rule.id)
+        self.assertEqual(mock_delay.call_count, 2)
+        called_tx_ids = {call[0][2] for call in mock_delay.call_args_list}
+        self.assertIn(str(tx1.pk), called_tx_ids)
+        self.assertIn(str(tx2.pk), called_tx_ids)
+
+    @patch('notify.tasks.push_transaction_to_firefly.delay')
+    def test_backfill_skips_already_synced(self, mock_delay):
+        Transaction.objects.create(
+            item=self.item, date=timezone.now(), description='Synced', value='-5.00',
+            firefly_transaction_id='ff-999',
+        )
+        backfill_firefly_transactions(str(self.item.pk), self.rule.id)
+        mock_delay.assert_not_called()
+
+
+class FireflyRetryTests(TestCase):
+    """retry_failed_firefly_pushes finds unsynced txns on linked items."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='retry_user', password='pw12345!')
+        self.item = make_item(self.user, type='giftcard', value='50.00', firefly_account_id='8')
+        self.rule = make_rule(self.user, backend='firefly', event_types=['balance_changed'])
+
+    @patch('notify.tasks.push_transaction_to_firefly.delay')
+    def test_retry_queues_failed_pushes(self, mock_delay):
+        tx = Transaction.objects.create(item=self.item, date=timezone.now(), description='Failed', value='-10.00')
+        retry_failed_firefly_pushes()
+        self.assertEqual(mock_delay.call_count, 1)
+        mock_delay.assert_called_once_with(self.rule.id, str(self.item.pk), str(tx.pk))
+
+    @patch('notify.tasks.push_transaction_to_firefly.delay')
+    def test_retry_skips_items_without_firefly_link(self, mock_delay):
+        unlinked = make_item(self.user, name='Unlinked', firefly_account_id='', value='20.00')
+        Transaction.objects.create(item=unlinked, date=timezone.now(), description='X', value='-5.00')
+        retry_failed_firefly_pushes()
+        # Only the linked item's tx should be queued
+        called_item_ids = {call[0][1] for call in mock_delay.call_args_list}
+        self.assertNotIn(str(unlinked.pk), called_item_ids)
+
+
+class FireflyValueChangeSignalTests(TestCase):
+    """Item._original_value signal creates an adjustment transaction when value changes."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='signal_user', password='pw12345!')
+        self.rule = make_rule(self.user, backend='firefly', event_types=['balance_changed'])
+
+    def test_value_change_creates_adjustment_transaction(self):
+        item = make_item(self.user, type='giftcard', value='100.00', currency='GBP', firefly_account_id='42')
+        initial_tx_count = Transaction.objects.filter(item=item).count()
+        item.value = 80
+        item.save()
+        self.assertEqual(
+            Transaction.objects.filter(item=item).count(),
+            initial_tx_count + 1,
+        )
+        adj = Transaction.objects.filter(item=item, description__startswith='Value adjusted').first()
+        self.assertIsNotNone(adj)
+        from decimal import Decimal
+        self.assertEqual(adj.value, Decimal('-20.00'))
+        self.assertIn('100.00', adj.description)
+        self.assertIn('80', adj.description)
+        self.assertIn('GBP', adj.description)
+
+    def test_no_adjustment_if_value_unchanged(self):
+        item = make_item(self.user, type='giftcard', value='100.00', firefly_account_id='42')
+        initial_tx_count = Transaction.objects.filter(item=item).count()
+        item.save()
+        self.assertEqual(Transaction.objects.filter(item=item).count(), initial_tx_count)
+
+    def test_no_adjustment_without_firefly_account(self):
+        item = make_item(self.user, type='giftcard', value='100.00', firefly_account_id='')
+        initial_tx_count = Transaction.objects.filter(item=item).count()
+        item.value = 80
+        item.save()
+        self.assertEqual(Transaction.objects.filter(item=item).count(), initial_tx_count)
+
+    def test_no_adjustment_on_create(self):
+        item = make_item(self.user, type='giftcard', value='50.00', firefly_account_id='42')
+        self.assertEqual(Transaction.objects.filter(item=item, description__startswith='Value adjusted').count(), 0)
+
+    def test_no_adjustment_for_archived_item(self):
+        item = make_item(self.user, type='giftcard', value='100.00', firefly_account_id='42', is_archived=True)
+        initial_count = Transaction.objects.filter(item=item).count()
+        item.value = 50
+        item.save()
+        self.assertEqual(Transaction.objects.filter(item=item).count(), initial_count)
+
+
+class FireflyTestConnectionViewTests(TestCase):
+    """POST /notifications/firefly-test-connection/ validates Firefly credentials via /api/v1/about."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='ffconn_user', password='pw12345!')
+        self.client.login(username='ffconn_user', password='pw12345!')
+        self.url = reverse('firefly_test_connection')
+
+    @patch('notify.views.req_lib.get')
+    def test_successful_connection_returns_ok_and_version(self, mock_get):
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'data': {'version': '6.1.0'}},
+        )
+        resp = self.client.post(self.url, {'url': 'https://firefly.example.com', 'token': 'mytoken'})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['version'], '6.1.0')
+
+    @patch('notify.views.req_lib.get')
+    def test_bad_token_returns_auth_error(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=401)
+        resp = self.client.post(self.url, {'url': 'https://firefly.example.com', 'token': 'bad'})
+        data = resp.json()
+        self.assertFalse(data['ok'])
+        self.assertIn('auth', data['error'].lower())
+
+    def test_missing_url_returns_error(self):
+        resp = self.client.post(self.url, {'url': '', 'token': 'tok'})
+        data = resp.json()
+        self.assertFalse(data['ok'])
+
+    def test_requires_login(self):
+        self.client.logout()
+        resp = self.client.post(self.url, {'url': 'https://x.com', 'token': 'tok'})
+        self.assertNotEqual(resp.status_code, 200)
+
+
+class FireflyZeroAmountSkipTests(TestCase):
+    """Zero-value transactions must not be pushed (Firefly rejects them with 422)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='zero_user', password='pw12345!')
+        self.rule = make_rule(self.user, backend='firefly', event_types=['balance_changed'])
+
+    @patch('notify.backends.firefly_backend.requests.post')
+    def test_zero_amount_skips_http_post(self, mock_post):
+        from notify.backends.firefly_backend import _do_firefly_push
+        item = make_item(self.user, type='giftcard', value='50.00', firefly_account_id='99')
+        tx = Transaction.objects.create(item=item, date=timezone.now(), description='zero', value='0.00')
+        result = _do_firefly_push(self.rule.config, item, tx)
+        self.assertTrue(result)
+        mock_post.assert_not_called()
+
+
+class FireflyArchivedExpiryTests(TestCase):
+    """Archived items must not receive expiry notifications."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='arch_exp_user', password='pw12345!')
+        make_rule(self.user, backend='ntfy', event_types=['expiry_warning'])
+
+    def test_archived_item_skipped_in_expiry_check(self):
+        from notify.tasks import check_and_notify_expiry
+        make_item(self.user, is_archived=True, expiry_date=date.today() + timedelta(days=1), notify_days_before=5)
+        with patch('notify.tasks.fire_notifications') as mock_fire:
+            check_and_notify_expiry()
+            mock_fire.assert_not_called()
+
+
+class FireflyCloseAccountTests(TestCase):
+    """notify_item_archived closes Firefly account when close_account_on_archive is set."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='close_acct_user', password='pw12345!')
+        self.item = make_item(self.user, type='giftcard', value='50.00', firefly_account_id='11')
+
+    def _make_close_rule(self):
+        return NotificationRule.objects.create(
+            user=self.user, name='firefly close rule', backend='firefly',
+            config={
+                'url': 'https://firefly.example.com',
+                'token': 'secret',
+                'close_account_on_archive': True,
+            },
+            enabled=True, event_types=['item_archived'],
+        )
+
+    @patch('notify.tasks.requests_lib.patch')
+    def test_archive_closes_firefly_account(self, mock_patch):
+        self._make_close_rule()
+        mock_patch.return_value = MagicMock(raise_for_status=MagicMock())
+        notify_item_archived(self.item)
+        mock_patch.assert_called_once()
+        call_url = mock_patch.call_args[0][0]
+        self.assertIn('/api/v1/accounts/11', call_url)
+        self.assertEqual(mock_patch.call_args[1]['json'], {'active': False})
+
+    @patch('notify.tasks.requests_lib.patch')
+    def test_archive_skips_close_when_flag_not_set(self, mock_patch):
+        NotificationRule.objects.create(
+            user=self.user, name='firefly no close', backend='firefly',
+            config={'url': 'https://firefly.example.com', 'token': 'secret'},
+            enabled=True, event_types=['item_archived'],
+        )
+        notify_item_archived(self.item)
+        mock_patch.assert_not_called()
+
+    @patch('notify.tasks.requests_lib.patch')
+    def test_archive_skips_close_without_firefly_account(self, mock_patch):
+        self._make_close_rule()
+        self.item.firefly_account_id = ''
+        self.item.save()
+        notify_item_archived(self.item)
+        mock_patch.assert_not_called()
+
+
+class FindFireflyRuleTests(TestCase):
+    """_find_firefly_rule cascades item → wallet → user global."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='cascade_user', password='pw12345!')
+        self.global_rule = make_rule(self.user, backend='firefly', event_types=['balance_changed'])
+        self.wallet = Wallet.objects.create(user=self.user, name='My Wallet')
+        self.item = make_item(self.user, type='giftcard', value='50.00', wallet=self.wallet)
+
+    def test_global_fallback_returned_when_no_overrides(self):
+        rule = _find_firefly_rule(self.item)
+        self.assertEqual(rule, self.global_rule)
+
+    def test_wallet_rule_takes_precedence_over_global(self):
+        wallet_rule = NotificationRule.objects.create(
+            user=self.user, name='wallet firefly', backend='firefly',
+            config={'url': 'https://firefly.example.com', 'token': 'tok'},
+            enabled=True, event_types=['balance_changed'],
+        )
+        self.wallet.firefly_rule = wallet_rule
+        self.wallet.save()
+        rule = _find_firefly_rule(self.item)
+        self.assertEqual(rule, wallet_rule)
+
+    def test_item_rule_takes_precedence_over_wallet_and_global(self):
+        wallet_rule = NotificationRule.objects.create(
+            user=self.user, name='wallet firefly 2', backend='firefly',
+            config={'url': 'https://firefly.example.com', 'token': 'tok'},
+            enabled=True, event_types=['balance_changed'],
+        )
+        self.wallet.firefly_rule = wallet_rule
+        self.wallet.save()
+        item_rule = NotificationRule.objects.create(
+            user=self.user, name='item firefly', backend='firefly',
+            config={'url': 'https://firefly.example.com', 'token': 'tok'},
+            enabled=True, event_types=['balance_changed'],
+        )
+        self.item.firefly_rule = item_rule
+        self.item.save()
+        rule = _find_firefly_rule(self.item)
+        self.assertEqual(rule, item_rule)
+
+    def test_none_returned_when_no_firefly_rules(self):
+        self.global_rule.delete()
+        rule = _find_firefly_rule(self.item)
+        self.assertIsNone(rule)
+
+    def test_disabled_item_rule_skipped(self):
+        item_rule = NotificationRule.objects.create(
+            user=self.user, name='disabled item firefly', backend='firefly',
+            config={'url': 'https://firefly.example.com', 'token': 'tok'},
+            enabled=False, event_types=['balance_changed'],
+        )
+        self.item.firefly_rule = item_rule
+        self.item.save()
+        rule = _find_firefly_rule(self.item)
+        self.assertEqual(rule, self.global_rule)
+
+
+class FireflyBackfillOnLinkTests(TestCase):
+    """firefly-link action triggers backfill after linking."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='backfill_link_user', password='pw12345!')
+        self.client.login(username='backfill_link_user', password='pw12345!')
+        self.item = make_item(self.user, type='giftcard', value='50.00')
+        self.rule = make_rule(self.user, backend='firefly', event_types=['balance_changed'])
+        from rest_framework.authtoken.models import Token
+        token, _ = Token.objects.get_or_create(user=self.user)
+        self.auth = f'Token {token.key}'
+
+    @patch('api.views.backfill_firefly_transactions.delay')
+    @patch('api.views.requests.post')
+    @patch('api.views.requests.get')
+    def test_backfill_triggered_after_create(self, mock_get, mock_post, mock_backfill):
+        mock_get.return_value = MagicMock(raise_for_status=MagicMock(), json=MagicMock(return_value={'data': []}))
+        mock_post.return_value = MagicMock(raise_for_status=MagicMock(), json=MagicMock(return_value={'data': {'id': '55'}}))
+        url = f'/api/v1/items/{self.item.pk}/firefly-link/'
+        self.client.post(url, HTTP_AUTHORIZATION=self.auth)
+        mock_backfill.assert_called_once_with(str(self.item.pk), self.rule.id)
+
+    @patch('api.views.backfill_firefly_transactions.delay')
+    @patch('api.views.requests.get')
+    def test_backfill_triggered_after_existing_account_found(self, mock_get, mock_backfill):
+        account_name = f'{self.item.name} ({self.item.issuer})' if self.item.issuer else self.item.name
+        mock_get.return_value = MagicMock(
+            raise_for_status=MagicMock(),
+            json=MagicMock(return_value={'data': [{'id': '77', 'attributes': {'name': account_name}}]}),
+        )
+        url = f'/api/v1/items/{self.item.pk}/firefly-link/'
+        self.client.post(url, HTTP_AUTHORIZATION=self.auth)
+        mock_backfill.assert_called_once_with(str(self.item.pk), self.rule.id)
 
     @patch('notify.backends.webpush.webpush')
     def test_send_defaults_to_root_url_when_no_item(self, mock_webpush):

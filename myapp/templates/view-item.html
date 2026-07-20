@@ -414,6 +414,17 @@ a.toolbar-btn-primary:hover {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes firefly-pending-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .firefly-pending-pulse {
+    animation: firefly-pending-pulse 1.6s ease-in-out infinite;
+    display: inline-block;
+  }
+}
+
 .more-actions-header {
   padding: 10px 14px;
   font-size: 11.5px;
@@ -1738,6 +1749,39 @@ body.dark-mode .tilt-scan-enable-btn {
           </div>
           {% endif %}
 
+          <!-- Firefly III sync status -->
+          {% if item.firefly_account_id %}
+          <div class="item-description-section">
+            <h6><i class="bi bi-fire"></i> {% trans "Firefly III" %}</h6>
+            <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;">
+              {% if firefly_url %}
+              <a href="{{ firefly_url }}" target="_blank" rel="noopener noreferrer"
+                 class="badge rounded-pill text-decoration-none"
+                 style="background:var(--bs-info);color:#fff;">
+                <i class="bi bi-box-arrow-up-right"></i> {% trans "View account in Firefly III" %}
+              </a>
+              {% endif %}
+              {% if firefly_synced_count > 0 %}
+              <span class="badge rounded-pill bg-success">
+                <i class="bi bi-check-circle"></i>
+                {% blocktrans count counter=firefly_synced_count %}{{ counter }} synced{% plural %}{{ counter }} synced{% endblocktrans %}
+              </span>
+              {% endif %}
+              {% if firefly_pending_count > 0 %}
+              <span class="badge rounded-pill bg-warning text-dark">
+                <i class="bi bi-clock firefly-pending-pulse"></i>
+                {% blocktrans count counter=firefly_pending_count %}{{ counter }} pending{% plural %}{{ counter }} pending{% endblocktrans %}
+              </span>
+              {% endif %}
+              {% if firefly_synced_count == 0 and firefly_pending_count == 0 %}
+              <span class="badge rounded-pill bg-secondary">
+                <i class="bi bi-dash-circle"></i> {% trans "No transactions yet" %}
+              </span>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+
           <!-- Notes -->
           {% if item.notes %}
           <div class="item-description-section">
@@ -2047,6 +2091,7 @@ body.dark-mode .tilt-scan-enable-btn {
                 <th>{% trans "Date" %}</th>
                 <th>{% trans "Description" %}</th>
                 <th>{% trans "Value" %}</th>
+                {% if firefly_url %}<th title="{% trans 'Firefly III sync status' %}"><i class="bi bi-fire"></i></th>{% endif %}
                 <th></th>
               </tr>
             </thead>
@@ -2055,12 +2100,13 @@ body.dark-mode .tilt-scan-enable-btn {
                 <td>{{ item.issue_date|date:"Y-m-d" }}</td>
                 <td>{% trans "Initial Value" %}</td>
                 <td>{{ item.value }} {{ item.currency }}</td>
+                {% if firefly_url %}<td></td>{% endif %}
                 <td></td>
               </tr>
               {% for transaction in transactions %}
               <tr>
                 <td>
-                  <span class="editable-date" 
+                  <span class="editable-date"
                         data-url="{% url 'update_transaction_date' transaction.id %}"
                         data-date="{{ transaction.date|date:'Y-m-d' }}"
                         title="{% trans 'Click to edit date' %}">
@@ -2069,6 +2115,20 @@ body.dark-mode .tilt-scan-enable-btn {
                 </td>
                 <td>{{ transaction.description }}</td>
                 <td>{{ transaction.value }} {{ item.currency }}</td>
+                {% if firefly_url %}
+                <td>
+                  {% if transaction.firefly_transaction_id %}
+                  <a href="{{ firefly_url }}/transactions" target="_blank" rel="noopener noreferrer"
+                     title="{% trans 'Synced to Firefly III' %}" class="text-success">
+                    <i class="bi bi-check-circle-fill"></i>
+                  </a>
+                  {% else %}
+                  <span class="text-warning" title="{% trans 'Pending sync to Firefly III' %}">
+                    <i class="bi bi-clock firefly-pending-pulse"></i>
+                  </span>
+                  {% endif %}
+                </td>
+                {% endif %}
                 <td>
                   <form action="{% url 'delete_transaction' transaction.id %}" method="post" style="display:inline;">
                     {% csrf_token %}
@@ -2082,7 +2142,7 @@ body.dark-mode .tilt-scan-enable-btn {
               {% endfor %}
               <tr class="transaction-total">
                 <td colspan="2"><strong>{% trans "Total Value" %}</strong></td>
-                <td colspan="2"><strong>{{ total_value }} {{ item.currency }}</strong></td>
+                <td {% if firefly_url %}colspan="3"{% else %}colspan="2"{% endif %}><strong>{{ total_value }} {{ item.currency }}</strong></td>
               </tr>
             </tbody>
           </table>

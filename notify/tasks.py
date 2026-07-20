@@ -1,15 +1,19 @@
 import itertools
+import logging
 from datetime import date
 from operator import attrgetter
 
+import requests as requests_lib
 from dateutil.relativedelta import relativedelta
 
 from celery import shared_task
 
-from myapp.models import Item, SiteConfiguration, UserPreference
+from myapp.models import Item, SiteConfiguration, Transaction, UserPreference
 
 from .backends import get_backend
 from .models import DigestEntry, NotificationLog, NotificationRule
+
+logger = logging.getLogger(__name__)
 
 
 def default_threshold_days() -> int:
@@ -24,7 +28,7 @@ def _already_notified(item, event_type, rule) -> bool:
     return NotificationLog.objects.filter(item=item, event_type=event_type, rule=rule, success=True).exists()
 
 
-def fire_notifications(item, event_type: str, title: str, message: str, dedupe: bool = True):
+def fire_notifications(item, event_type: str, title: str, message: str, dedupe: bool = True, transaction=None):
     """
     Sends `title`/`message` for `item` as `event_type` through every enabled
     rule the item's owner has subscribed to that event, logging each
@@ -39,6 +43,9 @@ def fire_notifications(item, event_type: str, title: str, message: str, dedupe: 
     meaningful event rather than a periodic re-scan repeat, and the item
     may legitimately pass through the same event_type more than once
     (e.g. several transactions, or being marked used/available/used again).
+
+    `transaction` is forwarded to backends that consume it (e.g. Firefly III
+    balance-changed events); other backends ignore it.
     """
     if item.notifications_muted:
         return
@@ -65,7 +72,7 @@ def fire_notifications(item, event_type: str, title: str, message: str, dedupe: 
             )
             continue
 
-        success, detail = send_via_rule(rule, title, message, item=item)
+        success, detail = send_via_rule(rule, title, message, item=item, transaction=transaction)
         NotificationLog.objects.create(
             user=item.user, rule=rule, item=item, event_type=event_type,
             success=success, detail=detail,
@@ -109,6 +116,7 @@ def notify_item_archived(item):
         message=f"Code: {item.redeem_code}",
         dedupe=False,
     )
+    _close_firefly_account_if_configured(item)
 
 
 def notify_balance_changed(item, transaction):
@@ -121,6 +129,7 @@ def notify_balance_changed(item, transaction):
             f"New balance: {item.get_current_balance()} {item.currency}"
         ),
         dedupe=False,
+        transaction=transaction,
     )
 
 
@@ -134,11 +143,11 @@ def notify_item_shared(item, shared_with_username: str):
     )
 
 
-def send_via_rule(rule, title: str, message: str, item=None) -> tuple[bool, str]:
+def send_via_rule(rule, title: str, message: str, item=None, transaction=None) -> tuple[bool, str]:
     """Runs a rule's backend, translating any exception into a logged failure."""
     try:
         backend = get_backend(rule)
-        success = backend.send(title, message, item=item)
+        success = backend.send(title, message, item=item, transaction=transaction)
         return success, '' if success else 'Backend reported failure.'
     except Exception as exc:
         return False, str(exc)
@@ -175,7 +184,7 @@ def check_and_notify_expiry():
     default_threshold = default_threshold_days()
     final_threshold = final_threshold_days()
 
-    items = Item.objects.filter(is_used=False, expiry_date__isnull=False).select_related('user')
+    items = Item.objects.filter(is_used=False, is_archived=False, expiry_date__isnull=False).select_related('user')
     for item in items:
         days_left = (item.expiry_date - today).days
         threshold = item.notify_days_before if item.notify_days_before is not None else default_threshold
@@ -244,6 +253,130 @@ def send_daily_digests():
             )
     if processed_ids:
         DigestEntry.objects.filter(id__in=processed_ids).delete()
+
+
+def _find_firefly_rule(item):
+    """
+    Resolve the Firefly III rule for an item using the three-level cascade:
+      1. item.firefly_rule (per-item override)
+      2. item.wallet.firefly_rule (wallet-level override)
+      3. user's first enabled Firefly rule (global fallback)
+    Returns the first enabled rule found, or None.
+    """
+    if item.firefly_rule_id:
+        rule = item.firefly_rule
+        if rule and rule.enabled:
+            return rule
+    if item.wallet_id:
+        # Reload wallet if needed to access firefly_rule
+        from myapp.models import Wallet
+        wallet = item.wallet if 'wallet' in item.__dict__ else Wallet.objects.filter(pk=item.wallet_id).first()
+        if wallet and wallet.firefly_rule_id:
+            rule = wallet.firefly_rule
+            if rule and rule.enabled:
+                return rule
+    return NotificationRule.objects.filter(user=item.user, backend='firefly', enabled=True).first()
+
+
+def _close_firefly_account_if_configured(item):
+    """
+    Called after notify_item_archived. If the item is linked to a Firefly account
+    and the rule config has close_account_on_archive: true, marks the account
+    inactive in Firefly III by PATCHing it.
+    """
+    if not item.firefly_account_id:
+        return
+    rule = _find_firefly_rule(item)
+    if rule is None:
+        return
+    if not rule.config.get('close_account_on_archive'):
+        return
+
+    url = (rule.config.get('url') or '').rstrip('/')
+    token = rule.config.get('token', '')
+    if not url or not token:
+        return
+
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+    }
+    try:
+        resp = requests_lib.patch(
+            f'{url}/api/v1/accounts/{item.firefly_account_id}',
+            json={'active': False},
+            headers=headers,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        logger.info('Firefly III: account %s marked inactive for item %s.', item.firefly_account_id, item.pk)
+    except requests_lib.RequestException as exc:
+        logger.warning('Firefly III: could not close account for item %s: %s', item.pk, exc)
+
+
+@shared_task
+def push_transaction_to_firefly(rule_id, item_id, transaction_id):
+    """
+    Async Celery task that pushes a single VoucherVault transaction to
+    Firefly III and writes the returned Firefly transaction ID back to
+    Transaction.firefly_transaction_id. Called from FireflyBackend.send()
+    when a rule_id is available (i.e. the push came through the normal
+    notification pipeline) and by backfill_firefly_transactions.
+    """
+    from notify.backends.firefly_backend import _do_firefly_push
+    try:
+        rule = NotificationRule.objects.get(pk=rule_id, backend='firefly', enabled=True)
+    except NotificationRule.DoesNotExist:
+        logger.warning('push_transaction_to_firefly: rule %s not found or disabled.', rule_id)
+        return
+    try:
+        item = Item.objects.prefetch_related('tags').get(pk=item_id)
+    except Item.DoesNotExist:
+        logger.warning('push_transaction_to_firefly: item %s not found.', item_id)
+        return
+    try:
+        tx = Transaction.objects.get(pk=transaction_id)
+    except Transaction.DoesNotExist:
+        logger.warning('push_transaction_to_firefly: transaction %s not found.', transaction_id)
+        return
+    _do_firefly_push(rule.config, item, tx)
+
+
+@shared_task
+def backfill_firefly_transactions(item_id, rule_id):
+    """
+    Celery task that pushes all unsynced transactions for an item to Firefly
+    III, in date order. Transactions that already have a firefly_transaction_id
+    are skipped. Called from the firefly-link API action immediately after an
+    item is linked.
+    """
+    unsynced = Transaction.objects.filter(item_id=item_id, firefly_transaction_id='').order_by('date')
+    for tx in unsynced:
+        push_transaction_to_firefly.delay(rule_id, str(item_id), str(tx.pk))
+
+
+@shared_task
+def retry_failed_firefly_pushes():
+    """
+    Runs hourly. Finds every item linked to Firefly III that has transactions
+    not yet synced (firefly_transaction_id is blank) and re-queues a push for
+    each. Safe to re-run: once firefly_transaction_id is populated the
+    transaction leaves the filter on the next cycle.
+    """
+    items = (
+        Item.objects.exclude(firefly_account_id='')
+        .filter(transactions__firefly_transaction_id='')
+        .distinct()
+        .select_related('user', 'wallet')
+    )
+    for item in items:
+        rule = _find_firefly_rule(item)
+        if rule is None:
+            continue
+        unsynced = item.transactions.filter(firefly_transaction_id='')
+        for tx in unsynced:
+            push_transaction_to_firefly.delay(rule.id, str(item.pk), str(tx.pk))
 
 
 _RENEWAL_DELTA = {

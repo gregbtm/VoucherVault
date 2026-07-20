@@ -17,7 +17,7 @@ class AppriseBackend(NotificationBackend):
         urls: comma-separated string, or list, of Apprise service URLs
     """
 
-    def send(self, title: str, message: str, item=None) -> bool:
+    def send(self, title: str, message: str, item=None, transaction=None) -> bool:
         raw_urls = self.config.get('urls')
         if not raw_urls:
             logger.error('apprise backend misconfigured: urls is required.')

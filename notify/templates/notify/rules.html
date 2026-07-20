@@ -161,7 +161,13 @@
                 {% if form.firefly_token.errors %}<div class="text-danger small mt-1">{{ form.firefly_token.errors }}</div>{% endif %}
                 <small class="form-text text-muted">{% trans "Found in Firefly III → Options → Profile → OAuth → Personal Access Tokens." %}</small>
               </div>
-              <p class="small text-muted mb-0 mt-2">
+              <div class="d-flex align-items-center gap-2 mt-1 mb-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="firefly-test-btn">
+                  <i class="bi bi-plug me-1"></i>{% trans "Test Connection" %}
+                </button>
+                <span id="firefly-test-result" class="small"></span>
+              </div>
+              <p class="small text-muted mb-0 mt-1">
                 {% trans "Use the " %}<strong>{% trans "balance_changed" %}</strong>{% trans " event type. Link each item to its Firefly III account using the 'Link to Firefly III' button on the item edit page." %}
               </p>
             </div>
@@ -282,6 +288,45 @@ document.addEventListener('DOMContentLoaded', function () {
   if (backendSelect) {
     backendSelect.addEventListener('change', updateVisibility);
     updateVisibility();
+  }
+
+  // Firefly III — Test Connection
+  const fireflyTestBtn = document.getElementById('firefly-test-btn');
+  const fireflyTestResult = document.getElementById('firefly-test-result');
+  if (fireflyTestBtn) {
+    fireflyTestBtn.addEventListener('click', function () {
+      const urlField = document.getElementById('{{ form.firefly_url.id_for_label }}');
+      const tokenField = document.getElementById('{{ form.firefly_token.id_for_label }}');
+      const url = urlField ? urlField.value.trim() : '';
+      const token = tokenField ? tokenField.value.trim() : '';
+      fireflyTestBtn.disabled = true;
+      fireflyTestBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> {% trans "Testing…" %}';
+      fireflyTestResult.textContent = '';
+      fireflyTestResult.className = 'small';
+      fetch('{% url "firefly_test_connection" %}', {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({url, token}),
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.ok) {
+            fireflyTestResult.textContent = '{% trans "Connected" %}' + (data.version ? ' (v' + data.version + ')' : '');
+            fireflyTestResult.className = 'small text-success';
+          } else {
+            fireflyTestResult.textContent = data.error || '{% trans "Connection failed." %}';
+            fireflyTestResult.className = 'small text-danger';
+          }
+        })
+        .catch(() => {
+          fireflyTestResult.textContent = '{% trans "Request failed." %}';
+          fireflyTestResult.className = 'small text-danger';
+        })
+        .finally(() => {
+          fireflyTestBtn.disabled = false;
+          fireflyTestBtn.innerHTML = '<i class="bi bi-plug me-1"></i>{% trans "Test Connection" %}';
+        });
+    });
   }
 
   {% if webpush_enabled %}
