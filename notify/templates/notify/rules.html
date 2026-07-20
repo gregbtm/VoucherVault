@@ -148,6 +148,24 @@
               </div>
             </div>
 
+            <div id="backend-fields-firefly" class="backend-fields">
+              <h6 class="text-muted mt-3 mb-2">{% trans "Firefly III Settings" %}</h6>
+              <div class="mb-2">
+                <label class="form-label">{{ form.firefly_url.label }}</label>
+                {{ form.firefly_url }}
+                {% if form.firefly_url.errors %}<div class="text-danger small mt-1">{{ form.firefly_url.errors }}</div>{% endif %}
+              </div>
+              <div class="mb-2">
+                <label class="form-label">{{ form.firefly_token.label }}</label>
+                {{ form.firefly_token }}
+                {% if form.firefly_token.errors %}<div class="text-danger small mt-1">{{ form.firefly_token.errors }}</div>{% endif %}
+                <small class="form-text text-muted">{% trans "Found in Firefly III → Options → Profile → OAuth → Personal Access Tokens." %}</small>
+              </div>
+              <p class="small text-muted mb-0 mt-2">
+                {% trans "Use the " %}<strong>{% trans "balance_changed" %}</strong>{% trans " event type. Link each item to its Firefly III account using the 'Link to Firefly III' button on the item edit page." %}
+              </p>
+            </div>
+
             {% if webpush_enabled %}
             <div id="backend-fields-webpush" class="backend-fields">
               <h6 class="text-muted mt-3 mb-2">{% trans "Web Push Settings" %}</h6>
@@ -250,6 +268,7 @@ document.addEventListener('DOMContentLoaded', function () {
     ntfy: document.getElementById('backend-fields-ntfy'),
     webhook: document.getElementById('backend-fields-webhook'),
     apprise: document.getElementById('backend-fields-apprise'),
+    firefly: document.getElementById('backend-fields-firefly'),
     webpush: document.getElementById('backend-fields-webpush'),
   };
 

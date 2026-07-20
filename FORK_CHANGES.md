@@ -150,6 +150,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 117 — Firefly III native notification backend](#phase-117--firefly-iii-native-notification-backend)
 - [Phase 118 — Rail ticket import: dedup, notifications, and improved n8n workflow](#phase-118--rail-ticket-import-dedup-notifications-and-improved-n8n-workflow)
 - [Phase 119 — Browser push: discoverable status card](#phase-119--browser-push-discoverable-status-card)
+- [Phase 120 — Gap-fill: Firefly III notification form, per-type fields on view-item, README refresh](#phase-120--gap-fill-firefly-iii-notification-form-per-type-fields-on-view-item-readme-refresh)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -6042,6 +6043,77 @@ backend does and points to the card above, eliminating the duplicate subscribe
 button that was previously buried there.
 
 **Files changed:** `notify/templates/notify/rules.html`
+
+---
+
+## Phase 120 — Gap-fill: Firefly III notification form, per-type fields on view-item, README refresh
+
+Three documentation and UI gaps closed together.
+
+### Firefly III notification rule now fully configurable from the web UI (Gap 2)
+
+The Phase 117 Firefly III backend shipped with the backend choice in the UI but
+no form fields for the Firefly URL and Personal Access Token — they could not
+actually be set without editing the database directly.
+
+`notify/forms.py` now includes:
+- `firefly_url` (`URLField`) and `firefly_token` (`CharField`) alongside the
+  other backend-specific fields.
+- `__init__` populates both fields when editing an existing Firefly rule.
+- `clean()` raises `ValidationError` when either field is blank and the selected
+  backend is `firefly`.
+- `save()` serializes `{'url': ..., 'token': ...}` into `rule.config`.
+
+`notify/templates/notify/rules.html` already had the `backend-fields-firefly`
+section and JS registration from Phase 117; the form logic now matches it.
+
+**4 new tests** in `notify/tests.NotificationRuleFormTests`:
+`test_firefly_requires_url_and_token`, `test_firefly_requires_url`,
+`test_valid_firefly_rule_assembles_config`, `test_firefly_edit_populates_initial`.
+
+**Files changed:** `notify/forms.py`, `notify/tests.py`
+
+---
+
+### Phase 116 per-type fields visible on item detail page (Gap 1)
+
+Five fields added in Phase 116 (`seat_number`, `initial_value`, `minimum_spend`,
+`points_balance`, `membership_tier`) and one field added in Phase 115
+(`share_message`) were absent from the item detail page (`view-item.html`),
+even though they were in the model, forms, and migrations.
+
+`myapp/templates/view-item.html` now displays each field in the existing
+detail-field grid pattern, with the same Bootstrap Icons used in the forms:
+
+| Field | Icon | Label |
+|-------|------|-------|
+| `seat_number` | `bi-train-front` | Seat / Coach |
+| `initial_value` | `bi-cash` | Face Value |
+| `minimum_spend` | `bi-basket` | Minimum Spend |
+| `points_balance` | `bi-stars` | Points Balance |
+| `membership_tier` | `bi-award` | Membership Tier |
+
+`share_message` appears as a separate "Share Message" section (with a chat-quote
+icon) after the Notes section, visible only to the item owner (`can_edit`).
+
+**8 new tests** in `myapp.tests.ViewItemPhase116FieldsTests` verifying each field
+renders its value, and empty fields do not render their labels.
+
+**Files changed:** `myapp/templates/view-item.html`, `myapp/tests.py`
+
+---
+
+### README feature count and What's New section refreshed (Gap 3)
+
+- Badge bumped from 436 → 449 features & fixes.
+- "60+ features" updated to "65+".
+- **Organization** section: added bullets for per-type fields and Share Message.
+- **Notifications** section: added bullets for Firefly III native backend, Web
+  Push status card, Web Push deep-links, and `notify_item_created` firing for
+  n8n-imported tickets.
+- **Rail ticket** bullet updated to mention idempotent re-import (HTTP 409).
+
+**Files changed:** `README.md`, `FORK_CHANGES.md`
 
 ---
 

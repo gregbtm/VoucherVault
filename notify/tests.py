@@ -867,6 +867,45 @@ class NotificationRuleFormTests(TestCase):
         }, user=self.user)
         self.assertFalse(form.is_valid())
 
+    def test_firefly_requires_url_and_token(self):
+        form = NotificationRuleForm(data={
+            'name': 'firefly-test', 'backend': 'firefly', 'enabled': 'on',
+            'event_types': ['balance_changed'], 'digest_frequency': 'immediate',
+            'firefly_url': 'https://firefly.example.com',
+        }, user=self.user)
+        self.assertFalse(form.is_valid())
+
+    def test_firefly_requires_url(self):
+        form = NotificationRuleForm(data={
+            'name': 'firefly-test', 'backend': 'firefly', 'enabled': 'on',
+            'event_types': ['balance_changed'], 'digest_frequency': 'immediate',
+            'firefly_token': 'secret-token',
+        }, user=self.user)
+        self.assertFalse(form.is_valid())
+
+    def test_valid_firefly_rule_assembles_config(self):
+        form = NotificationRuleForm(data={
+            'name': 'ff', 'backend': 'firefly', 'enabled': 'on',
+            'event_types': ['balance_changed'], 'digest_frequency': 'immediate',
+            'firefly_url': 'https://firefly.example.com/',
+            'firefly_token': 'my-pat',
+        }, user=self.user)
+        self.assertTrue(form.is_valid(), form.errors)
+        rule = form.save(commit=False)
+        rule.user = self.user
+        rule.save()
+        self.assertEqual(rule.config, {'url': 'https://firefly.example.com', 'token': 'my-pat'})
+
+    def test_firefly_edit_populates_initial(self):
+        rule = NotificationRule.objects.create(
+            user=self.user, name='ff-edit', backend='firefly',
+            config={'url': 'https://firefly.example.com', 'token': 'tok123'},
+            event_types=['balance_changed'],
+        )
+        form = NotificationRuleForm(instance=rule, user=self.user)
+        self.assertEqual(form.fields['firefly_url'].initial, 'https://firefly.example.com')
+        self.assertEqual(form.fields['firefly_token'].initial, 'tok123')
+
 
 class NotificationRuleViewTests(TestCase):
     def setUp(self):
