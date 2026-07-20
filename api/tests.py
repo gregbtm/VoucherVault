@@ -1053,6 +1053,57 @@ class RailTicketImportApiTests(APITestCase):
         self.assertEqual(response.data['code_type'], 'azteccode')
         mock_backend.extract.assert_called_once()
 
+    def test_duplicate_order_id_returns_409_with_existing_item(self):
+        make_item(self.alice, type='travelpass', order_id='WEB-DUP-001')
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+            'card_number': 'AABXC5V4LVT',
+            'order_id': 'WEB-DUP-001',
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(Item.objects.count(), 1)
+        self.assertIn('item', response.data)
+
+    def test_duplicate_check_is_per_user(self):
+        bob = User.objects.create_user(username='bob2', password='pw12345!')
+        make_item(bob, type='travelpass', order_id='WEB-BOBS-001')
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+            'card_number': 'AABXC5V4LVT',
+            'order_id': 'WEB-BOBS-001',
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Item.objects.filter(user=self.alice).count(), 1)
+
+    @patch('api.views.notify_item_created')
+    def test_create_mode_fires_item_created_notification(self, mock_notify):
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+            'card_number': 'AABXC5V4LVT',
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        mock_notify.assert_called_once()
+        item_arg = mock_notify.call_args[0][0]
+        self.assertEqual(item_arg.issuer, 'Greater Anglia')
+
+    @patch('api.views.notify_item_created')
+    def test_duplicate_does_not_fire_item_created_notification(self, mock_notify):
+        make_item(self.alice, type='travelpass', order_id='WEB-NODUP-001')
+        self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+            'card_number': 'AABXC5V4LVT',
+            'order_id': 'WEB-NODUP-001',
+        }, format='multipart')
+        mock_notify.assert_not_called()
+
 
 class PkpassApiTests(APITestCase):
     def setUp(self):

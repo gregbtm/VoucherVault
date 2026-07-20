@@ -362,6 +362,36 @@ class WebPushBackendTests(TestCase):
         self.assertTrue(webpush_enabled())
         self.assertEqual(get_vapid_public_key(), 'pub')
 
+    @patch('notify.backends.webpush.webpush')
+    def test_send_includes_item_deep_link_url(self, mock_webpush):
+        set_site_config(webpush_vapid_private_key='fake-key')
+        WebPushSubscription.objects.create(
+            user=self.user, endpoint='https://push.example.com/1', p256dh='a', auth='b',
+        )
+        item = Item.objects.create(
+            user=self.user, type='travelpass', name='Test Ticket',
+            issuer='Greater Anglia', redeem_code='ABC123', code_type='none',
+            expiry_date=date.today(), value=0,
+        )
+        backend = WebPushBackend({'user_id': self.user.id})
+        backend.send('title', 'body', item=item)
+        call_kwargs = mock_webpush.call_args
+        payload = json.loads(call_kwargs.kwargs.get('data') or call_kwargs[1]['data'])
+        self.assertIn('url', payload)
+        self.assertIn(str(item.id), payload['url'])
+
+    @patch('notify.backends.webpush.webpush')
+    def test_send_defaults_to_root_url_when_no_item(self, mock_webpush):
+        set_site_config(webpush_vapid_private_key='fake-key')
+        WebPushSubscription.objects.create(
+            user=self.user, endpoint='https://push.example.com/1', p256dh='a', auth='b',
+        )
+        backend = WebPushBackend({'user_id': self.user.id})
+        backend.send('title', 'body', item=None)
+        call_kwargs = mock_webpush.call_args
+        payload = json.loads(call_kwargs.kwargs.get('data') or call_kwargs[1]['data'])
+        self.assertEqual(payload['url'], '/')
+
 
 def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b'=').decode()

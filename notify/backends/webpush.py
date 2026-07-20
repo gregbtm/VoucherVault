@@ -41,7 +41,8 @@ class WebPushBackend(NotificationBackend):
             return False
 
         claims_email = config.webpush_vapid_claims_email
-        payload = json.dumps({'title': title, 'body': message})
+        item_url = f'/en/items/view/{item.id}/' if item is not None else '/'
+        payload = json.dumps({'title': title, 'body': message, 'url': item_url})
 
         any_success = False
         for sub in subscriptions:

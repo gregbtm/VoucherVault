@@ -749,6 +749,18 @@ class RailTicketImportView(APIView):
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
 
+        # Duplicate guard: if an order_id was extracted and a travel-pass item
+        # with that order_id already exists for this user, return the existing
+        # item rather than creating a second one.  The n8n workflow can treat a
+        # 409 the same as a 201 — label the email Processed and move on.
+        if fields['order_id']:
+            existing = Item.objects.filter(
+                user=request.user, order_id=fields['order_id'], type='travelpass',
+            ).first()
+            if existing is not None:
+                response_payload['item'] = ItemSerializer(existing, context={'request': request}).data
+                return Response(response_payload, status=status.HTTP_409_CONFLICT)
+
         travel_date = parse_date(fields['travel_date']) if fields['travel_date'] else None
         travel_time = parse_time(fields['travel_time']) if fields['travel_time'] else None
         travel_day = travel_date or timezone.localdate()
@@ -776,6 +788,7 @@ class RailTicketImportView(APIView):
             currency=fields['currency'] or 'GBP',
             source='api',
         )
+        notify_item_created(item)
 
         response_payload['created'] = True
         response_payload['item'] = ItemSerializer(item, context={'request': request}).data

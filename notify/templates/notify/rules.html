@@ -13,6 +13,44 @@
 </div><!-- End Page Title -->
 
 <section class="section">
+
+  {% if webpush_enabled %}
+  <div class="row mb-2">
+    <div class="col-12">
+      <div class="card border-0 shadow-sm" id="browser-push-card">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center gap-3 flex-wrap">
+            <div class="flex-shrink-0">
+              <span id="push-icon" class="fs-3 text-muted"><i class="bi bi-bell"></i></span>
+            </div>
+            <div class="flex-grow-1">
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <strong>{% trans "Browser Notifications — This Device" %}</strong>
+                <span id="push-badge" class="badge d-none"></span>
+              </div>
+              <p class="text-muted small mb-0" id="push-description">
+                {% trans "Checking notification status…" %}
+              </p>
+            </div>
+            <div class="flex-shrink-0 d-flex gap-2" id="push-actions">
+              <button id="push-enable-btn" class="btn btn-primary btn-sm d-none" type="button">
+                <i class="bi bi-bell me-1"></i>{% trans "Enable" %}
+              </button>
+              <button id="push-disable-btn" class="btn btn-outline-secondary btn-sm d-none" type="button">
+                <i class="bi bi-bell-slash me-1"></i>{% trans "Disable" %}
+              </button>
+              <span id="push-unsupported" class="text-muted small d-none align-self-center">
+                {% trans "Not supported in this browser" %}
+              </span>
+            </div>
+          </div>
+          <div id="push-message" class="small mt-2 ms-5 ps-2"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="row">
     <div class="col-lg-5">
       <div class="card">
@@ -112,14 +150,12 @@
 
             {% if webpush_enabled %}
             <div id="backend-fields-webpush" class="backend-fields">
-              <h6 class="text-muted mt-3">{% trans "Web Push Settings" %}</h6>
-              <p class="small text-muted">
-                {% trans "Delivers to every device where you've enabled push notifications below — no per-rule address needed." %}
+              <h6 class="text-muted mt-3 mb-2">{% trans "Web Push Settings" %}</h6>
+              <p class="small text-muted mb-0">
+                {% trans "Delivers to every browser where you've enabled notifications. Use the " %}
+                <strong>{% trans "Browser Notifications" %}</strong>
+                {% trans " card above to enable or disable push on this device." %}
               </p>
-              <button type="button" id="webpush-subscribe-btn" class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-bell"></i> {% trans "Enable Push Notifications on This Device" %}
-              </button>
-              <div id="webpush-status" class="small mt-2"></div>
             </div>
             {% endif %}
 
@@ -127,12 +163,12 @@
             <div class="text-danger small mb-2">{{ form.non_field_errors }}</div>
             {% endif %}
 
-            <button type="submit" class="btn btn-primary">
+            <button type="submit" class="btn btn-primary mt-3">
               <i class="bi bi-check-circle me-1"></i>
               {% if editing_rule %}{% trans "Save Changes" %}{% else %}{% trans "Create Rule" %}{% endif %}
             </button>
             {% if editing_rule %}
-            <a href="{% url 'manage_notification_rules' %}" class="btn btn-outline-secondary">{% trans "Cancel" %}</a>
+            <a href="{% url 'manage_notification_rules' %}" class="btn btn-outline-secondary mt-3">{% trans "Cancel" %}</a>
             {% endif %}
           </form>
         </div>
@@ -208,6 +244,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  // Backend-specific form section visibility
   const backendSelect = document.getElementById('{{ form.backend.id_for_label }}');
   const sections = {
     ntfy: document.getElementById('backend-fields-ntfy'),
@@ -229,50 +266,130 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   {% if webpush_enabled %}
+  // Browser push subscription card
+  const pushIcon        = document.getElementById('push-icon');
+  const pushBadge       = document.getElementById('push-badge');
+  const pushDescription = document.getElementById('push-description');
+  const pushEnableBtn   = document.getElementById('push-enable-btn');
+  const pushDisableBtn  = document.getElementById('push-disable-btn');
+  const pushUnsupported = document.getElementById('push-unsupported');
+  const pushMessage     = document.getElementById('push-message');
+  const csrfToken       = '{{ csrf_token }}';
+  const vapidKey        = '{{ vapid_public_key }}';
+
   function urlBase64ToUint8Array(base64String) {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
     const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
     const rawData = window.atob(base64);
-    return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
+    return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
   }
 
-  const subscribeBtn = document.getElementById('webpush-subscribe-btn');
-  const statusEl = document.getElementById('webpush-status');
+  function showSubscribed() {
+    pushIcon.innerHTML = '<i class="bi bi-bell-fill text-success"></i>';
+    pushBadge.className = 'badge bg-success';
+    pushBadge.textContent = '{% trans "Active" %}';
+    pushBadge.classList.remove('d-none');
+    pushDescription.textContent = '{% trans "Push notifications are enabled on this browser. Clicking a notification will open the relevant item." %}';
+    pushEnableBtn.classList.add('d-none');
+    pushDisableBtn.classList.remove('d-none');
+  }
 
-  if (subscribeBtn) {
-    subscribeBtn.addEventListener('click', async function () {
-      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        statusEl.innerHTML = '<span class="text-danger">{% trans "Push notifications are not supported in this browser." %}</span>';
-        return;
+  function showNotSubscribed() {
+    pushIcon.innerHTML = '<i class="bi bi-bell text-muted"></i>';
+    pushBadge.classList.add('d-none');
+    pushDescription.textContent = '{% trans "Push notifications are not enabled on this browser. Enable them to get instant alerts for expiry warnings, new items, and more." %}';
+    pushEnableBtn.classList.remove('d-none');
+    pushDisableBtn.classList.add('d-none');
+  }
+
+  function showUnsupported() {
+    pushIcon.innerHTML = '<i class="bi bi-bell-slash text-muted"></i>';
+    pushBadge.classList.add('d-none');
+    pushDescription.textContent = '{% trans "Push notifications require a browser that supports the Web Push API and a secure (HTTPS) connection." %}';
+    pushUnsupported.classList.remove('d-none');
+    pushEnableBtn.classList.add('d-none');
+    pushDisableBtn.classList.add('d-none');
+  }
+
+  // Check current subscription state on page load
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    showUnsupported();
+  } else {
+    navigator.serviceWorker.ready.then(function (reg) {
+      return reg.pushManager.getSubscription();
+    }).then(function (sub) {
+      if (sub) {
+        showSubscribed();
+      } else {
+        showNotSubscribed();
       }
+    }).catch(function () {
+      showNotSubscribed();
+    });
+  }
 
-      statusEl.innerHTML = '<span class="text-muted">{% trans "Requesting permission..." %}</span>';
+  // Enable
+  if (pushEnableBtn) {
+    pushEnableBtn.addEventListener('click', async function () {
+      pushEnableBtn.disabled = true;
+      pushMessage.innerHTML = '<span class="text-muted">{% trans "Requesting permission…" %}</span>';
       try {
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
-          statusEl.innerHTML = '<span class="text-danger">{% trans "Notification permission was denied." %}</span>';
+          pushMessage.innerHTML = '<span class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>{% trans "Permission denied — check your browser site settings." %}</span>';
+          pushEnableBtn.disabled = false;
           return;
         }
 
-        const registration = await navigator.serviceWorker.ready;
-        const subscription = await registration.pushManager.subscribe({
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array('{{ vapid_public_key }}'),
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
         });
 
-        const response = await fetch("{% url 'webpush_subscribe' %}", {
+        const resp = await fetch("{% url 'webpush_subscribe' %}", {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
-          body: JSON.stringify(subscription.toJSON()),
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+          body: JSON.stringify(sub.toJSON()),
         });
 
-        if (response.ok) {
-          statusEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> {% trans "Push notifications enabled on this device!" %}</span>';
+        if (resp.ok) {
+          showSubscribed();
+          pushMessage.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>{% trans "Done! You\'ll receive push notifications on this browser." %}</span>';
+          setTimeout(() => { pushMessage.innerHTML = ''; }, 4000);
         } else {
-          statusEl.innerHTML = '<span class="text-danger">{% trans "Could not save the subscription. Please try again." %}</span>';
+          pushMessage.innerHTML = '<span class="text-danger">{% trans "Could not save the subscription — please try again." %}</span>';
+          pushEnableBtn.disabled = false;
         }
       } catch (err) {
-        statusEl.innerHTML = '<span class="text-danger">{% trans "Failed to enable push notifications." %}</span>';
+        pushMessage.innerHTML = '<span class="text-danger">{% trans "Something went wrong. Make sure notifications are allowed in your browser settings." %}</span>';
+        pushEnableBtn.disabled = false;
+      }
+    });
+  }
+
+  // Disable
+  if (pushDisableBtn) {
+    pushDisableBtn.addEventListener('click', async function () {
+      pushDisableBtn.disabled = true;
+      pushMessage.innerHTML = '<span class="text-muted">{% trans "Disabling…" %}</span>';
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          await fetch("{% url 'webpush_unsubscribe' %}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ endpoint: sub.endpoint }),
+          });
+          await sub.unsubscribe();
+        }
+        showNotSubscribed();
+        pushMessage.innerHTML = '<span class="text-muted"><i class="bi bi-check me-1"></i>{% trans "Push notifications disabled on this browser." %}</span>';
+        setTimeout(() => { pushMessage.innerHTML = ''; }, 3000);
+      } catch (err) {
+        pushMessage.innerHTML = '<span class="text-danger">{% trans "Could not disable — please try again." %}</span>';
+        pushDisableBtn.disabled = false;
       }
     });
   }
