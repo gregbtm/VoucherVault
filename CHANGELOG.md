@@ -1,4 +1,16 @@
-## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.82...v1.2.0) (2026-07-19)
+## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.83...v1.2.0) (2026-07-20)
+
+
+### Features
+
+* browser push — discoverable status card with enable/disable toggle ([663fd18](https://github.com/gregbtm/VoucherVault/commit/663fd18f8d05a3331f4d2911f70388ddae5d084f))
+
+
+### Bug Fixes
+
+* rail ticket dedup, item_created notification, webpush deep-link ([e7b82d5](https://github.com/gregbtm/VoucherVault/commit/e7b82d552bcc8e4f9df5f7cc7b8ae1908c8bb6ae))
+
+## [1.1.83](https://github.com/gregbtm/VoucherVault/compare/v1.1.82...v1.1.83) (2026-07-19)
 
 
 ### Features
@@ -26,6 +38,4 @@
 ### Bug Fixes
 
 * bump esbuild and vitest to patch npm audit HIGH/CRITICAL ([4b5ce85](https://github.com/gregbtm/VoucherVault/commit/4b5ce85a31a629edf5b8fe584bd75b1a7e77abed))
-
-## [1.1.79](https://github.com/gregbtm/VoucherVault/compare/v1.1.78...v1.1.79) (2026-07-18)
 
