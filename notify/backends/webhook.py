@@ -16,7 +16,7 @@ class WebhookBackend(NotificationBackend):
         headers: optional dict of extra headers (e.g. a shared secret header)
     """
 
-    def send(self, title: str, message: str, item=None) -> bool:
+    def send(self, title: str, message: str, item=None, transaction=None) -> bool:
         url = self.config.get('url')
         if not url or not url.startswith(('http://', 'https://')):
             logger.error('webhook backend misconfigured: url must be an http(s) URL.')

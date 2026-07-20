@@ -24,7 +24,7 @@ def _already_notified(item, event_type, rule) -> bool:
     return NotificationLog.objects.filter(item=item, event_type=event_type, rule=rule, success=True).exists()
 
 
-def fire_notifications(item, event_type: str, title: str, message: str, dedupe: bool = True):
+def fire_notifications(item, event_type: str, title: str, message: str, dedupe: bool = True, transaction=None):
     """
     Sends `title`/`message` for `item` as `event_type` through every enabled
     rule the item's owner has subscribed to that event, logging each
@@ -39,6 +39,9 @@ def fire_notifications(item, event_type: str, title: str, message: str, dedupe: 
     meaningful event rather than a periodic re-scan repeat, and the item
     may legitimately pass through the same event_type more than once
     (e.g. several transactions, or being marked used/available/used again).
+
+    `transaction` is forwarded to backends that consume it (e.g. Firefly III
+    balance-changed events); other backends ignore it.
     """
     if item.notifications_muted:
         return
@@ -65,7 +68,7 @@ def fire_notifications(item, event_type: str, title: str, message: str, dedupe: 
             )
             continue
 
-        success, detail = send_via_rule(rule, title, message, item=item)
+        success, detail = send_via_rule(rule, title, message, item=item, transaction=transaction)
         NotificationLog.objects.create(
             user=item.user, rule=rule, item=item, event_type=event_type,
             success=success, detail=detail,
@@ -121,6 +124,7 @@ def notify_balance_changed(item, transaction):
             f"New balance: {item.get_current_balance()} {item.currency}"
         ),
         dedupe=False,
+        transaction=transaction,
     )
 
 
@@ -134,11 +138,11 @@ def notify_item_shared(item, shared_with_username: str):
     )
 
 
-def send_via_rule(rule, title: str, message: str, item=None) -> tuple[bool, str]:
+def send_via_rule(rule, title: str, message: str, item=None, transaction=None) -> tuple[bool, str]:
     """Runs a rule's backend, translating any exception into a logged failure."""
     try:
         backend = get_backend(rule)
-        success = backend.send(title, message, item=item)
+        success = backend.send(title, message, item=item, transaction=transaction)
         return success, '' if success else 'Backend reported failure.'
     except Exception as exc:
         return False, str(exc)

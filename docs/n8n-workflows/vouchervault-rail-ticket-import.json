@@ -8,9 +8,9 @@
       "typeVersion": 1,
       "position": [-120, 0],
       "parameters": {
-        "width": 420,
-        "height": 560,
-        "content": "## Before you activate this\n\n1. **Gmail credential** — the 'Watch for Ticket Emails' node needs a Gmail OAuth2 credential. Add one under Credentials → New → Gmail OAuth2 API, then select it on that node.\n\n2. **VoucherVault API token** — on your VoucherVault server:\n   `docker compose exec app python manage.py drf_create_token <your-username>`\n   Then in n8n: Credentials → New → Header Auth, Name=`Authorization`, Value=`Token <the-token>`. Select it on the 'Create VoucherVault Item' node.\n\n3. **Gmail labels** — create two labels in Gmail first: `VoucherVault-Processed` and `VoucherVault-Failed`. The workflow applies these after each attempt so it never reprocesses an email (the trigger's search query already excludes anything labeled Processed).\n\n4. **Failure notifications (optional)** — set the `ntfy_topic` variable in the 'Config' node to your ntfy topic (e.g. `my-vv-alerts`). Leave blank to skip push notifications on failure.\n\n5. **Adjust the sender filter** on the trigger node to match who your tickets actually come from — the default targets Uber/Omio/Greater Anglia confirmation emails, edit the `q` field for other operators.\n\n6. **409 = duplicate** — if VoucherVault returns 409 it means a ticket with the same order ID already exists. The workflow treats this as 'already processed' and applies the Processed label so the email is skipped on future runs.\n\n7. **Test with 'Fetch Test Event' first** (right-click the trigger node) against a real ticket email before turning Active on, so you can see the HTTP Request node's actual response before it's creating items unattended.\n\nSee docs/RAIL_TICKET_IMPORT_SETUP.md in the VoucherVault repo for the full walkthrough."
+        "width": 460,
+        "height": 640,
+        "content": "## Before you activate this\n\n1. **Gmail credential** — the 'Watch for Ticket Emails' node needs a Gmail OAuth2 credential. Add one under Credentials → New → Gmail OAuth2 API, then select it on that node.\n\n2. **VoucherVault API token** — on your VoucherVault server:\n   `docker compose exec app python manage.py drf_create_token <your-username>`\n   Then in n8n: Credentials → New → Header Auth, Name=`Authorization`, Value=`Token <the-token>`. Select it on the 'Create VoucherVault Item' node.\n\n3. **Gmail labels** — create two labels in Gmail first: `VoucherVault-Processed` and `VoucherVault-Failed`. The workflow applies these after each attempt so it never reprocesses an email (the trigger's search query already excludes anything labeled Processed).\n\n4. **Failure notifications (optional)** — set the `ntfy_topic` variable in the 'Config' node to your ntfy topic (e.g. `my-vv-alerts`). Leave blank to skip push notifications on failure.\n\n5. **Adjust the sender filter** on the trigger node to match who your tickets actually come from — the default targets Uber/Omio/Greater Anglia/Trainline confirmation emails, edit the `q` field for other operators.\n\n6. **409 = duplicate** — if VoucherVault returns 409 it means a ticket with the same order ID already exists. The workflow treats this as 'already processed' and applies the Processed label so the email is skipped on future runs.\n\n7. **Multiple PDFs per email** — the 'Find PDF Attachments' node now emits one item per PDF found in the email, so multi-ticket emails are each imported as a separate VoucherVault item in one pass.\n\n8. **Email body pre-extraction** — the 'Extract from Email Body' node mines the email subject/body for route, order ID, issuer, and travel date before sending to VoucherVault. OCR on the server still fills any gaps, but text pulled from the email itself is faster and more reliable.\n\n9. **Test with 'Fetch Test Event' first** (right-click the trigger node) against a real ticket email before turning Active on, so you can see the HTTP Request node's actual response before it's creating items unattended.\n\nSee docs/RAIL_TICKET_IMPORT_SETUP.md in the VoucherVault repo for the full walkthrough."
       }
     },
     {
@@ -63,13 +63,13 @@
       }
     },
     {
-      "id": "code-1",
-      "name": "Find PDF Attachment",
+      "id": "code-find-pdfs",
+      "name": "Find PDF Attachments",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [520, 100],
       "parameters": {
-        "jsCode": "// Gmail Trigger names downloaded attachments after their own\n// attachment id, not a fixed key - find whichever binary property is\n// actually a PDF and re-key it to `file` so the HTTP Request node\n// downstream has one predictable field name to send, regardless of\n// how many attachments this specific email had or what they're named.\nfor (const item of $input.all()) {\n  const binary = item.binary || {};\n  const pdfKey = Object.keys(binary).find((key) => {\n    const b = binary[key];\n    return (b.mimeType || '').toLowerCase().includes('pdf')\n      || (b.fileName || '').toLowerCase().endsWith('.pdf');\n  });\n  if (pdfKey && pdfKey !== 'file') {\n    item.binary.file = item.binary[pdfKey];\n  }\n}\nreturn $input.all();"
+        "jsCode": "// Emit one output item per PDF attachment found in the email so that\n// multi-ticket emails (e.g. two separate seat reservations in one booking)\n// each become their own VoucherVault item in a single workflow run.\n//\n// Each output item keeps the full email JSON (id, subject, from, body)\n// so downstream nodes can still access those fields, plus a 'file' binary\n// property pointing at this particular PDF.\nconst results = [];\nfor (const emailItem of $input.all()) {\n  const binary = emailItem.binary || {};\n  const pdfKeys = Object.keys(binary).filter((key) => {\n    const b = binary[key];\n    return (b.mimeType || '').toLowerCase().includes('pdf')\n      || (b.fileName || '').toLowerCase().endsWith('.pdf');\n  });\n  if (pdfKeys.length === 0) {\n    // No PDFs — emit a sentinel so the Has PDF? node can route to the skip branch\n    results.push({ json: { ...emailItem.json, _pdf_count: 0 }, binary: {} });\n  } else {\n    for (const key of pdfKeys) {\n      const newBinary = { file: emailItem.binary[key] };\n      results.push({ json: { ...emailItem.json, _pdf_count: pdfKeys.length }, binary: newBinary });\n    }\n  }\n}\nreturn results;"
       }
     },
     {
@@ -88,7 +88,7 @@
           "conditions": [
             {
               "id": "cond-1",
-              "leftValue": "={{ $binary.file !== undefined }}",
+              "leftValue": "={{ $json._pdf_count > 0 }}",
               "rightValue": "true",
               "operator": {
                 "type": "boolean",
@@ -102,11 +102,21 @@
       }
     },
     {
+      "id": "code-extract-email",
+      "name": "Extract from Email Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 40],
+      "parameters": {
+        "jsCode": "// Mine the email subject and plaintext body for fields that VoucherVault\n// can use directly — text from the email is more reliable than vision-OCR\n// on a rasterised page, and it's free (no API call). The server-side OCR\n// still fills in whatever we miss here.\n//\n// Fields we try to extract:\n//   issuer         — inferred from the From address\n//   order_id       — booking/order reference number\n//   journey_origin / journey_destination — from the email subject line\n//   travel_date    — date of travel in YYYY-MM-DD format\nconst item = $input.first();\nconst subject = (item.json.subject || '').trim();\nconst body    = (item.json.textPlain || item.json.snippet || '').slice(0, 4000);\nconst from    = (item.json.from || '').toLowerCase();\nconst combined = subject + ' ' + body;\n\nconst extracted = {};\n\n// Issuer from sender domain\nif (from.includes('greateranglia'))   extracted.issuer = 'Greater Anglia';\nelse if (from.includes('trainline')) extracted.issuer = 'Trainline';\nelse if (from.includes('omio'))      extracted.issuer = 'Omio';\nelse if (from.includes('uber'))      extracted.issuer = 'Uber';\nelse if (from.includes('avanti'))    extracted.issuer = 'Avanti West Coast';\nelse if (from.includes('lner'))      extracted.issuer = 'LNER';\nelse if (from.includes('gwr'))       extracted.issuer = 'Great Western Railway';\n\n// Order / booking reference: 6-12 uppercase alphanumeric chars preceded by a keyword\nconst orderMatch = combined.match(\n  /(?:booking|order|ref(?:erence)?|confirmation)[\\s:]*([A-Z0-9]{5,12})/i\n);\nif (orderMatch) extracted.order_id = orderMatch[1].toUpperCase();\n\n// Route from subject — e.g. \"Ipswich to London Liverpool Street - Booking confirmation\"\nconst routeMatch = subject.match(/:\\s*(.+?)\\s+to\\s+(.+?)\\s*[-–—|]/i)\n  || subject.match(/^(.+?)\\s+to\\s+(.+?)(?:\\s*[-–—|]|$)/i);\nif (routeMatch) {\n  extracted.journey_origin      = routeMatch[1].trim();\n  extracted.journey_destination = routeMatch[2].trim();\n}\n\n// Travel date: look for DD Month YYYY or DD/MM/YYYY or YYYY-MM-DD\nconst datePatterns = [\n  /(\\d{1,2}\\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\s+\\d{4})/i,\n  /(\\d{1,2}[\\/\\-]\\d{1,2}[\\/\\-]\\d{2,4})/,\n  /(\\d{4}-\\d{2}-\\d{2})/,\n];\nfor (const pat of datePatterns) {\n  const m = combined.match(pat);\n  if (m) {\n    const raw = m[1];\n    // Try to normalise to YYYY-MM-DD\n    const parsed = new Date(raw);\n    if (!isNaN(parsed.getTime())) {\n      extracted.travel_date = parsed.toISOString().slice(0, 10);\n    } else {\n      extracted.travel_date = raw;  // leave as-is; server OCR will interpret\n    }\n    break;\n  }\n}\n\nreturn [{ ...item, json: { ...item.json, _extracted: extracted } }];"
+      }
+    },
+    {
       "id": "http-1",
       "name": "Create VoucherVault Item",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1000, 40],
+      "position": [1240, 40],
       "onError": "continueErrorOutput",
       "parameters": {
         "method": "POST",
@@ -125,6 +135,26 @@
             {
               "name": "create",
               "value": "true"
+            },
+            {
+              "name": "issuer",
+              "value": "={{ $json._extracted?.issuer || '' }}"
+            },
+            {
+              "name": "order_id",
+              "value": "={{ $json._extracted?.order_id || '' }}"
+            },
+            {
+              "name": "journey_origin",
+              "value": "={{ $json._extracted?.journey_origin || '' }}"
+            },
+            {
+              "name": "journey_destination",
+              "value": "={{ $json._extracted?.journey_destination || '' }}"
+            },
+            {
+              "name": "travel_date",
+              "value": "={{ $json._extracted?.travel_date || '' }}"
             }
           ]
         },
@@ -144,7 +174,7 @@
       "name": "Duplicate or real error?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1260, 160],
+      "position": [1500, 160],
       "parameters": {
         "conditions": {
           "options": {
@@ -155,11 +185,12 @@
           "conditions": [
             {
               "id": "cond-dup",
-              "leftValue": "={{ $json.error.statusCode }}",
-              "rightValue": 409,
+              "leftValue": "={{ ($json.error?.statusCode ?? $json.response?.statusCode ?? $json.statusCode) === 409 }}",
+              "rightValue": "true",
               "operator": {
-                "type": "number",
-                "operation": "equals"
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
               }
             }
           ],
@@ -172,7 +203,7 @@
       "name": "Label: Processed",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [1520, -60],
+      "position": [1760, -60],
       "parameters": {
         "resource": "message",
         "operation": "addLabels",
@@ -192,7 +223,7 @@
       "name": "Label: Failed",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [1520, 280],
+      "position": [1760, 280],
       "parameters": {
         "resource": "message",
         "operation": "addLabels",
@@ -212,7 +243,7 @@
       "name": "ntfy configured?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1760, 280],
+      "position": [2000, 280],
       "parameters": {
         "conditions": {
           "options": {
@@ -240,7 +271,7 @@
       "name": "Notify: Import Failed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2000, 220],
+      "position": [2240, 220],
       "parameters": {
         "method": "POST",
         "url": "=https://ntfy.sh/{{ $('Config').first().json.ntfy_topic }}",
@@ -264,7 +295,7 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "text/plain",
-        "body": "=A rail ticket email could not be imported. Check Gmail for emails labelled VoucherVault-Failed.\n\nError: {{ $('Create VoucherVault Item').item.json.error.message || 'unknown' }}\nSubject: {{ $('Watch for Ticket Emails').item.json.subject || '(unknown)' }}",
+        "body": "=A rail ticket email could not be imported. Check Gmail for emails labelled VoucherVault-Failed.\n\nError: {{ $('Create VoucherVault Item').item.json.error?.message || 'unknown' }}\nSubject: {{ $('Watch for Ticket Emails').item.json.subject || '(unknown)' }}",
         "options": {
           "timeout": 10000
         }
@@ -284,14 +315,14 @@
       "main": [
         [
           {
-            "node": "Find PDF Attachment",
+            "node": "Find PDF Attachments",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Find PDF Attachment": {
+    "Find PDF Attachments": {
       "main": [
         [
           {
@@ -306,7 +337,7 @@
       "main": [
         [
           {
-            "node": "Create VoucherVault Item",
+            "node": "Extract from Email Body",
             "type": "main",
             "index": 0
           }
@@ -314,6 +345,17 @@
         [
           {
             "node": "No PDF - skip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from Email Body": {
+      "main": [
+        [
+          {
+            "node": "Create VoucherVault Item",
             "type": "main",
             "index": 0
           }

@@ -203,26 +203,53 @@ class FireflyBackendTests(TestCase):
 
     @patch('notify.backends.firefly_backend.requests.post')
     def test_successful_send_posts_withdrawal(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=200)
-        self._make_transaction()
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {'data': {'id': '99'}})
+        tx = self._make_transaction()
         backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
-        result = backend.send('title', 'msg', item=self.item)
+        result = backend.send('title', 'msg', item=self.item, transaction=tx)
         self.assertTrue(result)
         args, kwargs = mock_post.call_args
         self.assertEqual(args[0], 'https://firefly.example.com/api/v1/transactions')
-        tx = kwargs['json']['transactions'][0]
-        self.assertEqual(tx['type'], 'withdrawal')
-        self.assertEqual(tx['source_id'], '7')
-        self.assertEqual(tx['amount'], '10.00')
+        tx_row = kwargs['json']['transactions'][0]
+        self.assertEqual(tx_row['type'], 'withdrawal')
+        self.assertEqual(tx_row['source_id'], '7')
+        self.assertEqual(tx_row['amount'], '10.00')
         self.assertEqual(kwargs['headers']['Authorization'], 'Bearer tok')
+
+    @patch('notify.backends.firefly_backend.requests.post')
+    def test_deposit_direction_for_positive_transaction(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {'data': {'id': '100'}})
+        tx = Transaction.objects.create(
+            item=self.item, date=date.today(), description='Top-up', value='20.00',
+        )
+        backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
+        result = backend.send('title', 'msg', item=self.item, transaction=tx)
+        self.assertTrue(result)
+        tx_row = mock_post.call_args[1]['json']['transactions'][0]
+        self.assertEqual(tx_row['type'], 'deposit')
+        self.assertEqual(tx_row['destination_id'], '7')
+        self.assertEqual(tx_row['amount'], '20.00')
+
+    @patch('notify.backends.firefly_backend.requests.post')
+    def test_tags_and_category_included(self, mock_post):
+        from myapp.models import Tag
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {'data': {'id': '101'}})
+        tag = Tag.objects.create(user=self.user, name='groceries')
+        self.item.tags.add(tag)
+        tx = self._make_transaction()
+        backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
+        backend.send('title', 'msg', item=self.item, transaction=tx)
+        tx_row = mock_post.call_args[1]['json']['transactions'][0]
+        self.assertIn('groceries', tx_row.get('tags', []))
+        self.assertEqual(tx_row.get('category_name'), 'Gift Cards')
 
     @patch('notify.backends.firefly_backend.requests.post')
     def test_network_error_returns_false(self, mock_post):
         import requests as requests_lib
         mock_post.side_effect = requests_lib.RequestException('timeout')
-        self._make_transaction()
+        tx = self._make_transaction()
         backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
-        result = backend.send('title', 'msg', item=self.item)
+        result = backend.send('title', 'msg', item=self.item, transaction=tx)
         self.assertFalse(result)
 
     @patch('notify.backends.firefly_backend.requests.post')
@@ -231,9 +258,9 @@ class FireflyBackendTests(TestCase):
         mock_response = MagicMock()
         mock_response.raise_for_status.side_effect = requests_lib.HTTPError('403 Forbidden')
         mock_post.return_value = mock_response
-        self._make_transaction()
+        tx = self._make_transaction()
         backend = FireflyBackend({'url': 'https://firefly.example.com', 'token': 'tok'})
-        result = backend.send('title', 'msg', item=self.item)
+        result = backend.send('title', 'msg', item=self.item, transaction=tx)
         self.assertFalse(result)
 
 
@@ -260,23 +287,53 @@ class FireflyLinkActionTests(TestCase):
         self.assertEqual(resp.status_code, 400)
 
     @patch('api.views.requests.post')
-    def test_creates_account_and_stores_id(self, mock_post):
+    @patch('api.views.requests.get')
+    def test_creates_account_and_stores_id(self, mock_get, mock_post):
         self._make_firefly_rule()
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status.return_value = None
-        mock_resp.json.return_value = {'data': {'id': '42'}}
-        mock_post.return_value = mock_resp
+        # Search returns no match — triggers create
+        mock_get_resp = MagicMock()
+        mock_get_resp.raise_for_status.return_value = None
+        mock_get_resp.json.return_value = {'data': []}
+        mock_get.return_value = mock_get_resp
+        # Create succeeds
+        mock_post_resp = MagicMock()
+        mock_post_resp.raise_for_status.return_value = None
+        mock_post_resp.json.return_value = {'data': {'id': '42'}}
+        mock_post.return_value = mock_post_resp
         url = f'/api/v1/items/{self.item.pk}/firefly-link/'
         resp = self.client.post(url, HTTP_AUTHORIZATION=self.auth)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()['firefly_account_id'], '42')
+        self.assertFalse(resp.json().get('existing'))
         self.item.refresh_from_db()
         self.assertEqual(self.item.firefly_account_id, '42')
 
     @patch('api.views.requests.post')
-    def test_502_on_network_error(self, mock_post):
+    @patch('api.views.requests.get')
+    def test_returns_existing_account_without_creating(self, mock_get, mock_post):
+        self._make_firefly_rule()
+        # The view computes account_name as "Name (Issuer)" when issuer is set
+        account_name = (
+            f'{self.item.name} ({self.item.issuer})' if self.item.issuer else self.item.name
+        )
+        mock_get_resp = MagicMock()
+        mock_get_resp.raise_for_status.return_value = None
+        mock_get_resp.json.return_value = {'data': [{'id': '77', 'attributes': {'name': account_name}}]}
+        mock_get.return_value = mock_get_resp
+        url = f'/api/v1/items/{self.item.pk}/firefly-link/'
+        resp = self.client.post(url, HTTP_AUTHORIZATION=self.auth)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['firefly_account_id'], '77')
+        self.assertTrue(resp.json().get('existing'))
+        mock_post.assert_not_called()
+
+    @patch('api.views.requests.post')
+    @patch('api.views.requests.get')
+    def test_502_on_network_error(self, mock_get, mock_post):
         import requests as requests_lib
         self._make_firefly_rule()
+        # Search fails (caught), then create fails
+        mock_get.side_effect = requests_lib.RequestException('network error')
         mock_post.side_effect = requests_lib.RequestException('timeout')
         url = f'/api/v1/items/{self.item.pk}/firefly-link/'
         resp = self.client.post(url, HTTP_AUTHORIZATION=self.auth)
