@@ -151,6 +151,7 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 118 — Rail ticket import: dedup, notifications, and improved n8n workflow](#phase-118--rail-ticket-import-dedup-notifications-and-improved-n8n-workflow)
 - [Phase 119 — Browser push: discoverable status card](#phase-119--browser-push-discoverable-status-card)
 - [Phase 120 — Gap-fill: Firefly III notification form, per-type fields on view-item, README refresh](#phase-120--gap-fill-firefly-iii-notification-form-per-type-fields-on-view-item-readme-refresh)
+- [Phase 121 — Firefly III deep integration (Tiers 1–4) + gap-fill](#phase-121--firefly-iii-deep-integration-tiers-14--gap-fill)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
