@@ -335,10 +335,21 @@ class WalletViewSet(viewsets.ModelViewSet):
                 return Response({'detail': _('No user with that username exists.')}, status=status.HTTP_400_BAD_REQUEST)
             if collaborator.id == wallet.user_id:
                 return Response({'detail': _('You already own this wallet.')}, status=status.HTTP_400_BAD_REQUEST)
+            role = request.data.get('role', WalletMembership.ROLE_EDITOR)
+            if role not in (WalletMembership.ROLE_VIEWER, WalletMembership.ROLE_EDITOR):
+                role = WalletMembership.ROLE_EDITOR
             wallet.shared_with.add(collaborator)
-            return Response({'username': collaborator.username}, status=status.HTTP_201_CREATED)
+            WalletMembership.objects.update_or_create(
+                wallet=wallet, user=collaborator,
+                defaults={'role': role},
+            )
+            return Response({'username': collaborator.username, 'role': role}, status=status.HTTP_201_CREATED)
 
-        return Response([u.username for u in wallet.shared_with.all()])
+        memberships = {m.user_id: m.role for m in WalletMembership.objects.filter(wallet=wallet)}
+        return Response([
+            {'username': u.username, 'role': memberships.get(u.id, WalletMembership.ROLE_EDITOR)}
+            for u in wallet.shared_with.all()
+        ])
 
     @action(detail=True, methods=['delete'], url_path=r'share/(?P<user_id>\d+)')
     def unshare(self, request, pk=None, user_id=None):
@@ -348,6 +359,7 @@ class WalletViewSet(viewsets.ModelViewSet):
             return Response({'detail': _('Only the wallet owner can manage sharing.')}, status=status.HTTP_403_FORBIDDEN)
         collaborator = get_object_or_404(User, id=user_id)
         wallet.shared_with.remove(collaborator)
+        WalletMembership.objects.filter(wallet=wallet, user=collaborator).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -1033,7 +1045,8 @@ class WalletMembershipViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         wallet = get_object_or_404(Wallet, pk=self.request.data.get('wallet'), user=self.request.user)
-        serializer.save(wallet=wallet)
+        instance = serializer.save(wallet=wallet)
+        wallet.shared_with.add(instance.user)
 
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -1045,6 +1058,7 @@ class WalletMembershipViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         if instance.wallet.user != request.user:
             return Response({'detail': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+        instance.wallet.shared_with.remove(instance.user)
         return super().destroy(request, *args, **kwargs)
 
 

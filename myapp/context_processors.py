@@ -1,7 +1,7 @@
 from django.conf import settings
-from django.db.models import Count, Q
+from django.db.models import Count, OuterRef, Q, Subquery
 
-from .models import SiteConfiguration, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, Wallet
+from .models import SiteConfiguration, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, Wallet, WalletMembership
 from .update_check import _is_newer
 
 
@@ -9,7 +9,19 @@ def sidebar_wallets(request):
     """Expose the current user's own and shared-with-them wallets to every template for sidebar navigation."""
     if not request.user.is_authenticated:
         return {}
+    membership_role = Subquery(
+        WalletMembership.objects.filter(
+            wallet=OuterRef('pk'), user=request.user
+        ).values('role')[:1]
+    )
+    own = Wallet.objects.filter(user=request.user).annotate(item_count=Count('items'))
+    shared = Wallet.objects.filter(shared_with=request.user).annotate(
+        item_count=Count('items'), user_role=membership_role,
+    )
     return {
+        'sidebar_own_wallets': own,
+        'sidebar_shared_wallets': shared,
+        # Combined for templates that need all wallets in one list (e.g. bulk-move dropdowns).
         'sidebar_wallets': Wallet.objects.filter(
             Q(user=request.user) | Q(shared_with=request.user)
         ).distinct().annotate(item_count=Count('items')),

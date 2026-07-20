@@ -157,6 +157,7 @@
               <tr>
                 <th>{% trans "Name" %}</th>
                 <th>{% trans "Owner" %}</th>
+                <th>{% trans "Your Role" %}</th>
                 <th>{% trans "Items" %}</th>
                 <th class="text-end">{% trans "Actions" %}</th>
               </tr>
@@ -169,6 +170,13 @@
                   <a href="{% url 'show_items' %}?wallet={{ wallet.id }}&status=all">{{ wallet.name }}</a>
                 </td>
                 <td>{{ wallet.user.username }}</td>
+                <td>
+                  {% if wallet.user_role == 'viewer' %}
+                  <span class="badge bg-secondary"><i class="bi bi-eye me-1"></i>{% trans "Viewer" %}</span>
+                  {% else %}
+                  <span class="badge bg-primary"><i class="bi bi-pencil me-1"></i>{% trans "Editor" %}</span>
+                  {% endif %}
+                </td>
                 <td>{{ wallet.item_count }}</td>
                 <td class="text-end">
                   <form method="POST" action="{% url 'leave_shared_wallet' wallet_id=wallet.id %}"

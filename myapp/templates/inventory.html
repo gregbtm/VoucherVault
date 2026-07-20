@@ -1403,7 +1403,7 @@ body.dark-mode .next-up-card {
           <div class="item-tag-row" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem;">
             {% if entry.item.wallet %}
             <span class="badge rounded-pill" style="background-color: {{ entry.item.wallet.color }}; color: #fff;">
-              <i class="bi {{ entry.item.wallet.icon|default:'bi-wallet2' }}"></i> {{ entry.item.wallet.name }}
+              <i class="bi {{ entry.item.wallet.icon|default:'bi-wallet2' }}"></i> {{ entry.item.wallet.name }}{% if entry.item.wallet.user_id != request.user.id %} <i class="bi bi-people" title="{% trans 'Shared wallet' %}"></i>{% endif %}
             </span>
             {% endif %}
             {% for tag in entry.item.tags.all %}
