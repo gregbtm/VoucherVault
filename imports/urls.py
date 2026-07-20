@@ -9,4 +9,7 @@ urlpatterns = [
     path('export/json/', views.export_json, name='export_json'),
     path('export/full-backup/', views.export_full_backup_view, name='export_full_backup'),
     path('import/full-backup/', views.import_full_backup_view, name='import_full_backup'),
+    path('export/selected/csv/', views.export_selected_csv, name='export_selected_csv'),
+    path('export/selected/json/', views.export_selected_json, name='export_selected_json'),
+    path('preview/', views.preview_import, name='preview_import'),
 ]

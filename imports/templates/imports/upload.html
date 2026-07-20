@@ -37,12 +37,69 @@
               <small class="form-text text-muted">{% trans "Max 10MB." %}</small>
             </div>
 
-            <button type="submit" class="btn btn-primary">
-              <i class="bi bi-upload me-1"></i>{% trans "Start Import" %}
-            </button>
+            <div class="d-flex gap-2 flex-wrap">
+              <button type="button" class="btn btn-outline-secondary" id="previewImportBtn">
+                <i class="bi bi-eye me-1"></i>{% trans "Preview" %}
+              </button>
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-upload me-1"></i>{% trans "Start Import" %}
+              </button>
+            </div>
           </form>
+
+          <div id="importPreview" class="mt-3 d-none">
+            <div id="importPreviewContent"></div>
+          </div>
         </div>
       </div>
+
+<script>
+(function () {
+  document.getElementById('previewImportBtn').addEventListener('click', function () {
+    const form = this.closest('section').querySelector('form[action*="upload"]');
+    const fileInput = form.querySelector('[name="file"]');
+    const sourceType = form.querySelector('[name="source_type"]').value;
+    if (!fileInput.files.length) {
+      alert('{% trans "Please choose a file first." %}');
+      return;
+    }
+    const btn = this;
+    window.setButtonLoading && window.setButtonLoading(btn, true);
+    const fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    fd.append('source_type', sourceType);
+    fd.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+    fetch('{% url "preview_import" %}', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(data => {
+        window.setButtonLoading && window.setButtonLoading(btn, false);
+        const panel = document.getElementById('importPreview');
+        const content = document.getElementById('importPreviewContent');
+        panel.classList.remove('d-none');
+        if (data.error) {
+          content.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+          return;
+        }
+        let html = `<div class="alert alert-info py-2"><strong>${data.total_rows}</strong> {% trans "rows found," %} <strong>${data.error_count}</strong> {% trans "with errors." %}</div>`;
+        if (data.errors.length) {
+          html += '<ul class="small text-danger mb-2">' + data.errors.map(e => `<li>Row ${e.row || '?'}: ${e.message}</li>`).join('') + '</ul>';
+        }
+        if (data.preview.length) {
+          html += '<div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>{% trans "Name" %}</th><th>{% trans "Type" %}</th><th>{% trans "Code" %}</th><th>{% trans "Value" %}</th><th>{% trans "Expiry" %}</th></tr></thead><tbody>';
+          html += data.preview.map(r => `<tr><td>${r.name}</td><td><span class="badge bg-secondary">${r.type}</span></td><td><code>${r.redeem_code}</code></td><td>${r.value ?? '—'} ${r.currency}</td><td>${r.expiry_date ?? '—'}</td></tr>`).join('');
+          if (data.total_rows > data.preview.length) {
+            html += `<tr><td colspan="5" class="text-muted text-center small">{% trans "…and" %} ${data.total_rows - data.preview.length} {% trans "more rows" %}</td></tr>`;
+          }
+          html += '</tbody></table></div>';
+        }
+        content.innerHTML = html;
+      })
+      .catch(() => {
+        window.setButtonLoading && window.setButtonLoading(btn, false);
+      });
+  });
+})();
+</script>
 
       <div class="card mt-3">
         <div class="card-body">

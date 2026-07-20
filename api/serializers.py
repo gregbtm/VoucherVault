@@ -150,6 +150,7 @@ class ItemSerializer(serializers.ModelSerializer):
             'travel_time', 'order_id', 'discount_applied',
             'minimum_spend', 'points_balance', 'membership_tier', 'initial_value', 'seat_number',
             'firefly_account_id',
+            'notifications_muted', 'is_recurring', 'renewal_period', 'renewal_date', 'share_message',
         ]
         read_only_fields = [
             'id', 'qr_code_base64', 'default_expiry_notification_sent',

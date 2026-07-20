@@ -83,6 +83,17 @@
     </div>
 
     <div class="col-lg-6">
+      <!-- Download My Data (GDPR) -->
+      <div class="card mb-4">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-download me-1"></i> {% trans "Download My Data" %}</h5>
+          <p class="text-muted small">{% trans "Export a machine-readable copy of all data stored for your account: items, wallets, tags, and notification rules." %}</p>
+          <a href="{% url 'gdpr_data_export' %}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-file-earmark-arrow-down me-1"></i> {% trans "Download JSON export" %}
+          </a>
+        </div>
+      </div>
+
       <!-- Login History -->
       <div class="card">
         <div class="card-body">

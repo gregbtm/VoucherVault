@@ -1438,6 +1438,15 @@ body.dark-mode .next-up-card {
   <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkMoveModal">
     <i class="bi bi-folder-symlink"></i> {% trans "Move to Wallet" %}
   </button>
+  <div class="dropdown d-inline-block">
+    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="bulkExportDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+      <i class="bi bi-download"></i> {% trans "Export" %}
+    </button>
+    <ul class="dropdown-menu" aria-labelledby="bulkExportDropdown">
+      <li><button class="dropdown-item" type="button" id="bulkExportCsvBtn">{% trans "Export as CSV" %}</button></li>
+      <li><button class="dropdown-item" type="button" id="bulkExportJsonBtn">{% trans "Export as JSON" %}</button></li>
+    </ul>
+  </div>
   <button type="button" class="btn btn-sm btn-outline-danger" id="bulkDeleteBtn">
     <i class="bi bi-trash"></i> {% trans "Delete" %}
   </button>
@@ -1778,6 +1787,34 @@ document.addEventListener("DOMContentLoaded", function () {
       const modalEl = document.getElementById('bulkMoveModal');
       bootstrap.Modal.getInstance(modalEl).hide();
     });
+  });
+
+  function bulkExportDownload(url, filename) {
+    if (selectedIds.size === 0) return;
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+      body: JSON.stringify({ item_ids: Array.from(selectedIds) }),
+    }).then(response => {
+      if (!response.ok) return response.json().then(d => { throw new Error(d.error || 'Export failed'); });
+      return response.blob();
+    }).then(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    }).catch(err => { if (window.showToast) window.showToast(err.message, 'danger'); });
+  }
+
+  document.getElementById('bulkExportCsvBtn').addEventListener('click', () => {
+    bulkExportDownload('{% url "export_selected_csv" %}', 'vouchervault-selected.csv');
+  });
+
+  document.getElementById('bulkExportJsonBtn').addEventListener('click', () => {
+    bulkExportDownload('{% url "export_selected_json" %}', 'vouchervault-selected.json');
   });
 })();
 </script>

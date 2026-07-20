@@ -1841,6 +1841,13 @@ body.dark-mode .tilt-scan-enable-btn {
                 <span>{% if item.is_archived %}{% trans "Unarchive" %}{% else %}{% trans "Archive" %}{% endif %}</span>
               </button>
             </form>
+            <button type="button" class="more-action-row" id="muteNotifBtn"
+                    data-url="{% url 'toggle_mute_notifications' item.id %}"
+                    data-muted="{{ item.notifications_muted|yesno:'true,false' }}"
+                    title="{% if item.notifications_muted %}{% trans 'Notifications are muted for this item — click to unmute' %}{% else %}{% trans 'Mute all notifications for this item' %}{% endif %}">
+              <i class="bi {% if item.notifications_muted %}bi-bell-slash-fill text-warning{% else %}bi-bell-slash{% endif %}"></i>
+              <span>{% if item.notifications_muted %}{% trans "Unmute Notifications" %}{% else %}{% trans "Mute Notifications" %}{% endif %}</span>
+            </button>
             <form action="{% url 'delete_item' item.id %}" method="post" style="display:contents;">
               {% csrf_token %}
               <button type="submit" class="more-action-row more-action-row-danger" onclick="event.preventDefault();var f=this.closest('form');showConfirm('{% trans "Are you sure to delete?" %}','{% trans "Delete" %}',function(){f.submit();});">
@@ -2593,5 +2600,39 @@ vvInitTiltScanDetect({
 })();
 </script>
 {% endif %}
+
+<script>
+(function() {
+  var btn = document.getElementById('muteNotifBtn');
+  if (!btn) return;
+  btn.addEventListener('click', function() {
+    var url = btn.dataset.url;
+    var muted = btn.dataset.muted === 'true';
+    var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+    fetch(url, {
+      method: 'POST',
+      headers: {'X-CSRFToken': csrfToken ? csrfToken.value : '', 'Content-Type': 'application/json'},
+    }).then(function(r) { return r.json(); }).then(function(data) {
+      if (!data.success) return;
+      var nowMuted = data.notifications_muted;
+      btn.dataset.muted = nowMuted ? 'true' : 'false';
+      var icon = btn.querySelector('i');
+      var label = btn.querySelector('span');
+      if (nowMuted) {
+        icon.className = 'bi bi-bell-slash-fill text-warning';
+        label.textContent = '{% trans "Unmute Notifications" %}';
+        btn.title = '{% trans "Notifications are muted for this item — click to unmute" %}';
+      } else {
+        icon.className = 'bi bi-bell-slash';
+        label.textContent = '{% trans "Mute Notifications" %}';
+        btn.title = '{% trans "Mute all notifications for this item" %}';
+      }
+      if (typeof showToast === 'function') {
+        showToast(nowMuted ? '{% trans "Notifications muted for this item." %}' : '{% trans "Notifications unmuted." %}', 'success');
+      }
+    });
+  });
+})();
+</script>
 
 {% endblock content %}

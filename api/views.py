@@ -85,8 +85,8 @@ class ItemViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsItemOwnerOrWalletCollaborator]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = ItemFilter
-    search_fields = ['name', 'redeem_code', 'issuer', 'description']
-    ordering_fields = ['expiry_date', 'name', 'value', 'issue_date']
+    search_fields = ['name', 'redeem_code', 'issuer', 'description', 'notes', 'tags__name']
+    ordering_fields = ['expiry_date', 'name', 'value', 'issue_date', 'last_used_at', 'is_pinned']
     ordering = ['expiry_date']
 
     def get_queryset(self):

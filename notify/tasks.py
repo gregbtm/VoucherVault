@@ -2,6 +2,8 @@ import itertools
 from datetime import date
 from operator import attrgetter
 
+from dateutil.relativedelta import relativedelta
+
 from celery import shared_task
 
 from myapp.models import Item, SiteConfiguration, UserPreference
@@ -38,6 +40,9 @@ def fire_notifications(item, event_type: str, title: str, message: str, dedupe: 
     may legitimately pass through the same event_type more than once
     (e.g. several transactions, or being marked used/available/used again).
     """
+    if item.notifications_muted:
+        return
+
     rules = NotificationRule.objects.filter(user=item.user, enabled=True)
     matching_rules = [r for r in rules if event_type in (r.event_types or [])]
 
@@ -239,3 +244,52 @@ def send_daily_digests():
             )
     if processed_ids:
         DigestEntry.objects.filter(id__in=processed_ids).delete()
+
+
+_RENEWAL_DELTA = {
+    'weekly':    relativedelta(weeks=1),
+    'monthly':   relativedelta(months=1),
+    'quarterly': relativedelta(months=3),
+    'biannual':  relativedelta(months=6),
+    'annual':    relativedelta(years=1),
+}
+
+
+@shared_task
+def advance_recurring_items():
+    """
+    Runs daily. For every recurring item whose renewal_date is today or in
+    the past, advances renewal_date and expiry_date by one renewal_period,
+    resets is_used=False so the item becomes active again, clears the
+    expiry notification sent flags, and fires a renewal_advanced event.
+
+    Safe to re-run: items are filtered to those where renewal_date <= today,
+    so they advance exactly once per cycle (after advancing, the new date is
+    in the future and they drop out of the filter).
+    """
+    today = date.today()
+    items = Item.objects.filter(
+        is_recurring=True,
+        renewal_period__in=_RENEWAL_DELTA,
+        renewal_date__isnull=False,
+        renewal_date__lte=today,
+    ).select_related('user')
+
+    for item in items:
+        delta = _RENEWAL_DELTA[item.renewal_period]
+        item.renewal_date = item.renewal_date + delta
+        if item.expiry_date:
+            item.expiry_date = item.expiry_date + delta
+        item.is_used = False
+        item.default_expiry_notification_sent = False
+        item.final_expiry_notification_sent = False
+        item.save(update_fields=[
+            'renewal_date', 'expiry_date', 'is_used',
+            'default_expiry_notification_sent', 'final_expiry_notification_sent',
+        ])
+        title = f"🔄 {item.name} renewed"
+        message = (
+            f"Next renewal: {item.renewal_date}\n"
+            f"Code: {item.redeem_code}\nValue: {item.value} {item.currency}"
+        )
+        fire_notifications(item, 'renewal_advanced', title, message, dedupe=False)

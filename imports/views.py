@@ -1,11 +1,12 @@
 import json
+import uuid
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext_lazy as _
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_POST
 
 from myapp.models import Item
 
@@ -14,6 +15,7 @@ from .exporters.full_backup import export_full_backup
 from .exporters.json_export import export_items_json
 from .full_backup_import import FullBackupImportError, import_full_backup
 from .models import ImportJob
+from .parsers import get_parser
 from .tasks import process_import_job
 
 ALLOWED_EXTENSIONS = {
@@ -89,6 +91,84 @@ def export_full_backup_view(request):
     response = HttpResponse(export_full_backup(items, user=request.user), content_type='application/zip')
     response['Content-Disposition'] = 'attachment; filename="vouchervault-full-backup.zip"'
     return response
+
+
+def _parse_selected_ids(request):
+    """Return a validated list of UUIDs from a JSON POST body {"item_ids": [...]}."""
+    try:
+        body = json.loads(request.body)
+        raw_ids = body.get('item_ids', [])
+        return [uuid.UUID(str(i)) for i in raw_ids]
+    except (json.JSONDecodeError, ValueError):
+        return []
+
+
+@require_POST
+@login_required
+def export_selected_csv(request):
+    """Export a user-selected subset of items as CSV. POST {"item_ids": [...]}."""
+    ids = _parse_selected_ids(request)
+    if not ids:
+        return JsonResponse({'error': 'No valid item IDs supplied.'}, status=400)
+    items = Item.objects.filter(user=request.user, id__in=ids).select_related('wallet').prefetch_related('tags')
+    csv_text = export_items_csv(items)
+    response = HttpResponse(csv_text, content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="vouchervault-selected.csv"'
+    return response
+
+
+@require_POST
+@login_required
+def export_selected_json(request):
+    """Export a user-selected subset of items as JSON. POST {"item_ids": [...]}."""
+    ids = _parse_selected_ids(request)
+    if not ids:
+        return JsonResponse({'error': 'No valid item IDs supplied.'}, status=400)
+    items = Item.objects.filter(user=request.user, id__in=ids).select_related('wallet').prefetch_related('tags')
+    payload = json.dumps(export_items_json(items), indent=2)
+    response = HttpResponse(payload, content_type='application/json')
+    response['Content-Disposition'] = 'attachment; filename="vouchervault-selected.json"'
+    return response
+
+
+@require_POST
+@login_required
+def preview_import(request):
+    """
+    Parse an uploaded file and return a dry-run preview as JSON.
+    No items are created. Caps row preview at 25 to keep the response small.
+    """
+    source_type = request.POST.get('source_type')
+    upload = request.FILES.get('file')
+
+    if source_type not in dict(ImportJob.SOURCE_CHOICES):
+        return JsonResponse({'error': str(_('Please choose a valid import format.'))}, status=400)
+    if not upload:
+        return JsonResponse({'error': str(_('Please choose a file to upload.'))}, status=400)
+    if upload.size > MAX_UPLOAD_SIZE:
+        return JsonResponse({'error': str(_('File is too large (max 10MB).'))}, status=400)
+    if not upload.name.lower().endswith(ALLOWED_EXTENSIONS[source_type]):
+        return JsonResponse({'error': str(_('File extension does not match the selected format.'))}, status=400)
+
+    try:
+        parser = get_parser(source_type)
+        rows, errors = parser(upload)
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+
+    preview_rows = [
+        {'name': r.get('name', ''), 'type': r.get('type', ''), 'redeem_code': r.get('redeem_code', ''),
+         'value': str(r['value']) if r.get('value') is not None else None, 'currency': r.get('currency', ''),
+         'expiry_date': str(r['expiry_date']) if r.get('expiry_date') else None, 'wallet': r.get('wallet_name'),
+         'tags': r.get('tag_names', [])}
+        for r in rows[:25]
+    ]
+    return JsonResponse({
+        'total_rows': len(rows),
+        'error_count': len(errors),
+        'preview': preview_rows,
+        'errors': errors[:10],
+    })
 
 
 @login_required
