@@ -6117,6 +6117,42 @@ renders its value, and empty fields do not render their labels.
 
 ---
 
+---
+
+### Phase 99: share_message in create/edit form, notification mute toggle, recurring item auto-advance, bulk export, GDPR data export, import dry-run preview
+
+Seven new capabilities shipped in a single PR (#125):
+
+**`share_message` field on create/edit form**
+The `share_message` field (added in an earlier phase to the model and view-item page) was missing from the create/edit form. A textarea now appears between Notes and Notify Days Before, pre-populated from the saved value. `ItemSerializer` exposes the field for API clients too.
+
+**Per-item notification mute**
+`Item.notifications_muted` BooleanField (migration `0072`) lets users suppress all notification rules for a single item without disabling them globally. The view-item action menu gains a "Mute / Unmute Notifications" button that POSTs to `toggle_mute_notifications` via AJAX and swaps the icon + label in place with a toast confirmation. `fire_notifications()` in `notify/tasks.py` returns early when the flag is set.
+
+**Recurring item auto-advance (Celery task)**
+`advance_recurring_items()` in `notify/tasks.py` runs daily (registered in `create_default_periodic_tasks`). For every item where `is_recurring=True` and `renewal_date ≤ today`, it:
+- advances `renewal_date` and `expiry_date` by the calendar-correct delta (`dateutil.relativedelta` — weekly / monthly / quarterly / biannual / annual)
+- resets `is_used = False` and clears both expiry-notification-sent flags
+- fires a `renewal_advanced` notification (dedup disabled so it always fires)
+
+**API search and ordering extended**
+`ItemViewSet.search_fields` now includes `notes` and `tags__name`; `ordering_fields` now includes `last_used_at` and `is_pinned`.
+
+**Bulk export (CSV / JSON) for selected items**
+Two POST endpoints (`/imports/export/selected/csv/` and `/imports/export/selected/json/`) accept `{"item_ids": [...]}` and return a file download scoped to the authenticated user's items. The inventory bulk action bar gains an Export dropdown with CSV and JSON options; clicking fetches the response as a Blob and triggers a browser download without a page reload.
+
+**GDPR data export**
+`GET /user/security/download-my-data/` (login required) returns a JSON file containing the full account record: user profile, all items with their transactions/documents/shares, wallets, tags, and notification rules. Linked from the Security page as "Download JSON export".
+
+**Import dry-run preview**
+`POST /imports/preview/` accepts the same `file` + `source_type` multipart form as the real import, runs it through the same parser, but makes no database writes. It returns `{total_rows, error_count, preview: [...first 25 rows...], errors: [...first 10 errors...]}`. The Import/Export page gains a "Preview" button alongside "Start Import"; clicking it renders an inline table without leaving the page.
+
+**Test suite:** 958 tests, 0 failures (up from the previous baseline).
+
+**Files changed:** `api/serializers.py`, `api/views.py`, `imports/templates/imports/upload.html`, `imports/urls.py`, `imports/views.py`, `myapp/management/commands/create_default_periodic_tasks.py`, `myapp/migrations/0072_item_notifications_muted.py`, `myapp/models.py`, `myapp/templates/create-item.html`, `myapp/templates/inventory.html`, `myapp/templates/session_management.html`, `myapp/templates/view-item.html`, `myapp/tests.py`, `myapp/urls.py`, `myapp/views.py`, `notify/tasks.py`
+
+---
+
 ## Upgrading an existing deployment
 
 If you're running the upstream Docker image and want to switch to this
