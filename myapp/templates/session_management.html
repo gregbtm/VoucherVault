@@ -38,7 +38,7 @@
           {% else %}
           <p class="small text-muted mb-2">{% blocktrans with n=backup_codes_remaining %}{{ n }} backup codes remaining.{% endblocktrans %}</p>
           {% endif %}
-          <form method="POST" action="{% url 'totp_disable' %}" onsubmit="return confirm('{% trans "Disable two-factor authentication? Your account will be less secure." %}')">
+          <form method="POST" action="{% url 'totp_disable' %}" onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Disable two-factor authentication? Your account will be less secure." %}','{% trans "Disable" %}',function(){f.submit();})">
             {% csrf_token %}
             <button type="submit" class="btn btn-outline-danger">
               <i class="bi bi-shield-x me-1"></i> {% trans "Disable 2FA" %}

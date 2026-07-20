@@ -147,9 +147,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
   document.querySelectorAll('.api-token-confirm-form').forEach(function (form) {
     form.addEventListener('submit', function (e) {
-      if (!confirm(form.dataset.confirm)) {
-        e.preventDefault();
-      }
+      e.preventDefault();
+      showConfirm(form.dataset.confirm, form.dataset.confirmLabel || '{% trans "Confirm" %}', function() { form.submit(); });
     });
   });
 });

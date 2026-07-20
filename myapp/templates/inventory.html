@@ -1037,7 +1037,7 @@ body.dark-mode .next-up-card {
         </div>
       </a>
       <form class="next-up-mark-used-form" method="post" action="{% url 'toggle_item_status' active_today_item.item.id %}"
-            onsubmit="return confirm('{% trans "Mark this item as used?" %}');">
+            onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Mark this item as used?" %}','{% trans "Mark as Used" %}',function(){f.submit();});">
         {% csrf_token %}
         <input type="hidden" name="next" value="{% url 'show_items' %}">
         <button type="submit" class="next-up-mark-used-btn" title="{% trans 'Mark as used' %}" aria-label="{% trans 'Mark as used' %}">
@@ -1087,7 +1087,7 @@ body.dark-mode .next-up-card {
         </div>
       </a>
       <form class="next-up-mark-used-form" method="post" action="{% url 'toggle_item_status' entry.item.id %}"
-            onsubmit="return confirm('{% trans "Mark this item as used?" %}');">
+            onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Mark this item as used?" %}','{% trans "Mark as Used" %}',function(){f.submit();});">
         {% csrf_token %}
         <input type="hidden" name="next" value="{% url 'show_items' %}">
         <button type="submit" class="next-up-mark-used-btn" title="{% trans 'Mark as used' %}" aria-label="{% trans 'Mark as used' %}">
@@ -1743,12 +1743,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
   document.getElementById('bulkDeleteBtn').addEventListener('click', () => {
     if (selectedIds.size === 0) return;
-    if (!confirm('{% trans "Delete the selected items? This cannot be undone." %}')) return;
-    const btn = document.getElementById('bulkDeleteBtn');
-    window.setButtonLoading(btn, true);
-    postBulkAction('{% url "bulk_delete_items" %}').then(data => {
-      if (data.success) { window.location.reload(); return; }
-      window.setButtonLoading(btn, false);
+    showConfirm('{% trans "Delete the selected items? This cannot be undone." %}', '{% trans "Delete" %}', function() {
+      const btn = document.getElementById('bulkDeleteBtn');
+      window.setButtonLoading(btn, true);
+      postBulkAction('{% url "bulk_delete_items" %}').then(data => {
+        if (data.success) { window.location.reload(); return; }
+        window.setButtonLoading(btn, false);
+      });
     });
   });
 

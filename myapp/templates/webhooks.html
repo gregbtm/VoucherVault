@@ -79,7 +79,7 @@
                 </button>
               </form>
               <form method="POST" action="{% url 'delete_webhook' hook.id %}"
-                    onsubmit="return confirm('{% trans "Delete this webhook?" %}')">
+                    onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Delete this webhook?" %}','{% trans "Delete" %}',function(){f.submit();})">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-sm btn-outline-danger" title="{% trans 'Delete' %}">
                   <i class="bi bi-trash"></i>

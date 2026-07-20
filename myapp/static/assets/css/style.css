@@ -13,6 +13,40 @@
   scroll-behavior: smooth;
 }
 
+/* Skip navigation link — WCAG 2.4.1 */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 8px;
+  z-index: 10000;
+  background: #1e1e1e;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 0 0 6px 6px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.12s;
+}
+.skip-link:focus { top: 0; color: #fff; }
+
+/* Keyboard focus visibility — WCAG 2.4.7
+   :focus removes the default browser ring for mouse/touch users;
+   :focus-visible restores a clear ring only for keyboard navigation. */
+*:focus:not(:focus-visible) { outline: none; }
+*:focus-visible {
+  outline: 2px solid #4154f1 !important;
+  outline-offset: 2px !important;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 body {
   font-family: "Open Sans", sans-serif;
   background: #f6f9ff;

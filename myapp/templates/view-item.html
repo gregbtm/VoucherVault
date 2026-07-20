@@ -1843,7 +1843,7 @@ body.dark-mode .tilt-scan-enable-btn {
             </form>
             <form action="{% url 'delete_item' item.id %}" method="post" style="display:contents;">
               {% csrf_token %}
-              <button type="submit" class="more-action-row more-action-row-danger" onclick="return confirm('{% trans "Are you sure to delete?" %}');">
+              <button type="submit" class="more-action-row more-action-row-danger" onclick="event.preventDefault();var f=this.closest('form');showConfirm('{% trans "Are you sure to delete?" %}','{% trans "Delete" %}',function(){f.submit();});">
                 <i class="bi bi-trash"></i>
                 <span>{% trans "Delete" %}</span>
               </button>
@@ -1875,7 +1875,7 @@ body.dark-mode .tilt-scan-enable-btn {
               </span>
               <form method="POST" action="{% url 'unshare_item' item_id=item.id user_id=share.shared_with_user.id %}" style="display:inline;">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-danger unshare-btn" onclick="return confirm('{% trans "Are you sure you want to unshare this item?" %}');">
+                <button type="submit" class="btn btn-danger unshare-btn" onclick="event.preventDefault();var f=this.closest('form');showConfirm('{% trans "Are you sure you want to unshare this item?" %}','{% trans "Unshare" %}',function(){f.submit();});">
                   {% trans "Unshare" %}
                 </button>
               </form>
@@ -1926,7 +1926,7 @@ body.dark-mode .tilt-scan-enable-btn {
                 <button class="btn btn-sm btn-outline-secondary touch-target-btn" type="submit">{% trans "Regenerate" %}</button>
               </form>
               <form method="POST" action="{% url 'revoke_public_share_link' item.id %}"
-                    onsubmit="return confirm('{% trans "Revoke this link? Anyone still holding it will lose access." %}');">
+                    onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Revoke this link? Anyone still holding it will lose access." %}','{% trans "Revoke" %}',function(){f.submit();});">
                 {% csrf_token %}
                 <button class="btn btn-sm btn-outline-danger touch-target-btn" type="submit">{% trans "Revoke" %}</button>
               </form>
@@ -1973,7 +1973,7 @@ body.dark-mode .tilt-scan-enable-btn {
                 {% if can_edit %}
                 <form method="POST" action="{% url 'delete_document' document.id %}" style="display:inline;">
                   {% csrf_token %}
-                  <button type="submit" class="btn btn-danger unshare-btn" onclick="return confirm('{% trans "Delete this document?" %}');">
+                  <button type="submit" class="btn btn-danger unshare-btn" onclick="event.preventDefault();var f=this.closest('form');showConfirm('{% trans "Delete this document?" %}','{% trans "Delete" %}',function(){f.submit();});">
                     {% trans "Delete" %}
                   </button>
                 </form>
@@ -2065,7 +2065,7 @@ body.dark-mode .tilt-scan-enable-btn {
                 <td>
                   <form action="{% url 'delete_transaction' transaction.id %}" method="post" style="display:inline;">
                     {% csrf_token %}
-                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('{% trans "Are you sure to delete?" %}');">
+                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="event.preventDefault();var f=this.closest('form');showConfirm('{% trans "Are you sure to delete?" %}','{% trans "Delete" %}',function(){f.submit();});">
                       <i class="bi bi-trash"></i>
                     </button>
                   </form>
