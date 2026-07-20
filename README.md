@@ -14,7 +14,7 @@
       <a target="_blank" href="https://github.com/gregbtm/VoucherVault/network/members"><img src="https://img.shields.io/github/forks/gregbtm/VoucherVault?style=flat-square&color=4154f1" alt="Forks"></a>
     </p>
     <p>
-      <img src="https://img.shields.io/badge/436%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="436 features and fixes added on top of upstream">
+      <img src="https://img.shields.io/badge/449%20features%20%26%20fixes-vs%20upstream-ffcf6e?style=flat-square&labelColor=1a1a2e" alt="449 features and fixes added on top of upstream">
       <img src="https://img.shields.io/badge/PWA-installable-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="Installable PWA">
       <img src="https://img.shields.io/badge/AI--assisted-scanning-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="AI-assisted scanning">
       <img src="https://img.shields.io/badge/REST-API-1a1a2e?style=flat-square&labelColor=1a1a2e&color=4154f1" alt="REST API">
@@ -75,7 +75,7 @@
 
 Everything below is additive — nothing upstream was rewritten, so this
 fork stays a strict superset and can be rebased against upstream at any
-time. **9 categories, 60+ features** — click a section to expand it; the
+time. **9 categories, 65+ features** — click a section to expand it; the
 full phase-by-phase technical changelog (root causes, code, tests,
 commit links) lives in [`FORK_CHANGES.md`](FORK_CHANGES.md) if you want
 the deep dive.
@@ -129,10 +129,12 @@ available.
 - **"Active Today" widget** — built for a daily round-trip ticket (e.g. a train commute): before your configured cutoff time it shows today's outward leg, then automatically switches to the return leg after it, only ever on the day the ticket is actually valid for. Set a home station in Preferences and tag a ticket's Journey From/To fields (auto-filled by "Scan with AI" for a photographed train ticket) to use it. Off by default.
 - **"Nearby" widget** (opt-in) — a one-shot location check on Inventory load: if a shop near you (via OpenStreetMap, free and no API key) matches one of your item issuers, it surfaces in a "Nearby" card — walk into Tesco and see your Tesco gift card without searching for it. Never watches your location continuously and never stores your coordinates.
 - **"Travel Pass" item type** — a purpose-built layout for train/transport tickets: Journey From/To and an optional Time of Travel, with Value, Currency, Card Number, and PIN all hidden since they don't apply. Issue Date falls back to the expiry date when left blank (many tickets are valid and expire same-day), and every item of this type is filed straight into a "Travel Pass" wallet automatically.
-- **PDF eTicket import (UK rail)** — "Scan with AI" also accepts a PDF eTicket, not just photos: the Aztec barcode UK rail tickets use is decoded server-side and the journey/price fields pre-filled, ready to review and save. The same endpoint powers a fully unattended n8n workflow that watches an inbox for booking confirmation emails and creates the Travel Pass item automatically — see [`docs/RAIL_TICKET_IMPORT_SETUP.md`](docs/RAIL_TICKET_IMPORT_SETUP.md).
+- **PDF eTicket import (UK rail)** — "Scan with AI" also accepts a PDF eTicket, not just photos: the Aztec barcode UK rail tickets use is decoded server-side and the journey/price fields pre-filled, ready to review and save. The same endpoint powers a fully unattended n8n workflow that watches an inbox for booking confirmation emails and creates the Travel Pass item automatically — re-submitting the same PDF is idempotent (HTTP 409 with the existing item, so the n8n workflow correctly labels the email as "processed" rather than "failed"). See [`docs/RAIL_TICKET_IMPORT_SETUP.md`](docs/RAIL_TICKET_IMPORT_SETUP.md).
 - **Auto-assign new items to a wallet by issuer** — set a wallet's "auto-assign" match text (e.g. "National Rail") and any new item whose issuer contains it — scanned or typed — is filed straight into that wallet unless you pick one yourself.
 - **Auto-suggest from recent activity** — after "Scan with AI" fills in what it could read from a photo, any of Issuer, Logo, Wallet, or Currency it left blank get suggested from your habits: the issuer you use most across your last 10 items of that type, with the companion fields taken from your newest matching item. Suggestions wear their own dashed-amber styling so they're never mistaken for values read off the photo. Manual entry (no photo scan) is never auto-suggested.
 - **Self-learning scans** — correct a scan's mistake once (a misread operator name, an Aztec code labelled as QR, a blank field you always fill the same way) and it's remembered per-user and silently fixed on every future scan, flagged with a "learned from your past corrections" chip. Keep a scanned value as-is and any stale correction for it is retired automatically.
+- **Per-type fields** — the create/edit form shows only the fields relevant to the selected item type, with animated collapse/expand. Gift cards get a Face Value field (original purchase value vs. current balance); loyalty cards get Points Balance and Membership Tier; vouchers and coupons get Minimum Spend; travel passes get Seat / Coach. All per-type fields are surfaced on the item detail page too.
+- **Share Message** — an optional text note on any item ("Use before 31 July", "One-time use only") that appears as a highlighted block on the public share page, so you can give context to whoever you share the link with.
 
 </details>
 
@@ -143,9 +145,12 @@ The original Apprise-only expiry check still works exactly as before —
 this adds a second, more flexible layer covering the item's whole
 lifecycle.
 
-- **Rules-based engine** with three extra delivery backends beyond Apprise: [ntfy](https://ntfy.sh), a generic **webhook**, and native browser/OS **Web Push** (opt-in, requires VAPID keys — generate a pair with one command, no third-party relay needed).
+- **Rules-based engine** with four extra delivery backends beyond Apprise: [ntfy](https://ntfy.sh), a generic **webhook**, native browser/OS **Web Push** (opt-in, requires VAPID keys — generate a pair with one command, no third-party relay needed), and a native **Firefly III** backend.
 - **Per-item thresholds** — one item can warn 60 days out, another only 7, plus a final reminder as the deadline gets close.
-- Rules can also fire on item created, used, archived, balance changed, or shared — not just expiry.
+- Rules can also fire on item created (including n8n-imported rail tickets), used, archived, balance changed, or shared — not just expiry.
+- **Firefly III native backend** — link any item to a Firefly III asset account with a one-click "Auto-link" button, then set a notification rule with the `balance_changed` event type. Every balance update posts a withdrawal transaction to Firefly III automatically, keeping your gift card and voucher balances in sync with your personal finance ledger. See [`docs/FIREFLY_III_SETUP.md`](docs/FIREFLY_III_SETUP.md).
+- **Web Push status card** — a persistent "Browser Notifications — This Device" card at the top of the rules page shows whether push is active on the current browser, with Enable/Disable buttons. No more hunting for a subscribe button buried inside a form.
+- **Web Push deep-links** — tapping a push notification now opens the specific item, not the app homepage.
 - **Daily digest mode** — batch a rule's notifications into a single once-a-day summary instead of one push per event, for a rule covering a busy wallet.
 - A complete **delivery log** so you can see exactly what fired, when, and whether it succeeded.
 - Managed entirely from the web UI, no config file editing.

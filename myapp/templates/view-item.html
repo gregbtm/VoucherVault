@@ -1665,8 +1665,53 @@ body.dark-mode .tilt-scan-enable-btn {
               <div class="detail-field-value">{{ item.discount_applied }}</div>
             </div>
             {% endif %}
+
+            {% if item.seat_number %}
+            <div class="detail-field">
+              <div class="detail-field-label">
+                <i class="bi bi-train-front"></i> {% trans "Seat / Coach" %}
+              </div>
+              <div class="detail-field-value">{{ item.seat_number }}</div>
+            </div>
+            {% endif %}
+
+            {% if item.initial_value %}
+            <div class="detail-field">
+              <div class="detail-field-label">
+                <i class="bi bi-cash"></i> {% trans "Face Value" %}
+              </div>
+              <div class="detail-field-value">{{ item.initial_value }}</div>
+            </div>
+            {% endif %}
+
+            {% if item.minimum_spend %}
+            <div class="detail-field">
+              <div class="detail-field-label">
+                <i class="bi bi-basket"></i> {% trans "Minimum Spend" %}
+              </div>
+              <div class="detail-field-value">{{ item.minimum_spend }}</div>
+            </div>
+            {% endif %}
+
+            {% if item.points_balance %}
+            <div class="detail-field">
+              <div class="detail-field-label">
+                <i class="bi bi-stars"></i> {% trans "Points Balance" %}
+              </div>
+              <div class="detail-field-value">{{ item.points_balance }}</div>
+            </div>
+            {% endif %}
+
+            {% if item.membership_tier %}
+            <div class="detail-field">
+              <div class="detail-field-label">
+                <i class="bi bi-award"></i> {% trans "Membership Tier" %}
+              </div>
+              <div class="detail-field-value">{{ item.membership_tier }}</div>
+            </div>
+            {% endif %}
           </div>
-          
+
           <!-- Description -->
           {% if item.description %}
           <div class="item-description-section">
@@ -1698,6 +1743,14 @@ body.dark-mode .tilt-scan-enable-btn {
           <div class="item-description-section">
             <h6><i class="bi bi-journal-text"></i> {% trans "Notes" %}</h6>
             <p>{{ item.notes|linebreaksbr }}</p>
+          </div>
+          {% endif %}
+
+          <!-- Share Message (owner preview) -->
+          {% if item.share_message and can_edit %}
+          <div class="item-description-section">
+            <h6><i class="bi bi-chat-quote"></i> {% trans "Share Message" %}</h6>
+            <p class="text-muted small mb-0">{{ item.share_message|linebreaksbr }}</p>
           </div>
           {% endif %}
 

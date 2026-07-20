@@ -63,6 +63,15 @@ class NotificationRuleForm(forms.ModelForm):
         widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'tgram://bottoken/ChatID,mailto://user:pass@example.com'}),
     )
 
+    firefly_url = forms.URLField(
+        required=False, label=_('Firefly III URL'),
+        widget=forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://firefly.example.com'}),
+    )
+    firefly_token = forms.CharField(
+        required=False, label=_('Personal Access Token'),
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+    )
+
     class Meta:
         model = NotificationRule
         fields = ['name', 'backend', 'enabled', 'event_types', 'digest_frequency']
@@ -98,6 +107,9 @@ class NotificationRuleForm(forms.ModelForm):
             elif self.instance.backend == 'apprise':
                 urls = config.get('urls', '')
                 self.fields['apprise_urls'].initial = urls if isinstance(urls, str) else ','.join(urls)
+            elif self.instance.backend == 'firefly':
+                self.fields['firefly_url'].initial = config.get('url', '')
+                self.fields['firefly_token'].initial = config.get('token', '')
 
     def clean_name(self):
         name = self.cleaned_data['name']
@@ -121,6 +133,9 @@ class NotificationRuleForm(forms.ModelForm):
         elif backend == 'apprise':
             if not cleaned_data.get('apprise_urls'):
                 raise forms.ValidationError(_('At least one Apprise URL is required.'))
+        elif backend == 'firefly':
+            if not cleaned_data.get('firefly_url') or not cleaned_data.get('firefly_token'):
+                raise forms.ValidationError(_('Firefly III URL and Personal Access Token are required.'))
 
         return cleaned_data
 
@@ -145,6 +160,11 @@ class NotificationRuleForm(forms.ModelForm):
                 config['headers'] = {header_name: header_value}
         elif backend == 'apprise':
             config = {'urls': self.cleaned_data['apprise_urls']}
+        elif backend == 'firefly':
+            config = {
+                'url': self.cleaned_data['firefly_url'].rstrip('/'),
+                'token': self.cleaned_data['firefly_token'],
+            }
         else:
             config = {}
 

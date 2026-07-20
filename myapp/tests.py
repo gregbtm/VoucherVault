@@ -5590,3 +5590,62 @@ class CustomLoginTests(TestCase):
         resp = self.client.post(reverse('login'), {'username': 'cl_user', 'password': 'GoodPw123!'})
         self.assertRedirects(resp, reverse('totp_verify'))
         self.assertIn('_totp_user_id', self.client.session)
+
+
+class ViewItemPhase116FieldsTests(TestCase):
+    """Phase 116 fields (seat_number, initial_value, minimum_spend, points_balance,
+    membership_tier) and Phase 115 field (share_message) appear on the item detail page."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def _get(self, item):
+        return self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+
+    def test_seat_number_shown(self):
+        item = make_item(self.user, seat_number='12A Coach B')
+        resp = self._get(item)
+        self.assertContains(resp, '12A Coach B')
+
+    def test_initial_value_shown(self):
+        item = make_item(self.user, initial_value='45.00')
+        resp = self._get(item)
+        self.assertContains(resp, '45.00')
+        self.assertContains(resp, 'Face Value')
+
+    def test_minimum_spend_shown(self):
+        item = make_item(self.user, minimum_spend='10.00')
+        resp = self._get(item)
+        self.assertContains(resp, '10.00')
+        self.assertContains(resp, 'Minimum Spend')
+
+    def test_points_balance_shown(self):
+        item = make_item(self.user, points_balance=3500)
+        resp = self._get(item)
+        self.assertContains(resp, '3500')
+        self.assertContains(resp, 'Points Balance')
+
+    def test_membership_tier_shown(self):
+        item = make_item(self.user, membership_tier='Gold')
+        resp = self._get(item)
+        self.assertContains(resp, 'Gold')
+
+    def test_share_message_shown_to_owner(self):
+        item = make_item(self.user, share_message='Use code SAVE20 at checkout.')
+        resp = self._get(item)
+        self.assertContains(resp, 'Use code SAVE20 at checkout.')
+
+    def test_share_message_hidden_when_empty(self):
+        item = make_item(self.user)
+        resp = self._get(item)
+        self.assertNotContains(resp, 'bi-chat-quote')
+
+    def test_empty_fields_not_rendered(self):
+        item = make_item(self.user)
+        resp = self._get(item)
+        self.assertNotContains(resp, 'Seat / Coach')
+        self.assertNotContains(resp, 'Face Value')
+        self.assertNotContains(resp, 'Minimum Spend')
+        self.assertNotContains(resp, 'Points Balance')
+        self.assertNotContains(resp, 'Membership Tier')
