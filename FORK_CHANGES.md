@@ -145,6 +145,11 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 112 — REST API Coverage (Webhooks, WalletMembership, WalletActivity)](#phase-112--rest-api-coverage-webhooks-walletmembership-walletactivity)
 - [Phase 113 — PWA share_target + MCP server extensions](#phase-113--pwa-share_target--mcp-server-extensions)
 - [Phase 114 — OWASP/NCSC CI compliance hardening](#phase-114--owaspncsc-ci-compliance-hardening)
+- [Phase 115 — Bug batch: share page, barcode opacity, analytics charts, Share Message field](#phase-115--bug-batch-share-page-barcode-opacity-analytics-charts-share-message-field)
+- [Phase 116 — Per-type item form fields and Discount/Railcard scoping](#phase-116--per-type-item-form-fields-and-discountrailcard-scoping)
+- [Phase 117 — Firefly III native notification backend](#phase-117--firefly-iii-native-notification-backend)
+- [Phase 118 — Rail ticket import: dedup, notifications, and improved n8n workflow](#phase-118--rail-ticket-import-dedup-notifications-and-improved-n8n-workflow)
+- [Phase 119 — Browser push: discoverable status card](#phase-119--browser-push-discoverable-status-card)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -5815,6 +5820,230 @@ keeping the dependency graph fresh without manual auditing (NCSC Principle 3
 | A07 Auth Failures | Semgrep + ZAP DAST + TOTP 2FA (Phase 109/111) |
 | A08 Data Integrity | Grype SBOM (Syft) + Trivy |
 | A10 SSRF | Semgrep `p/owasp-top-ten` |
+
+## Phase 115 — Bug batch: share page, barcode opacity, analytics charts, Share Message field
+
+Four independent fixes shipped together.
+
+### Revoked public share link returns a proper 410 page
+
+A public share link that the owner had revoked previously returned a raw Django
+`DoesNotExist` 404 rather than a meaningful response. Added
+`myapp/templates/public_item_revoked.html` — a styled "This link has been
+revoked" page — and updated `myapp/views.py` to distinguish the two cases and
+return HTTP 410 for revoked links.
+
+### Barcode/QR invisible on public share page with reduced motion
+
+The barcode image on the public share page used a CSS `animation:none` rule for
+`prefers-reduced-motion`, which stripped the `opacity:1 forwards` fill from the
+fade-in keyframe and left the barcode permanently invisible. Added an explicit
+`opacity: 1` to the reduced-motion block so the image is always visible regardless
+of the viewer's motion preference.
+
+### Analytics charts blank on initial page load
+
+The three analytics charts (12-Month Trend, Value by Type, Top Issuers) were
+rendered blank because the ECharts initialisation script was in
+`{% block content %}`, which runs before `echarts.min.js` is loaded by the base
+template (line 579 vs line 482). Added `{% block extra_scripts %}` to
+`base.html` after all vendor scripts and moved the chart JS into that block.
+
+### Share Message field (`Item.share_message`)
+
+New optional text field on `Item` (migration `0069_item_share_message`). Set it
+on the edit-item page; it appears as a highlighted note on the public share page,
+letting the owner add context for the recipient ("Use before 31 July",
+"One-time use only", etc.).
+
+**Files changed:** `myapp/migrations/0069_item_share_message.py`,
+`myapp/models.py`, `myapp/forms.py`, `myapp/templates/edit-item.html`,
+`myapp/templates/public_item.html`, `myapp/templates/public_item_revoked.html`,
+`myapp/templates/analytics.html`, `myapp/templates/base.html`, `myapp/views.py`,
+`myapp/tests.py`
+
+---
+
+## Phase 116 — Per-type item form fields and Discount/Railcard scoping
+
+### Per-type conditional field visibility
+
+The create/edit item forms previously showed all fields for all item types,
+creating a cluttered form where fields like "Journey From/To" appeared on gift
+cards and "Face Value" appeared on loyalty cards.
+
+Five new `Item` model fields (migration `0070_item_type_fields`):
+
+| Field | Type | Item type |
+|-------|------|-----------|
+| `minimum_spend` | `DecimalField` | Voucher, Coupon — minimum basket value to redeem |
+| `points_balance` | `PositiveIntegerField` | Loyalty card — current points/stamps count |
+| `membership_tier` | `CharField` | Loyalty card — Silver / Gold / Platinum etc. |
+| `initial_value` | `DecimalField` | Gift card — face value at purchase (vs. current balance) |
+| `seat_number` | `CharField` | Travel pass — seat or coach reservation |
+
+The `toggleFields()` JS function in both `create-item.html` and `edit-item.html`
+was rewritten to enforce per-type visibility rules with animated
+collapse/expand (max-height + opacity transition):
+
+| Type | Shown | Hidden |
+|------|-------|--------|
+| Gift card | Card/Member Number, Face Value (`initial_value`), Order Reference | Journey fields, Points, Tier, Minimum Spend |
+| Voucher | Minimum Spend, Order Reference | Journey fields, Points, Tier, Face Value, PIN |
+| Coupon | Minimum Spend, value-type toggle | Journey fields, Points, Tier, Face Value, PIN |
+| Loyalty card | Membership/Account Number (relabelled), Tier, Points Balance | Currency, Balance-check URL, value field (locked to 0) |
+| Travel pass | Journey/Time fields, Seat/Coach, Order Reference | value, PIN, currency |
+
+The "Card / Member Number" label dynamically relabels to "Membership / Account
+Number" when loyalty card is selected.
+
+### Discount/Railcard scoped to Travel Pass only
+
+The "Discount / Railcard Applied" field was previously shown for Voucher and
+Coupon types as well as Travel Pass. Railcards only apply to rail travel, so
+`toggleFields()` was updated to restrict this field to `travelpass` only in
+both forms.
+
+**Files changed:** `myapp/migrations/0070_item_type_fields.py`, `myapp/models.py`,
+`myapp/forms.py`, `myapp/templates/create-item.html`,
+`myapp/templates/edit-item.html`, `api/serializers.py`
+
+---
+
+## Phase 117 — Firefly III native notification backend
+
+Adds a first-class Firefly III notification backend so balance changes on
+VoucherVault items automatically post withdrawal transactions to a Firefly III
+instance, keeping gift card and voucher balances in sync with the user's
+financial ledger without manual entry.
+
+### New model field
+
+`Item.firefly_account_id` (`CharField`, nullable, migration `0071`) — the
+Firefly III asset account ID to post transactions against. Editable on the
+item edit page with an "Auto-link" action button that queries the Firefly III
+API to find or create a matching account by name.
+
+### Notification backend (`notify/backends/firefly_backend.py`)
+
+`FireflyBackend.send()` handles the `balance_changed` event type:
+- Reads `SiteConfiguration.firefly_iii_url` and `firefly_iii_token`
+- Fetches the current account balance from Firefly III
+- Posts a `withdrawal` transaction for the difference (spent amount)
+- Handles auth failures, network errors, and missing account IDs gracefully
+  with per-failure logging
+
+### API + form wiring
+
+- `POST /api/v1/items/{id}/firefly-link/` — looks up or creates a Firefly III
+  asset account by the item's name/issuer, writes the returned account ID back to
+  `item.firefly_account_id`; used by the "Auto-link" button on the edit-item page
+- `firefly_account_id` exposed in `ItemSerializer`
+- Edit-item form: Firefly Account ID field + Auto-link button rendered when
+  `FIREFLY_III_URL` is configured; backend-fields section for Firefly in the
+  notification rules form
+
+### Notification rules
+
+`firefly` added to `BACKEND_CHOICES` on `NotificationRule`. A rule with
+`backend=firefly` and event type `balance_changed` will post to Firefly III on
+every balance update.
+
+**Environment variables:** `FIREFLY_III_URL`, `FIREFLY_III_TOKEN` (both in
+`SiteConfiguration`)
+
+**Files changed:** `notify/backends/firefly_backend.py` (new),
+`notify/backends/__init__.py`, `notify/models.py`,
+`myapp/migrations/0071_item_firefly_account_id.py`, `myapp/models.py`,
+`myapp/forms.py`, `myapp/templates/create-item.html`,
+`myapp/templates/edit-item.html`, `api/views.py`, `api/serializers.py`,
+`docs/FIREFLY_III_SETUP.md`, `notify/tests.py`
+
+---
+
+## Phase 118 — Rail ticket import: dedup, notifications, and improved n8n workflow
+
+Three correctness fixes for the n8n rail ticket import pipeline, plus a
+reworked n8n workflow JSON.
+
+### Per-user duplicate detection (409 on re-import)
+
+`RailTicketImportView.post()` now checks for an existing `travelpass` item with
+the same `order_id` for the requesting user before creating a new one. If found,
+it returns `HTTP 409 Conflict` with the existing item serialised in the response
+body. This means re-submitting the same PDF is idempotent — it does not create
+duplicates.
+
+### `notify_item_created` called after import
+
+Previously, items imported via the rail ticket endpoint did not trigger the
+`item_created` notification rules (webpush, ntfy, webhook). `notify_item_created(item)`
+is now called immediately after a successful `Item.objects.create()`, so
+notification rules fire for n8n-imported tickets the same as for UI- or
+API-created ones.
+
+### WebPush deep-link on notification click
+
+`WebPushBackend.send()` now includes a `url` field in the JSON payload
+(`/en/items/view/{item.id}/`). The service worker's existing `notificationclick`
+handler already read `payload.url` to open a URL on tap, but the backend never
+sent one — clicking a push notification always opened `/`. It now opens the
+specific item.
+
+### Improved n8n workflow (`docs/n8n-workflows/vouchervault-rail-ticket-import.json`)
+
+The importable n8n workflow was rewritten with three new nodes:
+
+| Node | Type | Purpose |
+|------|------|---------|
+| Config | Set | User sets `ntfy_topic` here — single place to configure optional failure alerts |
+| Duplicate or real error? | If | Routes 409 responses to "Label: Processed" (not "Label: Failed") |
+| ntfy configured? | If | Skips the ntfy notification node if `ntfy_topic` is blank |
+| Notify: Import Failed | HTTP Request | POSTs a high-priority ntfy alert with the error detail and email subject |
+
+409 errors are now correctly treated as "already imported" — the email gets the
+`VoucherVault-Processed` label instead of `VoucherVault-Failed`, and no alert
+fires. Genuine parse failures label the email `VoucherVault-Failed` and
+optionally notify via ntfy.
+
+**Files changed:** `api/views.py`, `api/tests.py`, `notify/backends/webpush.py`,
+`notify/tests.py`,
+`docs/n8n-workflows/vouchervault-rail-ticket-import.json`
+
+---
+
+## Phase 119 — Browser push: discoverable status card
+
+The previous web push subscribe/unsubscribe UI was a button buried inside the
+notification rule form — only visible after selecting "Web Push" as the backend.
+First-time users had no way to know push was available.
+
+### Persistent status card
+
+A "Browser Notifications — This Device" card now appears at the top of the
+Notification Rules page whenever web push is enabled in Site Settings. On page
+load it calls `pushManager.getSubscription()` and renders one of three states:
+
+| State | Indicator | Action |
+|-------|-----------|--------|
+| Subscribed | Green bell + "Active" badge | Disable button |
+| Not subscribed | Muted bell | Enable button |
+| Unsupported (HTTP or old browser) | Bell-slash | "Not supported" message |
+
+**Enable flow:** `Notification.requestPermission()` → `pushManager.subscribe()`
+with the VAPID public key → `POST /en/notifications/webpush/subscribe/` to
+persist the subscription server-side → card flips to Active state.
+
+**Disable flow:** Fetch current subscription → `POST .../unsubscribe/` to remove
+server-side → `sub.unsubscribe()` → card flips to Not active state.
+
+The webpush backend-fields section in the form now simply explains what the
+backend does and points to the card above, eliminating the duplicate subscribe
+button that was previously buried there.
+
+**Files changed:** `notify/templates/notify/rules.html`
+
+---
 
 ## Upgrading an existing deployment
 
