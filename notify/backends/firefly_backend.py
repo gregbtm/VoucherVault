@@ -36,6 +36,8 @@ def _do_firefly_push(config: dict, item, transaction) -> bool:
 
     tx_value = Decimal(str(transaction.value or 0))
     amount = abs(tx_value)
+    if not amount:
+        return True
     description = transaction.description or item.name
     tx_date = str(transaction.date) if transaction.date else str(date.today())
 

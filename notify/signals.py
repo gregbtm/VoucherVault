@@ -33,13 +33,17 @@ def handle_item_value_change(sender, instance, created, **kwargs):
         return
     if not getattr(instance, 'firefly_account_id', ''):
         return
+    if getattr(instance, 'is_archived', False):
+        return
 
     from myapp.models import Transaction
     delta = new_value - original
+    currency = getattr(instance, 'currency', '') or ''
+    description = f'Value adjusted from {original:.2f} to {new_value:.2f}{" " + currency if currency else ""}'
     try:
         tx = Transaction.objects.create(
             item=instance,
-            description='Value adjustment',
+            description=description,
             value=delta,
             date=timezone.now(),
         )

@@ -592,7 +592,7 @@ class FireflyValueChangeSignalTests(TestCase):
         self.rule = make_rule(self.user, backend='firefly', event_types=['balance_changed'])
 
     def test_value_change_creates_adjustment_transaction(self):
-        item = make_item(self.user, type='giftcard', value='100.00', firefly_account_id='42')
+        item = make_item(self.user, type='giftcard', value='100.00', currency='GBP', firefly_account_id='42')
         initial_tx_count = Transaction.objects.filter(item=item).count()
         item.value = 80
         item.save()
@@ -600,10 +600,13 @@ class FireflyValueChangeSignalTests(TestCase):
             Transaction.objects.filter(item=item).count(),
             initial_tx_count + 1,
         )
-        adj = Transaction.objects.filter(item=item, description='Value adjustment').first()
+        adj = Transaction.objects.filter(item=item, description__startswith='Value adjusted').first()
         self.assertIsNotNone(adj)
         from decimal import Decimal
         self.assertEqual(adj.value, Decimal('-20.00'))
+        self.assertIn('100.00', adj.description)
+        self.assertIn('80', adj.description)
+        self.assertIn('GBP', adj.description)
 
     def test_no_adjustment_if_value_unchanged(self):
         item = make_item(self.user, type='giftcard', value='100.00', firefly_account_id='42')
@@ -620,7 +623,85 @@ class FireflyValueChangeSignalTests(TestCase):
 
     def test_no_adjustment_on_create(self):
         item = make_item(self.user, type='giftcard', value='50.00', firefly_account_id='42')
-        self.assertEqual(Transaction.objects.filter(item=item, description='Value adjustment').count(), 0)
+        self.assertEqual(Transaction.objects.filter(item=item, description__startswith='Value adjusted').count(), 0)
+
+    def test_no_adjustment_for_archived_item(self):
+        item = make_item(self.user, type='giftcard', value='100.00', firefly_account_id='42', is_archived=True)
+        initial_count = Transaction.objects.filter(item=item).count()
+        item.value = 50
+        item.save()
+        self.assertEqual(Transaction.objects.filter(item=item).count(), initial_count)
+
+
+class FireflyTestConnectionViewTests(TestCase):
+    """POST /notifications/firefly-test-connection/ validates Firefly credentials via /api/v1/about."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='ffconn_user', password='pw12345!')
+        self.client.login(username='ffconn_user', password='pw12345!')
+        self.url = reverse('firefly_test_connection')
+
+    @patch('notify.views.req_lib.get')
+    def test_successful_connection_returns_ok_and_version(self, mock_get):
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'data': {'version': '6.1.0'}},
+        )
+        resp = self.client.post(self.url, {'url': 'https://firefly.example.com', 'token': 'mytoken'})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['version'], '6.1.0')
+
+    @patch('notify.views.req_lib.get')
+    def test_bad_token_returns_auth_error(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=401)
+        resp = self.client.post(self.url, {'url': 'https://firefly.example.com', 'token': 'bad'})
+        data = resp.json()
+        self.assertFalse(data['ok'])
+        self.assertIn('auth', data['error'].lower())
+
+    def test_missing_url_returns_error(self):
+        resp = self.client.post(self.url, {'url': '', 'token': 'tok'})
+        data = resp.json()
+        self.assertFalse(data['ok'])
+
+    def test_requires_login(self):
+        self.client.logout()
+        resp = self.client.post(self.url, {'url': 'https://x.com', 'token': 'tok'})
+        self.assertNotEqual(resp.status_code, 200)
+
+
+class FireflyZeroAmountSkipTests(TestCase):
+    """Zero-value transactions must not be pushed (Firefly rejects them with 422)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='zero_user', password='pw12345!')
+        self.rule = make_rule(self.user, backend='firefly', event_types=['balance_changed'])
+
+    @patch('notify.backends.firefly_backend.requests.post')
+    def test_zero_amount_skips_http_post(self, mock_post):
+        from notify.backends.firefly_backend import _do_firefly_push
+        item = make_item(self.user, type='giftcard', value='50.00', firefly_account_id='99')
+        tx = Transaction.objects.create(item=item, date=timezone.now(), description='zero', value='0.00')
+        result = _do_firefly_push(self.rule.config, item, tx)
+        self.assertTrue(result)
+        mock_post.assert_not_called()
+
+
+class FireflyArchivedExpiryTests(TestCase):
+    """Archived items must not receive expiry notifications."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='arch_exp_user', password='pw12345!')
+        make_rule(self.user, backend='ntfy', event_types=['expiry_warning'])
+
+    def test_archived_item_skipped_in_expiry_check(self):
+        from notify.tasks import check_and_notify_expiry
+        make_item(self.user, is_archived=True, expiry_date=date.today() + timedelta(days=1), notify_days_before=5)
+        with patch('notify.tasks.fire_notifications') as mock_fire:
+            check_and_notify_expiry()
+            mock_fire.assert_not_called()
 
 
 class FireflyCloseAccountTests(TestCase):

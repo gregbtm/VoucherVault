@@ -6153,6 +6153,71 @@ Two POST endpoints (`/imports/export/selected/csv/` and `/imports/export/selecte
 
 ---
 
+## Phase 121 — Firefly III deep integration (Tiers 1–4) + gap-fill
+
+**Tier 1 — Transaction sync tracking & deep links**
+`Transaction.firefly_transaction_id` (`CharField`, max 64, blank/default `''`) is
+written back by the Firefly backend the moment a push succeeds (via a targeted
+`queryset.update()` to avoid re-triggering signals). The item detail page gains:
+- A **"View account in Firefly III"** pill link when an account is linked and a rule
+  URL is resolvable.
+- A **sync status summary** chip showing separate synced / pending counts (previously
+  the chip incorrectly counted all transactions regardless of sync state).
+- A **per-row sync indicator** in the transaction table: green filled check if synced,
+  pulsing amber clock (`@keyframes firefly-pending-pulse`) if pending, respecting
+  `prefers-reduced-motion`.
+
+**Tier 2 — Async Celery push + retry queue**
+`FireflyBackend.send()` enqueues `push_transaction_to_firefly.delay(rule_id, item_id,
+transaction_id)` via Celery when `rule_id` is set. `_do_firefly_push()` is a pure
+HTTP helper used by both the async task and sync fallback. A new hourly periodic
+task `retry_failed_firefly_pushes` scans items with a linked Firefly account for
+transactions with blank `firefly_transaction_id` and re-queues them. Backfilling
+previously unsynced transactions is triggered automatically when an item is linked
+via `POST /api/v1/items/{id}/firefly-link/`.
+
+**Tier 3 — Value-change adjustment transactions & archive hook**
+`notify/signals.py` registers a `post_save` receiver on `Item`. When an existing,
+non-archived item with a linked Firefly account has its `value` changed, an
+adjustment `Transaction` is created for the delta and pushed to Firefly immediately.
+The description reads `"Value adjusted from X.XX to Y.YY GBP"` so adjustments are
+identifiable in Firefly history. `notify_item_archived` optionally calls Firefly's
+`PATCH /api/v1/accounts/{id}` with `{"active": false}` when the rule config contains
+`close_account_on_archive: true`.
+
+**Tier 4 — Per-item and wallet-level rule override**
+`Item.firefly_rule` and `Wallet.firefly_rule` FK fields (both `SET_NULL`, migration
+`0073`) allow pinning a specific `NotificationRule` to override the global fallback.
+`_find_firefly_rule(item)` implements the three-level cascade: item override →
+wallet override → first enabled user firefly rule. The item edit form gains a
+"Firefly III Rule (override)" dropdown scoped to the user's enabled Firefly rules.
+`TransactionSerializer` now exposes `firefly_transaction_id` as a read-only field.
+
+**Gap-fill additions (this phase)**
+- **Firefly "Test Connection" button** on the notification rule form: AJAX POST to
+  `GET /notifications/firefly-test-connection/` calls `/api/v1/about` on the
+  configured Firefly instance and shows version or error inline without saving.
+- **Archived item guard** in `handle_item_value_change`: adjustment transactions are
+  no longer created when `item.is_archived` is True.
+- **Corrected sync chip**: view-item now passes `firefly_synced_count` and
+  `firefly_pending_count` from the view rather than computing `transactions|length`.
+- **`FIREFLY_III_SETUP.md` updated**: Limitations section revised to reflect archive
+  hook, value-change transactions, rule override cascade, and sync status UI.
+
+**Test suite:** 984 tests, 0 failures.
+
+**Files changed:** `myapp/migrations/0073_firefly_enhancements.py` (new),
+`notify/migrations/0004_firefly_enhancements.py` (new), `notify/signals.py` (new),
+`notify/apps.py`, `notify/backends/base.py`, `notify/backends/__init__.py`,
+`notify/backends/firefly_backend.py`, `notify/tasks.py`, `notify/views.py`,
+`notify/urls.py`, `notify/templates/notify/rules.html`, `myapp/models.py`,
+`myapp/views.py`, `myapp/forms.py`, `myapp/templates/view-item.html`,
+`myapp/templates/edit-item.html`, `api/serializers.py`, `api/views.py`,
+`myapp/management/commands/create_default_periodic_tasks.py`,
+`docs/FIREFLY_III_SETUP.md`, `myapp/tests.py`, `notify/tests.py`
+
+---
+
 ## Upgrading an existing deployment
 
 If you're running the upstream Docker image and want to switch to this

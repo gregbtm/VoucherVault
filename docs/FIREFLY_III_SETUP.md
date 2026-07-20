@@ -82,17 +82,51 @@ asset account, with:
 
 ---
 
+## Sync status
+
+On the item detail page, each transaction row shows a sync indicator:
+
+- **Green check** — the transaction has been pushed to Firefly III and its
+  Firefly transaction ID is stored.
+- **Pulsing amber clock** — the push is queued or pending (e.g. Celery hasn't
+  run yet, or a previous attempt failed and will be retried).
+
+A summary chip at the top of the Firefly section shows total synced vs. pending
+counts. The `retry_failed_firefly_pushes` Celery task runs hourly and
+automatically re-queues any pending transactions.
+
+## Value changes and archive
+
+- **Value edited directly** — when you change the opening value of a linked
+  item (e.g. to correct an initial balance), VoucherVault automatically creates
+  an adjustment transaction for the difference and pushes it to Firefly III.
+  The description reads "Value adjusted from X.XX to Y.YY GBP" so the
+  adjustment is clearly identifiable in Firefly.
+- **Item archived** — if your Firefly III rule has `close_account_on_archive:
+  true` in its config (set via the notification rule's raw config), the asset
+  account in Firefly III is marked inactive when you archive the item.
+
+## Rule override (per-item / per-wallet)
+
+By default, the Firefly backend uses the first enabled Firefly rule belonging
+to the item's owner. You can override this at two levels:
+
+- **Per-wallet**: set `firefly_rule` on the wallet (API or admin) to route all
+  items in that wallet through a specific rule.
+- **Per-item**: set "Firefly III Rule (override)" on the item's edit form to
+  pin a specific rule for that item, overriding the wallet and global default.
+
+The cascade is: item override → wallet override → first enabled global rule.
+
 ## Limitations
 
 - **One-way only.** Spending recorded in Firefly III directly doesn't flow
   back to VoucherVault.
-- **balance\_changed events only.** Creating, archiving, or deleting an item
-  doesn't touch Firefly — only spend transactions trigger withdrawals.
-- **Negative transactions are skipped.** The backend only posts when
-  `abs(transaction.value) > 0`. If you record a zero-value correction it's
-  silently ignored.
-- **No delete/archive cleanup.** If you delete or archive a VoucherVault item,
-  its Firefly asset account isn't touched.
+- **Zero-value transactions are skipped.** The backend only posts when
+  `abs(transaction.value) > 0`.
+- **No delete cleanup.** Deleting a VoucherVault item does not delete the
+  linked Firefly asset account (archiving can optionally mark it inactive —
+  see above).
 
 ---
 

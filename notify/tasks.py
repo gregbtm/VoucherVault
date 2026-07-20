@@ -184,7 +184,7 @@ def check_and_notify_expiry():
     default_threshold = default_threshold_days()
     final_threshold = final_threshold_days()
 
-    items = Item.objects.filter(is_used=False, expiry_date__isnull=False).select_related('user')
+    items = Item.objects.filter(is_used=False, is_archived=False, expiry_date__isnull=False).select_related('user')
     for item in items:
         days_left = (item.expiry_date - today).days
         threshold = item.notify_days_before if item.notify_days_before is not None else default_threshold
@@ -270,7 +270,7 @@ def _find_firefly_rule(item):
     if item.wallet_id:
         # Reload wallet if needed to access firefly_rule
         from myapp.models import Wallet
-        wallet = item.wallet if hasattr(item, '_wallet_cache') else Wallet.objects.filter(pk=item.wallet_id).first()
+        wallet = item.wallet if 'wallet' in item.__dict__ else Wallet.objects.filter(pk=item.wallet_id).first()
         if wallet and wallet.firefly_rule_id:
             rule = wallet.firefly_rule
             if rule and rule.enabled:

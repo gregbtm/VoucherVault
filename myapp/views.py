@@ -566,12 +566,19 @@ def view_item(request, item_uuid):
             logger.warning('Google Wallet link generation failed for item %s: %s', item.id, exc, exc_info=True)
 
     firefly_url = None
+    firefly_synced_count = 0
+    firefly_pending_count = 0
     if item.firefly_account_id:
         firefly_rule = _find_firefly_rule(item)
         if firefly_rule:
             base_url = (firefly_rule.config.get('url') or '').rstrip('/')
             if base_url:
                 firefly_url = f'{base_url}/accounts/{item.firefly_account_id}'
+        for tx in transactions:
+            if tx.firefly_transaction_id:
+                firefly_synced_count += 1
+            else:
+                firefly_pending_count += 1
 
     context = {
         'item': item,
@@ -590,6 +597,8 @@ def view_item(request, item_uuid):
         'preferences': preferences,
         'public_share': ItemPublicShare.objects.filter(item=item).first(),
         'firefly_url': firefly_url,
+        'firefly_synced_count': firefly_synced_count,
+        'firefly_pending_count': firefly_pending_count,
     }
     return render(request, 'view-item.html', context)
 

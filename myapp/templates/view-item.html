@@ -414,6 +414,17 @@ a.toolbar-btn-primary:hover {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes firefly-pending-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .firefly-pending-pulse {
+    animation: firefly-pending-pulse 1.6s ease-in-out infinite;
+    display: inline-block;
+  }
+}
+
 .more-actions-header {
   padding: 10px 14px;
   font-size: 11.5px;
@@ -1750,18 +1761,23 @@ body.dark-mode .tilt-scan-enable-btn {
                 <i class="bi bi-box-arrow-up-right"></i> {% trans "View account in Firefly III" %}
               </a>
               {% endif %}
-              {% with synced=transactions|length %}
-              {% if synced > 0 %}
+              {% if firefly_synced_count > 0 %}
               <span class="badge rounded-pill bg-success">
                 <i class="bi bi-check-circle"></i>
-                {% blocktrans count counter=synced %}{{ counter }} transaction synced{% plural %}{{ counter }} transactions synced{% endblocktrans %}
+                {% blocktrans count counter=firefly_synced_count %}{{ counter }} synced{% plural %}{{ counter }} synced{% endblocktrans %}
               </span>
-              {% else %}
+              {% endif %}
+              {% if firefly_pending_count > 0 %}
+              <span class="badge rounded-pill bg-warning text-dark">
+                <i class="bi bi-clock firefly-pending-pulse"></i>
+                {% blocktrans count counter=firefly_pending_count %}{{ counter }} pending{% plural %}{{ counter }} pending{% endblocktrans %}
+              </span>
+              {% endif %}
+              {% if firefly_synced_count == 0 and firefly_pending_count == 0 %}
               <span class="badge rounded-pill bg-secondary">
                 <i class="bi bi-dash-circle"></i> {% trans "No transactions yet" %}
               </span>
               {% endif %}
-              {% endwith %}
             </div>
           </div>
           {% endif %}
@@ -2102,13 +2118,13 @@ body.dark-mode .tilt-scan-enable-btn {
                 {% if firefly_url %}
                 <td>
                   {% if transaction.firefly_transaction_id %}
-                  <a href="{{ firefly_url }}" target="_blank" rel="noopener noreferrer"
+                  <a href="{{ firefly_url }}/transactions" target="_blank" rel="noopener noreferrer"
                      title="{% trans 'Synced to Firefly III' %}" class="text-success">
                     <i class="bi bi-check-circle-fill"></i>
                   </a>
                   {% else %}
-                  <span class="text-muted" title="{% trans 'Not yet synced to Firefly III' %}">
-                    <i class="bi bi-clock"></i>
+                  <span class="text-warning" title="{% trans 'Pending sync to Firefly III' %}">
+                    <i class="bi bi-clock firefly-pending-pulse"></i>
                   </span>
                   {% endif %}
                 </td>
