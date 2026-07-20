@@ -347,18 +347,33 @@
           <span>{% trans "All Items" %}</span>
         </a>
       </li>
-      {% for wallet in sidebar_wallets %}
+      {% for wallet in sidebar_own_wallets %}
       <li class="nav-item">
         <a class="nav-link collapsed" href="{% url 'show_items' %}?wallet={{ wallet.id }}&status=all">
           <i class="bi {{ wallet.icon|default:'bi-wallet2' }}" style="color: {{ wallet.color }};"></i>
           <span>{{ wallet.name }}</span>
-          {% if wallet.user_id != request.user.id %}
-          <i class="bi bi-people ms-auto" title="{% trans 'Shared with you' %}"></i>
+          <span class="badge bg-secondary ms-2">{{ wallet.item_count }}</span>
+        </a>
+      </li>
+      {% endfor %}
+
+      {% if sidebar_shared_wallets %}
+      <li class="nav-heading mt-1">{% trans "Shared With Me" %}</li>
+      {% for wallet in sidebar_shared_wallets %}
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="{% url 'show_items' %}?wallet={{ wallet.id }}&status=all">
+          <i class="bi {{ wallet.icon|default:'bi-wallet2' }}" style="color: {{ wallet.color }};"></i>
+          <span>{{ wallet.name }}</span>
+          {% if wallet.user_role == 'viewer' %}
+          <i class="bi bi-eye ms-1 opacity-75" title="{% trans 'Viewer — read only' %}" style="font-size:0.75em;"></i>
+          {% else %}
+          <i class="bi bi-pencil ms-1 opacity-75" title="{% trans 'Editor' %}" style="font-size:0.75em;"></i>
           {% endif %}
           <span class="badge bg-secondary ms-2">{{ wallet.item_count }}</span>
         </a>
       </li>
       {% endfor %}
+      {% endif %}
       <li class="nav-item">
         <a class="nav-link collapsed" href="{% url 'manage_wallets' %}">
           <i class="bi bi-gear"></i>

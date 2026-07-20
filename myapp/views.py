@@ -45,10 +45,10 @@ from .tasks import extract_document_text_task, fetch_merchant_logo_task
 from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
 from imports.exporters.pkpass import generate_pkpass, pkpass_enabled
 from imports.tasks import update_google_wallet_pass_task
-from notify.tasks import notify_balance_changed, notify_item_archived, notify_item_created, notify_item_shared, notify_item_used, _find_firefly_rule
+from notify.tasks import notify_balance_changed, notify_item_archived, notify_item_created, notify_item_shared, notify_item_used, notify_wallet_invited, notify_wallet_removed, _find_firefly_rule
 from .webhooks import fire_user_webhooks
 from ocr.backends import ocr_enabled
-from django.db.models import Count, Sum, Q
+from django.db.models import Count, OuterRef, Subquery, Sum, Q
 from django.db.models.functions import TruncMonth
 from django.db.models.functions import Coalesce, Lower, Trim
 from django.db.models import Value
@@ -684,6 +684,7 @@ def create_item(request):
             _record_scan_learning(request, item)
             notify_item_created(item)
             fire_user_webhooks(item.user, 'item_created', item)
+            _log_wallet_activity(item.wallet, request.user, 'item_added', item=item)
 
             return redirect('show_items')
         else:
@@ -766,6 +767,7 @@ def edit_item(request, item_uuid):
             remember_balance_check_url(item.issuer, item.balance_check_url)
             _record_scan_learning(request, item)
             _queue_google_wallet_update(item)
+            _log_wallet_activity(item.wallet, request.user, 'item_edited', item=item)
 
             return redirect('view_item', item_uuid=item.id)
     else:
@@ -1008,6 +1010,7 @@ def delete_item(request, item_uuid):
         if os.path.isfile(item.file.path):
             os.remove(item.file.path)
 
+    _log_wallet_activity(item.wallet, request.user, 'item_removed', detail=item.name)
     item.delete()
     return redirect('show_items')
 
@@ -2392,6 +2395,11 @@ def toggle_archive_item(request, item_uuid):
         notify_item_archived(item)
         fire_user_webhooks(item.user, 'item_archived', item)
     _queue_google_wallet_update(item)
+    _log_wallet_activity(
+        item.wallet, request.user,
+        'item_archived' if item.is_archived else 'item_unarchived',
+        item=item,
+    )
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({'success': True, 'is_archived': item.is_archived})
@@ -2510,7 +2518,12 @@ def manage_wallets(request):
         form = WalletForm(user=request.user)
 
     wallets = Wallet.objects.filter(user=request.user).annotate(item_count=Count('items'))
-    shared_wallets = Wallet.objects.filter(shared_with=request.user).annotate(item_count=Count('items'))
+    _membership_role = Subquery(
+        WalletMembership.objects.filter(wallet=OuterRef('pk'), user=request.user).values('role')[:1]
+    )
+    shared_wallets = Wallet.objects.filter(shared_with=request.user).annotate(
+        item_count=Count('items'), user_role=_membership_role,
+    )
     return render(request, 'manage-wallets.html', {
         'form': form,
         'wallets': wallets,
@@ -2530,7 +2543,12 @@ def edit_wallet(request, wallet_id):
         form = WalletForm(instance=wallet, user=request.user)
 
     wallets = Wallet.objects.filter(user=request.user).annotate(item_count=Count('items'))
-    shared_wallets = Wallet.objects.filter(shared_with=request.user).annotate(item_count=Count('items'))
+    _membership_role = Subquery(
+        WalletMembership.objects.filter(wallet=OuterRef('pk'), user=request.user).values('role')[:1]
+    )
+    shared_wallets = Wallet.objects.filter(shared_with=request.user).annotate(
+        item_count=Count('items'), user_role=_membership_role,
+    )
     return render(request, 'manage-wallets.html', {
         'form': form,
         'wallets': wallets,
@@ -2567,6 +2585,7 @@ def share_wallet(request, wallet_id):
             wallet=wallet, actor=request.user, action='member_added',
             detail=f"{collaborator.username} ({role})",
         )
+        notify_wallet_invited(wallet, collaborator)
         messages.success(request, _('Wallet shared with %(username)s.') % {'username': form.cleaned_data['username']})
     else:
         for error in form.errors.get('username', []):
@@ -2585,6 +2604,7 @@ def unshare_wallet(request, wallet_id, user_id):
         wallet=wallet, actor=request.user, action='member_removed',
         detail=collaborator.username,
     )
+    notify_wallet_removed(wallet, collaborator, request.user.username)
     messages.success(request, _('Removed %(username)s from this wallet.') % {'username': collaborator.username})
     return redirect('edit_wallet', wallet_id=wallet.id)
 
@@ -2595,6 +2615,10 @@ def leave_shared_wallet(request, wallet_id):
     wallet = get_object_or_404(Wallet, id=wallet_id, shared_with=request.user)
     wallet.shared_with.remove(request.user)
     WalletMembership.objects.filter(wallet=wallet, user=request.user).delete()
+    WalletActivity.objects.create(
+        wallet=wallet, actor=request.user, action='member_removed',
+        detail=request.user.username,
+    )
     messages.success(request, _('You have left the wallet "%(name)s".') % {'name': wallet.name})
     return redirect('manage_wallets')
 
@@ -2778,8 +2802,10 @@ def _log_wallet_activity(wallet, actor, action, item=None, detail=''):
 def _check_item_edit_permission(item, user):
     """
     Returns True when user may write to item (create/edit/delete/toggle).
-    Viewer-role WalletMembership collaborators are denied write access.
-    The old wallet.shared_with M2M grants full edit access (backward compat).
+    WalletMembership role takes priority over the legacy shared_with M2M so
+    viewer-role collaborators are correctly denied write access.
+    The legacy shared_with M2M is only a fallback for users who predate the
+    role system and have no WalletMembership record.
     """
     if item.user == user:
         return True
@@ -2789,15 +2815,15 @@ def _check_item_edit_permission(item, user):
         return False
     if item.wallet.user == user:
         return True
-    # Old sharing system: all M2M collaborators have full edit access.
-    if item.wallet.shared_with.filter(pk=user.id).exists():
-        return True
-    # New WalletMembership system: only editors may write.
+    # WalletMembership role takes priority: only editors may write.
     try:
         membership = WalletMembership.objects.get(wallet=item.wallet, user=user)
         return membership.role == WalletMembership.ROLE_EDITOR
     except WalletMembership.DoesNotExist:
-        return False
+        pass
+    # Legacy fallback: users in shared_with without a WalletMembership record
+    # (invited before the role system existed) retain full edit access.
+    return item.wallet.shared_with.filter(pk=user.id).exists()
 
 
 @login_required

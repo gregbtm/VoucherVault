@@ -143,6 +143,34 @@ def notify_item_shared(item, shared_with_username: str):
     )
 
 
+def notify_wallet_invited(wallet, invited_user):
+    """Notify a user when they are added as a collaborator to a wallet."""
+    rules = NotificationRule.objects.filter(user=invited_user, enabled=True)
+    matching_rules = [r for r in rules if 'wallet_invited' in (r.event_types or [])]
+    for rule in matching_rules:
+        title = f"📂 Added to '{wallet.name}'"
+        message = f"Owner: {wallet.user.username}\nYou now have access to items in this wallet."
+        success, detail = send_via_rule(rule, title, message)
+        NotificationLog.objects.create(
+            user=invited_user, rule=rule, item=None, event_type='wallet_invited',
+            success=success, detail=detail,
+        )
+
+
+def notify_wallet_removed(wallet, removed_user, owner_username: str):
+    """Notify a user when their access to a wallet is revoked."""
+    rules = NotificationRule.objects.filter(user=removed_user, enabled=True)
+    matching_rules = [r for r in rules if 'wallet_removed' in (r.event_types or [])]
+    for rule in matching_rules:
+        title = f"📂 Removed from '{wallet.name}'"
+        message = f"You no longer have access to '{wallet.name}' (owner: {owner_username})."
+        success, detail = send_via_rule(rule, title, message)
+        NotificationLog.objects.create(
+            user=removed_user, rule=rule, item=None, event_type='wallet_removed',
+            success=success, detail=detail,
+        )
+
+
 def send_via_rule(rule, title: str, message: str, item=None, transaction=None) -> tuple[bool, str]:
     """Runs a rule's backend, translating any exception into a logged failure."""
     try:

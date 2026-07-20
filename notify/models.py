@@ -27,6 +27,8 @@ class NotificationRule(models.Model):
         ('balance_changed', 'Balance Changed'),
         ('item_shared', 'Item Shared'),
         ('next_up_reminder', 'Next Up Item Due Today'),
+        ('wallet_invited', 'Wallet Invitation'),
+        ('wallet_removed', 'Removed from Wallet'),
     ]
     DIGEST_FREQUENCY_CHOICES = [
         ('immediate', 'Immediate'),
