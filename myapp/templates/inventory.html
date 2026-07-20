@@ -1037,7 +1037,7 @@ body.dark-mode .next-up-card {
         </div>
       </a>
       <form class="next-up-mark-used-form" method="post" action="{% url 'toggle_item_status' active_today_item.item.id %}"
-            onsubmit="return confirm('{% trans "Mark this item as used?" %}');">
+            onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Mark this item as used?" %}','{% trans "Mark as Used" %}',function(){f.submit();});">
         {% csrf_token %}
         <input type="hidden" name="next" value="{% url 'show_items' %}">
         <button type="submit" class="next-up-mark-used-btn" title="{% trans 'Mark as used' %}" aria-label="{% trans 'Mark as used' %}">
@@ -1087,7 +1087,7 @@ body.dark-mode .next-up-card {
         </div>
       </a>
       <form class="next-up-mark-used-form" method="post" action="{% url 'toggle_item_status' entry.item.id %}"
-            onsubmit="return confirm('{% trans "Mark this item as used?" %}');">
+            onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Mark this item as used?" %}','{% trans "Mark as Used" %}',function(){f.submit();});">
         {% csrf_token %}
         <input type="hidden" name="next" value="{% url 'show_items' %}">
         <button type="submit" class="next-up-mark-used-btn" title="{% trans 'Mark as used' %}" aria-label="{% trans 'Mark as used' %}">
@@ -1438,6 +1438,15 @@ body.dark-mode .next-up-card {
   <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkMoveModal">
     <i class="bi bi-folder-symlink"></i> {% trans "Move to Wallet" %}
   </button>
+  <div class="dropdown d-inline-block">
+    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="bulkExportDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+      <i class="bi bi-download"></i> {% trans "Export" %}
+    </button>
+    <ul class="dropdown-menu" aria-labelledby="bulkExportDropdown">
+      <li><button class="dropdown-item" type="button" id="bulkExportCsvBtn">{% trans "Export as CSV" %}</button></li>
+      <li><button class="dropdown-item" type="button" id="bulkExportJsonBtn">{% trans "Export as JSON" %}</button></li>
+    </ul>
+  </div>
   <button type="button" class="btn btn-sm btn-outline-danger" id="bulkDeleteBtn">
     <i class="bi bi-trash"></i> {% trans "Delete" %}
   </button>
@@ -1743,12 +1752,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
   document.getElementById('bulkDeleteBtn').addEventListener('click', () => {
     if (selectedIds.size === 0) return;
-    if (!confirm('{% trans "Delete the selected items? This cannot be undone." %}')) return;
-    const btn = document.getElementById('bulkDeleteBtn');
-    window.setButtonLoading(btn, true);
-    postBulkAction('{% url "bulk_delete_items" %}').then(data => {
-      if (data.success) { window.location.reload(); return; }
-      window.setButtonLoading(btn, false);
+    showConfirm('{% trans "Delete the selected items? This cannot be undone." %}', '{% trans "Delete" %}', function() {
+      const btn = document.getElementById('bulkDeleteBtn');
+      window.setButtonLoading(btn, true);
+      postBulkAction('{% url "bulk_delete_items" %}').then(data => {
+        if (data.success) { window.location.reload(); return; }
+        window.setButtonLoading(btn, false);
+      });
     });
   });
 
@@ -1777,6 +1787,34 @@ document.addEventListener("DOMContentLoaded", function () {
       const modalEl = document.getElementById('bulkMoveModal');
       bootstrap.Modal.getInstance(modalEl).hide();
     });
+  });
+
+  function bulkExportDownload(url, filename) {
+    if (selectedIds.size === 0) return;
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+      body: JSON.stringify({ item_ids: Array.from(selectedIds) }),
+    }).then(response => {
+      if (!response.ok) return response.json().then(d => { throw new Error(d.error || 'Export failed'); });
+      return response.blob();
+    }).then(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    }).catch(err => { if (window.showToast) window.showToast(err.message, 'danger'); });
+  }
+
+  document.getElementById('bulkExportCsvBtn').addEventListener('click', () => {
+    bulkExportDownload('{% url "export_selected_csv" %}', 'vouchervault-selected.csv');
+  });
+
+  document.getElementById('bulkExportJsonBtn').addEventListener('click', () => {
+    bulkExportDownload('{% url "export_selected_json" %}', 'vouchervault-selected.json');
   });
 })();
 </script>

@@ -585,8 +585,7 @@ document.addEventListener('DOMContentLoaded', function () {
   function wireRedeployButton(redeployBtn) {
     if (!redeployBtn) return;
     redeployBtn.addEventListener('click', function () {
-      if (!confirm('{% trans "This rebuilds and restarts the app container now. Continue?" %}')) return;
-
+      showConfirm('{% trans "This rebuilds and restarts the app container now. Continue?" %}', '{% trans "Restart" %}', function() {
       var csrfInput = document.querySelector('input[name=csrfmiddlewaretoken]');
       var progress = document.getElementById('redeploy-progress');
       var progressText = document.getElementById('redeploy-progress-text');
@@ -637,6 +636,7 @@ document.addEventListener('DOMContentLoaded', function () {
           redeployBtn.style.display = '';
           window.showToast('{% trans "Could not reach the server to trigger the redeploy - check Portainer directly." %}', 'danger');
         });
+      });  // end showConfirm callback
     });
   }
   wireRedeployButton(document.getElementById('redeploy-btn'));

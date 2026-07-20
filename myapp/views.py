@@ -2349,6 +2349,16 @@ def nearby_items(request):
 
 @require_POST
 @login_required
+def toggle_mute_notifications(request, item_uuid):
+    """Toggle notifications_muted on an item. Only the item owner can mute."""
+    item = get_object_or_404(Item, id=item_uuid, user=request.user)
+    item.notifications_muted = not item.notifications_muted
+    item.save(update_fields=['notifications_muted'])
+    return JsonResponse({'success': True, 'notifications_muted': item.notifications_muted})
+
+
+@require_POST
+@login_required
 def toggle_archive_item(request, item_uuid):
     """Toggle the archived status of an item: hides it from the default
     inventory views without marking it used or deleting it."""
@@ -3092,6 +3102,95 @@ def revoke_session(request):
         _Session.objects.filter(session_key=key).delete()
         messages.success(request, _('Session revoked.'))
     return redirect('session_management')
+
+
+@require_GET
+@login_required
+def gdpr_data_export(request):
+    """GDPR-compliant machine-readable export of everything stored for the user."""
+    user = request.user
+    items_qs = Item.objects.filter(user=user).prefetch_related(
+        'tags', 'transactions', 'documents', 'shares',
+    ).select_related('wallet')
+
+    items_data = []
+    for item in items_qs:
+        items_data.append({
+            'id': str(item.id),
+            'name': item.name,
+            'type': item.type,
+            'redeem_code': item.redeem_code,
+            'card_number': item.card_number,
+            'code_type': item.code_type,
+            'pin': item.pin,
+            'issuer': item.issuer,
+            'issue_date': str(item.issue_date) if item.issue_date else None,
+            'expiry_date': str(item.expiry_date) if item.expiry_date else None,
+            'description': item.description,
+            'notes': item.notes,
+            'value': str(item.value) if item.value is not None else None,
+            'value_type': item.value_type,
+            'currency': item.currency,
+            'is_used': item.is_used,
+            'is_pinned': item.is_pinned,
+            'is_archived': item.is_archived,
+            'is_recurring': item.is_recurring,
+            'renewal_period': item.renewal_period,
+            'renewal_date': str(item.renewal_date) if item.renewal_date else None,
+            'notifications_muted': item.notifications_muted,
+            'share_message': item.share_message,
+            'wallet': item.wallet.name if item.wallet else None,
+            'tags': [t.name for t in item.tags.all()],
+            'transactions': [
+                {'date': str(t.date), 'description': t.description, 'value': str(t.value)}
+                for t in item.transactions.all()
+            ],
+            'documents': [
+                {'file': str(d.file), 'label': d.label, 'uploaded_at': str(d.uploaded_at)}
+                for d in item.documents.all()
+            ],
+            'shared_with': [
+                {'username': s.shared_with_user.username, 'shared_at': str(s.shared_at)}
+                for s in item.shares.all()
+            ],
+            'created_at': str(item.issue_date),
+            'last_used_at': str(item.last_used_at) if item.last_used_at else None,
+        })
+
+    from notify.models import NotificationRule
+    rules_data = list(
+        NotificationRule.objects.filter(user=user).values(
+            'name', 'backend', 'enabled', 'event_types', 'digest_frequency', 'created_at',
+        )
+    )
+    for r in rules_data:
+        r['created_at'] = str(r['created_at'])
+
+    wallets_data = list(
+        Wallet.objects.filter(user=user).values('name', 'description', 'color', 'created_at', 'updated_at')
+    )
+    for w in wallets_data:
+        w['created_at'] = str(w['created_at'])
+        w['updated_at'] = str(w['updated_at'])
+
+    tags_data = list(Tag.objects.filter(user=user).values('name', 'color'))
+
+    payload = {
+        'export_date': str(timezone.now()),
+        'username': user.username,
+        'email': user.email,
+        'date_joined': str(user.date_joined),
+        'items': items_data,
+        'wallets': wallets_data,
+        'tags': tags_data,
+        'notification_rules': rules_data,
+    }
+    response = HttpResponse(
+        json.dumps(payload, indent=2, default=str),
+        content_type='application/json',
+    )
+    response['Content-Disposition'] = 'attachment; filename="vouchervault-my-data.json"'
+    return response
 
 
 # ── Phase C: PWA Install prompt ───────────────────────────────────────────────

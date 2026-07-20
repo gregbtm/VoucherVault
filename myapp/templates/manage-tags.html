@@ -71,7 +71,7 @@
               <span class="text-white-50">{{ tag.item_count }}</span>
               <a href="{% url 'edit_tag' tag_id=tag.id %}" class="text-white tag-icon-action" title="{% trans 'Edit' %}"><i class="bi bi-pencil"></i></a>
               <form method="POST" action="{% url 'delete_tag' tag_id=tag.id %}" style="display:inline;"
-                    onsubmit="return confirm('{% trans "Delete this tag? It will be removed from all items." %}');">
+                    onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Delete this tag? It will be removed from all items." %}','{% trans "Delete" %}',function(){f.submit();});">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-sm p-0 border-0 text-white tag-icon-action" style="background: transparent;" title="{% trans 'Delete' %}">
                   <i class="bi bi-x-circle"></i>

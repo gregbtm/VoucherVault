@@ -404,6 +404,10 @@ class Item(models.Model):
         max_length=50, blank=True, default='',
         help_text="Firefly III asset account ID linked to this item. Set via 'Link to Firefly III' or enter manually.",
     )
+    notifications_muted = models.BooleanField(
+        default=False,
+        help_text="Suppress all notification rules for this item (expiry warnings, renewal alerts, etc.).",
+    )
     is_recurring = models.BooleanField(
         default=False,
         help_text="This item renews periodically (subscription, annual pass, etc.).",

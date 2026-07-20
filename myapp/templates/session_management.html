@@ -38,7 +38,7 @@
           {% else %}
           <p class="small text-muted mb-2">{% blocktrans with n=backup_codes_remaining %}{{ n }} backup codes remaining.{% endblocktrans %}</p>
           {% endif %}
-          <form method="POST" action="{% url 'totp_disable' %}" onsubmit="return confirm('{% trans "Disable two-factor authentication? Your account will be less secure." %}')">
+          <form method="POST" action="{% url 'totp_disable' %}" onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Disable two-factor authentication? Your account will be less secure." %}','{% trans "Disable" %}',function(){f.submit();})">
             {% csrf_token %}
             <button type="submit" class="btn btn-outline-danger">
               <i class="bi bi-shield-x me-1"></i> {% trans "Disable 2FA" %}
@@ -83,6 +83,17 @@
     </div>
 
     <div class="col-lg-6">
+      <!-- Download My Data (GDPR) -->
+      <div class="card mb-4">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-download me-1"></i> {% trans "Download My Data" %}</h5>
+          <p class="text-muted small">{% trans "Export a machine-readable copy of all data stored for your account: items, wallets, tags, and notification rules." %}</p>
+          <a href="{% url 'gdpr_data_export' %}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-file-earmark-arrow-down me-1"></i> {% trans "Download JSON export" %}
+          </a>
+        </div>
+      </div>
+
       <!-- Login History -->
       <div class="card">
         <div class="card-body">

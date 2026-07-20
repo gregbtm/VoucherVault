@@ -66,7 +66,10 @@ class Command(BaseCommand):
             # home station. Reuses the hourly schedule - this is bookkeeping the widget's
             # own live read doesn't depend on, so within-the-hour timing is fine.
             {'name': 'Active Today Outward-Leg Cleanup', 'task': 'myapp.tasks.mark_expired_commute_outward_tickets', 'crontab': hourly_schedule, 'enabled': True},
-            # Add more tasks as needed
+            # Advances renewal_date + expiry_date for items whose renewal_date has
+            # passed, resets is_used, and fires a renewal_advanced notification.
+            # A no-op until a user marks an item as recurring with a renewal_date set.
+            {'name': 'Advance Recurring Items', 'task': 'notify.tasks.advance_recurring_items', 'crontab': crontab_schedule, 'enabled': True},
         ]
 
         for task_data in tasks:

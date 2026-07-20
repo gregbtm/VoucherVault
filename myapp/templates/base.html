@@ -181,6 +181,7 @@
 </head>
 
 <body data-oled-preferred="{% if global_preferences.oled_dark_mode %}1{% else %}0{% endif %}">
+  <a href="#main" class="skip-link">{% trans "Skip to main content" %}</a>
   <!-- Apply theme synchronously before any content renders to prevent flash.
        Priority: 1) user override in localStorage, 2) OS prefers-color-scheme, 3) light default -->
   <script>
@@ -730,6 +731,36 @@
         }, 100);
       }
     }
+  </script>
+
+  <!-- Accessible confirmation modal — replaces all browser confirm() calls site-wide -->
+  <div class="modal fade" id="confirmModal" tabindex="-1" aria-modal="true" role="dialog" aria-labelledby="confirmModalLabel">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header border-0 pb-1">
+          <h5 class="modal-title fs-6 fw-semibold" id="confirmModalLabel">{% trans "Confirm" %}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans 'Cancel' %}"></button>
+        </div>
+        <div class="modal-body pt-1 pb-2" id="confirmModalBody"></div>
+        <div class="modal-footer border-0 pt-0 gap-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+          <button type="button" class="btn btn-sm btn-danger" id="confirmModalOk">{% trans "Confirm" %}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+  window.showConfirm = function(message, okLabel, onOk) {
+    document.getElementById('confirmModalBody').textContent = message;
+    document.getElementById('confirmModalOk').textContent = okLabel || '{% trans "Confirm" %}';
+    var okBtn = document.getElementById('confirmModalOk');
+    var newOkBtn = okBtn.cloneNode(true);
+    okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+    var modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+    newOkBtn.addEventListener('click', function() { modal.hide(); onOk(); });
+    modal.show();
+    setTimeout(function() { newOkBtn.focus(); }, 300);
+  };
   </script>
 
 </body>

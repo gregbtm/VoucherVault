@@ -3655,6 +3655,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
             'Next Up Reminder Check',
             'Update Check', 'Upstream Version Check', 'Scheduled Backup',
             'Daily Notification Digest', 'Active Today Outward-Leg Cleanup',
+            'Advance Recurring Items',
         })
 
     def test_update_check_and_upstream_check_run_hourly_not_daily(self):

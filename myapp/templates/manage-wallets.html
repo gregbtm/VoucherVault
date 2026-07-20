@@ -129,7 +129,7 @@
                     <i class="bi bi-pencil"></i>
                   </a>
                   <form method="POST" action="{% url 'delete_wallet' wallet_id=wallet.id %}" style="display:inline;"
-                        onsubmit="return confirm('{% trans "Delete this wallet? Items inside it are kept and become unassigned." %}');">
+                        onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Delete this wallet? Items inside it are kept and become unassigned." %}','{% trans "Delete" %}',function(){f.submit();});">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-outline-danger">
                       <i class="bi bi-trash"></i>
@@ -172,7 +172,7 @@
                 <td>{{ wallet.item_count }}</td>
                 <td class="text-end">
                   <form method="POST" action="{% url 'leave_shared_wallet' wallet_id=wallet.id %}"
-                        onsubmit="return confirm('{% trans "Leave this shared wallet?" %}');">
+                        onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Leave this shared wallet?" %}','{% trans "Leave" %}',function(){f.submit();});">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-outline-danger">{% trans "Leave" %}</button>
                   </form>

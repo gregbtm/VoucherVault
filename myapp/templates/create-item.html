@@ -1009,6 +1009,14 @@ body.dark-mode .error-alert {
             </div>
 
             <div class="form-group">
+              <label class="form-label" for="share_message">{% trans "Share Message" %}</label>
+              <textarea class="modern-textarea" id="share_message" name="share_message"
+                        placeholder="{% trans 'Optional note shown on the public share page (e.g. valid until Dec, buy in store only)' %}"
+                        rows="2">{{ form.share_message.value|default_if_none:"" }}</textarea>
+              <small class="form-text text-muted">{% trans "Visible to anyone with your public share link." %}</small>
+            </div>
+
+            <div class="form-group">
               <label class="form-label" for="notify_days_before">{% trans "Notify Me Before Expiry" %}</label>
               <input type="number" class="modern-input" id="notify_days_before" name="notify_days_before"
                      placeholder="{% trans 'Use global default' %}" min="0"
