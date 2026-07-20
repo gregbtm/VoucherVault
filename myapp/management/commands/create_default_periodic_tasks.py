@@ -70,6 +70,10 @@ class Command(BaseCommand):
             # passed, resets is_used, and fires a renewal_advanced notification.
             # A no-op until a user marks an item as recurring with a renewal_date set.
             {'name': 'Advance Recurring Items', 'task': 'notify.tasks.advance_recurring_items', 'crontab': crontab_schedule, 'enabled': True},
+            # Re-queues Firefly III transaction pushes that previously failed (blank
+            # firefly_transaction_id). Safe to re-run: once populated it's excluded.
+            # A no-op for installs that don't use the Firefly backend.
+            {'name': 'Retry Failed Firefly Pushes', 'task': 'notify.tasks.retry_failed_firefly_pushes', 'crontab': hourly_schedule, 'enabled': True},
         ]
 
         for task_data in tasks:

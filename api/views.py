@@ -41,7 +41,12 @@ from myapp.models import (
 from myapp.pdf_ticket import decode_barcode_from_pdf, pdf_page_to_png_bytes
 from myapp.scan_learning import apply_learned_corrections
 from notify.models import NotificationLog, NotificationRule
-from notify.tasks import notify_balance_changed, notify_item_created, notify_item_shared, notify_item_used, send_test_notification
+from notify.tasks import (
+    backfill_firefly_transactions,
+    notify_balance_changed, notify_item_created, notify_item_shared, notify_item_used,
+    send_test_notification,
+    _find_firefly_rule,
+)
 from ocr.backends import get_backend, ocr_enabled
 from ocr.backends.base import parse_float_or_none
 
@@ -122,11 +127,7 @@ class ItemViewSet(viewsets.ModelViewSet):
         """
         item = self.get_object()
 
-        rule = (
-            request.user.notification_rules
-            .filter(backend='firefly', enabled=True)
-            .first()
-        )
+        rule = _find_firefly_rule(item)
         if rule is None:
             return Response(
                 {'detail': _('No enabled Firefly III notification rule found. Create one first.')},
@@ -164,6 +165,10 @@ class ItemViewSet(viewsets.ModelViewSet):
                     account_id = str(acct['id'])
                     item.firefly_account_id = account_id
                     item.save(update_fields=['firefly_account_id'])
+                    try:
+                        backfill_firefly_transactions.delay(str(item.pk), rule.id)
+                    except Exception:
+                        pass
                     return Response({'firefly_account_id': account_id, 'existing': True})
         except requests.RequestException:
             pass  # If the search fails, fall through to create
@@ -202,6 +207,10 @@ class ItemViewSet(viewsets.ModelViewSet):
 
         item.firefly_account_id = account_id
         item.save(update_fields=['firefly_account_id'])
+        try:
+            backfill_firefly_transactions.delay(str(item.pk), rule.id)
+        except Exception:
+            pass
         return Response({'firefly_account_id': account_id, 'existing': False})
 
     @action(detail=True, methods=['get', 'post'], url_path='transactions')

@@ -79,8 +79,8 @@ class TagSerializer(serializers.ModelSerializer):
 class TransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Transaction
-        fields = ['id', 'item', 'date', 'description', 'value']
-        read_only_fields = ['id', 'item']
+        fields = ['id', 'item', 'date', 'description', 'value', 'firefly_transaction_id']
+        read_only_fields = ['id', 'item', 'firefly_transaction_id']
 
     def validate_value(self, value):
         if value >= 0:

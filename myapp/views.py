@@ -45,7 +45,7 @@ from .tasks import extract_document_text_task, fetch_merchant_logo_task
 from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
 from imports.exporters.pkpass import generate_pkpass, pkpass_enabled
 from imports.tasks import update_google_wallet_pass_task
-from notify.tasks import notify_balance_changed, notify_item_archived, notify_item_created, notify_item_shared, notify_item_used
+from notify.tasks import notify_balance_changed, notify_item_archived, notify_item_created, notify_item_shared, notify_item_used, _find_firefly_rule
 from .webhooks import fire_user_webhooks
 from ocr.backends import ocr_enabled
 from django.db.models import Count, Sum, Q
@@ -565,6 +565,14 @@ def view_item(request, item_uuid):
         except Exception as exc:
             logger.warning('Google Wallet link generation failed for item %s: %s', item.id, exc, exc_info=True)
 
+    firefly_url = None
+    if item.firefly_account_id:
+        firefly_rule = _find_firefly_rule(item)
+        if firefly_rule:
+            base_url = (firefly_rule.config.get('url') or '').rstrip('/')
+            if base_url:
+                firefly_url = f'{base_url}/accounts/{item.firefly_account_id}'
+
     context = {
         'item': item,
         'transactions': transactions,
@@ -572,15 +580,16 @@ def view_item(request, item_uuid):
         'qr_code_base64': item.qr_code_base64,
         'form': form,
         'current_date': timezone.now(),
-        'is_owner': is_owner,  # Pass the owner flag to the template
-        'can_edit': can_edit,  # Owner or shared-wallet collaborator
-        'is_shared': is_shared,  # Pass the shared status to the template
+        'is_owner': is_owner,
+        'can_edit': can_edit,
+        'is_shared': is_shared,
         'merchant_logo_url': cached_merchant.logo_url if cached_merchant else None,
         'pkpass_enabled': pkpass_enabled(),
         'google_wallet_save_url': google_wallet_save_url,
         'document_form': DocumentForm(),
         'preferences': preferences,
         'public_share': ItemPublicShare.objects.filter(item=item).first(),
+        'firefly_url': firefly_url,
     }
     return render(request, 'view-item.html', context)
 

@@ -2,8 +2,9 @@ from abc import ABC, abstractmethod
 
 
 class NotificationBackend(ABC):
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, rule_id=None):
         self.config = config or {}
+        self.rule_id = rule_id
 
     @abstractmethod
     def send(self, title: str, message: str, item=None, transaction=None) -> bool:
