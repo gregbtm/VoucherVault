@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Help & Guides" %}{% endblock %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1><i class="bi bi-book me-2"></i>{% trans "Help & Guides" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "Help & Guides" %}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+
+  <!-- Search bar -->
+  <div class="row mb-3">
+    <div class="col-12 col-md-6">
+      <div class="input-group">
+        <span class="input-group-text bg-transparent border-end-0">
+          <i class="bi bi-search text-secondary"></i>
+        </span>
+        <input type="search" id="help-search" class="form-control border-start-0"
+               placeholder="{% trans 'Search guides…' %}" autocomplete="off">
+      </div>
+    </div>
+  </div>
+
+  <!-- Category sections -->
+  {% for category_name, icon, docs in categories %}
+  <div class="help-category" data-category="{{ category_name }}">
+    <h5 class="help-category-title mb-3">
+      <i class="bi {{ icon }} me-2 text-primary"></i>{{ category_name }}
+    </h5>
+    <div class="row g-3 mb-4">
+      {% for slug, description in docs %}
+      <div class="col-12 col-sm-6 col-lg-4 help-card-wrapper"
+           data-title="{{ slug|lower }} {{ description|lower }}"
+           data-category="{{ category_name|lower }}">
+        <div class="card h-100 help-doc-card shadow-sm"
+             role="button"
+             data-doc-url="{% url 'view_doc' slug %}"
+             tabindex="0"
+             title="{% trans 'Open guide' %}">
+          <div class="card-body d-flex flex-column gap-2">
+            <div class="d-flex align-items-start gap-2">
+              <i class="bi {{ icon }} fs-5 text-primary flex-shrink-0 mt-1"></i>
+              <div>
+                <div class="fw-semibold help-doc-title">{{ description }}</div>
+                <small class="text-secondary text-monospace">{{ slug }}</small>
+              </div>
+            </div>
+          </div>
+          <div class="card-footer bg-transparent border-top-0 pt-0 pb-2 px-3">
+            <small class="text-primary">
+              <i class="bi bi-arrow-right-circle me-1"></i>{% trans "Read guide" %}
+            </small>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- Empty state for search -->
+  <div id="help-no-results" class="text-center py-5 d-none">
+    <i class="bi bi-search fs-1 text-secondary opacity-50"></i>
+    <p class="mt-3 text-secondary">{% trans "No guides match your search." %}</p>
+  </div>
+
+</section>
+
+<!-- Doc viewer modal (reuses base.html's openHelpDoc mechanism) -->
+<style>
+.help-doc-card {
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+.help-doc-card:hover, .help-doc-card:focus {
+  border-left-color: var(--bs-primary);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.10) !important;
+  transform: translateY(-1px);
+  outline: none;
+}
+.help-category-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bs-secondary-color);
+  border-bottom: 1px solid var(--bs-border-color);
+  padding-bottom: 0.5rem;
+}
+.help-doc-title { font-size: 0.92rem; line-height: 1.35; }
+</style>
+
+<script>
+(function () {
+  'use strict';
+
+  // Open guide in modal (base.html provides openHelpDoc)
+  document.querySelectorAll('.help-doc-card').forEach(function (card) {
+    function open() { openHelpDoc(card.dataset.docUrl); }
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
+  });
+
+  // Live search filter
+  var searchInput = document.getElementById('help-search');
+  var noResults   = document.getElementById('help-no-results');
+  var allCards    = document.querySelectorAll('.help-card-wrapper');
+  var categories  = document.querySelectorAll('.help-category');
+
+  searchInput.addEventListener('input', function () {
+    var q = this.value.trim().toLowerCase();
+    var anyVisible = false;
+
+    allCards.forEach(function (wrapper) {
+      var text = (wrapper.dataset.title + ' ' + wrapper.dataset.category).toLowerCase();
+      var show = !q || text.includes(q);
+      wrapper.style.display = show ? '' : 'none';
+      if (show) anyVisible = true;
+    });
+
+    // Hide empty category sections
+    categories.forEach(function (section) {
+      var visibleInCat = Array.from(section.querySelectorAll('.help-card-wrapper'))
+        .some(function (w) { return w.style.display !== 'none'; });
+      section.style.display = visibleInCat ? '' : 'none';
+    });
+
+    noResults.classList.toggle('d-none', anyVisible || !q);
+  });
+}());
+</script>
+{% endblock content %}

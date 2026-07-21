@@ -113,4 +113,5 @@ def get_item(dictionary, key):
     """Look up `key` in `dictionary`, tolerating UUID vs string mismatches."""
     if not dictionary:
         return None
-    return dictionary.get(key) or dictionary.get(str(key))
+    val = dictionary.get(key)
+    return val if val is not None else dictionary.get(str(key))

@@ -3,7 +3,13 @@
 
 {% block content %}
 <div class="pagetitle">
-  <h1>{% trans "Import / Export" %}</h1>
+  <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
+    <h1>{% trans "Import / Export" %}</h1>
+    <a href="{% url 'view_doc' 'rail-ticket' %}" class="btn btn-outline-secondary btn-sm mt-1 help-doc-link"
+       data-doc-url="{% url 'view_doc' 'rail-ticket' %}" title="{% trans 'Automated import guide (UK rail eTickets via n8n)' %}">
+      <i class="bi bi-question-circle me-1"></i>{% trans "Auto-import Guide" %}
+    </a>
+  </div>
   <nav>
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>

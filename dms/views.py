@@ -1,9 +1,11 @@
 import json
 import logging
-from datetime import timedelta
+import os
+from datetime import date, timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.files.base import ContentFile
 from django.db.models import Count, Max, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -95,6 +97,7 @@ def delete_provider(request, provider_id):
 # ---------------------------------------------------------------------------
 
 @login_required
+@require_POST
 def test_connection(request, provider_id):
     """AJAX endpoint — test connectivity and auth for a saved provider."""
     provider = get_object_or_404(DMSProvider, id=provider_id, user=request.user)
@@ -161,8 +164,11 @@ def browse(request, provider_id):
     client = get_client(provider)
 
     query = request.GET.get('q', '')
-    page = max(1, int(request.GET.get('page', 1)))
-    page_size = min(50, max(5, int(request.GET.get('page_size', 20))))
+    try:
+        page = max(1, int(request.GET.get('page', 1)))
+        page_size = min(50, max(5, int(request.GET.get('page_size', 20))))
+    except ValueError:
+        return JsonResponse({'ok': False, 'error': 'page and page_size must be integers'}, status=400)
     tag = request.GET.get('tag', provider.pull_tag)
     correspondent = request.GET.get('correspondent', provider.pull_correspondent)
 
@@ -316,7 +322,6 @@ def pull_document(request, provider_id):
         if item_uuid:
             item = get_object_or_404(Item, id=item_uuid, user=request.user)
         else:
-            from datetime import date
             item = Item.objects.create(
                 user=request.user,
                 name=dms_doc.title or f'DMS import {dms_doc_id}',
@@ -328,14 +333,12 @@ def pull_document(request, provider_id):
                 expiry_date=date(9999, 12, 31),
             )
 
-        import os
-        from django.core.files.base import ContentFile
         ext = os.path.splitext(dms_doc.original_filename or 'document.pdf')[1] or '.pdf'
-        safe_title = ''.join(c for c in dms_doc.title if c.isalnum() or c in ' -_')[:60]
+        safe_title = ''.join(c for c in (dms_doc.title or '') if c.isalnum() or c in ' -_')[:60]
         filename = f'{safe_title or dms_doc_id}{ext}'
-        doc_name = dms_doc.title or filename
 
-        doc = Document(item=item, extracted_text=dms_doc.content[:10000])
+        doc = Document(item=item, extracted_text=(dms_doc.content or '')[:10000])
+        doc._dms_pulled = True
         doc.file.save(filename, ContentFile(raw_bytes), save=True)
 
         log = DMSSyncLog.objects.create(

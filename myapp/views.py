@@ -1514,12 +1514,11 @@ def _integration_status(config):
 
     return status
 
-# Docs about a personal integration any user can set up for their own
-# account (their own API token, their own n8n/MCP client) - not gated to
-# superuser like every other doc here, which are all server/deployment-
-# level concerns (cert paths, service accounts, Portainer webhooks) only
-# an admin should be looking at.
-_SELF_SERVICE_DOCS = {'n8n', 'mcp-server', 'DMS_SETUP'}
+# All docs are readable by any logged-in user — they are reference guides, not
+# admin actions.  The distinction below is retained only to avoid breaking
+# existing call sites; in practice the Help Center exposes every slug.
+from .help_docs import CATEGORIES, DOCS
+_SELF_SERVICE_DOCS = set(DOCS.keys())
 
 
 @login_required
@@ -1552,6 +1551,13 @@ def view_doc(request, doc_slug):
     if _wants_json(request):
         return JsonResponse({'title': title, 'body_html': html})
     return render(request, 'doc_viewer.html', {'title': title, 'body_html': html})
+
+
+@login_required
+def help_center(request):
+    """Help Center — lists all available guides, searchable, with in-page modal viewer."""
+    return render(request, 'help_center.html', {'categories': CATEGORIES})
+
 
 @login_required
 def site_settings(request):

@@ -156,7 +156,7 @@ class DMSTestConnectionViewTests(TestCase):
         mock_client.test_connection.return_value = {'ok': True, 'message': 'Connected', 'version': '1.0'}
         mock_get_client.return_value = mock_client
 
-        resp = self.client.get(reverse('dms:test_connection', args=[p.id]))
+        resp = self.client.post(reverse('dms:test_connection', args=[p.id]))
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertTrue(data['ok'])
@@ -172,7 +172,7 @@ class DMSTestConnectionViewTests(TestCase):
         mock_client.test_connection.return_value = {'ok': False, 'message': 'Auth failed'}
         mock_get_client.return_value = mock_client
 
-        resp = self.client.get(reverse('dms:test_connection', args=[p.id]))
+        resp = self.client.post(reverse('dms:test_connection', args=[p.id]))
         data = resp.json()
         self.assertFalse(data['ok'])
         p.refresh_from_db()
@@ -181,7 +181,7 @@ class DMSTestConnectionViewTests(TestCase):
     def test_other_users_provider_404(self):
         other = User.objects.create_user('other2', password='pass')
         p = make_provider(other)
-        resp = self.client.get(reverse('dms:test_connection', args=[p.id]))
+        resp = self.client.post(reverse('dms:test_connection', args=[p.id]))
         self.assertEqual(resp.status_code, 404)
 
 

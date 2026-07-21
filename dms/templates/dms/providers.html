@@ -4,14 +4,20 @@
 {% block title %}{% trans "Document Management (DMS)" %}{% endblock %}
 
 {% block content %}
-<div class="pagetitle">
-  <h1>{% trans "Document Management" %}</h1>
-  <nav>
-    <ol class="breadcrumb">
-      <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">{% trans "Home" %}</a></li>
-      <li class="breadcrumb-item active">{% trans "Document Archive" %}</li>
-    </ol>
-  </nav>
+<div class="pagetitle d-flex align-items-start justify-content-between gap-2 flex-wrap">
+  <div>
+    <h1>{% trans "Document Management" %}</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">{% trans "Home" %}</a></li>
+        <li class="breadcrumb-item active">{% trans "Document Archive" %}</li>
+      </ol>
+    </nav>
+  </div>
+  <a href="{% url 'view_doc' 'DMS_SETUP' %}" class="btn btn-outline-secondary btn-sm mt-1 help-doc-link"
+     data-doc-url="{% url 'view_doc' 'DMS_SETUP' %}" title="{% trans 'DMS setup guide' %}">
+    <i class="bi bi-question-circle me-1"></i>{% trans "DMS Guide" %}
+  </a>
 </div>
 
 <style>
@@ -321,7 +327,8 @@
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
-      fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      const csrfToken = document.cookie.split('; ').find(r => r.startsWith('csrftoken='))?.split('=')[1] || '';
+      fetch(url, {method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': csrfToken}})
         .then(r => r.json())
         .then(data => {
           // Update badge
@@ -359,7 +366,6 @@
   let currentPage = 1;
   const pageSize = 25;
   let searchQuery = '';
-  let selectedDocId = null;
   let selectedDocData = null;
   let importedDocIds = new Set();   // track already-imported in this session
 
@@ -370,7 +376,6 @@
       document.getElementById('browser-provider-name').textContent = this.dataset.providerName;
       currentPage = 1;
       searchQuery = '';
-      selectedDocId = null;
       selectedDocData = null;
       document.getElementById('dms-search').value = '';
       showDetailEmpty();
@@ -387,8 +392,8 @@
   document.getElementById('dms-search').addEventListener('keydown', e => {
     if (e.key === 'Enter') { searchQuery = e.target.value.trim(); currentPage = 1; loadBrowsePage(); }
   });
-  document.getElementById('dms-prev').addEventListener('click', () => { currentPage--; loadBrowsePage(); });
-  document.getElementById('dms-next').addEventListener('click', () => { currentPage++; loadBrowsePage(); });
+  document.getElementById('dms-prev').addEventListener('click', () => { currentPage--; selectedDocData = null; showDetailEmpty(); loadBrowsePage(); });
+  document.getElementById('dms-next').addEventListener('click', () => { currentPage++; selectedDocData = null; showDetailEmpty(); loadBrowsePage(); });
 
   document.getElementById('detail-import-btn').addEventListener('click', function () {
     if (!selectedDocData) return;
@@ -465,7 +470,6 @@
   function selectDoc(doc, el) {
     document.querySelectorAll('#dms-doc-list .doc-item').forEach(i => i.classList.remove('selected'));
     el.classList.add('selected');
-    selectedDocId = doc.id;
     selectedDocData = doc;
     showDetailPanel(doc);
   }

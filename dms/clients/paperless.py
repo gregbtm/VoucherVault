@@ -66,23 +66,19 @@ class PaperlessNGXClient(BaseDMSClient):
             if corr_id:
                 params['correspondent__id'] = corr_id
 
-        try:
-            resp = self._session().get(self._api('documents/'), params=params, timeout=TIMEOUT)
-            resp.raise_for_status()
-            data = resp.json()
-            docs = [self._to_dms_doc(d) for d in data.get('results', [])]
-            total = data.get('count', 0)
-            return BrowseResult(
-                documents=docs,
-                total_count=total,
-                page=page,
-                page_size=page_size,
-                has_next=data.get('next') is not None,
-                has_prev=data.get('previous') is not None,
-            )
-        except Exception as exc:
-            logger.error('Paperless browse error: %s', exc)
-            return BrowseResult(documents=[], total_count=0, page=1, page_size=page_size, has_next=False, has_prev=False)
+        resp = self._session().get(self._api('documents/'), params=params, timeout=TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        docs = [self._to_dms_doc(d) for d in data.get('results', [])]
+        total = data.get('count', 0)
+        return BrowseResult(
+            documents=docs,
+            total_count=total,
+            page=page,
+            page_size=page_size,
+            has_next=data.get('next') is not None,
+            has_prev=data.get('previous') is not None,
+        )
 
     def get_document(self, doc_id):
         resp = self._session().get(self._api(f'documents/{doc_id}/'), timeout=TIMEOUT)
@@ -142,7 +138,7 @@ class PaperlessNGXClient(BaseDMSClient):
             title=d.get('title', ''),
             created=d.get('created', ''),
             modified=d.get('modified', ''),
-            content=d.get('content', ''),
+            content=d.get('content') or '',
             tags=[str(t) for t in d.get('tags', [])],
             correspondent=str(d.get('correspondent', '') or ''),
             download_url=f'{self.base_url}/api/documents/{d.get("id")}/download/',

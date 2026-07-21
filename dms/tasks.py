@@ -3,6 +3,7 @@ Celery tasks for DMS integration.
 """
 import logging
 import os
+from datetime import date
 
 from celery import shared_task
 from django.core.files.base import ContentFile
@@ -46,7 +47,7 @@ def push_document_to_dms(self, provider_id, document_id):
         doc.file.seek(0)
         content = doc.file.read()
         filename = doc.file.name.rsplit('/', 1)[-1]
-        title = f'{doc.item.name} — {doc.name or filename}'
+        title = f'{doc.item.name} — {filename}'
         tags = ['vouchervault']
         if doc.item.wallet:
             tags.append(doc.item.wallet.name)
@@ -109,54 +110,68 @@ def auto_pull_from_dms(self, provider_id):
         ).values_list('dms_document_id', flat=True)
     )
 
-    try:
-        result = client.browse(
-            tag=provider.pull_tag,
-            correspondent=provider.pull_correspondent,
-            page_size=50,
-        )
-    except Exception as exc:
-        logger.error('auto_pull_from_dms browse error provider=%s: %s', provider_id, exc)
-        return
-
-    for dms_doc in result.documents:
-        if dms_doc.id in pulled_ids:
-            continue
+    page = 1
+    page_size = 50
+    while True:
         try:
-            raw_bytes = client.download_document(dms_doc.id)
-            ext = os.path.splitext(dms_doc.original_filename or 'document.pdf')[1] or '.pdf'
-            safe_title = ''.join(c for c in dms_doc.title if c.isalnum() or c in ' -_')[:60]
-            filename = f'{safe_title or dms_doc.id}{ext}'
-
-            item = Item.objects.create(
-                user=provider.user,
-                name=dms_doc.title or filename,
-                source='api',
+            result = client.browse(
+                tag=provider.pull_tag,
+                correspondent=provider.pull_correspondent,
+                page=page,
+                page_size=page_size,
             )
-            doc = Document(item=item, name=dms_doc.title[:255], extracted_text=dms_doc.content[:10000])
-            doc.file.save(filename, ContentFile(raw_bytes), save=True)
-
-            DMSSyncLog.objects.create(
-                provider=provider,
-                direction=DMSSyncLog.DIRECTION_PULL,
-                status=DMSSyncLog.STATUS_OK,
-                item=item,
-                document=doc,
-                dms_document_id=dms_doc.id,
-                dms_document_title=dms_doc.title,
-                detail=f'Auto-pulled from {provider.name}',
-            )
-            logger.info('auto_pull_from_dms: pulled %s from %s', dms_doc.id, provider.name)
         except Exception as exc:
-            DMSSyncLog.objects.create(
-                provider=provider,
-                direction=DMSSyncLog.DIRECTION_PULL,
-                status=DMSSyncLog.STATUS_ERROR,
-                dms_document_id=dms_doc.id,
-                dms_document_title=dms_doc.title,
-                detail=str(exc),
-            )
-            logger.error('auto_pull_from_dms item create error: %s', exc)
+            logger.error('auto_pull_from_dms browse error provider=%s page=%s: %s', provider_id, page, exc)
+            return
+
+        for dms_doc in result.documents:
+            if dms_doc.id in pulled_ids:
+                continue
+            try:
+                raw_bytes = client.download_document(dms_doc.id)
+                ext = os.path.splitext(dms_doc.original_filename or 'document.pdf')[1] or '.pdf'
+                safe_title = ''.join(c for c in (dms_doc.title or '') if c.isalnum() or c in ' -_')[:60]
+                filename = f'{safe_title or dms_doc.id}{ext}'
+
+                item = Item.objects.create(
+                    user=provider.user,
+                    name=dms_doc.title or filename,
+                    type='voucher',
+                    issuer='',
+                    redeem_code='',
+                    value='0.00',
+                    source='api',
+                    expiry_date=date(9999, 12, 31),
+                )
+                doc = Document(item=item, extracted_text=(dms_doc.content or '')[:10000])
+                doc._dms_pulled = True
+                doc.file.save(filename, ContentFile(raw_bytes), save=True)
+
+                DMSSyncLog.objects.create(
+                    provider=provider,
+                    direction=DMSSyncLog.DIRECTION_PULL,
+                    status=DMSSyncLog.STATUS_OK,
+                    item=item,
+                    document=doc,
+                    dms_document_id=dms_doc.id,
+                    dms_document_title=dms_doc.title,
+                    detail=f'Auto-pulled from {provider.name}',
+                )
+                logger.info('auto_pull_from_dms: pulled %s from %s', dms_doc.id, provider.name)
+            except Exception as exc:
+                DMSSyncLog.objects.create(
+                    provider=provider,
+                    direction=DMSSyncLog.DIRECTION_PULL,
+                    status=DMSSyncLog.STATUS_ERROR,
+                    dms_document_id=dms_doc.id,
+                    dms_document_title=dms_doc.title,
+                    detail=str(exc),
+                )
+                logger.error('auto_pull_from_dms item create error: %s', exc)
+
+        if not result.has_next:
+            break
+        page += 1
 
 
 @shared_task

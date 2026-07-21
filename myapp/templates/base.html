@@ -404,6 +404,12 @@
           <span>{% trans "Document Archive" %}</span>
         </a>
       </li>
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="{% url 'help_center' %}">
+          <i class="bi bi-book"></i>
+          <span>{% trans "Help &amp; Guides" %}</span>
+        </a>
+      </li>
       {% if request.user.is_superuser %}
       <li class="nav-item">
         <a class="nav-link collapsed" href="{% url 'site_settings' %}">

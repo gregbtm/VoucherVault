@@ -4293,10 +4293,13 @@ class HelpDocViewerTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn('/accounts/login/', response.url)
 
-    def test_regular_user_forbidden(self):
+    def test_regular_user_can_view_docs(self):
+        """All help docs are accessible to any logged-in user — the Help Center
+        exposes every slug, so gating individual docs after that would be confusing."""
         self.client.login(username='alice', password='pw12345!')
-        response = self.client.get(reverse('view_doc', args=['google-wallet']), follow=True)
-        self.assertContains(response, 'Only administrators')
+        response = self.client.get(reverse('view_doc', args=['google-wallet']))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<h1')
 
     def test_unknown_doc_slug_404s(self):
         self.client.login(username='admin', password='pw12345!')
@@ -4327,23 +4330,23 @@ class HelpDocViewerTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('error', response.json())
 
-    def test_regular_user_can_view_self_service_docs(self):
-        """n8n/mcp-server are personal-integration docs, not admin-only -
-        unlike every other slug, a non-superuser must be able to reach
-        them (the API Access page that links to them isn't superuser-gated)."""
+    def test_regular_user_can_view_integration_docs(self):
+        """Integration docs must be reachable by non-superusers — they link from
+        the API Access and Notification pages which aren't superuser-gated."""
         self.client.login(username='alice', password='pw12345!')
-        for slug in ('n8n', 'mcp-server'):
+        for slug in ('n8n', 'mcp-server', 'rail-ticket', 'firefly'):
             response = self.client.get(reverse('view_doc', args=[slug]))
             self.assertEqual(response.status_code, 200, f'{slug} did not render for a regular user')
             self.assertContains(response, '<h1', msg_prefix=f'{slug} missing rendered heading')
 
-    def test_regular_user_still_forbidden_for_admin_docs(self):
-        """Loosening the gate for n8n/mcp-server must not loosen it for
-        the server/deployment-level docs - those stay superuser-only."""
+    def test_regular_user_can_view_all_known_docs(self):
+        """All help docs are now self-service — the Help Center links every slug
+        to any logged-in user, so every doc must render with status 200."""
         self.client.login(username='alice', password='pw12345!')
         for slug in ('google-wallet', 'apple-wallet', 'ocr', 'auto-deploy', 'backup-restore'):
-            response = self.client.get(reverse('view_doc', args=[slug]), follow=True)
-            self.assertContains(response, 'Only administrators')
+            response = self.client.get(reverse('view_doc', args=[slug]))
+            self.assertEqual(response.status_code, 200, f'{slug} did not render for a regular user')
+            self.assertContains(response, '<h1', msg_prefix=f'{slug} missing rendered heading')
 
 
 class ApiAccessViewTests(TestCase):

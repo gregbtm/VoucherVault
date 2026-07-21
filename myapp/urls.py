@@ -87,6 +87,7 @@ urlpatterns = (
     path('admin-tools/check-upstream/', views.trigger_upstream_check, name='trigger_upstream_check'),
     path('admin-tools/site-settings/', views.site_settings, name='site_settings'),
     path('admin-tools/help/<str:doc_slug>/', views.view_doc, name='view_doc'),
+    path('help/', views.help_center, name='help_center'),
 )
 
 admin.site.site_header = "VoucherVault Plus+"
