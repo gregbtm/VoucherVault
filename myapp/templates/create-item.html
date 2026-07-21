@@ -658,7 +658,7 @@ body.dark-mode .error-alert {
           <div class="scanner-section" id="aiScanSection">
             <div class="form-section-title" style="margin-bottom: 0.75rem;">
               <i class="bi bi-stars"></i>
-              {% trans "Scan with AI" %}
+              {% trans "Scan with AI" %} <a href="{% url 'view_doc' 'ocr' %}" data-doc-url="{% url 'view_doc' 'ocr' %}" class="help-link text-muted ms-1" title="{% trans 'OCR setup guide' %}" style="font-size:0.85rem;vertical-align:middle;text-decoration:none;"><i class="bi bi-question-circle"></i></a>
             </div>
             <p style="color: #6c757d; margin-bottom: 0.75rem; font-size: 0.85rem;">
               {% trans "Upload a photo/screenshot of the card, or a PDF eTicket (e.g. a rail booking confirmation), and we'll pre-fill the fields below." %}
@@ -958,6 +958,11 @@ body.dark-mode .error-alert {
                 <small class="form-text text-muted">{% trans "Used by the Firefly III notification backend to post withdrawal transactions when you spend from this card. You can also link this after saving via the edit form." %}</small>
               </div>
             </div>
+            {% if not has_firefly_rule %}
+            <p class="text-muted small mb-2" id="firefly-hint">
+              <i class="bi bi-bank me-1"></i>{% trans "Sync spend to Firefly III — " %}<a href="#" onclick="window.openHelpDoc('firefly'); return false;">{% trans "set up the Firefly III integration" %}</a>{% trans " to enable this field." %}
+            </p>
+            {% endif %}
           </div>
 
           <!-- Organization Section -->
@@ -1024,6 +1029,10 @@ body.dark-mode .error-alert {
                      value='{{ form.notify_days_before.value|default_if_none:"" }}'>
               <small class="form-text text-muted">{% trans "Days before expiry to notify, overriding the global default. Leave blank to use the global setting." %}</small>
             </div>
+            {% else %}
+            <p class="text-muted small mb-2">
+              <i class="bi bi-bell-slash me-1"></i>{% trans "No expiry notifications — " %}<a href="{% url 'manage_notification_rules' %}">{% trans "set up a notification rule" %}</a>{% trans " to enable this field." %}
+            </p>
             {% endif %}
 
             <!-- Recurring / Subscription -->

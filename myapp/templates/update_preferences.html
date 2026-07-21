@@ -25,7 +25,7 @@
 </style>
 
 <div class="pagetitle">
-  <h1>{% trans "Preferences" %}</h1>
+  <h1>{% trans "Preferences" %} <a href="{% url 'help_center' %}" class="help-link text-muted" title="{% trans 'Help &amp; Guides' %}" style="font-size:1rem;vertical-align:middle;text-decoration:none;"><i class="bi bi-question-circle"></i></a></h1>
   <nav>
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
@@ -42,7 +42,7 @@
           <h5 class="card-title">{% trans "Configure Preferences" %}</h5>
           <p class="text-muted small">{% trans "Personal to your account - other users have their own. Site-wide settings live on the Site Settings page (admins only)." %}</p>
 
-          <form method="POST" action="">
+          <form method="POST" action="" id="preferences-form">
             {% csrf_token %}
 
             <div class="settings-group-label"><i class="bi bi-palette me-1"></i> {% trans "Look & Layout" %}</div>
@@ -223,10 +223,8 @@
               </div>
             </div>
 
-            <div class="mt-4">
-              <button type="submit" class="btn btn-primary">
-                <i class="bi bi-check-circle me-1"></i>{% trans "Update Preferences" %}
-              </button>
+            <div class="mt-4 text-muted small" id="autosave-status">
+              <i class="bi bi-cloud-check me-1"></i>{% trans "Changes save automatically." %}
             </div>
           </form>
 
@@ -235,6 +233,87 @@
     </div>
   </div>
 </section>
+
+<script>
+(function () {
+  var prefsForm = document.getElementById('preferences-form');
+  var autosaveStatus = document.getElementById('autosave-status');
+  var saveInFlight = false;
+  var savePending = false;
+  var debounceTimer = null;
+
+  function clearFieldErrors() {
+    if (!prefsForm) return;
+    prefsForm.querySelectorAll('.is-invalid').forEach(function (el) { el.classList.remove('is-invalid'); });
+    prefsForm.querySelectorAll('.autosave-error').forEach(function (el) { el.remove(); });
+  }
+
+  function showFieldErrors(errors) {
+    Object.keys(errors || {}).forEach(function (fieldName) {
+      var field = prefsForm.querySelector('[name="' + fieldName + '"]');
+      if (!field) return;
+      field.classList.add('is-invalid');
+      var msg = (errors[fieldName] || []).map(function (e) { return e.message; }).join(' ');
+      var errEl = document.createElement('div');
+      errEl.className = 'invalid-feedback d-block autosave-error';
+      errEl.textContent = msg;
+      field.insertAdjacentElement('afterend', errEl);
+    });
+  }
+
+  function runAutosave() {
+    saveInFlight = true;
+    clearFieldErrors();
+    if (autosaveStatus) autosaveStatus.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>{% trans "Saving..." %}';
+    fetch(window.location.href, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: new FormData(prefsForm),
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+      .then(function (result) {
+        saveInFlight = false;
+        if (result.ok && result.data.success) {
+          window.showToast(result.data.message, 'success');
+          if (autosaveStatus) autosaveStatus.innerHTML = '<i class="bi bi-cloud-check me-1"></i>{% trans "Changes save automatically." %}';
+          if (result.data.cache_purge && 'serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function (regs) {
+              regs.forEach(function (reg) { reg.unregister(); });
+            });
+          }
+        } else {
+          showFieldErrors(result.data.errors);
+          window.showToast('{% trans "Some preferences could not be saved." %}', 'danger');
+          if (autosaveStatus) autosaveStatus.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>{% trans "Not saved - see the errors above." %}';
+        }
+        if (savePending) { savePending = false; runAutosave(); }
+      })
+      .catch(function () {
+        saveInFlight = false;
+        window.showToast('{% trans "Save failed - could not reach the server." %}', 'danger');
+        if (autosaveStatus) autosaveStatus.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>{% trans "Save failed - could not reach the server." %}';
+      });
+  }
+
+  function scheduleAutosave() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function () {
+      if (saveInFlight) { savePending = true; return; }
+      runAutosave();
+    }, 400);
+  }
+
+  if (prefsForm) {
+    prefsForm.addEventListener('change', scheduleAutosave);
+    prefsForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      clearTimeout(debounceTimer);
+      if (saveInFlight) { savePending = true; return; }
+      runAutosave();
+    });
+  }
+})();
+</script>
 
 <script>
 (function () {

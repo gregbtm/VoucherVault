@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="pagetitle">
-  <h1>{% trans "Security" %}</h1>
+  <h1>{% trans "Security" %} <a href="{% url 'help_center' %}" class="help-link text-muted" title="{% trans 'Help &amp; Guides' %}" style="font-size:1rem;vertical-align:middle;text-decoration:none;"><i class="bi bi-question-circle"></i></a></h1>
   <nav>
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>

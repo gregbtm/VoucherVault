@@ -26,11 +26,20 @@ DOCS = {
     'synology':           ('Synology NAS integration', 'SYNOLOGY_NAS_SETUP.md'),
     'firefly':            ('Syncing spend to Firefly III', 'FIREFLY_III_SETUP.md'),
     'upgrade':            ('Upgrading from the upstream image', 'UPGRADE.md'),
+    'notifications':      ('Notification rules & expiry alerts', 'NOTIFICATIONS_SETUP.md'),
+    'webhooks':           ('Outbound webhooks', 'WEBHOOKS_SETUP.md'),
+    'api-access':         ('REST API access', 'API_ACCESS.md'),
+    'wallets-tags':       ('Wallets & tags', 'WALLETS_AND_TAGS.md'),
 }
 
 # Categories for the Help Center index page.
 # Each entry: (category_title, icon, [(slug, description)])
 CATEGORIES = [
+    ('Getting Started', 'bi-house', [
+        ('wallets-tags',   'Organise items into wallets and apply tags for filtering'),
+        ('notifications',  'Set up expiry alerts via ntfy, webhook, web push, or Apprise'),
+        ('api-access',     'Generate an API token and use the REST API or MCP server'),
+    ]),
     ('Wallet & Sharing', 'bi-wallet2', [
         ('google-wallet',  'Export vouchers to Google Wallet on Android'),
         ('apple-wallet',   'Export vouchers to Apple Wallet on iOS & macOS'),
@@ -42,6 +51,7 @@ CATEGORIES = [
         ('DMS_SETUP',      'Connect Paperless-ngx, Docspell, or PaperMerge to store and retrieve documents'),
     ]),
     ('Automation & Integrations', 'bi-gear-wide-connected', [
+        ('webhooks',       'Fire outbound webhooks on item events — wire into n8n, Zapier, or your own endpoint'),
         ('n8n',            'Build no-code workflows with n8n — email import, Slack alerts, and more'),
         ('rail-ticket',    'Automatically import UK rail eTickets from your inbox via n8n'),
         ('mcp-server',     'Give Claude, Claude Code, or any MCP client direct access to your vault'),
