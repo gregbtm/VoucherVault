@@ -3,8 +3,8 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## Before you activate this\n\n1. **Gmail credential** — the 'Watch for Ticket Emails' trigger needs a Gmail OAuth2 credential. Add one under Credentials → New → Gmail OAuth2 API, then select it on that node **and** on the two HTTP Request nodes 'Get Full Message' and 'Fetch Attachment Data'.\n\n2. **VoucherVault API token** — on your VoucherVault server:\n   `docker compose exec app python manage.py drf_create_token <your-username>`\n   Then in n8n: Credentials → New → Header Auth, Name=`Authorization`, Value=`Token <the-token>`. Select it on the 'Create VoucherVault Item' node.\n\n3. **Gmail labels** — create two labels in Gmail first: `VoucherVault-Processed` and `VoucherVault-Failed`. The workflow applies these after each attempt so it never reprocesses an email (the trigger's search query already excludes anything labeled Processed).\n\n4. **ntfy topic** — edit the 'Notify: Success' and 'Notify: Failed' HTTP Request nodes and replace `CHANGE_ME` in the URL with your ntfy topic name (e.g. `https://ntfy.sh/my-vv-tickets`). Set up the ntfy credential or remove the auth header if using a public topic.\n\n5. **Sender filter** — the trigger searches for emails from common UK rail booking vendors plus SimpleLogin-forwarded addresses. Edit the `q` field if you need further scoping.\n\n6. **Testing** — right-click 'Watch for Ticket Emails' and choose **Fetch Test Event** against a real ticket email in your inbox. Do not use pinned test data — it doesn't include binary attachments.\n\n---\n**Why HTTP Request instead of the Gmail node for attachments:**\nThe Gmail API only inlines attachment data for files smaller than ~10 KB. Larger files (like ticket PDFs) need a separate `messages.attachments.get` call that n8n's built-in Gmail node does not make. This workflow calls the Gmail REST API directly, which works reliably for any size PDF.\n\n**Multiple PDFs per email:**\nThe 'Extract PDF Parts' Code node returns one item per PDF found. All downstream nodes run once per PDF, so a multi-leg booking is fully handled in one execution.\n\n**Inline PDF branch:**\nSmall PDFs (<~10 KB) have base64 data inline in the full-message response. The 'Needs Fetch?' node routes these directly to 'Convert to Binary (inline)', skipping the separate attachment fetch.\n\n**Error handling:**\n'Get Full Message' and 'Fetch Attachment Data' both use `onError: continueErrorOutput`. Their error output is wired to 'Label: Failed' so the email is always labelled even when Gmail API calls fail, and 'Notify: Failed' fires an ntfy alert.",
-        "height": 1120,
+        "content": "## Before you activate this\n\n1. **Gmail credential** — the 'Watch for Ticket Emails' trigger needs a Gmail OAuth2 credential. Add one under Credentials → New → Gmail OAuth2 API, then select it on that node **and** on the two HTTP Request nodes 'Get Full Message' and 'Fetch Attachment Data'.\n\n2. **VoucherVault API token** — on your VoucherVault server:\n   `docker compose exec app python manage.py drf_create_token <your-username>`\n   Then in n8n: Credentials → New → Header Auth, Name=`Authorization`, Value=`Token <the-token>`. Select it on the 'Create VoucherVault Item' node.\n\n3. **Gmail labels** — create two labels in Gmail first: `VoucherVault-Processed` and `VoucherVault-Failed`. The workflow applies these after each attempt so it never reprocesses an email (the trigger's search query already excludes anything labeled Processed).\n\n4. **ntfy topic** — edit the 'Notify: Success' and 'Notify: Failed' HTTP Request nodes and replace `CHANGE_ME` in the URL with your ntfy topic name (e.g. `https://ntfy.sh/my-vv-tickets`). Set up the ntfy credential or remove the auth header if using a public topic.\n\n5. **Sender filter** — the trigger searches for emails from common UK rail booking vendors plus SimpleLogin-forwarded addresses. Edit the `q` field if you need further scoping.\n\n6. **Testing** — right-click 'Watch for Ticket Emails' and choose **Fetch Test Event** against a real ticket email in your inbox. Do not use pinned test data — it doesn't include binary attachments.\n\n---\n**Why HTTP Request instead of the Gmail node for attachments:**\nThe Gmail API only inlines attachment data for files smaller than ~10 KB. Larger files (like ticket PDFs) need a separate `messages.attachments.get` call that n8n's built-in Gmail node does not make. This workflow calls the Gmail REST API directly, which works reliably for any size PDF.\n\n**Multiple PDFs per email:**\nThe 'Extract PDF Parts' Code node returns one item per PDF found. All downstream nodes run once per PDF, so a multi-leg booking is fully handled in one execution.\n\n**Inline PDF branch:**\nSmall PDFs (<~10 KB) have base64 data inline in the full-message response. The 'Needs Fetch?' node routes these directly to 'Convert to Binary (inline)', skipping the separate attachment fetch.\n\n**Duplicate handling (409):**\nIf VoucherVault already has a ticket with the same barcode, the API returns HTTP 409. The 'Is Duplicate?' node catches this and routes to Label: Processed (so the email is never re-triggered) and sends a quiet low-priority notification, keeping it distinct from a real failure.\n\n**No-PDF emails:**\nEmails that match the search filter but contain no PDF attachment are labelled Processed immediately so they are never re-checked.\n\n**Error handling:**\n'Get Full Message' and 'Fetch Attachment Data' both use `onError: continueErrorOutput`. Their error output is wired to 'Label: Failed' so the email is always labelled even when Gmail API calls fail, and 'Notify: Failed' fires an ntfy alert.",
+        "height": 1200,
         "width": 480
       },
       "id": "379d406a-a4b7-4a06-b507-0c4c88ff7d46",
@@ -229,6 +229,37 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-is-duplicate",
+              "leftValue": "={{ $json.statusCode === 409 || ($json.body && $json.body.duplicate === true) }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-aaaa-4abc-8def-000000000099",
+      "name": "Is Duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [944, 240]
+    },
+    {
+      "parameters": {
         "operation": "addLabels",
         "messageId": "={{ $('Watch for Ticket Emails').item.json.id }}",
         "labelIds": [
@@ -253,6 +284,46 @@
         "operation": "addLabels",
         "messageId": "={{ $('Watch for Ticket Emails').item.json.id }}",
         "labelIds": [
+          "Label_8788511618368682923"
+        ]
+      },
+      "id": "a1b2c3d4-bbbb-4abc-8def-000000000098",
+      "name": "Label: Processed (Dup)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1184, 240],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Watch for Ticket Emails').item.json.id }}",
+        "labelIds": [
+          "Label_8788511618368682923"
+        ]
+      },
+      "id": "a1b2c3d4-dddd-4abc-8def-000000000096",
+      "name": "Label: Processed (No PDF)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [224, 400],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Watch for Ticket Emails').item.json.id }}",
+        "labelIds": [
           "Label_3322627571487165776"
         ]
       },
@@ -260,7 +331,7 @@
       "name": "Label: Failed",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [944, 320],
+      "position": [944, 400],
       "webhookId": "d269da17-9ff1-44b3-9433-55f6e399cb2e",
       "credentials": {
         "gmailOAuth2": {
@@ -278,7 +349,7 @@
           "parameters": [
             {
               "name": "Title",
-              "value": "Rail ticket imported"
+              "value": "={{ (() => { const d = $('Create VoucherVault Item').item.json; const i = d.item || {}; return (i.name || d.name || d.issuer || 'Rail ticket') + ' imported'; })() }}"
             },
             {
               "name": "Priority",
@@ -292,7 +363,7 @@
         },
         "sendBody": true,
         "contentType": "raw",
-        "body": "={{ 'Ticket: ' + ($('Create VoucherVault Item').item.json.name || $('Create VoucherVault Item').item.json.issuer || 'unknown') }}",
+        "body": "={{ (() => { const d = $('Create VoucherVault Item').item.json; const i = d.item || {}; const lines = []; const name = i.name || d.name || d.issuer || 'Ticket'; lines.push('🚂 ' + name); if (i.journey_origin && i.journey_destination) lines.push('📍 ' + i.journey_origin + ' → ' + i.journey_destination); if (i.expiry_date) lines.push('📅 ' + i.expiry_date); if (i.value && parseFloat(i.value) > 0) lines.push('💷 ' + i.value + ' ' + (i.currency || 'GBP')); return lines.join('\\n'); })() }}",
         "options": {
           "timeout": 10000
         }
@@ -302,6 +373,40 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [1184, 60]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh/CHANGE_ME",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Title",
+              "value": "Ticket already in VoucherVault"
+            },
+            {
+              "name": "Priority",
+              "value": "low"
+            },
+            {
+              "name": "Tags",
+              "value": "train,repeat"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{ (() => { const b = $('Create VoucherVault Item').item.json.body || {}; const i = b.item || {}; return 'Duplicate — already imported: ' + (i.name || b.name || b.issuer || 'this ticket'); })() }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "a1b2c3d4-cccc-4abc-8def-000000000097",
+      "name": "Notify: Duplicate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1424, 240]
     },
     {
       "parameters": {
@@ -335,7 +440,7 @@
       "name": "Notify: Failed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1184, 320]
+      "position": [1184, 400]
     },
     {
       "parameters": {},
@@ -474,6 +579,24 @@
         ],
         [
           {
+            "node": "Is Duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Duplicate?": {
+      "main": [
+        [
+          {
+            "node": "Label: Processed (Dup)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Label: Failed",
             "type": "main",
             "index": 0
@@ -492,11 +615,33 @@
         ]
       ]
     },
+    "Label: Processed (Dup)": {
+      "main": [
+        [
+          {
+            "node": "Notify: Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Label: Failed": {
       "main": [
         [
           {
             "node": "Notify: Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No PDF - skip": {
+      "main": [
+        [
+          {
+            "node": "Label: Processed (No PDF)",
             "type": "main",
             "index": 0
           }
@@ -512,7 +657,7 @@
     "timeSavedMode": "fixed",
     "callerPolicy": "workflowsFromSameOwner"
   },
-  "versionId": "v6-2026-07-21",
+  "versionId": "v7-2026-07-22",
   "meta": {
     "templateCredsSetupCompleted": false,
     "instanceId": ""
