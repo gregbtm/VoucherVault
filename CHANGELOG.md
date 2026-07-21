@@ -1,3 +1,10 @@
+## [1.1.96](https://github.com/gregbtm/VoucherVault/compare/v1.1.95...v1.1.96) (2026-07-21)
+
+
+### Bug Fixes
+
+* **n8n:** robustify PDF attachment handling ([d650601](https://github.com/gregbtm/VoucherVault/commit/d6506011f6366980e948631a58715c47bf5c0138))
+
 ## [1.1.95](https://github.com/gregbtm/VoucherVault/compare/v1.1.94...v1.1.95) (2026-07-21)
 
 
@@ -15,11 +22,4 @@
 ### Features
 
 * **ui:** conditional field visibility across item and settings forms ([#131](https://github.com/gregbtm/VoucherVault/issues/131)) ([4c66227](https://github.com/gregbtm/VoucherVault/commit/4c6622786a79722cbfc517351e0db23875190abd))
-
-## [1.1.91](https://github.com/gregbtm/VoucherVault/compare/v1.1.90...v1.1.91) (2026-07-21)
-
-
-### Bug Fixes
-
-* **docker:** add missing COPY for dms app — fixes 500 on startup ([a39dd17](https://github.com/gregbtm/VoucherVault/commit/a39dd17c286ba6950f05b399e37d9ad43ba5e44d))
 
