@@ -117,7 +117,7 @@
                 {{ form.nearby_places_enabled }}
                 <label class="form-check-label" for="{{ form.nearby_places_enabled.id_for_label }}">{% trans "Allow the Nearby widget to query OpenStreetMap" %}</label>
               </div>
-              <div class="row">
+              <div class="row" id="overpass-url-row">
                 <div class="col-md-6 mb-3">
                   <label for="{{ form.overpass_api_url.id_for_label }}" class="form-label">{% trans "Overpass API URL" %}</label>
                   {{ form.overpass_api_url }}
@@ -136,18 +136,20 @@
                 <label class="form-check-label" for="{{ form.share_via_smart_enabled.id_for_label }}">{% trans "Offer a choice on \"Share via...\": bare link, or a rich share (merchant, code, PIN, remaining balance) via a public link" %}</label>
               </div>
               <p class="text-muted small mb-3">{% trans "When on, the recipient doesn't need a VoucherVault account to view what was shared - the public link is read-only and can't be used to sign in or edit anything. Turn it off to go back to the plain link-only share." %}</p>
-              <div class="row">
-                <div class="col-md-4 mb-3">
-                  <label for="{{ form.share_link_expiry_days.id_for_label }}" class="form-label">{% trans "Link expiry (days)" %}</label>
-                  {{ form.share_link_expiry_days }}
-                  <small class="form-text text-muted">{% trans "0 = never expires. Applies to new/regenerated links; existing links keep their original expiry." %}</small>
+              <div id="share-sub-fields">
+                <div class="row">
+                  <div class="col-md-4 mb-3">
+                    <label for="{{ form.share_link_expiry_days.id_for_label }}" class="form-label">{% trans "Link expiry (days)" %}</label>
+                    {{ form.share_link_expiry_days }}
+                    <small class="form-text text-muted">{% trans "0 = never expires. Applies to new/regenerated links; existing links keep their original expiry." %}</small>
+                  </div>
                 </div>
+                <div class="form-check">
+                  {{ form.share_link_pin_enabled }}
+                  <label class="form-check-label" for="{{ form.share_link_pin_enabled.id_for_label }}">{% trans "Require a short access code to view a public share link" %}</label>
+                </div>
+                <p class="text-muted small mb-0">{% trans "A 4-digit code is generated per link and shown to you on the item page - relay it separately from the link (call, text, in person). It is never automatically included in the shared text." %}</p>
               </div>
-              <div class="form-check">
-                {{ form.share_link_pin_enabled }}
-                <label class="form-check-label" for="{{ form.share_link_pin_enabled.id_for_label }}">{% trans "Require a short access code to view a public share link" %}</label>
-              </div>
-              <p class="text-muted small mb-0">{% trans "A 4-digit code is generated per link and shown to you on the item page - relay it separately from the link (call, text, in person). It is never automatically included in the shared text." %}</p>
             </div>
 
             <div class="settings-section">
@@ -427,7 +429,7 @@
                 {{ form.scheduled_backup_enabled }}
                 <label class="form-check-label" for="{{ form.scheduled_backup_enabled.id_for_label }}">{% trans "Run the nightly per-user backup" %}</label>
               </div>
-              <div class="row">
+              <div class="row" id="backup-retention-row">
                 <div class="col-md-4 mb-3">
                   <label for="{{ form.backup_retention_count.id_for_label }}" class="form-label">{% trans "Backups to keep per user" %}</label>
                   {{ form.backup_retention_count }}
@@ -476,6 +478,31 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  // ── Conditional sub-field visibility ─────────────────────────────────
+  // nearby_places_enabled → overpass_api_url row
+  var nearbyToggle = document.getElementById('{{ form.nearby_places_enabled.id_for_label }}');
+  var overpassRow = document.getElementById('overpass-url-row');
+  function syncNearbyFields() {
+    if (overpassRow) overpassRow.style.display = nearbyToggle && nearbyToggle.checked ? '' : 'none';
+  }
+  if (nearbyToggle) { nearbyToggle.addEventListener('change', syncNearbyFields); syncNearbyFields(); }
+
+  // share_via_smart_enabled → share link sub-fields
+  var smartShareToggle = document.getElementById('{{ form.share_via_smart_enabled.id_for_label }}');
+  var shareSubFields = document.getElementById('share-sub-fields');
+  function syncShareFields() {
+    if (shareSubFields) shareSubFields.style.display = smartShareToggle && smartShareToggle.checked ? '' : 'none';
+  }
+  if (smartShareToggle) { smartShareToggle.addEventListener('change', syncShareFields); syncShareFields(); }
+
+  // scheduled_backup_enabled → backup_retention_count row
+  var backupToggle = document.getElementById('{{ form.scheduled_backup_enabled.id_for_label }}');
+  var backupRetentionRow = document.getElementById('backup-retention-row');
+  function syncBackupFields() {
+    if (backupRetentionRow) backupRetentionRow.style.display = backupToggle && backupToggle.checked ? '' : 'none';
+  }
+  if (backupToggle) { backupToggle.addEventListener('change', syncBackupFields); syncBackupFields(); }
+
   // Show only the OCR backend's own fields - hidden entirely when the
   // backend is 'none', since there's nothing to configure at that point.
   var ocrBackendSelect = document.getElementById('{{ form.ocr_backend.id_for_label }}');

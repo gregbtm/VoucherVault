@@ -1084,6 +1084,7 @@ body.dark-mode .error-alert {
               </div>
             </div>
 
+            {% if has_notification_rule %}
             <div class="form-group">
               <label class="form-label" for="notify_days_before">{% trans "Notify Me Before Expiry" %}</label>
               <input type="number" class="modern-input" id="notify_days_before" name="notify_days_before"
@@ -1091,6 +1092,7 @@ body.dark-mode .error-alert {
                      value="{{ item.notify_days_before|default_if_none:'' }}">
               <small class="form-text text-muted">{% trans "Days before expiry to notify, overriding the global default. Leave blank to use the global setting." %}</small>
             </div>
+            {% endif %}
           </div>
 
           <!-- Additional Info Section -->
@@ -1136,18 +1138,25 @@ body.dark-mode .error-alert {
               </div>
             </div>
 
-            <div class="form-group">
-              <label class="form-label" for="logo_slug">
-                {% trans "Logo Slug" %}
-                <a href="https://www.logo.dev/" target="_blank" title="{% trans 'Learn more about logo.dev' %}">
-                  <i class="bi bi-info-circle"></i>
-                </a>
-              </label>
-              <input type="text" class="modern-input" id="logo_slug" name="logo_slug"
-                     placeholder="amazon.com"
-                     value="{{ item.logo_slug|default_if_none:'' }}"
-                     data-vv-suggest-field="logo_slug" data-vv-suggest-url="{% url 'suggest_field_options' %}" data-vv-suggest-type-source="#type">
-            </div>
+            <details class="vv-advanced-toggle mt-1 mb-2" {% if item.logo_slug %}open{% endif %}>
+              <summary class="text-muted small" style="cursor:pointer;user-select:none;">
+                <i class="bi bi-gear me-1"></i>{% trans "Advanced" %}
+              </summary>
+              <div class="pt-2">
+                <div class="form-group">
+                  <label class="form-label" for="logo_slug">
+                    {% trans "Logo Slug" %}
+                    <a href="https://www.logo.dev/" target="_blank" title="{% trans 'Learn more about logo.dev' %}">
+                      <i class="bi bi-info-circle"></i>
+                    </a>
+                  </label>
+                  <input type="text" class="modern-input" id="logo_slug" name="logo_slug"
+                         placeholder="amazon.com"
+                         value="{{ item.logo_slug|default_if_none:'' }}"
+                         data-vv-suggest-field="logo_slug" data-vv-suggest-url="{% url 'suggest_field_options' %}" data-vv-suggest-type-source="#type">
+                </div>
+              </div>
+            </details>
             
             <div class="form-group">
               <label class="form-label" for="file">{% trans "Upload File" %}</label>
@@ -1178,6 +1187,11 @@ body.dark-mode .error-alert {
 
 <script src="{% static 'assets/js/zxing.js' %}"></script>
 <script src="{% static 'assets/js/scanner.js' %}"></script>
+
+<script>
+  const HAS_FIREFLY_RULE = {{ has_firefly_rule|yesno:"true,false" }};
+  const HAS_NOTIFICATION_RULE = {{ has_notification_rule|yesno:"true,false" }};
+</script>
 
 <script>
 function handleSubmitButton() {
@@ -1325,7 +1339,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // Minimum Spend: Voucher and Coupon only
     if (minimumSpendWrap) minimumSpendWrap.classList.toggle('is-collapsed', t !== 'voucher' && t !== 'coupon');
     // Firefly III: Gift Card and Voucher only (items with spendable balances)
-    if (fireflyAccountWrap) fireflyAccountWrap.classList.toggle('is-collapsed', t !== 'giftcard' && t !== 'voucher');
+    if (fireflyAccountWrap) fireflyAccountWrap.classList.toggle('is-collapsed', !HAS_FIREFLY_RULE || (t !== 'giftcard' && t !== 'voucher'));
 
     // ── Value / Currency / Balance Check ─────────────────────────────────
     if (t === 'loyaltycard') {
