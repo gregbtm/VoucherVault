@@ -45,6 +45,7 @@ COPY api /opt/app/api
 COPY notify /opt/app/notify
 COPY imports /opt/app/imports
 COPY ocr /opt/app/ocr
+COPY dms /opt/app/dms
 COPY manage.py /opt/app/manage.py
 COPY VERSION /opt/app/VERSION
 COPY UPSTREAM_VERSION /opt/app/UPSTREAM_VERSION
