@@ -171,7 +171,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Large PDFs: data arrives from the Fetch Attachment Data HTTP response.\n// Gmail uses base64url (RFC 4648 §5: - and _ instead of + and /).\n// Convert to standard base64 then expose as binary.file.\n\nconst pdfInfo = $('Extract PDF Parts').item.json;\n\nconst results = [];\nfor (const item of $input.all()) {\n  const base64url = (item.json.data || '').trim();\n  if (!base64url) {\n    throw new Error('Fetch Attachment Data returned no bytes — check Gmail OAuth2 scope includes gmail.readonly');\n  }\n\n  const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');\n  const buffer = Buffer.from(base64, 'base64');\n\n  const binaryData = await $helpers.prepareBinaryData(\n    buffer,\n    pdfInfo.filename || 'ticket.pdf',\n    pdfInfo.mimeType || 'application/pdf'\n  );\n\n  results.push({\n    json: { messageId: pdfInfo.messageId },\n    binary: { file: binaryData },\n  });\n}\n\nreturn results;"
+        "jsCode": "// Large PDFs: data arrives from the Fetch Attachment Data HTTP response.\n// Gmail uses base64url (RFC 4648 §5: - and _ instead of + and /).\n// Normalise to standard base64 and return a binary item directly —\n// $helpers is not available in the n8n 2.x task-runner sandbox.\n\nconst pdfInfo = $('Extract PDF Parts').item.json;\n\nconst results = [];\nfor (const item of $input.all()) {\n  const base64url = (item.json.data || '').trim();\n  if (!base64url) {\n    throw new Error('Fetch Attachment Data returned no bytes — check Gmail OAuth2 scope includes gmail.readonly');\n  }\n\n  const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');\n\n  results.push({\n    json: { messageId: pdfInfo.messageId },\n    binary: {\n      file: {\n        data: base64,\n        mimeType: pdfInfo.mimeType || 'application/pdf',\n        fileName: pdfInfo.filename || 'ticket.pdf',\n      }\n    },\n  });\n}\n\nreturn results;"
       },
       "id": "d4e5f6a7-4567-4def-b012-000000000004",
       "name": "Convert to Binary (fetched)",
@@ -181,7 +181,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Small PDFs (<~10 KB): body.data is already present inline in the\n// full-message response. No separate fetch needed.\n\nconst pdfInfo = $input.item.json;\nconst base64url = (pdfInfo.inlineData || '').trim();\nif (!base64url) {\n  throw new Error('Expected inline attachment data but body.data was empty');\n}\n\nconst base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');\nconst buffer = Buffer.from(base64, 'base64');\n\nconst binaryData = await $helpers.prepareBinaryData(\n  buffer,\n  pdfInfo.filename || 'ticket.pdf',\n  pdfInfo.mimeType || 'application/pdf'\n);\n\nreturn [{\n  json: { messageId: pdfInfo.messageId },\n  binary: { file: binaryData },\n}];"
+        "jsCode": "// Small PDFs (<~10 KB): body.data is already present inline in the\n// full-message response. No separate fetch needed.\n// Return binary item directly — $helpers is not available in n8n 2.x task-runner.\n\nconst pdfInfo = $input.item.json;\nconst base64url = (pdfInfo.inlineData || '').trim();\nif (!base64url) {\n  throw new Error('Expected inline attachment data but body.data was empty');\n}\n\nconst base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');\n\nreturn [{\n  json: { messageId: pdfInfo.messageId },\n  binary: {\n    file: {\n      data: base64,\n      mimeType: pdfInfo.mimeType || 'application/pdf',\n      fileName: pdfInfo.filename || 'ticket.pdf',\n    }\n  },\n}];"
       },
       "id": "e5f6a7b8-6789-4efg-c123-000000000011",
       "name": "Convert to Binary (inline)",
@@ -512,7 +512,7 @@
     "timeSavedMode": "fixed",
     "callerPolicy": "workflowsFromSameOwner"
   },
-  "versionId": "v4-2026-07-21",
+  "versionId": "v5-2026-07-21",
   "meta": {
     "templateCredsSetupCompleted": false,
     "instanceId": ""
