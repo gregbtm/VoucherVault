@@ -666,6 +666,17 @@ def _record_scan_learning(request, item):
     record_scan_corrections(request.user, snapshot, item)
 
 
+def _item_form_ctx(user):
+    from notify.models import NotificationRule
+    qs = NotificationRule.objects.filter(user=user, enabled=True)
+    return {
+        'ocr_enabled': ocr_enabled(),
+        'known_issuers': _known_issuers(user),
+        'has_notification_rule': qs.exists(),
+        'has_firefly_rule': qs.filter(backend='firefly').exists(),
+    }
+
+
 @login_required
 def create_item(request):
     if request.method == 'POST':
@@ -689,7 +700,7 @@ def create_item(request):
                 form.add_error(None, f'Failed to generate barcode. Error: {str(e)}')
                 form.add_error(None, f'Use the browser\'s back button to refill previous file uploads')
                 # Return the form filled with the user's previously entered data and errors
-                return render(request, 'create-item.html', {'form': form, 'ocr_enabled': ocr_enabled(), 'known_issuers': _known_issuers(request.user)})
+                return render(request, 'create-item.html', {'form': form, **_item_form_ctx(request.user)})
 
             # Handle file upload
             if 'file' in request.FILES:
@@ -719,7 +730,7 @@ def create_item(request):
             return redirect('show_items')
         else:
             # If form is not valid, render the form with validation errors
-            return render(request, 'create-item.html', {'form': form, 'ocr_enabled': ocr_enabled(), 'known_issuers': _known_issuers(request.user)})
+            return render(request, 'create-item.html', {'form': form, **_item_form_ctx(request.user)})
     else:
         # If not a POST request, initialize form with user's preferred currency
         preferences, _ = UserPreference.objects.get_or_create(user=request.user)
@@ -736,7 +747,7 @@ def create_item(request):
 
         form = ItemForm(initial=initial, user=request.user)
 
-    return render(request, 'create-item.html', {'form': form, 'ocr_enabled': ocr_enabled(), 'known_issuers': _known_issuers(request.user)})
+    return render(request, 'create-item.html', {'form': form, **_item_form_ctx(request.user)})
 
 @login_required
 def edit_item(request, item_uuid):
@@ -763,7 +774,7 @@ def edit_item(request, item_uuid):
                 except Exception as e:
                     form.add_error(None, f'Failed to generate barcode. Error: {str(e)}')
                     # Return the form filled with the user's previously entered data and errors
-                    return render(request, 'edit-item.html', {'form': form, 'item': item, 'ocr_enabled': ocr_enabled(), 'known_issuers': _known_issuers(request.user)})
+                    return render(request, 'edit-item.html', {'form': form, 'item': item, **_item_form_ctx(request.user)})
                     
             # Handle file upload
             if 'file' in request.FILES:
@@ -803,7 +814,7 @@ def edit_item(request, item_uuid):
     else:
         form = ItemForm(instance=item, user=request.user)
 
-    return render(request, 'edit-item.html', {'form': form, 'item': item, 'ocr_enabled': ocr_enabled(), 'known_issuers': _known_issuers(request.user)})
+    return render(request, 'edit-item.html', {'form': form, 'item': item, **_item_form_ctx(request.user)})
 
 @require_GET
 @login_required
@@ -2316,7 +2327,10 @@ def update_user_preferences(request):
     else:
         form = UserPreferenceForm(instance=preferences)
 
-    return render(request, 'update_preferences.html', {'form': form})
+    return render(request, 'update_preferences.html', {
+        'form': form,
+        'site_nearby_enabled': SiteConfiguration.load().nearby_places_enabled,
+    })
 
 
 @login_required

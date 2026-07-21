@@ -168,7 +168,7 @@
                 {{ form.next_up_wallets }}
                 {% if form.next_up_wallets.errors %}<div class="text-danger small">{{ form.next_up_wallets.errors }}</div>{% endif %}
               </div>
-              <div class="mb-3 col-md-3 ps-0">
+              <div class="mb-3 col-md-3 ps-0" id="next-up-max-div">
                 <label for="{{ form.next_up_max_items.id_for_label }}" class="form-label">{{ form.next_up_max_items.label }}</label>
                 {{ form.next_up_max_items }}
                 <small class="form-text text-muted">{% trans "Soonest first, up to 3." %}</small>
@@ -188,7 +188,7 @@
                 <label class="form-check-label" for="{{ form.active_today_enabled.id_for_label }}">{% trans "Enable Active Today widget" %}</label>
                 {% if form.active_today_enabled.errors %}<div class="text-danger small">{{ form.active_today_enabled.errors }}</div>{% endif %}
               </div>
-              <div class="row">
+              <div class="row" id="active-today-sub-fields">
                 <div class="col-md-6 mb-3">
                   <label for="{{ form.commute_home_station.id_for_label }}" class="form-label">{% trans "Home station" %}</label>
                   {{ form.commute_home_station }}
@@ -204,15 +204,18 @@
               </div>
             </div>
 
-            <div class="settings-section">
+            <div class="settings-section" id="nearby-section">
               <h6 class="text-muted mb-3"><i class="bi bi-geo-alt me-2"></i>{% trans "Nearby Widget" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'A one-shot location check on Inventory: if a shop near you matches an item you have, it shows up in a Nearby card. Never tracks your location in the background, and your location is never stored.' %}"></i></h6>
+              <div id="nearby-disabled-banner" class="alert alert-secondary py-2 small mb-3" style="display:none;">
+                <i class="bi bi-slash-circle me-1"></i>{% trans "Nearby queries are turned off at the site level. Ask your admin to enable them in Site Settings." %}
+              </div>
               <p class="text-muted small">{% trans "Checks your location once when Inventory loads and, if a nearby shop matches one of your item issuers (via OpenStreetMap), surfaces it in a \"Nearby\" card - e.g. walk into Tesco and see your Tesco gift card without searching for it. Your coordinates are used for that one lookup and never stored." %}</p>
               <div class="form-check mb-3">
                 {{ form.nearby_items_enabled }}
                 <label class="form-check-label" for="{{ form.nearby_items_enabled.id_for_label }}">{% trans "Enable Nearby widget" %}</label>
                 {% if form.nearby_items_enabled.errors %}<div class="text-danger small">{{ form.nearby_items_enabled.errors }}</div>{% endif %}
               </div>
-              <div class="mb-3 col-md-4 ps-0">
+              <div class="mb-3 col-md-4 ps-0" id="nearby-radius-div">
                 <label for="{{ form.nearby_radius_m.id_for_label }}" class="form-label">{% trans "Search radius (metres)" %}</label>
                 {{ form.nearby_radius_m }}
                 <small class="form-text text-muted">{% trans "25-1000m. Smaller avoids matching the wrong nearby shop; larger covers a bigger store or car park." %}</small>
@@ -232,4 +235,45 @@
     </div>
   </div>
 </section>
+
+<script>
+(function () {
+  var SITE_NEARBY_ENABLED = {{ site_nearby_enabled|yesno:"true,false" }};
+
+  // next_up_wallets checkboxes → show/hide next_up_max_items
+  var nextUpWallets = document.querySelectorAll('[name="next_up_wallets"]');
+  var nextUpMaxDiv = document.getElementById('next-up-max-div');
+  function syncNextUpMax() {
+    var anyChecked = Array.prototype.some.call(nextUpWallets, function (cb) { return cb.checked; });
+    if (nextUpMaxDiv) nextUpMaxDiv.style.display = anyChecked ? '' : 'none';
+  }
+  nextUpWallets.forEach(function (cb) { cb.addEventListener('change', syncNextUpMax); });
+  syncNextUpMax();
+
+  // active_today_enabled → show/hide sub-fields
+  var activeTodayToggle = document.getElementById('{{ form.active_today_enabled.id_for_label }}');
+  var activeTodaySubFields = document.getElementById('active-today-sub-fields');
+  function syncActiveTodayFields() {
+    if (activeTodaySubFields) activeTodaySubFields.style.display = activeTodayToggle && activeTodayToggle.checked ? '' : 'none';
+  }
+  if (activeTodayToggle) { activeTodayToggle.addEventListener('change', syncActiveTodayFields); syncActiveTodayFields(); }
+
+  // Nearby section: disable when site-level toggle is off
+  var nearbySection = document.getElementById('nearby-section');
+  var nearbyDisabledBanner = document.getElementById('nearby-disabled-banner');
+  var nearbyItemsToggle = document.getElementById('{{ form.nearby_items_enabled.id_for_label }}');
+  var nearbyRadiusDiv = document.getElementById('nearby-radius-div');
+  if (!SITE_NEARBY_ENABLED && nearbySection) {
+    if (nearbyDisabledBanner) nearbyDisabledBanner.style.display = '';
+    if (nearbyItemsToggle) { nearbyItemsToggle.disabled = true; nearbyItemsToggle.title = '{% trans "Disabled at site level" %}'; }
+    if (nearbyRadiusDiv) nearbyRadiusDiv.style.display = 'none';
+  } else {
+    // nearby_items_enabled → show/hide radius
+    function syncNearbyRadius() {
+      if (nearbyRadiusDiv) nearbyRadiusDiv.style.display = nearbyItemsToggle && nearbyItemsToggle.checked ? '' : 'none';
+    }
+    if (nearbyItemsToggle) { nearbyItemsToggle.addEventListener('change', syncNearbyRadius); syncNearbyRadius(); }
+  }
+})();
+</script>
 {% endblock content %}
