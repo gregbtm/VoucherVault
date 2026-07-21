@@ -1104,6 +1104,113 @@ class RailTicketImportApiTests(APITestCase):
         }, format='multipart')
         mock_notify.assert_not_called()
 
+    def test_duplicate_field_present_and_false_in_extract_response(self):
+        response = self.client.post(
+            '/api/v1/imports/rail-ticket/', {'file': _ticket_pdf_upload()}, format='multipart'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('duplicate', response.data)
+        self.assertFalse(response.data['duplicate'])
+
+    def test_redeem_code_dedup_returns_409_with_duplicate_true(self):
+        # Create an existing item with the same barcode redeem_code that the
+        # test PDF decodes to ('AABXC5V4LVT', azteccode).
+        make_item(self.alice, type='travelpass', redeem_code='AABXC5V4LVT')
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertTrue(response.data['duplicate'])
+        self.assertIn('item', response.data)
+        # No second item should have been created.
+        self.assertEqual(Item.objects.count(), 1)
+
+
+class RailTicketBatchImportApiTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+        set_site_config(ocr_backend='none')
+
+    def test_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.post(
+            '/api/v1/imports/rail-ticket/batch/',
+            {'files': _ticket_pdf_upload()},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_no_files_returns_400(self):
+        response = self.client.post('/api/v1/imports/rail-ticket/batch/', {}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_single_file_extract_returns_207(self):
+        response = self.client.post(
+            '/api/v1/imports/rail-ticket/batch/',
+            {'files': _ticket_pdf_upload()},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, status.HTTP_207_MULTI_STATUS)
+        results = response.data['results']
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['status_code'], status.HTTP_200_OK)
+        self.assertFalse(results[0]['created'])
+        self.assertEqual(results[0]['redeem_code'], 'AABXC5V4LVT')
+
+    def test_multiple_files_each_get_own_result(self):
+        response = self.client.post(
+            '/api/v1/imports/rail-ticket/batch/',
+            {
+                'files': [
+                    _ticket_pdf_upload(barcode_data='AABXC5V4LVT', name='ticket1.pdf'),
+                    _ticket_pdf_upload(barcode_data='ZZZXXX999YYY', name='ticket2.pdf'),
+                ],
+            },
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, status.HTTP_207_MULTI_STATUS)
+        results = response.data['results']
+        self.assertEqual(len(results), 2)
+        codes = {r['redeem_code'] for r in results}
+        self.assertIn('AABXC5V4LVT', codes)
+        self.assertIn('ZZZXXX999YYY', codes)
+
+    def test_batch_create_creates_items(self):
+        response = self.client.post(
+            '/api/v1/imports/rail-ticket/batch/',
+            {
+                'files': _ticket_pdf_upload(),
+                'create': 'true',
+                'issuer': 'Greater Anglia',
+            },
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, status.HTTP_207_MULTI_STATUS)
+        self.assertEqual(response.data['results'][0]['status_code'], status.HTTP_201_CREATED)
+        self.assertEqual(Item.objects.count(), 1)
+
+    def test_batch_duplicate_returns_409_per_file(self):
+        make_item(self.alice, type='travelpass', redeem_code='AABXC5V4LVT')
+        response = self.client.post(
+            '/api/v1/imports/rail-ticket/batch/',
+            {
+                'files': _ticket_pdf_upload(),
+                'create': 'true',
+                'issuer': 'Greater Anglia',
+            },
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, status.HTTP_207_MULTI_STATUS)
+        result = response.data['results'][0]
+        self.assertEqual(result['status_code'], status.HTTP_409_CONFLICT)
+        self.assertTrue(result['duplicate'])
+        # Only the pre-existing item; no new one created.
+        self.assertEqual(Item.objects.count(), 1)
+
 
 class PkpassApiTests(APITestCase):
     def setUp(self):

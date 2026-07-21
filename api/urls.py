@@ -17,6 +17,8 @@ router.register('notifications/log', views.NotificationLogViewSet, basename='not
 router.register('imports/jobs', views.ImportJobViewSet, basename='import-job')
 router.register('merchants', views.MerchantProfileViewSet, basename='merchant')
 router.register('webhooks', views.UserWebhookViewSet, basename='webhook')
+router.register('dms/providers', views.DMSProviderViewSet, basename='dms-provider')
+router.register('dms/sync-logs', views.DMSSyncLogViewSet, basename='dms-sync-log')
 
 urlpatterns = [
     path('auth/token/', obtain_auth_token, name='api-token-auth'),
@@ -35,5 +37,9 @@ urlpatterns = [
     path('ocr/extract/', views.OCRExtractView.as_view(), name='api-ocr-extract'),
     path('imports/pkpass/', views.PkpassImportView.as_view(), name='api-pkpass-import'),
     path('imports/rail-ticket/', views.RailTicketImportView.as_view(), name='api-rail-ticket-import'),
+    path('imports/rail-ticket/batch/', views.RailTicketBatchImportView.as_view(), name='api-rail-ticket-batch-import'),
+    # Nested: /api/v1/items/{item_pk}/documents/
+    path('items/<uuid:item_pk>/documents/', views.ItemDocumentViewSet.as_view({'get': 'list', 'post': 'create'}), name='api-item-documents'),
+    path('items/<uuid:item_pk>/documents/<int:pk>/', views.ItemDocumentViewSet.as_view({'delete': 'destroy'}), name='api-item-document-detail'),
     path('', include(router.urls)),
 ]

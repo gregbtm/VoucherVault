@@ -3,7 +3,19 @@
 
 {% block content %}
 <div class="pagetitle">
-  <h1>{% trans "Wallets" %}</h1>
+  <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
+    <h1>{% trans "Wallets" %}</h1>
+    <div class="d-flex gap-2 mt-1">
+      <a href="{% url 'view_doc' 'google-wallet' %}" class="btn btn-outline-secondary btn-sm help-doc-link"
+         data-doc-url="{% url 'view_doc' 'google-wallet' %}" title="{% trans 'Google Wallet export guide' %}">
+        <i class="bi bi-question-circle me-1"></i>{% trans "Google Wallet" %}
+      </a>
+      <a href="{% url 'view_doc' 'apple-wallet' %}" class="btn btn-outline-secondary btn-sm help-doc-link"
+         data-doc-url="{% url 'view_doc' 'apple-wallet' %}" title="{% trans 'Apple Wallet export guide' %}">
+        <i class="bi bi-question-circle me-1"></i>{% trans "Apple Wallet" %}
+      </a>
+    </div>
+  </div>
   <nav>
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>

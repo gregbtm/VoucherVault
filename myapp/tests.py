@@ -3363,6 +3363,63 @@ class CheckDuplicateImageTests(TestCase):
         self.assertTrue(item.image_phash)
 
 
+class BarcodeDecodeViewTests(TestCase):
+    """myapp.views.barcode_decode - server-side zxing-cpp fallback endpoint."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+        self.url = reverse('barcode_decode')
+
+    @staticmethod
+    def _make_barcode_image(code='HELLO123', symbology='code128'):
+        import treepoem
+        img = treepoem.generate_barcode(symbology, code)
+        buf = BytesIO()
+        img.convert('RGB').save(buf, 'PNG')
+        return buf.getvalue()
+
+    def test_requires_login(self):
+        self.client.logout()
+        upload = SimpleUploadedFile('bc.png', self._make_barcode_image(), content_type='image/png')
+        response = self.client.post(self.url, {'image': upload})
+        self.assertNotEqual(response.status_code, 200)
+
+    def test_requires_post(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 405)
+
+    def test_no_image_returns_null(self):
+        response = self.client.post(self.url, {})
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()['code'])
+        self.assertIsNone(response.json()['code_type'])
+
+    def test_decodes_code128_barcode(self):
+        upload = SimpleUploadedFile('bc.png', self._make_barcode_image('HELLO123', 'code128'), content_type='image/png')
+        response = self.client.post(self.url, {'image': upload})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['code'], 'HELLO123')
+        self.assertEqual(payload['code_type'], 'code128')
+
+    def test_decodes_qr_code(self):
+        upload = SimpleUploadedFile('qr.png', self._make_barcode_image('https://example.com', 'qrcode'), content_type='image/png')
+        response = self.client.post(self.url, {'image': upload})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['code'], 'https://example.com')
+        self.assertEqual(payload['code_type'], 'qrcode')
+
+    def test_non_barcode_image_returns_null(self):
+        upload = SimpleUploadedFile('plain.png', _make_test_image('purple'), content_type='image/png')
+        response = self.client.post(self.url, {'image': upload})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIsNone(payload['code'])
+        self.assertIsNone(payload['code_type'])
+
+
 class LastUsedTrackingTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')
@@ -3656,6 +3713,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
             'Update Check', 'Upstream Version Check', 'Scheduled Backup',
             'Daily Notification Digest', 'Active Today Outward-Leg Cleanup',
             'Advance Recurring Items', 'Retry Failed Firefly Pushes',
+            'DMS Auto Pull',
         })
 
     def test_update_check_and_upstream_check_run_hourly_not_daily(self):
@@ -4292,10 +4350,13 @@ class HelpDocViewerTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn('/accounts/login/', response.url)
 
-    def test_regular_user_forbidden(self):
+    def test_regular_user_can_view_docs(self):
+        """All help docs are accessible to any logged-in user — the Help Center
+        exposes every slug, so gating individual docs after that would be confusing."""
         self.client.login(username='alice', password='pw12345!')
-        response = self.client.get(reverse('view_doc', args=['google-wallet']), follow=True)
-        self.assertContains(response, 'Only administrators')
+        response = self.client.get(reverse('view_doc', args=['google-wallet']))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<h1')
 
     def test_unknown_doc_slug_404s(self):
         self.client.login(username='admin', password='pw12345!')
@@ -4326,23 +4387,23 @@ class HelpDocViewerTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('error', response.json())
 
-    def test_regular_user_can_view_self_service_docs(self):
-        """n8n/mcp-server are personal-integration docs, not admin-only -
-        unlike every other slug, a non-superuser must be able to reach
-        them (the API Access page that links to them isn't superuser-gated)."""
+    def test_regular_user_can_view_integration_docs(self):
+        """Integration docs must be reachable by non-superusers — they link from
+        the API Access and Notification pages which aren't superuser-gated."""
         self.client.login(username='alice', password='pw12345!')
-        for slug in ('n8n', 'mcp-server'):
+        for slug in ('n8n', 'mcp-server', 'rail-ticket', 'firefly'):
             response = self.client.get(reverse('view_doc', args=[slug]))
             self.assertEqual(response.status_code, 200, f'{slug} did not render for a regular user')
             self.assertContains(response, '<h1', msg_prefix=f'{slug} missing rendered heading')
 
-    def test_regular_user_still_forbidden_for_admin_docs(self):
-        """Loosening the gate for n8n/mcp-server must not loosen it for
-        the server/deployment-level docs - those stay superuser-only."""
+    def test_regular_user_can_view_all_known_docs(self):
+        """All help docs are now self-service — the Help Center links every slug
+        to any logged-in user, so every doc must render with status 200."""
         self.client.login(username='alice', password='pw12345!')
         for slug in ('google-wallet', 'apple-wallet', 'ocr', 'auto-deploy', 'backup-restore'):
-            response = self.client.get(reverse('view_doc', args=[slug]), follow=True)
-            self.assertContains(response, 'Only administrators')
+            response = self.client.get(reverse('view_doc', args=[slug]))
+            self.assertEqual(response.status_code, 200, f'{slug} did not render for a regular user')
+            self.assertContains(response, '<h1', msg_prefix=f'{slug} missing rendered heading')
 
 
 class ApiAccessViewTests(TestCase):
@@ -5649,4 +5710,174 @@ class ViewItemPhase116FieldsTests(TestCase):
         self.assertNotContains(resp, 'Face Value')
         self.assertNotContains(resp, 'Minimum Spend')
         self.assertNotContains(resp, 'Points Balance')
+
+
+class ItemDocumentAPITests(TestCase):
+    """REST API for /api/v1/items/{item_pk}/documents/."""
+
+    def setUp(self):
+        from rest_framework.authtoken.models import Token
+        self.user = User.objects.create_user(username='alice', password='pw123!')
+        self.token = Token.objects.create(user=self.user)
+        self.auth = {'HTTP_AUTHORIZATION': f'Token {self.token.key}'}
+        self.item = make_item(self.user)
+
+    def _list_url(self):
+        return f'/api/v1/items/{self.item.id}/documents/'
+
+    def _detail_url(self, doc_id):
+        return f'/api/v1/items/{self.item.id}/documents/{doc_id}/'
+
+    def test_list_returns_empty_by_default(self):
+        resp = self.client.get(self._list_url(), **self.auth)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        results = data.get('results', data) if isinstance(data, dict) else data
+        self.assertEqual(len(results), 0)
+
+    def test_unauthenticated_request_is_rejected(self):
+        resp = self.client.get(self._list_url())
+        self.assertEqual(resp.status_code, 401)
+
+    def test_other_user_cannot_list_documents(self):
+        bob = User.objects.create_user(username='bob', password='pw123!')
+        bob_token = Token.objects.create(user=bob)
+        resp = self.client.get(self._list_url(), HTTP_AUTHORIZATION=f'Token {bob_token.key}')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_delete_document_via_api(self):
+        from myapp.models import Document
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as f:
+            f.write(b'test')
+            tmp_path = f.name
+        try:
+            with open(tmp_path, 'rb') as fh:
+                doc = Document.objects.create(item=self.item, file=SimpleUploadedFile('test.txt', b'test'))
+            resp = self.client.delete(self._detail_url(doc.id), **self.auth)
+            self.assertEqual(resp.status_code, 204)
+            self.assertFalse(Document.objects.filter(pk=doc.id).exists())
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+
+class UserPreferenceAPIExpandedTests(TestCase):
+    """Verify the expanded UserPreferenceSerializer exposes the new fields."""
+
+    def setUp(self):
+        from rest_framework.authtoken.models import Token
+        self.user = User.objects.create_user(username='alice', password='pw123!')
+        self.token = Token.objects.create(user=self.user)
+        self.auth = {'HTTP_AUTHORIZATION': f'Token {self.token.key}'}
+
+    def test_get_returns_new_fields(self):
+        resp = self.client.get('/api/v1/preferences/', **self.auth)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        for field in ('keep_screen_awake', 'blur_codes_enabled', 'offline_cache_enabled',
+                      'oled_dark_mode', 'tilt_scan_detection_enabled', 'nearby_items_enabled'):
+            self.assertIn(field, data, msg=f'Missing field: {field}')
+
+    def test_patch_keep_screen_awake(self):
+        resp = self.client.patch(
+            '/api/v1/preferences/',
+            data=json.dumps({'keep_screen_awake': False}),
+            content_type='application/json',
+            **self.auth,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.json()['keep_screen_awake'])
+
+    def test_patch_nearby_radius(self):
+        resp = self.client.patch(
+            '/api/v1/preferences/',
+            data=json.dumps({'nearby_radius_m': 300}),
+            content_type='application/json',
+            **self.auth,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['nearby_radius_m'], 300)
+
+
+class DMSProviderAPITests(TestCase):
+    """REST API for /api/v1/dms/providers/ — scoped to requesting user."""
+
+    def setUp(self):
+        from rest_framework.authtoken.models import Token
+        from dms.models import DMSProvider
+        self.user = User.objects.create_user(username='alice', password='pw123!')
+        self.token = Token.objects.create(user=self.user)
+        self.auth = {'HTTP_AUTHORIZATION': f'Token {self.token.key}'}
+        self.provider = DMSProvider.objects.create(
+            user=self.user, name='My Paperless', provider='paperless',
+            base_url='http://paperless.local', api_token='tok123',
+        )
+
+    def test_list_returns_own_providers(self):
+        resp = self.client.get('/api/v1/dms/providers/', **self.auth)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        results = data.get('results', data)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['name'], 'My Paperless')
+
+    def test_other_user_cannot_see_providers(self):
+        from rest_framework.authtoken.models import Token
+        bob = User.objects.create_user(username='bob', password='pw123!')
+        bob_token = Token.objects.create(user=bob)
+        resp = self.client.get('/api/v1/dms/providers/', HTTP_AUTHORIZATION=f'Token {bob_token.key}')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        results = data.get('results', data)
+        self.assertEqual(len(results), 0)
+
+    def test_unauthenticated_rejected(self):
+        resp = self.client.get('/api/v1/dms/providers/')
+        self.assertEqual(resp.status_code, 401)
+
+    def test_api_token_write_only(self):
+        resp = self.client.get(f'/api/v1/dms/providers/{self.provider.id}/', **self.auth)
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn('api_token', resp.json())
+
+
+class DMSSyncLogAPITests(TestCase):
+    """REST API for /api/v1/dms/sync-logs/ — read-only, scoped to user's providers."""
+
+    def setUp(self):
+        from rest_framework.authtoken.models import Token
+        from dms.models import DMSProvider, DMSSyncLog
+        self.user = User.objects.create_user(username='alice', password='pw123!')
+        self.token = Token.objects.create(user=self.user)
+        self.auth = {'HTTP_AUTHORIZATION': f'Token {self.token.key}'}
+        self.provider = DMSProvider.objects.create(
+            user=self.user, name='P', provider='paperless', base_url='http://p.local',
+        )
+        self.item = make_item(self.user)
+        DMSSyncLog.objects.create(
+            provider=self.provider, direction='push', status='ok',
+            item=self.item, detail='ok',
+        )
+
+    def test_list_returns_logs(self):
+        resp = self.client.get('/api/v1/dms/sync-logs/', **self.auth)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        results = data.get('results', data)
+        self.assertEqual(len(results), 1)
+
+    def test_logs_are_read_only(self):
+        resp = self.client.post('/api/v1/dms/sync-logs/', data={}, **self.auth)
+        self.assertEqual(resp.status_code, 405)
+
+    def test_other_user_sees_no_logs(self):
+        from rest_framework.authtoken.models import Token
+        bob = User.objects.create_user(username='bob', password='pw123!')
+        bob_token = Token.objects.create(user=bob)
+        resp = self.client.get('/api/v1/dms/sync-logs/', HTTP_AUTHORIZATION=f'Token {bob_token.key}')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        results = data.get('results', data)
+        self.assertEqual(len(results), 0)
         self.assertNotContains(resp, 'Membership Tier')

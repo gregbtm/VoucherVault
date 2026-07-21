@@ -398,6 +398,18 @@
           <span>{% trans "Import / Export" %}</span>
         </a>
       </li>
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="{% url 'dms:providers' %}">
+          <i class="bi bi-archive"></i>
+          <span>{% trans "Document Archive" %}</span>
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="{% url 'help_center' %}">
+          <i class="bi bi-book"></i>
+          <span>{% trans "Help &amp; Guides" %}</span>
+        </a>
+      </li>
       {% if request.user.is_superuser %}
       <li class="nav-item">
         <a class="nav-link collapsed" href="{% url 'site_settings' %}">
@@ -542,6 +554,14 @@
           </div>
           <div id="helpDocModalBody" class="doc-viewer-body" style="display:none;"></div>
         </div>
+        <div class="modal-footer py-2 d-flex justify-content-between align-items-center">
+          <a id="helpDocFullLink" href="{% url 'help_center' %}" class="text-secondary text-decoration-none small">
+            <i class="bi bi-box-arrow-up-right me-1"></i>{% trans "Open full guide" %}
+          </a>
+          <a href="{% url 'help_center' %}" class="text-secondary text-decoration-none small">
+            <i class="bi bi-book me-1"></i>{% trans "Browse all guides" %}
+          </a>
+        </div>
       </div>
     </div>
   </div>
@@ -605,12 +625,14 @@
       var titleEl = document.getElementById('helpDocModalTitle');
       var loadingEl = document.getElementById('helpDocModalLoading');
       var bodyEl = document.getElementById('helpDocModalBody');
+      var fullLinkEl = document.getElementById('helpDocFullLink');
 
       function openHelpDoc(url) {
         titleEl.textContent = '{% trans "Setup guide" %}';
         loadingEl.style.display = '';
         bodyEl.style.display = 'none';
         bodyEl.innerHTML = '';
+        if (fullLinkEl) fullLinkEl.href = url;
         modal.show();
         fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
           .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
@@ -631,10 +653,14 @@
           });
       }
 
-      // Delegated so links inside content swapped in later (autosaved
-      // sections, future pages) are picked up with no extra wiring.
+      // Expose globally so templates with their own <script> blocks can call it
+      window.openHelpDoc = openHelpDoc;
+
+      // Delegated — catches .help-link (inline ? icons) and .help-doc-link
+      // (button-style header links) so both open in the modal instead of
+      // navigating. The href fallback still works if JS is absent.
       document.addEventListener('click', function (e) {
-        var link = e.target.closest('.help-link[data-doc-url]');
+        var link = e.target.closest('.help-link[data-doc-url], .help-doc-link[data-doc-url]');
         if (!link) return;
         e.preventDefault();
         openHelpDoc(link.dataset.docUrl);

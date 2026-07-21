@@ -82,6 +82,9 @@ class VoucherVaultClient:
     def list_webhooks(self) -> dict:
         return self._request('GET', 'webhooks/')
 
+    def delete_item(self, item_id: str) -> dict:
+        return self._request('DELETE', f'items/{item_id}/')
+
     def list_wallet_memberships(self, wallet_id: str | None = None) -> dict:
         params = {'wallet': wallet_id} if wallet_id else {}
         return self._request('GET', 'wallet-memberships/', params=params)
@@ -89,3 +92,31 @@ class VoucherVaultClient:
     def list_wallet_activity(self, wallet_id: str | None = None) -> dict:
         params = {'wallet': wallet_id} if wallet_id else {}
         return self._request('GET', 'wallet-activity/', params=params)
+
+    def list_notification_rules(self) -> dict:
+        return self._request('GET', 'notifications/rules/')
+
+    def create_notification_rule(self, payload: dict) -> dict:
+        return self._request('POST', 'notifications/rules/', json=payload)
+
+    def update_notification_rule(self, rule_id: str, payload: dict) -> dict:
+        return self._request('PATCH', f'notifications/rules/{rule_id}/', json=payload)
+
+    def delete_notification_rule(self, rule_id: str) -> dict:
+        return self._request('DELETE', f'notifications/rules/{rule_id}/')
+
+    def list_item_documents(self, item_id: str) -> dict:
+        return self._request('GET', f'items/{item_id}/documents/')
+
+    def get_preferences(self) -> dict:
+        return self._request('GET', 'preferences/')
+
+    def update_preferences(self, payload: dict) -> dict:
+        return self._request('PATCH', 'preferences/', json=payload)
+
+    def list_dms_providers(self) -> dict:
+        return self._request('GET', 'dms/providers/')
+
+    def list_dms_sync_logs(self, provider_id: str | None = None) -> dict:
+        params = {'provider': provider_id} if provider_id else {}
+        return self._request('GET', 'dms/sync-logs/', params=params)

@@ -126,6 +126,13 @@
     return new bootstrap.Tooltip(tooltipTriggerEl)
   })
 
+  // Clicking on the tooltip bubble itself closes it
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('.tooltip')) {
+      tooltipList.forEach(function(t) { t.hide(); });
+    }
+  });
+
   /**
    * Initiate Bootstrap validation check
    */

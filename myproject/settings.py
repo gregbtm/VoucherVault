@@ -124,6 +124,7 @@ INSTALLED_APPS = [
     'notify',
     'imports',
     'ocr',
+    'dms',
     'django_celery_beat',
     'axes',
     'django.contrib.admin',
@@ -132,6 +133,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sites',
     'csp',
     'pwa',
     'rest_framework',
@@ -139,6 +141,14 @@ INSTALLED_APPS = [
     'django_filters',
     'drf_spectacular',
     'drf_spectacular_sidecar',
+    'health_check',
+    'storages',
+    'django_extensions',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
+    'allauth.socialaccount.providers.github',
 ]
 
 MIDDLEWARE = [
@@ -150,6 +160,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'axes.middleware.AxesMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
+    'allauth.account.middleware.AccountMiddleware',
     'django_http_referrer_policy.middleware.ReferrerPolicyMiddleware',
     'csp.middleware.CSPMiddleware',
 ]
@@ -439,6 +450,8 @@ BACKUP_RETENTION_COUNT = int(os.environ.get('BACKUP_RETENTION_COUNT', 7))
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+SITE_ID = 1
+
 # Django's own default LOGGING config only prints tracebacks to console
 # when DEBUG=True; with DEBUG=False (this app's production default) an
 # unhandled exception instead only tries to email ADMINS (unconfigured
@@ -504,6 +517,7 @@ WSGI_APPLICATION = 'myproject.wsgi.application'
 # ever gets a chance to check the password.
 AUTHENTICATION_BACKENDS = [
     'axes.backends.AxesBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
     'django.contrib.auth.backends.ModelBackend',
 ]
 AXES_FAILURE_LIMIT = int(os.environ.get('AXES_FAILURE_LIMIT', '5'))
@@ -542,6 +556,72 @@ if 'test' in sys.argv:
 # one attacker, which is the worse failure mode for a small self-hosted app.
 SILENCED_SYSTEM_CHECKS = ['axes.W006']
 
+# ---- WebDAV storage (Synology WebDAV Server, Nextcloud, etc.) ----
+# Activated by USE_WEBDAV_STORAGE=true. Takes precedence over USE_S3_STORAGE
+# when both are set. Static files always stay local regardless.
+# See docs/SYNOLOGY_NAS_SETUP.md for the full configuration walkthrough.
+USE_WEBDAV_STORAGE = os.environ.get('USE_WEBDAV_STORAGE', 'False').lower() in ['true']
+if USE_WEBDAV_STORAGE:
+    WEBDAV_URL = os.environ.get('WEBDAV_URL', '')
+    WEBDAV_PUBLIC_URL = os.environ.get('WEBDAV_PUBLIC_URL', WEBDAV_URL)
+    WEBDAV_USERNAME = os.environ.get('WEBDAV_USERNAME', '')
+    WEBDAV_PASSWORD = os.environ.get('WEBDAV_PASSWORD', '')
+    WEBDAV_VERIFY_SSL = os.environ.get('WEBDAV_VERIFY_SSL', 'True').lower() in ['true']
+    STORAGES = {
+        'default': {
+            'BACKEND': 'myapp.webdav_storage.WebDAVStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
+
+# ---- Social auth (django-allauth) ----
+ACCOUNT_LOGIN_METHODS = {'username'}
+ACCOUNT_EMAIL_VERIFICATION = 'none'
+SOCIALACCOUNT_AUTO_SIGNUP = True
+SOCIALACCOUNT_PROVIDERS = {}
+
+_google_id = os.environ.get('GOOGLE_CLIENT_ID')
+_google_secret = os.environ.get('GOOGLE_CLIENT_SECRET')
+if _google_id and _google_secret:
+    SOCIALACCOUNT_PROVIDERS['google'] = {
+        'APP': {'client_id': _google_id, 'secret': _google_secret, 'key': ''},
+        'SCOPE': ['profile', 'email'],
+        'AUTH_PARAMS': {'access_type': 'online'},
+        'OAUTH_PKCE_ENABLED': True,
+    }
+
+_github_id = os.environ.get('GITHUB_CLIENT_ID')
+_github_secret = os.environ.get('GITHUB_CLIENT_SECRET')
+if _github_id and _github_secret:
+    SOCIALACCOUNT_PROVIDERS['github'] = {
+        'APP': {'client_id': _github_id, 'secret': _github_secret, 'key': ''},
+        'SCOPE': ['user:email'],
+    }
+
+# ---- S3-compatible object storage (django-storages) ----
+USE_S3_STORAGE = os.environ.get('USE_S3_STORAGE', 'False').lower() in ['true']
+if USE_S3_STORAGE:
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+            'OPTIONS': {
+                'bucket_name': os.environ.get('S3_BUCKET_NAME', ''),
+                'endpoint_url': os.environ.get('S3_ENDPOINT_URL'),
+                'access_key': os.environ.get('S3_ACCESS_KEY_ID'),
+                'secret_key': os.environ.get('S3_SECRET_ACCESS_KEY'),
+                'region_name': os.environ.get('S3_REGION_NAME', 'us-east-1'),
+                'custom_domain': os.environ.get('S3_CUSTOM_DOMAIN'),
+                'file_overwrite': False,
+                'querystring_auth': os.environ.get('S3_PUBLIC_BUCKET', 'False').lower() not in ['true'],
+            },
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
+
 # check if oidc is enabled
 OIDC_ENABLED = os.environ.get('OIDC_ENABLED', 'False').lower() in ['true']
 OIDC_AUTOLOGIN = os.environ.get('OIDC_AUTOLOGIN', 'False').lower() in ['true']
@@ -554,6 +634,7 @@ if OIDC_ENABLED:
     OIDC_RP_CLIENT_ID = os.environ.get('OIDC_RP_CLIENT_ID', "vouchervault")
     OIDC_RP_CLIENT_SECRET = os.environ.get('OIDC_RP_CLIENT_SECRET')
     OIDC_USERNAME_ALGO = 'myapp.utils.generate_username'
+    OIDC_PROVIDER_NAME = os.environ.get('OIDC_PROVIDER_NAME', 'SSO')
 
     # Optional: instead of configuring every OIDC_OP_*_ENDPOINT by hand,
     # point OIDC_DISCOVERY_URL at the provider's
@@ -584,13 +665,12 @@ if OIDC_ENABLED:
     OIDC_OP_JWKS_ENDPOINT = os.environ.get('OIDC_OP_JWKS_ENDPOINT') or _oidc_discovered.get('jwks_uri')
     #ALLOW_LOGOUT_GET_METHOD = True
 
-    # Add 'mozilla_django_oidc.middleware.SessionRefresh' to INSTALLED_APPS
     INSTALLED_APPS.append('mozilla_django_oidc')
     
     # Add 'mozilla_django_oidc' authentication backend - appended, not
     # replacing the axes.backends.AxesBackend + ModelBackend pair set above,
     # since AxesBackend must stay first for lockouts to apply to OIDC logins too.
-    AUTHENTICATION_BACKENDS.append('mozilla_django_oidc.auth.OIDCAuthenticationBackend')
+    AUTHENTICATION_BACKENDS.append('myapp.oidc_backend.VoucherVaultOIDCBackend')
 
     # Add 'mozilla_django_oidc.middleware.SessionRefresh' to MIDDLEWARE
     # https://mozilla-django-oidc.readthedocs.io/en/stable/installation.html#validate-id-tokens-by-renewing-them
@@ -600,3 +680,9 @@ if OIDC_ENABLED:
     # Fix http callback issue in mozilla-django-oidc by forcing https; https://github.com/mozilla/mozilla-django-oidc/issues/417
     # OIDC should only be setup behind a TLS reverse proxy anyways
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# ---- Error tracking (Sentry) ----
+SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
+if SENTRY_DSN:
+    import sentry_sdk
+    sentry_sdk.init(dsn=SENTRY_DSN, traces_sample_rate=0.0, send_default_pii=False)

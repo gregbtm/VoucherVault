@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{{ title }}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'dms:providers' %}">{% trans "DMS Providers" %}</a></li>
+      <li class="breadcrumb-item active">{{ title }}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="row">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">{% trans "Provider Settings" %}</h5>
+
+          <form method="post" id="dms-provider-form">
+            {% csrf_token %}
+
+            <!-- Basic -->
+            <div class="mb-3">
+              <label class="form-label fw-semibold" for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>
+              {{ form.name }}
+              {% if form.name.errors %}<div class="text-danger small mt-1">{{ form.name.errors }}</div>{% endif %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-semibold" for="{{ form.provider.id_for_label }}">{% trans "Provider Type" %}</label>
+              {{ form.provider }}
+              <div class="form-text">{% trans "Select which DMS software you are connecting to." %}</div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-semibold" for="{{ form.base_url.id_for_label }}">{% trans "Base URL" %}</label>
+              {{ form.base_url }}
+              <div class="form-text">{{ form.base_url.help_text }}</div>
+              {% if form.base_url.errors %}<div class="text-danger small mt-1">{{ form.base_url.errors }}</div>{% endif %}
+            </div>
+
+            <!-- Auth — shown/hidden per provider type -->
+            <div id="auth-paperless" class="auth-section">
+              <hr><h6 class="text-muted mb-3">{% trans "Authentication (Paperless-ngx / PaperMerge)" %}</h6>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form.api_token.id_for_label }}">{{ form.api_token.label }}</label>
+                {{ form.api_token }}
+                <div class="form-text">{{ form.api_token.help_text }}</div>
+              </div>
+            </div>
+
+            <div id="auth-docspell" class="auth-section" style="display:none">
+              <hr><h6 class="text-muted mb-3">{% trans "Authentication (Docspell)" %}</h6>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form.docspell_collective.id_for_label }}">{{ form.docspell_collective.label }}</label>
+                {{ form.docspell_collective }}
+                <div class="form-text">{{ form.docspell_collective.help_text }}</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form.username.id_for_label }}">{% trans "Username" %}</label>
+                {{ form.username }}
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form.password.id_for_label }}">{% trans "Password" %}</label>
+                {{ form.password }}
+                <div class="form-text">{{ form.password.help_text }}</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form.docspell_source_id.id_for_label }}">{{ form.docspell_source_id.label }}</label>
+                {{ form.docspell_source_id }}
+                <div class="form-text">{{ form.docspell_source_id.help_text }}</div>
+              </div>
+            </div>
+
+            <div id="auth-papermerge" class="auth-section" style="display:none">
+              <hr><h6 class="text-muted mb-3">{% trans "Authentication (PaperMerge)" %}</h6>
+              <div class="mb-3">
+                <label class="form-label">{% trans "API Token" %}</label>
+                {{ form.api_token }}
+                <div class="form-text">{% trans "Or leave blank and provide username/password below to obtain a token automatically." %}</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">{% trans "Username (fallback)" %}</label>
+                {{ form.username }}
+              </div>
+              <div class="mb-3">
+                <label class="form-label">{% trans "Password (fallback)" %}</label>
+                {{ form.password }}
+              </div>
+            </div>
+
+            <!-- Sync options -->
+            <hr>
+            <h6 class="text-muted mb-3">{% trans "Sync Options" %}</h6>
+
+            <div class="mb-3">
+              <div class="form-check form-switch">
+                {{ form.auto_push }}
+                <label class="form-check-label" for="{{ form.auto_push.id_for_label }}">{{ form.auto_push.label }}</label>
+              </div>
+              <div class="form-text">{{ form.auto_push.help_text }}</div>
+            </div>
+
+            <div class="mb-3">
+              <div class="form-check form-switch">
+                {{ form.auto_pull }}
+                <label class="form-check-label" for="{{ form.auto_pull.id_for_label }}">{{ form.auto_pull.label }}</label>
+              </div>
+              <div class="form-text">{{ form.auto_pull.help_text }}</div>
+            </div>
+
+            <div id="pull-options" style="display:none">
+              <div class="mb-3">
+                <label class="form-label" for="{{ form.pull_tag.id_for_label }}">{% trans "Pull Tag Filter" %}</label>
+                <div class="input-group">
+                  {{ form.pull_tag }}
+                  {% if provider %}
+                  <button class="btn btn-outline-secondary" type="button" id="btn-load-tags"
+                          data-poll-url="{% url 'dms:poll_config' provider.id %}">
+                    <i class="bi bi-arrow-repeat"></i> {% trans "Load from DMS" %}
+                  </button>
+                  {% endif %}
+                </div>
+                <div class="form-text">{{ form.pull_tag.help_text }}</div>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label" for="{{ form.pull_correspondent.id_for_label }}">{% trans "Correspondent Filter" %}</label>
+                <div class="input-group">
+                  {{ form.pull_correspondent }}
+                  {% if provider %}
+                  <button class="btn btn-outline-secondary" type="button" id="btn-load-correspondents"
+                          data-poll-url="{% url 'dms:poll_config' provider.id %}">
+                    <i class="bi bi-arrow-repeat"></i> {% trans "Load from DMS" %}
+                  </button>
+                  {% endif %}
+                </div>
+                <div class="form-text">{{ form.pull_correspondent.help_text }}</div>
+              </div>
+            </div>
+
+            <hr>
+            <div class="mb-3">
+              <div class="form-check form-switch">
+                {{ form.enabled }}
+                <label class="form-check-label" for="{{ form.enabled.id_for_label }}">{% trans "Enabled" %}</label>
+              </div>
+            </div>
+
+            <!-- Test connection (saved providers only) -->
+            {% if provider %}
+            <div class="mb-3">
+              <button type="button" class="btn btn-outline-secondary" id="btn-test-conn"
+                      data-test-url="{% url 'dms:test_connection' provider.id %}">
+                <i class="bi bi-plug me-1"></i>{% trans "Test Connection" %}
+              </button>
+              <span id="test-result" class="ms-3 small"></span>
+            </div>
+            {% endif %}
+
+            <div class="d-flex gap-2 mt-4">
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-save me-1"></i>{% trans "Save" %}
+              </button>
+              <a href="{% url 'dms:providers' %}" class="btn btn-outline-secondary">{% trans "Cancel" %}</a>
+            </div>
+
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Help sidebar -->
+    <div class="col-lg-4">
+      <div class="card border-0 bg-light">
+        <div class="card-body">
+          <h6 class="card-title"><i class="bi bi-info-circle me-1"></i>{% trans "Provider Quick-Start" %}</h6>
+          <div id="help-paperless">
+            <p class="small">{% blocktrans %}Create an API token in <strong>Paperless-ngx → Settings → API tokens</strong> and paste it above.{% endblocktrans %}</p>
+            <p class="small">{% blocktrans %}Make sure your Paperless-ngx URL ends without a trailing slash, e.g. <code>https://paperless.home</code>.{% endblocktrans %}</p>
+          </div>
+          <div id="help-docspell" style="display:none">
+            <p class="small">{% blocktrans %}Log in to Docspell, go to <strong>Profile → Upload Sources</strong>, create a new source, and copy the source ID.{% endblocktrans %}</p>
+            <p class="small">{% blocktrans %}The Collective is your tenant/workspace name shown at the top-left of the Docspell UI.{% endblocktrans %}</p>
+          </div>
+          <div id="help-papermerge" style="display:none">
+            <p class="small">{% blocktrans %}Create a REST API token in <strong>PaperMerge → Profile → API Tokens</strong>, or provide your username/password to obtain one automatically.{% endblocktrans %}</p>
+          </div>
+          <hr>
+          <p class="small mb-0">
+            <i class="bi bi-book me-1"></i>
+            <a href="{% url 'view_doc' 'DMS_SETUP' %}" target="_blank">{% trans "Full DMS setup guide →" %}</a>
+          </p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<script>
+(function () {
+  'use strict';
+
+  const providerSelect = document.getElementById('id_provider');
+  const autoPullCheck = document.getElementById('id_auto_pull');
+
+  function updateVisibility() {
+    const val = providerSelect ? providerSelect.value : '';
+
+    // Auth sections
+    document.querySelectorAll('.auth-section').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('[id^="help-"]').forEach(el => el.style.display = 'none');
+
+    if (val === 'paperless') {
+      document.getElementById('auth-paperless').style.display = '';
+      document.getElementById('help-paperless').style.display = '';
+    } else if (val === 'docspell') {
+      document.getElementById('auth-docspell').style.display = '';
+      document.getElementById('help-docspell').style.display = '';
+    } else if (val === 'papermerge') {
+      document.getElementById('auth-papermerge').style.display = '';
+      document.getElementById('help-papermerge').style.display = '';
+    }
+
+    // Pull options
+    if (autoPullCheck) {
+      document.getElementById('pull-options').style.display = autoPullCheck.checked ? '' : 'none';
+    }
+  }
+
+  if (providerSelect) providerSelect.addEventListener('change', updateVisibility);
+  if (autoPullCheck) autoPullCheck.addEventListener('change', updateVisibility);
+  updateVisibility();
+
+  // Test connection
+  const testBtn = document.getElementById('btn-test-conn');
+  if (testBtn) {
+    testBtn.addEventListener('click', function () {
+      const url = this.dataset.testUrl;
+      const result = document.getElementById('test-result');
+      testBtn.disabled = true;
+      testBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>{% trans "Testing…" %}';
+      result.textContent = '';
+
+      fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+        .then(r => r.json())
+        .then(data => {
+          result.className = 'ms-3 small text-' + (data.ok ? 'success' : 'danger');
+          result.textContent = data.ok ? '✓ ' + data.message + (data.version ? ' (v' + data.version + ')' : '') : '✗ ' + data.message;
+        })
+        .catch(() => {
+          result.className = 'ms-3 small text-danger';
+          result.textContent = '{% trans "Request failed" %}';
+        })
+        .finally(() => {
+          testBtn.disabled = false;
+          testBtn.innerHTML = '<i class="bi bi-plug me-1"></i>{% trans "Test Connection" %}';
+        });
+    });
+  }
+
+  // Poll tags / correspondents from live DMS
+  function loadPollData(url, field, dataKey) {
+    const input = document.getElementById(field);
+    fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) { alert('{% trans "Could not load data:" %} ' + data.error); return; }
+        const items = data[dataKey] || [];
+        if (!items.length) { alert('{% trans "No items found in DMS." %}'); return; }
+
+        const current = input.value;
+        const list = document.createElement('datalist');
+        list.id = field + '-list';
+        items.forEach(item => {
+          const opt = document.createElement('option');
+          opt.value = item.name;
+          list.appendChild(opt);
+        });
+        input.setAttribute('list', list.id);
+        if (input.nextSibling) input.parentNode.insertBefore(list, input.nextSibling);
+        else input.parentNode.appendChild(list);
+      })
+      .catch(() => alert('{% trans "Failed to connect to DMS." %}'));
+  }
+
+  const loadTagsBtn = document.getElementById('btn-load-tags');
+  if (loadTagsBtn) {
+    loadTagsBtn.addEventListener('click', function () {
+      loadPollData(this.dataset.pollUrl, 'id_pull_tag', 'tags');
+    });
+  }
+
+  const loadCorrBtn = document.getElementById('btn-load-correspondents');
+  if (loadCorrBtn) {
+    loadCorrBtn.addEventListener('click', function () {
+      loadPollData(this.dataset.pollUrl, 'id_pull_correspondent', 'correspondents');
+    });
+  }
+})();
+</script>
+{% endblock %}

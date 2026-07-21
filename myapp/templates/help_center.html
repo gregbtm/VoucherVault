@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Help & Guides" %}{% endblock %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1><i class="bi bi-book me-2"></i>{% trans "Help & Guides" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "Help & Guides" %}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+
+  <!-- Search bar -->
+  <div class="row mb-4">
+    <div class="col-12 col-md-6">
+      <div class="input-group shadow-sm">
+        <span class="input-group-text bg-transparent">
+          <i class="bi bi-search text-secondary"></i>
+        </span>
+        <input type="search" id="help-search" class="form-control border-start-0 ps-0"
+               placeholder="{% trans 'Search guides…' %}" autocomplete="off">
+        <button class="btn btn-outline-secondary d-none" id="help-search-clear" type="button"
+                title="{% trans 'Clear search' %}">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 d-flex align-items-center mt-2 mt-md-0">
+      <small class="text-secondary" id="help-count-label"></small>
+    </div>
+  </div>
+
+  <!-- Category sections -->
+  {% for category_name, icon, docs in categories %}
+  {% with cat_color=forloop.counter %}
+  <div class="help-category mb-5" data-category="{{ category_name }}">
+    <div class="d-flex align-items-center gap-2 mb-3">
+      <span class="help-cat-icon cat-{{ forloop.counter }}">
+        <i class="bi {{ icon }}"></i>
+      </span>
+      <h5 class="help-category-title mb-0">
+        {{ category_name }}
+        <span class="badge bg-secondary ms-1 help-cat-count" style="font-size:0.7rem; vertical-align:middle;">{{ docs|length }}</span>
+      </h5>
+    </div>
+    <div class="row g-3">
+      {% for slug, description in docs %}
+      <div class="col-12 col-sm-6 col-lg-4 help-card-wrapper"
+           data-title="{{ slug|lower }} {{ description|lower }}"
+           data-category="{{ category_name|lower }}">
+        <div class="card h-100 help-doc-card help-link cat-border-{{ cat_color }}"
+             role="button"
+             data-doc-url="{% url 'view_doc' slug %}"
+             tabindex="0"
+             title="{% trans 'Open guide' %}">
+          <div class="card-body">
+            <div class="d-flex align-items-start gap-3">
+              <div class="help-card-icon-wrap cat-bg-{{ cat_color }} flex-shrink-0">
+                <i class="bi {{ icon }}"></i>
+              </div>
+              <div class="flex-grow-1 min-w-0">
+                <div class="fw-semibold help-doc-title">{{ description }}</div>
+                <code class="text-secondary help-doc-slug">{{ slug }}</code>
+              </div>
+            </div>
+          </div>
+          <div class="card-footer help-card-footer cat-footer-{{ cat_color }}">
+            <i class="bi bi-arrow-right-circle me-1"></i>{% trans "Open guide" %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endwith %}
+  {% endfor %}
+
+  <!-- Empty state for search -->
+  <div id="help-no-results" class="text-center py-5 d-none">
+    <i class="bi bi-search fs-1 text-secondary opacity-50"></i>
+    <p class="mt-3 text-secondary mb-0">{% trans "No guides match your search." %}</p>
+    <button class="btn btn-sm btn-outline-secondary mt-3" onclick="document.getElementById('help-search').value='';document.getElementById('help-search').dispatchEvent(new Event('input'));">
+      {% trans "Clear search" %}
+    </button>
+  </div>
+
+</section>
+
+<style>
+/* Category icon blobs */
+.help-cat-icon {
+  width: 2.4rem; height: 2.4rem;
+  border-radius: 0.6rem;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.15rem;
+  flex-shrink: 0;
+}
+.cat-1 { background: #e8f0fe; color: #3367d6; }
+.cat-2 { background: #fce8f1; color: #c2185b; }
+.cat-3 { background: #e8f5e9; color: #2e7d32; }
+.cat-4 { background: #fff8e1; color: #f57f17; }
+.cat-5 { background: #ede7f6; color: #5e35b1; }
+.cat-6 { background: #e0f7fa; color: #00838f; }
+
+[data-bs-theme="dark"] .cat-1 { background: #1a2a4a; color: #7baaf7; }
+[data-bs-theme="dark"] .cat-2 { background: #3d1a2a; color: #f48fb1; }
+[data-bs-theme="dark"] .cat-3 { background: #1a3320; color: #81c784; }
+[data-bs-theme="dark"] .cat-4 { background: #3d2e00; color: #ffd54f; }
+[data-bs-theme="dark"] .cat-5 { background: #2a1a4a; color: #b39ddb; }
+[data-bs-theme="dark"] .cat-6 { background: #002d33; color: #4dd0e1; }
+
+/* Card icon backgrounds */
+.help-card-icon-wrap {
+  width: 2.2rem; height: 2.2rem;
+  border-radius: 0.5rem;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1rem;
+}
+.cat-bg-1 { background: #e8f0fe; color: #3367d6; }
+.cat-bg-2 { background: #fce8f1; color: #c2185b; }
+.cat-bg-3 { background: #e8f5e9; color: #2e7d32; }
+.cat-bg-4 { background: #fff8e1; color: #f57f17; }
+.cat-bg-5 { background: #ede7f6; color: #5e35b1; }
+.cat-bg-6 { background: #e0f7fa; color: #00838f; }
+
+[data-bs-theme="dark"] .cat-bg-1 { background: #1a2a4a; color: #7baaf7; }
+[data-bs-theme="dark"] .cat-bg-2 { background: #3d1a2a; color: #f48fb1; }
+[data-bs-theme="dark"] .cat-bg-3 { background: #1a3320; color: #81c784; }
+[data-bs-theme="dark"] .cat-bg-4 { background: #3d2e00; color: #ffd54f; }
+[data-bs-theme="dark"] .cat-bg-5 { background: #2a1a4a; color: #b39ddb; }
+[data-bs-theme="dark"] .cat-bg-6 { background: #002d33; color: #4dd0e1; }
+
+/* Cards */
+.help-doc-card {
+  cursor: pointer;
+  border: 1px solid var(--bs-border-color);
+  border-left-width: 3px;
+  transition: box-shadow 0.15s ease, transform 0.12s ease;
+  min-height: 4.5rem;
+}
+.cat-border-1 { border-left-color: #3367d6 !important; }
+.cat-border-2 { border-left-color: #c2185b !important; }
+.cat-border-3 { border-left-color: #2e7d32 !important; }
+.cat-border-4 { border-left-color: #f57f17 !important; }
+.cat-border-5 { border-left-color: #5e35b1 !important; }
+.cat-border-6 { border-left-color: #00838f !important; }
+
+.help-doc-card:hover, .help-doc-card:focus {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+  transform: translateY(-2px);
+  outline: none;
+}
+.help-doc-title { font-size: 0.9rem; line-height: 1.4; margin-bottom: 0.2rem; }
+.help-doc-slug { font-size: 0.72rem; }
+
+/* Card footer */
+.help-card-footer {
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.45rem 1rem;
+  border-top: 1px solid var(--bs-border-color);
+  background: transparent;
+}
+.cat-footer-1 { color: #3367d6; }
+.cat-footer-2 { color: #c2185b; }
+.cat-footer-3 { color: #2e7d32; }
+.cat-footer-4 { color: #f57f17; }
+.cat-footer-5 { color: #5e35b1; }
+.cat-footer-6 { color: #00838f; }
+
+/* Category heading */
+.help-category-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--bs-body-color);
+  letter-spacing: 0.01em;
+}
+
+/* Search input */
+#help-search { border-left: none; }
+#help-search:focus { box-shadow: none; border-color: var(--bs-border-color); }
+.input-group:focus-within { box-shadow: 0 0 0 0.2rem rgba(65,84,241,0.15); border-radius: 0.375rem; }
+</style>
+
+<script>
+(function () {
+  'use strict';
+
+  // Cards carry class="help-link" so the delegated handler in base.html
+  // opens the modal on click. Keyboard navigation handled here separately.
+  document.querySelectorAll('.help-doc-card').forEach(function (card) {
+    card.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (window.openHelpDoc) window.openHelpDoc(card.dataset.docUrl);
+      }
+    });
+  });
+
+  // Live search
+  var searchInput  = document.getElementById('help-search');
+  var clearBtn     = document.getElementById('help-search-clear');
+  var noResults    = document.getElementById('help-no-results');
+  var allCards     = document.querySelectorAll('.help-card-wrapper');
+  var categories   = document.querySelectorAll('.help-category');
+  var countLabel   = document.getElementById('help-count-label');
+  var total        = allCards.length;
+
+  function applyFilter() {
+    var q = searchInput.value.trim().toLowerCase();
+    clearBtn.classList.toggle('d-none', !q);
+
+    var visible = 0;
+    allCards.forEach(function (wrapper) {
+      var text = (wrapper.dataset.title + ' ' + wrapper.dataset.category).toLowerCase();
+      var show = !q || text.includes(q);
+      wrapper.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+
+    categories.forEach(function (section) {
+      var visibleInCat = Array.from(section.querySelectorAll('.help-card-wrapper'))
+        .some(function (w) { return w.style.display !== 'none'; });
+      section.style.display = visibleInCat ? '' : 'none';
+    });
+
+    noResults.classList.toggle('d-none', visible > 0 || !q);
+
+    if (q) {
+      countLabel.textContent = visible + ' of ' + total + ' guide' + (total !== 1 ? 's' : '');
+    } else {
+      countLabel.textContent = total + ' guide' + (total !== 1 ? 's' : '');
+    }
+  }
+
+  searchInput.addEventListener('input', applyFilter);
+  clearBtn.addEventListener('click', function () {
+    searchInput.value = '';
+    applyFilter();
+    searchInput.focus();
+  });
+
+  // Initial count
+  applyFilter();
+}());
+</script>
+{% endblock content %}

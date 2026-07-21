@@ -580,6 +580,33 @@ def view_item(request, item_uuid):
             else:
                 firefly_pending_count += 1
 
+    from dms.models import DMSProvider, DMSSyncLog
+    dms_providers = list(DMSProvider.objects.filter(user=request.user, enabled=True)) if request.user.is_authenticated else []
+
+    # Map document_id → most-recent successful push log for this item,
+    # so the template can show "Archived to X" chips on each attachment.
+    dms_doc_status = {}
+    if dms_providers:
+        for log in (
+            DMSSyncLog.objects
+            .filter(item=item, direction='push', status='ok', document__isnull=False)
+            .select_related('provider')
+            .order_by('-created_at')
+        ):
+            if log.document_id not in dms_doc_status:
+                dms_doc_status[log.document_id] = log
+
+    # Also check for a successful push of the primary item file
+    dms_item_file_status = None
+    if dms_providers:
+        dms_item_file_status = (
+            DMSSyncLog.objects
+            .filter(item=item, direction='push', status='ok', document__isnull=True)
+            .select_related('provider')
+            .order_by('-created_at')
+            .first()
+        )
+
     context = {
         'item': item,
         'transactions': transactions,
@@ -599,6 +626,9 @@ def view_item(request, item_uuid):
         'firefly_url': firefly_url,
         'firefly_synced_count': firefly_synced_count,
         'firefly_pending_count': firefly_pending_count,
+        'dms_providers': dms_providers,
+        'dms_doc_status': dms_doc_status,
+        'dms_item_file_status': dms_item_file_status,
     }
     return render(request, 'view-item.html', context)
 
@@ -965,6 +995,28 @@ def check_duplicate_image(request):
         'item_name': best_match.name,
         'item_url': reverse('view_item', kwargs={'item_uuid': best_match.id}),
     })
+
+
+@require_POST
+@login_required
+def barcode_decode(request):
+    """Server-side barcode decode via zxing-cpp (C++ ZXing bindings).
+    Called as a fallback when BarcodeDetector and ZXing-JS both fail on
+    a phone photo - the C++ library handles rotation/scale automatically
+    and is significantly more robust on real-world images."""
+    from PIL import Image as PILImage
+    from .pdf_ticket import decode_barcode_from_image
+
+    img_file = request.FILES.get('image')
+    if not img_file or img_file.size > 20 * 1024 * 1024:
+        return JsonResponse({'code': None, 'code_type': None})
+    try:
+        image = PILImage.open(img_file).convert('RGB')
+        code, code_type = decode_barcode_from_image(image)
+        return JsonResponse({'code': code, 'code_type': code_type})
+    except Exception:
+        return JsonResponse({'code': None, 'code_type': None})
+
 
 @require_GET
 @login_required
@@ -1484,12 +1536,11 @@ def _integration_status(config):
 
     return status
 
-# Docs about a personal integration any user can set up for their own
-# account (their own API token, their own n8n/MCP client) - not gated to
-# superuser like every other doc here, which are all server/deployment-
-# level concerns (cert paths, service accounts, Portainer webhooks) only
-# an admin should be looking at.
-_SELF_SERVICE_DOCS = {'n8n', 'mcp-server'}
+# All docs are readable by any logged-in user — they are reference guides, not
+# admin actions.  The distinction below is retained only to avoid breaking
+# existing call sites; in practice the Help Center exposes every slug.
+from .help_docs import CATEGORIES, DOCS
+_SELF_SERVICE_DOCS = set(DOCS.keys())
 
 
 @login_required
@@ -1522,6 +1573,13 @@ def view_doc(request, doc_slug):
     if _wants_json(request):
         return JsonResponse({'title': title, 'body_html': html})
     return render(request, 'doc_viewer.html', {'title': title, 'body_html': html})
+
+
+@login_required
+def help_center(request):
+    """Help Center — lists all available guides, searchable, with in-page modal viewer."""
+    return render(request, 'help_center.html', {'categories': CATEGORIES})
+
 
 @login_required
 def site_settings(request):
