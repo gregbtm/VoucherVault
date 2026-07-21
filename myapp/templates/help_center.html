@@ -54,7 +54,7 @@
       <div class="col-12 col-sm-6 col-lg-4 help-card-wrapper"
            data-title="{{ slug|lower }} {{ description|lower }}"
            data-category="{{ category_name|lower }}">
-        <div class="card h-100 help-doc-card cat-border-{{ cat_color }}"
+        <div class="card h-100 help-doc-card help-link cat-border-{{ cat_color }}"
              role="button"
              data-doc-url="{% url 'view_doc' slug %}"
              tabindex="0"
@@ -192,12 +192,14 @@
 (function () {
   'use strict';
 
-  // Open guide in modal
+  // Cards carry class="help-link" so the delegated handler in base.html
+  // opens the modal on click. Keyboard navigation handled here separately.
   document.querySelectorAll('.help-doc-card').forEach(function (card) {
-    function open() { openHelpDoc(card.dataset.docUrl); }
-    card.addEventListener('click', open);
     card.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (window.openHelpDoc) window.openHelpDoc(card.dataset.docUrl);
+      }
     });
   });
 
