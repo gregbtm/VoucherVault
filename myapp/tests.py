@@ -5653,4 +5653,174 @@ class ViewItemPhase116FieldsTests(TestCase):
         self.assertNotContains(resp, 'Face Value')
         self.assertNotContains(resp, 'Minimum Spend')
         self.assertNotContains(resp, 'Points Balance')
+
+
+class ItemDocumentAPITests(TestCase):
+    """REST API for /api/v1/items/{item_pk}/documents/."""
+
+    def setUp(self):
+        from rest_framework.authtoken.models import Token
+        self.user = User.objects.create_user(username='alice', password='pw123!')
+        self.token = Token.objects.create(user=self.user)
+        self.auth = {'HTTP_AUTHORIZATION': f'Token {self.token.key}'}
+        self.item = make_item(self.user)
+
+    def _list_url(self):
+        return f'/api/v1/items/{self.item.id}/documents/'
+
+    def _detail_url(self, doc_id):
+        return f'/api/v1/items/{self.item.id}/documents/{doc_id}/'
+
+    def test_list_returns_empty_by_default(self):
+        resp = self.client.get(self._list_url(), **self.auth)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        results = data.get('results', data) if isinstance(data, dict) else data
+        self.assertEqual(len(results), 0)
+
+    def test_unauthenticated_request_is_rejected(self):
+        resp = self.client.get(self._list_url())
+        self.assertEqual(resp.status_code, 401)
+
+    def test_other_user_cannot_list_documents(self):
+        bob = User.objects.create_user(username='bob', password='pw123!')
+        bob_token = Token.objects.create(user=bob)
+        resp = self.client.get(self._list_url(), HTTP_AUTHORIZATION=f'Token {bob_token.key}')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_delete_document_via_api(self):
+        from myapp.models import Document
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as f:
+            f.write(b'test')
+            tmp_path = f.name
+        try:
+            with open(tmp_path, 'rb') as fh:
+                doc = Document.objects.create(item=self.item, file=SimpleUploadedFile('test.txt', b'test'))
+            resp = self.client.delete(self._detail_url(doc.id), **self.auth)
+            self.assertEqual(resp.status_code, 204)
+            self.assertFalse(Document.objects.filter(pk=doc.id).exists())
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+
+class UserPreferenceAPIExpandedTests(TestCase):
+    """Verify the expanded UserPreferenceSerializer exposes the new fields."""
+
+    def setUp(self):
+        from rest_framework.authtoken.models import Token
+        self.user = User.objects.create_user(username='alice', password='pw123!')
+        self.token = Token.objects.create(user=self.user)
+        self.auth = {'HTTP_AUTHORIZATION': f'Token {self.token.key}'}
+
+    def test_get_returns_new_fields(self):
+        resp = self.client.get('/api/v1/preferences/', **self.auth)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        for field in ('keep_screen_awake', 'blur_codes_enabled', 'offline_cache_enabled',
+                      'oled_dark_mode', 'tilt_scan_detection_enabled', 'nearby_items_enabled'):
+            self.assertIn(field, data, msg=f'Missing field: {field}')
+
+    def test_patch_keep_screen_awake(self):
+        resp = self.client.patch(
+            '/api/v1/preferences/',
+            data=json.dumps({'keep_screen_awake': False}),
+            content_type='application/json',
+            **self.auth,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.json()['keep_screen_awake'])
+
+    def test_patch_nearby_radius(self):
+        resp = self.client.patch(
+            '/api/v1/preferences/',
+            data=json.dumps({'nearby_radius_m': 300}),
+            content_type='application/json',
+            **self.auth,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['nearby_radius_m'], 300)
+
+
+class DMSProviderAPITests(TestCase):
+    """REST API for /api/v1/dms/providers/ — scoped to requesting user."""
+
+    def setUp(self):
+        from rest_framework.authtoken.models import Token
+        from dms.models import DMSProvider
+        self.user = User.objects.create_user(username='alice', password='pw123!')
+        self.token = Token.objects.create(user=self.user)
+        self.auth = {'HTTP_AUTHORIZATION': f'Token {self.token.key}'}
+        self.provider = DMSProvider.objects.create(
+            user=self.user, name='My Paperless', provider='paperless',
+            base_url='http://paperless.local', api_token='tok123',
+        )
+
+    def test_list_returns_own_providers(self):
+        resp = self.client.get('/api/v1/dms/providers/', **self.auth)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        results = data.get('results', data)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['name'], 'My Paperless')
+
+    def test_other_user_cannot_see_providers(self):
+        from rest_framework.authtoken.models import Token
+        bob = User.objects.create_user(username='bob', password='pw123!')
+        bob_token = Token.objects.create(user=bob)
+        resp = self.client.get('/api/v1/dms/providers/', HTTP_AUTHORIZATION=f'Token {bob_token.key}')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        results = data.get('results', data)
+        self.assertEqual(len(results), 0)
+
+    def test_unauthenticated_rejected(self):
+        resp = self.client.get('/api/v1/dms/providers/')
+        self.assertEqual(resp.status_code, 401)
+
+    def test_api_token_write_only(self):
+        resp = self.client.get(f'/api/v1/dms/providers/{self.provider.id}/', **self.auth)
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn('api_token', resp.json())
+
+
+class DMSSyncLogAPITests(TestCase):
+    """REST API for /api/v1/dms/sync-logs/ — read-only, scoped to user's providers."""
+
+    def setUp(self):
+        from rest_framework.authtoken.models import Token
+        from dms.models import DMSProvider, DMSSyncLog
+        self.user = User.objects.create_user(username='alice', password='pw123!')
+        self.token = Token.objects.create(user=self.user)
+        self.auth = {'HTTP_AUTHORIZATION': f'Token {self.token.key}'}
+        self.provider = DMSProvider.objects.create(
+            user=self.user, name='P', provider='paperless', base_url='http://p.local',
+        )
+        self.item = make_item(self.user)
+        DMSSyncLog.objects.create(
+            provider=self.provider, direction='push', status='ok',
+            item=self.item, detail='ok',
+        )
+
+    def test_list_returns_logs(self):
+        resp = self.client.get('/api/v1/dms/sync-logs/', **self.auth)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        results = data.get('results', data)
+        self.assertEqual(len(results), 1)
+
+    def test_logs_are_read_only(self):
+        resp = self.client.post('/api/v1/dms/sync-logs/', data={}, **self.auth)
+        self.assertEqual(resp.status_code, 405)
+
+    def test_other_user_sees_no_logs(self):
+        from rest_framework.authtoken.models import Token
+        bob = User.objects.create_user(username='bob', password='pw123!')
+        bob_token = Token.objects.create(user=bob)
+        resp = self.client.get('/api/v1/dms/sync-logs/', HTTP_AUTHORIZATION=f'Token {bob_token.key}')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        results = data.get('results', data)
+        self.assertEqual(len(results), 0)
         self.assertNotContains(resp, 'Membership Tier')

@@ -34,10 +34,11 @@ from imports.tasks import process_import_job
 from myapp.analytics import get_expiry_timeline, get_summary_stats
 from myapp.merchant_logos import remember_balance_check_url
 from myapp.models import (
-    Item, ItemShare, MerchantProfile, Tag, Transaction,
+    Document, Item, ItemShare, MerchantProfile, Tag, Transaction,
     UserPreference, UserProfile, UserWebhook, Wallet,
     WalletActivity, WalletMembership,
 )
+from dms.models import DMSProvider, DMSSyncLog
 from myapp.pdf_ticket import decode_barcode_from_pdf, pdf_page_to_png_bytes
 from myapp.scan_learning import apply_learned_corrections
 from notify.models import NotificationLog, NotificationRule
@@ -53,6 +54,9 @@ from ocr.backends.base import parse_float_or_none
 from .filters import ItemFilter
 from .permissions import IsItemOwnerOrWalletCollaborator, IsOwner, IsWalletOwnerOrReadOnlyCollaborator
 from .serializers import (
+    DMSProviderSerializer,
+    DMSSyncLogSerializer,
+    DocumentSerializer,
     ImportJobSerializer,
     ItemSerializer,
     ItemShareSerializer,
@@ -1173,4 +1177,88 @@ class WalletActivityViewSet(viewsets.ReadOnlyModelViewSet):
         wallet_id = self.request.query_params.get('wallet')
         if wallet_id:
             qs = qs.filter(wallet_id=wallet_id)
+        return qs
+
+
+class ItemDocumentViewSet(viewsets.ModelViewSet):
+    """
+    Supporting documents (receipts, proof of purchase) attached to an item.
+    Nested under items: GET/POST /api/v1/items/{item_pk}/documents/
+    and DELETE /api/v1/items/{item_pk}/documents/{pk}/.
+    """
+    serializer_class = DocumentSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
+
+    def _get_item(self):
+        return get_object_or_404(
+            Item,
+            Q(user=self.request.user) | Q(wallet__shared_with=self.request.user),
+            pk=self.kwargs['item_pk'],
+        )
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Document.objects.none()
+        item = self._get_item()
+        return Document.objects.filter(item=item)
+
+    def perform_create(self, serializer):
+        item = self._get_item()
+        serializer.save(item=item)
+
+
+class DMSProviderViewSet(viewsets.ModelViewSet):
+    """CRUD for the authenticated user's Document Management System providers."""
+    serializer_class = DMSProviderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return DMSProvider.objects.none()
+        return DMSProvider.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def test(self, request, pk=None):
+        """Test the connection to this DMS provider."""
+        provider = self.get_object()
+        from dms.clients import get_client as _get_dms_client
+        try:
+            client = _get_dms_client(provider)
+            result = client.test_connection()
+            ok = result.get('ok', False)
+            message = result.get('message', '')
+        except Exception as exc:
+            ok, message = False, f'Connection failed: {exc}'
+
+        from django.utils import timezone as _tz
+        provider.last_checked = _tz.now()
+        provider.status = DMSProvider.STATUS_OK if ok else DMSProvider.STATUS_ERROR
+        provider.status_message = message
+        provider.save(update_fields=['last_checked', 'status', 'status_message'])
+
+        status_code = status.HTTP_200_OK if ok else status.HTTP_502_BAD_GATEWAY
+        return Response({'ok': ok, 'message': message}, status=status_code)
+
+
+class DMSSyncLogViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only DMS sync history. Filter by ?provider=<uuid>."""
+    serializer_class = DMSSyncLogSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [OrderingFilter]
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return DMSSyncLog.objects.none()
+        qs = DMSSyncLog.objects.filter(
+            provider__user=self.request.user
+        ).select_related('provider', 'item')
+        provider_id = self.request.query_params.get('provider')
+        if provider_id:
+            qs = qs.filter(provider_id=provider_id)
         return qs

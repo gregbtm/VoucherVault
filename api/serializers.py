@@ -9,10 +9,11 @@ from rest_framework import serializers
 
 from imports.models import ImportJob
 from myapp.models import (
-    Item, ItemShare, MerchantProfile, Tag, Transaction,
+    Document, Item, ItemShare, MerchantProfile, Tag, Transaction,
     UserPreference, UserProfile, UserWebhook, Wallet,
     WalletActivity, WalletMembership,
 )
+from dms.models import DMSProvider, DMSSyncLog
 from myapp.utils import generate_code_image_base64
 from notify.models import NotificationLog, NotificationRule
 
@@ -263,12 +264,29 @@ class ItemSerializer(serializers.ModelSerializer):
         return instance
 
 
+class DocumentSerializer(serializers.ModelSerializer):
+    filename = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = Document
+        fields = ['id', 'item', 'file', 'filename', 'uploaded_at', 'extracted_text']
+        read_only_fields = ['id', 'item', 'filename', 'uploaded_at', 'extracted_text']
+
+    def get_filename(self, doc) -> str:
+        import os
+        return os.path.basename(doc.file.name) if doc.file else ''
+
+
 class UserPreferenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserPreference
         fields = [
             'show_issue_date', 'show_expiry_date', 'show_value', 'show_description',
             'sort_by', 'sort_order', 'view_mode', 'fixer_api_key', 'default_currency',
+            'keep_screen_awake', 'tilt_scan_detection_enabled', 'oled_dark_mode',
+            'offline_cache_enabled', 'blur_codes_enabled',
+            'next_up_max_items', 'active_today_enabled', 'commute_home_station',
+            'nearby_items_enabled', 'nearby_radius_m',
         ]
 
 
@@ -386,4 +404,40 @@ class WalletActivitySerializer(serializers.ModelSerializer):
     class Meta:
         model = WalletActivity
         fields = ['id', 'wallet', 'actor_username', 'action', 'item_display', 'detail', 'timestamp']
+        read_only_fields = fields
+
+
+class DMSProviderSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    provider_display = serializers.CharField(source='get_provider_display', read_only=True)
+
+    class Meta:
+        model = DMSProvider
+        fields = [
+            'id', 'name', 'provider', 'provider_display', 'base_url',
+            'api_token', 'username', 'docspell_collective', 'docspell_source_id',
+            'auto_push', 'auto_pull', 'pull_tag', 'pull_correspondent',
+            'last_checked', 'status', 'status_display', 'status_message',
+            'enabled', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'last_checked', 'status', 'status_message', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'api_token': {'write_only': True},
+            'password': {'write_only': True},
+        }
+
+
+class DMSSyncLogSerializer(serializers.ModelSerializer):
+    provider_name = serializers.CharField(source='provider.name', read_only=True)
+    item_name = serializers.CharField(source='item.name', read_only=True, default=None)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    direction_display = serializers.CharField(source='get_direction_display', read_only=True)
+
+    class Meta:
+        model = DMSSyncLog
+        fields = [
+            'id', 'provider', 'provider_name', 'direction', 'direction_display',
+            'status', 'status_display', 'item', 'item_name',
+            'dms_document_id', 'dms_document_title', 'detail', 'created_at',
+        ]
         read_only_fields = fields
