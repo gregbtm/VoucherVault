@@ -555,6 +555,26 @@ if 'test' in sys.argv:
 # one attacker, which is the worse failure mode for a small self-hosted app.
 SILENCED_SYSTEM_CHECKS = ['axes.W006']
 
+# ---- WebDAV storage (Synology WebDAV Server, Nextcloud, etc.) ----
+# Activated by USE_WEBDAV_STORAGE=true. Takes precedence over USE_S3_STORAGE
+# when both are set. Static files always stay local regardless.
+# See docs/SYNOLOGY_NAS_SETUP.md for the full configuration walkthrough.
+USE_WEBDAV_STORAGE = os.environ.get('USE_WEBDAV_STORAGE', 'False').lower() in ['true']
+if USE_WEBDAV_STORAGE:
+    WEBDAV_URL = os.environ.get('WEBDAV_URL', '')
+    WEBDAV_PUBLIC_URL = os.environ.get('WEBDAV_PUBLIC_URL', WEBDAV_URL)
+    WEBDAV_USERNAME = os.environ.get('WEBDAV_USERNAME', '')
+    WEBDAV_PASSWORD = os.environ.get('WEBDAV_PASSWORD', '')
+    WEBDAV_VERIFY_SSL = os.environ.get('WEBDAV_VERIFY_SSL', 'True').lower() in ['true']
+    STORAGES = {
+        'default': {
+            'BACKEND': 'myapp.webdav_storage.WebDAVStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
+
 # ---- Social auth (django-allauth) ----
 ACCOUNT_LOGIN_METHODS = {'username'}
 ACCOUNT_EMAIL_VERIFICATION = 'none'
