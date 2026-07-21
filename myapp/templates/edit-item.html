@@ -1151,7 +1151,7 @@ body.dark-mode .error-alert {
             
             <div class="form-group">
               <label class="form-label" for="file">{% trans "Upload File" %}</label>
-              <input type="file" id="file" name="file" class="modern-input" data-has-existing-file="{% if item.file %}1{% endif %}" data-item-id="{{ item.id }}" data-check-duplicate-image-url="{% url 'check_duplicate_image' %}">
+              <input type="file" id="file" name="file" class="modern-input" data-has-existing-file="{% if item.file %}1{% endif %}" data-item-id="{{ item.id }}" data-check-duplicate-image-url="{% url 'check_duplicate_image' %}" data-barcode-decode-url="{% url 'barcode_decode' %}">
               {% if item.file %}
               <small class="form-text text-muted">{% trans "A file is already attached. Choosing a new one replaces it." %}</small>
               {% endif %}

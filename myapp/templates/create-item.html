@@ -1107,7 +1107,7 @@ body.dark-mode .error-alert {
 
             <div class="form-group">
               <label class="form-label" for="file">{% trans "Upload File" %}</label>
-              <input type="file" id="file" name="file" class="modern-input" data-check-duplicate-image-url="{% url 'check_duplicate_image' %}">
+              <input type="file" id="file" name="file" class="modern-input" data-check-duplicate-image-url="{% url 'check_duplicate_image' %}" data-barcode-decode-url="{% url 'barcode_decode' %}">
               <small class="form-text text-warning" id="duplicate-image-warning" style="display:none;"></small>
             </div>
           </div>

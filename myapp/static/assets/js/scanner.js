@@ -137,6 +137,24 @@ const barcodeFormatMap = {
     "UPC_EAN_EXTENSION": "ean13"
 };
 
+// W3C BarcodeDetector API format names → VoucherVault code_type values.
+// Used by the Tier 1 decode path (Chrome/Android ML Kit, Safari/Apple Vision).
+const barcodeDetectorFormatMap = {
+    'aztec': 'azteccode',
+    'code_128': 'code128',
+    'code_39': 'code39',
+    'code_93': 'code93',
+    'codabar': 'codabar',
+    'data_matrix': 'datamatrix',
+    'ean_13': 'ean13',
+    'ean_8': 'ean8',
+    'itf': 'interleaved2of5',
+    'pdf417': 'pdf417',
+    'qr_code': 'qrcode',
+    'upc_a': 'upca',
+    'upc_e': 'upce',
+};
+
 const codeTypeLabels = {
     "qrcode": "QR Code",
     "none": "No Barcode",
@@ -472,6 +490,31 @@ async function _decodeAttempt(img, attempts) {
     return result;
 }
 
+// Tier 3 server-side decode: POST the original file to the Django
+// barcode_decode endpoint (zxing-cpp C++ binding). Handles try_rotate +
+// try_downscale natively and often succeeds on full-frame phone photos
+// where ZXing-JS gives up. Returns the parsed JSON or null on any failure.
+async function _serverDecode(file) {
+    const decodeUrl = attachFileField?.dataset.barcodeDecodeUrl;
+    if (!decodeUrl) return null;
+    const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (!csrfInput) return null;
+    try {
+        const formData = new FormData();
+        formData.append('image', file);
+        const response = await fetch(decodeUrl, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfInput.value },
+            body: formData,
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data.code ? data : null;
+    } catch (e) {
+        return null;
+    }
+}
+
 async function decodeBarcodeFromImageFile(file, onImageLoaded) {
     const dataUrl = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -491,13 +534,27 @@ async function decodeBarcodeFromImageFile(file, onImageLoaded) {
         await img.decode();
     }
 
-    // Scan twice - ZXing needs warmup
+    // Tier 1: BarcodeDetector Web API (Chrome 83+ / Android ML Kit, Safari 17+
+    // / Apple Vision Framework). Dramatically better on real-world phone photos
+    // than ZXing-JS because it delegates to the OS computer-vision stack.
+    if ('BarcodeDetector' in window) {
+        try {
+            const detector = new BarcodeDetector();
+            const barcodes = await detector.detect(img);
+            if (barcodes.length > 0) {
+                const bc = barcodes[0];
+                return {
+                    text: bc.rawValue,
+                    formatValue: barcodeDetectorFormatMap[bc.format] || null,
+                    img,
+                };
+            }
+        } catch (e) { /* API present but rejected (e.g. unsupported format set) - fall through */ }
+    }
+
+    // Tier 2: ZXing-JS — scan twice (warmup), then contrast and rotation variants.
     let result = await _decodeAttempt(img, 2);
 
-    // Real-world phone photos (glare, low light, a sideways shot) can trip
-    // up a first pass. Before giving up, try a handful of cheap pixel
-    // transforms - one attempt each, since these are already enhanced -
-    // rather than falling straight through to the AI's guess.
     if (!result) {
         try {
             const contrastImg = await _contrastVariant(img);
@@ -513,13 +570,23 @@ async function decodeBarcodeFromImageFile(file, onImageLoaded) {
             } catch (error) { /* same as above */ }
         }
     }
+    if (result) {
+        return {
+            text: result.text,
+            formatValue: result.format !== undefined ? barcodeFormatMap[barcodeFormats[result.format]] : null,
+            img,
+        };
+    }
 
-    if (!result) return { text: null, formatValue: null, img };
-    return {
-        text: result.text,
-        formatValue: result.format !== undefined ? barcodeFormatMap[barcodeFormats[result.format]] : null,
-        img,
-    };
+    // Tier 3: Server-side zxing-cpp. Same ZXing engine as Tier 2 but the C++
+    // binding applies try_rotate + try_downscale automatically, which often
+    // succeeds on full-frame phone photos that ZXing-JS couldn't handle.
+    const serverResult = await _serverDecode(file);
+    if (serverResult) {
+        return { text: serverResult.code, formatValue: serverResult.code_type, img };
+    }
+
+    return { text: null, formatValue: null, img };
 }
 
 // File upload scanning - direct decoding with automatic retry

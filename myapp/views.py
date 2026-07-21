@@ -996,6 +996,28 @@ def check_duplicate_image(request):
         'item_url': reverse('view_item', kwargs={'item_uuid': best_match.id}),
     })
 
+
+@require_POST
+@login_required
+def barcode_decode(request):
+    """Server-side barcode decode via zxing-cpp (C++ ZXing bindings).
+    Called as a fallback when BarcodeDetector and ZXing-JS both fail on
+    a phone photo - the C++ library handles rotation/scale automatically
+    and is significantly more robust on real-world images."""
+    from PIL import Image as PILImage
+    from .pdf_ticket import decode_barcode_from_image
+
+    img_file = request.FILES.get('image')
+    if not img_file or img_file.size > 20 * 1024 * 1024:
+        return JsonResponse({'code': None, 'code_type': None})
+    try:
+        image = PILImage.open(img_file).convert('RGB')
+        code, code_type = decode_barcode_from_image(image)
+        return JsonResponse({'code': code, 'code_type': code_type})
+    except Exception:
+        return JsonResponse({'code': None, 'code_type': None})
+
+
 @require_GET
 @login_required
 def duplicate_item(request, item_uuid):

@@ -3363,6 +3363,63 @@ class CheckDuplicateImageTests(TestCase):
         self.assertTrue(item.image_phash)
 
 
+class BarcodeDecodeViewTests(TestCase):
+    """myapp.views.barcode_decode - server-side zxing-cpp fallback endpoint."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+        self.url = reverse('barcode_decode')
+
+    @staticmethod
+    def _make_barcode_image(code='HELLO123', symbology='code128'):
+        import treepoem
+        img = treepoem.generate_barcode(symbology, code)
+        buf = BytesIO()
+        img.convert('RGB').save(buf, 'PNG')
+        return buf.getvalue()
+
+    def test_requires_login(self):
+        self.client.logout()
+        upload = SimpleUploadedFile('bc.png', self._make_barcode_image(), content_type='image/png')
+        response = self.client.post(self.url, {'image': upload})
+        self.assertNotEqual(response.status_code, 200)
+
+    def test_requires_post(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 405)
+
+    def test_no_image_returns_null(self):
+        response = self.client.post(self.url, {})
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()['code'])
+        self.assertIsNone(response.json()['code_type'])
+
+    def test_decodes_code128_barcode(self):
+        upload = SimpleUploadedFile('bc.png', self._make_barcode_image('HELLO123', 'code128'), content_type='image/png')
+        response = self.client.post(self.url, {'image': upload})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['code'], 'HELLO123')
+        self.assertEqual(payload['code_type'], 'code128')
+
+    def test_decodes_qr_code(self):
+        upload = SimpleUploadedFile('qr.png', self._make_barcode_image('https://example.com', 'qrcode'), content_type='image/png')
+        response = self.client.post(self.url, {'image': upload})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['code'], 'https://example.com')
+        self.assertEqual(payload['code_type'], 'qrcode')
+
+    def test_non_barcode_image_returns_null(self):
+        upload = SimpleUploadedFile('plain.png', _make_test_image('purple'), content_type='image/png')
+        response = self.client.post(self.url, {'image': upload})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIsNone(payload['code'])
+        self.assertIsNone(payload['code_type'])
+
+
 class LastUsedTrackingTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')
