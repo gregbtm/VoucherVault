@@ -2316,14 +2316,17 @@ def update_user_preferences(request):
         form = UserPreferenceForm(request.POST, instance=preferences)
         if form.is_valid():
             form.save()
-            # A preference change can affect what /dashboard renders (e.g. the
-            # Fixer.io API key warning), so tell the service worker to drop its
-            # cached copy rather than waiting on the cache's own TTL. If offline
-            # caching was just turned off, purge everything outright.
+            if _wants_json(request):
+                response_data = {'success': True, 'message': str(_('Preferences saved.'))}
+                if was_offline_cache_enabled and not form.cleaned_data['offline_cache_enabled']:
+                    response_data['cache_purge'] = True
+                return JsonResponse(response_data)
             redirect_url = reverse('show_items') + '?prefs_saved=1'
             if was_offline_cache_enabled and not form.cleaned_data['offline_cache_enabled']:
                 redirect_url += '&cache_purge=1'
             return redirect(redirect_url)
+        if _wants_json(request):
+            return JsonResponse({'errors': form.errors.get_json_data()}, status=400)
     else:
         form = UserPreferenceForm(instance=preferences)
 

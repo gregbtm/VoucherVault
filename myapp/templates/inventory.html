@@ -958,7 +958,7 @@ body.dark-mode .next-up-card {
 
 <div class="inventory-header">
   <div>
-    <h1>{% trans "Inventory" %}</h1>
+    <h1>{% trans "Inventory" %} <a href="{% url 'help_center' %}" class="help-link text-muted" title="{% trans 'Help &amp; Guides' %}" style="font-size:1rem;vertical-align:middle;text-decoration:none;"><i class="bi bi-question-circle"></i></a></h1>
     <nav>
       <ol class="breadcrumb mb-0">
         <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>

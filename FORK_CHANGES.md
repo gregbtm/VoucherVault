@@ -156,6 +156,8 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 123 — DMS integration: Paperless-ngx, Docspell, PaperMerge](#phase-123--dms-integration-paperless-ngx-docspell-papermerge)
 - [Phase 124 — In-app Help Center, MCP/API enrichments, Help system fixes](#phase-124--in-app-help-center-mcpapi-enrichments-help-system-fixes)
 - [Phase 125 — Barcode scanning reliability: OCR prompt fix + three-tier decode pipeline](#phase-125--barcode-scanning-reliability-ocr-prompt-fix--three-tier-decode-pipeline)
+- [Phase 126 — Docker hotfix: dms module missing from production image](#phase-126--docker-hotfix-dms-module-missing-from-production-image)
+- [Phase 127 — Conditional field visibility, Preferences autosave, expanded Help Center](#phase-127--conditional-field-visibility-preferences-autosave-expanded-help-center)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -6401,6 +6403,84 @@ The server URL is injected via `data-barcode-decode-url` on the `#file` input
 **Files changed:** `ocr/backends/claude_backend.py`, `ocr/backends/openai_backend.py`,
 `myapp/views.py`, `myapp/urls.py`, `myapp/static/assets/js/scanner.js`,
 `myapp/templates/create-item.html`, `myapp/templates/edit-item.html`, `myapp/tests.py`
+
+---
+
+## Phase 126 — Docker hotfix: dms module missing from production image
+
+**Root cause**
+`docker/Dockerfile` was not copying the `dms/` app directory into the image. As a
+result, any production deployment built from the Dockerfile (rather than a dev
+`docker compose up`) immediately crashed on startup with
+`ModuleNotFoundError: No module named 'dms'`.
+
+**Fix**
+Added `COPY dms /opt/app/dms` immediately after the existing
+`COPY ocr /opt/app/ocr` line — the same pattern already used for every other
+app-level directory (`myapp`, `api`, `notify`, `imports`, `ocr`, `mcp_server`,
+etc.).
+
+**Deployment note**
+This requires a full image rebuild (`docker build`), not just a container restart.
+Running Portainer containers will continue to crash until the image is rebuilt and
+redeployed.
+
+**Files changed:** `docker/Dockerfile`
+
+---
+
+## Phase 127 — Conditional field visibility, Preferences autosave, expanded Help Center
+
+**Conditional field visibility (13 rules)**
+Item forms (create + edit) and the two settings pages now hide fields that are
+irrelevant until the relevant feature is enabled:
+
+*Item forms*
+- `notify_days_before` — hidden when the user has no active notification rule; shows a "set up a notification rule →" onboarding hint in its place
+- `firefly_account_id` / `firefly_rule` — hidden when no Firefly III rule is active; shows a "set up the Firefly III integration →" onboarding hint in its place
+- `logo_slug` — moved into a collapsible `<details>` Advanced section; auto-opens on edit when a slug is already set
+
+*Site Settings*
+- `overpass_api_url` — hidden until "Enable nearby places" is checked
+- Share link sub-fields (`smart_share_api_url`, `smart_share_expiry_days`, `smart_share_require_auth`) — hidden until "Enable Smart Share" is checked
+- `backup_retention_count` — hidden until "Enable scheduled backups" is checked
+
+*User Preferences*
+- `next_up_max_items` — hidden when no Next Up wallets are selected
+- `commute_home_station` / `active_today_cutoff_time` — hidden when "Enable Active Today widget" is unchecked
+- Nearby section — shows a disabled-by-admin banner and greys out controls when `nearby_places_enabled` is off at the site level; `nearby_radius_m` hidden when "Enable Nearby widget" is unchecked
+
+All 13 conditions are implemented in pure JavaScript (`classList.toggle` / `style.display`) inside each page's existing `DOMContentLoaded` block, with server-rendered JS constants from the Django context where needed (`HAS_NOTIFICATION_RULE`, `HAS_FIREFLY_RULE`, `SITE_NEARBY_ENABLED`).
+
+**Preferences autosave**
+User Preferences now saves via AJAX on every field change — no Submit button, no full page reload. The pattern is identical to Site Settings: 400 ms debounce, `X-Requested-With: XMLHttpRequest` detection in the view, `JsonResponse({'success': True})` on success. A `cache_purge` flag is returned when the offline cache toggle is turned off, triggering a client-side service worker unregister. A "Changes save automatically." status line replaces the Submit button. Invalid field values surface as inline error messages without losing other unsaved fields.
+
+**Expanded Help Center — four new docs**
+`docs/NOTIFICATIONS_SETUP.md`, `docs/WEBHOOKS_SETUP.md`, `docs/API_ACCESS.md`,
+`docs/WALLETS_AND_TAGS.md` — covering the four core features that previously had
+no in-app documentation. All four slugs registered in `myapp/help_docs.py` and
+a new "Getting Started" category added to the Help Center index.
+
+**Help links across the app**
+Contextual `?` icon links (opening the relevant guide in the modal) added to
+every page that previously had none: Inventory, Dashboard, Analytics, Expiry
+Timeline, Tags, Sessions/Security, Share Item, Sharing Center, Wallet Activity,
+Preferences, and the "Scan with AI" section of Create/Edit Item. All use the
+`help-link[data-doc-url]` pattern caught by base.html's delegated handler, so the
+doc opens in the existing overlay without a page load.
+
+**Test suite:** 1050 tests, 0 failures.
+
+**Files changed:** `myapp/views.py`, `myapp/help_docs.py`,
+`myapp/templates/update_preferences.html`, `myapp/templates/create-item.html`,
+`myapp/templates/edit-item.html`, `myapp/templates/site_settings.html`,
+`myapp/templates/inventory.html`, `myapp/templates/dashboard.html`,
+`myapp/templates/analytics.html`, `myapp/templates/expiry-timeline.html`,
+`myapp/templates/manage-tags.html`, `myapp/templates/session_management.html`,
+`myapp/templates/share_item.html`, `myapp/templates/sharing_center.html`,
+`myapp/templates/wallet_activity.html`,
+`docs/NOTIFICATIONS_SETUP.md` (new), `docs/WEBHOOKS_SETUP.md` (new),
+`docs/API_ACCESS.md` (new), `docs/WALLETS_AND_TAGS.md` (new)
 
 ---
 

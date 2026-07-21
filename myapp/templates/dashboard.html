@@ -583,7 +583,7 @@ body.dark-mode .calendar-month-label {
 <div class="dashboard-container">
   <!-- Header -->
   <div class="dashboard-header">
-    <h1>{% trans "Dashboard" %}</h1>
+    <h1>{% trans "Dashboard" %} <a href="{% url 'help_center' %}" class="help-link text-muted" title="{% trans 'Help &amp; Guides' %}" style="font-size:1rem;vertical-align:middle;text-decoration:none;"><i class="bi bi-question-circle"></i></a></h1>
     <p class="dashboard-subtitle">{% trans "Overview of your collection" %}</p>
   </div>
 
