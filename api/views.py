@@ -1,8 +1,10 @@
 import json
 import logging
+import re
 
 import requests
 from django.contrib.auth.models import User
+from django.core.files.base import ContentFile
 from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -41,6 +43,8 @@ from myapp.models import (
 from dms.models import DMSProvider, DMSSyncLog
 from myapp.pdf_ticket import decode_barcode_from_pdf, pdf_page_to_png_bytes
 from myapp.scan_learning import apply_learned_corrections
+from myapp.tasks import fetch_merchant_logo_task
+from myapp.utils import generate_code_image_base64
 from notify.models import NotificationLog, NotificationRule
 from notify.tasks import (
     backfill_firefly_transactions,
@@ -86,6 +90,32 @@ _RAIL_TICKET_TEXT_FIELDS = (
     'journey_origin', 'journey_destination', 'travel_time', 'travel_date',
     'seat_number',
 )
+
+_RAIL_OPERATOR_LOGOS = {
+    'avanti west coast': 'avantiwestcoast.co.uk',
+    'c2c': 'c2crail.net',
+    'caledonian sleeper': 'sleeper.scot',
+    'chiltern railways': 'chilternrailways.co.uk',
+    'crosscountry': 'crosscountrytrains.co.uk',
+    'east midlands railway': 'eastmidlandsrailway.co.uk',
+    'gatwick express': 'gatwickexpress.com',
+    'grand central': 'grandcentralrail.com',
+    'greater anglia': 'greateranglia.co.uk',
+    'great western railway': 'gwr.com',
+    'gwr': 'gwr.com',
+    'heathrow express': 'heathrowexpress.com',
+    'hull trains': 'hulltrains.co.uk',
+    'lner': 'lner.co.uk',
+    'merseyrail': 'merseyrail.org',
+    'northern': 'northernrailway.co.uk',
+    'scotrail': 'scotrail.co.uk',
+    'southeastern': 'southeasternrailway.co.uk',
+    'south western railway': 'southwesternrailway.com',
+    'southern': 'southernrailway.com',
+    'thameslink': 'thameslinkrailway.com',
+    'transpennine express': 'tpexpress.co.uk',
+    'west midlands trains': 'westmidlandsrailway.co.uk',
+}
 
 
 def _process_rail_ticket_pdf(pdf_bytes, user, preset_fields, create, serializer_context):
@@ -192,6 +222,18 @@ def _process_rail_ticket_pdf(pdf_bytes, user, preset_fields, create, serializer_
         part for part in (fields['journey_origin'], fields['journey_destination']) if part
     ) or _('Train Ticket')
 
+    # Build a human-readable description from journey and date fields.
+    _desc_parts = []
+    if fields['journey_origin'] and fields['journey_destination']:
+        _desc_parts.append(f"{fields['journey_origin']} to {fields['journey_destination']}")
+    if fields['travel_date']:
+        _desc_parts.append(fields['travel_date'])
+    description = ' | '.join(_desc_parts) if _desc_parts else None
+
+    # Resolve a logo domain hint from the operator name for the logo fetch task.
+    issuer_lower = (fields['issuer'] or '').lower().strip()
+    logo_slug = _RAIL_OPERATOR_LOGOS.get(issuer_lower)
+
     item = Item.objects.create(
         user=user,
         type='travelpass',
@@ -210,7 +252,44 @@ def _process_rail_ticket_pdf(pdf_bytes, user, preset_fields, create, serializer_
         value=fields['value'] or 0,
         currency=fields['currency'] or 'GBP',
         source='api',
+        description=description,
+        logo_slug=logo_slug,
     )
+
+    # Generate the barcode image. Binary ITSO payloads cannot be re-encoded
+    # by treepoem, so fall back to code_type='none' if generation fails —
+    # the rasterized PDF page saved below provides the visual barcode instead.
+    try:
+        item.qr_code_base64, item.code_type = generate_code_image_base64(item)
+    except Exception:
+        item.code_type = 'none'
+        item.qr_code_base64 = None
+    item.save(update_fields=['qr_code_base64', 'code_type'])
+
+    # Save rasterized page 0 as item image so the barcode is visible in the UI.
+    try:
+        page_png = pdf_page_to_png_bytes(pdf_bytes)
+        item.file.save(f'rail_{item.id}.png', ContentFile(page_png), save=True)
+    except Exception as exc:
+        logger.warning('Rail ticket page rasterize for file save failed: %s', exc)
+
+    # Attach the original PDF as a Document so it can be downloaded.
+    try:
+        issuer_safe = re.sub(r'[^a-z0-9]', '_', issuer_lower) or 'ticket'
+        Document.objects.create(
+            item=item,
+            file=ContentFile(pdf_bytes, name=f'{issuer_safe}_ticket.pdf'),
+        )
+    except Exception as exc:
+        logger.warning('Rail ticket PDF document attach failed: %s', exc)
+
+    # Queue logo fetch (best-effort — a broker outage must not block the response).
+    if fields['issuer']:
+        try:
+            fetch_merchant_logo_task.delay(fields['issuer'], logo_slug)
+        except Exception:
+            logger.warning('Could not queue logo fetch for %r', fields['issuer'], exc_info=True)
+
     notify_item_created(item)
 
     response_payload['created'] = True

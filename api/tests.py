@@ -1127,6 +1127,93 @@ class RailTicketImportApiTests(APITestCase):
         # No second item should have been created.
         self.assertEqual(Item.objects.count(), 1)
 
+    def test_create_sets_description_from_journey_fields(self):
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+            'journey_origin': 'Hatfield Peverel',
+            'journey_destination': 'London Terminals',
+            'travel_date': '2026-07-22',
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        item = Item.objects.get()
+        self.assertIn('Hatfield Peverel', item.description)
+        self.assertIn('London Terminals', item.description)
+        self.assertIn('2026-07-22', item.description)
+
+    def test_create_sets_logo_slug_for_known_uk_operator(self):
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        item = Item.objects.get()
+        self.assertEqual(item.logo_slug, 'greateranglia.co.uk')
+
+    def test_create_logo_slug_none_for_unknown_operator(self):
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Mystery Rail',
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        item = Item.objects.get()
+        self.assertIsNone(item.logo_slug)
+
+    def test_create_saves_pdf_page_as_item_file(self):
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        item = Item.objects.get()
+        self.assertTrue(bool(item.file.name), 'item.file should be set after rail ticket import')
+
+    def test_create_attaches_original_pdf_as_document(self):
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        item = Item.objects.get()
+        self.assertEqual(item.documents.count(), 1)
+        doc = item.documents.first()
+        self.assertIn('pdf', doc.file.name.lower())
+
+    @patch('api.views.fetch_merchant_logo_task')
+    def test_create_queues_logo_fetch(self, mock_task):
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        mock_task.delay.assert_called_once_with('Greater Anglia', 'greateranglia.co.uk')
+
+    def test_create_generates_barcode_image(self):
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        item = Item.objects.get()
+        self.assertIsNotNone(item.qr_code_base64)
+
+    def test_create_without_journey_fields_omits_description(self):
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        item = Item.objects.get()
+        self.assertIsNone(item.description)
+
 
 class RailTicketBatchImportApiTests(APITestCase):
     def setUp(self):
