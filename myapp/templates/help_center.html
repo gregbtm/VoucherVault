@@ -46,7 +46,7 @@
       </span>
       <h5 class="help-category-title mb-0">
         {{ category_name }}
-        <span class="badge bg-secondary ms-1 help-cat-count" style="font-size:0.7rem; vertical-align:middle;">{{ docs|length }}</span>
+        <span class="badge rounded-pill help-cat-badge cat-badge-{{ forloop.counter }} ms-1 help-cat-count">{{ docs|length }}</span>
       </h5>
     </div>
     <div class="row g-3">
@@ -59,8 +59,8 @@
              data-doc-url="{% url 'view_doc' slug %}"
              tabindex="0"
              title="{% trans 'Open guide' %}">
-          <div class="card-body">
-            <div class="d-flex align-items-start gap-3">
+          <div class="card-body help-card-body">
+            <div class="d-flex align-items-center gap-2">
               <div class="help-card-icon-wrap cat-bg-{{ cat_color }} flex-shrink-0">
                 <i class="bi {{ icon }}"></i>
               </div>
@@ -117,10 +117,10 @@
 
 /* Card icon backgrounds */
 .help-card-icon-wrap {
-  width: 2.2rem; height: 2.2rem;
-  border-radius: 0.5rem;
+  width: 2rem; height: 2rem;
+  border-radius: 0.45rem;
   display: flex; align-items: center; justify-content: center;
-  font-size: 1rem;
+  font-size: 0.9rem;
 }
 .cat-bg-1 { background: #e8f0fe; color: #3367d6; }
 .cat-bg-2 { background: #fce8f1; color: #c2185b; }
@@ -142,7 +142,9 @@
   border: 1px solid var(--bs-border-color);
   border-left-width: 3px;
   transition: box-shadow 0.15s ease, transform 0.12s ease;
-  min-height: 4.5rem;
+}
+.help-card-body {
+  padding: 0.6rem 0.75rem;
 }
 .cat-border-1 { border-left-color: #3367d6 !important; }
 .cat-border-2 { border-left-color: #c2185b !important; }
@@ -161,9 +163,9 @@
 
 /* Card footer */
 .help-card-footer {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 500;
-  padding: 0.45rem 1rem;
+  padding: 0.35rem 0.75rem;
   border-top: 1px solid var(--bs-border-color);
   background: transparent;
 }
@@ -181,6 +183,21 @@
   color: var(--bs-body-color);
   letter-spacing: 0.01em;
 }
+
+/* Category count badges — match each category accent */
+.help-cat-badge { font-size: 0.65rem; font-weight: 600; vertical-align: middle; }
+.cat-badge-1 { background: #e8f0fe; color: #3367d6; }
+.cat-badge-2 { background: #fce8f1; color: #c2185b; }
+.cat-badge-3 { background: #e8f5e9; color: #2e7d32; }
+.cat-badge-4 { background: #fff8e1; color: #f57f17; }
+.cat-badge-5 { background: #ede7f6; color: #5e35b1; }
+.cat-badge-6 { background: #e0f7fa; color: #00838f; }
+[data-bs-theme="dark"] .cat-badge-1 { background: #1a2a4a; color: #7baaf7; }
+[data-bs-theme="dark"] .cat-badge-2 { background: #3d1a2a; color: #f48fb1; }
+[data-bs-theme="dark"] .cat-badge-3 { background: #1a3320; color: #81c784; }
+[data-bs-theme="dark"] .cat-badge-4 { background: #3d2e00; color: #ffd54f; }
+[data-bs-theme="dark"] .cat-badge-5 { background: #2a1a4a; color: #b39ddb; }
+[data-bs-theme="dark"] .cat-badge-6 { background: #002d33; color: #4dd0e1; }
 
 /* Search input */
 #help-search { border-left: none; }
