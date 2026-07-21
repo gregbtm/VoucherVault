@@ -2011,7 +2011,7 @@ body.dark-mode .tilt-scan-enable-btn {
                 <i class="bi bi-file-earmark-text"></i> {{ document.file.name|basename }}
                 <small class="text-muted">({{ document.uploaded_at|date:"Y-m-d H:i" }})</small>
               </a>
-              <div class="d-flex gap-2 align-items-center">
+              <div class="d-flex gap-2 align-items-center flex-wrap">
                 {% if document.file.name|is_image_file %}
                 <button type="button" class="btn btn-outline-secondary unshare-btn" data-preview-url="{% url 'view_document_file' document.id %}" data-preview-kind="image">
                   <i class="bi bi-eye"></i> {% trans "View" %}
@@ -2020,6 +2020,24 @@ body.dark-mode .tilt-scan-enable-btn {
                 <button type="button" class="btn btn-outline-secondary unshare-btn" data-preview-url="{% url 'view_document_file' document.id %}" data-preview-kind="pdf">
                   <i class="bi bi-eye"></i> {% trans "View" %}
                 </button>
+                {% endif %}
+                {% if dms_providers %}
+                <div class="dropdown">
+                  <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" title="{% trans 'Archive to DMS' %}">
+                    <i class="bi bi-archive"></i>
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end">
+                    {% for p in dms_providers %}
+                    <li>
+                      <button class="dropdown-item btn-dms-push-doc"
+                              data-push-url="{% url 'dms:push_document' p.id document.id %}"
+                              data-provider-name="{{ p.name }}">
+                        <i class="bi bi-box-arrow-up-right me-1"></i>{{ p.name }}
+                      </button>
+                    </li>
+                    {% endfor %}
+                  </ul>
+                </div>
                 {% endif %}
                 {% if can_edit %}
                 <form method="POST" action="{% url 'delete_document' document.id %}" style="display:inline;">
@@ -2052,6 +2070,31 @@ body.dark-mode .tilt-scan-enable-btn {
           </div>
         </div>
       </div>
+
+      <!-- DMS Archive -->
+      {% if dms_providers %}
+      <div class="documents-card mt-3">
+        <h5><i class="bi bi-archive me-1"></i>{% trans "Archive to DMS" %}</h5>
+        <p class="text-muted small mb-2">{% trans "Send this item's primary file or attachments to your document management system." %}</p>
+        {% if item.file.name %}
+        <div class="d-flex flex-wrap gap-2 mb-2">
+          <span class="text-muted small align-self-center">{% trans "Primary file:" %}</span>
+          {% for p in dms_providers %}
+          <button class="btn btn-sm btn-outline-secondary btn-dms-push-file"
+                  data-push-url="{% url 'dms:push_item_file' p.id item.item_uuid %}"
+                  data-provider-name="{{ p.name }}">
+            <i class="bi bi-box-arrow-up-right me-1"></i>{{ p.name }}
+          </button>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <div class="text-end small">
+          <a href="{% url 'dms:providers' %}" class="text-muted">
+            <i class="bi bi-gear me-1"></i>{% trans "Manage DMS connections" %}
+          </a>
+        </div>
+      </div>
+      {% endif %}
 
       <!-- File Section: the original upload, not the scan code above -->
       {% if item.file.name %}
@@ -2694,5 +2737,53 @@ vvInitTiltScanDetect({
   });
 })();
 </script>
+
+{% if dms_providers %}
+<script>
+(function () {
+  'use strict';
+
+  function dmsPost(url, btn) {
+    btn.disabled = true;
+    var orig = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    var csrf = document.querySelector('[name=csrfmiddlewaretoken]');
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrf ? csrf.value : '',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        btn.className = btn.className.replace('btn-outline-secondary', 'btn-success');
+        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>{% trans "Sent" %}';
+        if (typeof showToast === 'function') showToast('success', btn.dataset.providerName + ': {% trans "document archived successfully." %}');
+      } else {
+        btn.disabled = false;
+        btn.innerHTML = orig;
+        if (typeof showToast === 'function') showToast('danger', (data.error || '{% trans "Archive failed." %}'));
+      }
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.innerHTML = orig;
+      if (typeof showToast === 'function') showToast('danger', '{% trans "Request failed." %}');
+    });
+  }
+
+  document.querySelectorAll('.btn-dms-push-doc').forEach(function(btn) {
+    btn.addEventListener('click', function() { dmsPost(this.dataset.pushUrl, this); });
+  });
+
+  document.querySelectorAll('.btn-dms-push-file').forEach(function(btn) {
+    btn.addEventListener('click', function() { dmsPost(this.dataset.pushUrl, this); });
+  });
+})();
+</script>
+{% endif %}
 
 {% endblock content %}

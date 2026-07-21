@@ -74,6 +74,10 @@ class Command(BaseCommand):
             # firefly_transaction_id). Safe to re-run: once populated it's excluded.
             # A no-op for installs that don't use the Firefly backend.
             {'name': 'Retry Failed Firefly Pushes', 'task': 'notify.tasks.retry_failed_firefly_pushes', 'crontab': hourly_schedule, 'enabled': True},
+            # Polls enabled DMS providers for new documents tagged for VoucherVault
+            # and imports them. A no-op until a user configures a DMS provider with
+            # auto_pull=True.
+            {'name': 'DMS Auto Pull', 'task': 'dms.tasks.dms_scheduled_pull_all', 'crontab': hourly_schedule, 'enabled': True},
         ]
 
         for task_data in tasks:

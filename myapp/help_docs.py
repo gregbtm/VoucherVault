@@ -21,6 +21,7 @@ DOCS = {
     'upstream-sync': ('How upstream sync works', 'UPSTREAM_SYNC.md'),
     'n8n': ('Connecting n8n', 'N8N_SETUP.md'),
     'mcp-server': ('Wiring up an AI assistant (MCP)', 'MCP_SERVER_SETUP.md'),
+    'DMS_SETUP': ('Document Archive (DMS) setup', 'DMS_SETUP.md'),
 }
 
 

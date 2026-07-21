@@ -1,0 +1,380 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Document Management (DMS)" %}{% endblock %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{% trans "Document Management" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "DMS Providers" %}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="row">
+
+    <div class="col-lg-12">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mt-3 mb-3">
+            <h5 class="card-title mb-0">{% trans "Connected DMS Providers" %}</h5>
+            <a href="{% url 'dms:add_provider' %}" class="btn btn-primary btn-sm">
+              <i class="bi bi-plus-circle me-1"></i>{% trans "Add Provider" %}
+            </a>
+          </div>
+
+          {% if not providers %}
+          <div class="alert alert-info d-flex align-items-center" role="alert">
+            <i class="bi bi-info-circle-fill me-2"></i>
+            <div>
+              {% trans "No DMS providers configured yet. Add one to start syncing documents with Paperless-ngx, Docspell, or PaperMerge." %}
+              <a href="{% url 'dms:add_provider' %}" class="alert-link ms-1">{% trans "Add your first provider →" %}</a>
+            </div>
+          </div>
+          {% else %}
+
+          <div class="table-responsive">
+            <table class="table table-hover align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>{% trans "Name" %}</th>
+                  <th>{% trans "Type" %}</th>
+                  <th>{% trans "URL" %}</th>
+                  <th>{% trans "Status" %}</th>
+                  <th>{% trans "Auto Push" %}</th>
+                  <th>{% trans "Auto Pull" %}</th>
+                  <th>{% trans "Last Checked" %}</th>
+                  <th class="text-end">{% trans "Actions" %}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for p in providers %}
+                <tr id="provider-row-{{ p.id }}">
+                  <td><strong>{{ p.name }}</strong></td>
+                  <td>
+                    <span class="badge bg-secondary">{{ p.get_provider_display }}</span>
+                    {% if not p.enabled %}<span class="badge bg-warning ms-1">{% trans "Disabled" %}</span>{% endif %}
+                  </td>
+                  <td class="text-muted small text-truncate" style="max-width:180px" title="{{ p.base_url }}">{{ p.base_url }}</td>
+                  <td>
+                    <span id="status-badge-{{ p.id }}" class="badge bg-{{ p.status_badge_class }}">
+                      {{ p.get_status_display }}
+                    </span>
+                    {% if p.status_message %}
+                    <i class="bi bi-info-circle text-muted ms-1" data-bs-toggle="tooltip" title="{{ p.status_message }}"></i>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if p.auto_push %}<i class="bi bi-check-circle-fill text-success"></i>{% else %}<i class="bi bi-dash text-muted"></i>{% endif %}
+                  </td>
+                  <td>
+                    {% if p.auto_pull %}<i class="bi bi-check-circle-fill text-success"></i>{% else %}<i class="bi bi-dash text-muted"></i>{% endif %}
+                  </td>
+                  <td class="small text-muted">
+                    <span id="last-checked-{{ p.id }}">
+                      {% if p.last_checked %}{{ p.last_checked|date:"d M Y H:i" }}{% else %}—{% endif %}
+                    </span>
+                  </td>
+                  <td class="text-end">
+                    <div class="btn-group btn-group-sm">
+                      <button class="btn btn-outline-secondary btn-test-conn"
+                              data-provider-id="{{ p.id }}"
+                              data-test-url="{% url 'dms:test_connection' p.id %}"
+                              title="{% trans 'Test connection' %}">
+                        <i class="bi bi-plug"></i>
+                      </button>
+                      <button class="btn btn-outline-info btn-browse-dms"
+                              data-provider-id="{{ p.id }}"
+                              data-provider-name="{{ p.name }}"
+                              data-browse-url="{% url 'dms:browse' p.id %}"
+                              data-pull-url="{% url 'dms:pull_document' p.id %}"
+                              title="{% trans 'Browse documents' %}">
+                        <i class="bi bi-folder2-open"></i>
+                      </button>
+                      <a href="{% url 'dms:edit_provider' p.id %}" class="btn btn-outline-primary" title="{% trans 'Edit' %}">
+                        <i class="bi bi-pencil"></i>
+                      </a>
+                      <form method="post" action="{% url 'dms:delete_provider' p.id %}" class="d-inline"
+                            onsubmit="return confirm('{% trans "Delete this provider? Sync logs will be kept." %}')">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-danger" title="{% trans 'Delete' %}">
+                          <i class="bi bi-trash"></i>
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="mt-2 text-end">
+            <a href="{% url 'dms:sync_logs' %}" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-clock-history me-1"></i>{% trans "View Sync Logs" %}
+            </a>
+          </div>
+
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- Document Browser Modal -->
+<div class="modal fade" id="dmsBrowserModal" tabindex="-1" aria-labelledby="dmsBrowserModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="dmsBrowserModalLabel">
+          <i class="bi bi-folder2-open me-2"></i><span id="browser-provider-name">DMS</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <!-- Search bar -->
+        <div class="row mb-3 g-2">
+          <div class="col-md-8">
+            <div class="input-group">
+              <input type="text" id="dms-search" class="form-control" placeholder="{% trans 'Search documents…' %}">
+              <button class="btn btn-outline-secondary" id="dms-search-btn" type="button">
+                <i class="bi bi-search"></i>
+              </button>
+            </div>
+          </div>
+          <div class="col-md-4 text-end">
+            <span id="dms-result-count" class="text-muted small"></span>
+          </div>
+        </div>
+
+        <!-- Document list -->
+        <div id="dms-doc-list">
+          <div class="text-center py-5 text-muted" id="dms-loading">
+            <div class="spinner-border text-primary mb-2" role="status"><span class="visually-hidden">{% trans "Loading…" %}</span></div>
+            <div>{% trans "Loading documents…" %}</div>
+          </div>
+        </div>
+
+        <!-- Pagination -->
+        <div class="d-flex justify-content-between align-items-center mt-3" id="dms-pagination" style="display:none!important">
+          <button class="btn btn-sm btn-outline-secondary" id="dms-prev" disabled>
+            <i class="bi bi-chevron-left"></i> {% trans "Previous" %}
+          </button>
+          <span id="dms-page-info" class="text-muted small"></span>
+          <button class="btn btn-sm btn-outline-secondary" id="dms-next" disabled>
+            {% trans "Next" %} <i class="bi bi-chevron-right"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---- Test Connection ----
+  document.querySelectorAll('.btn-test-conn').forEach(btn => {
+    btn.addEventListener('click', function () {
+      const pid = this.dataset.providerId;
+      const url = this.dataset.testUrl;
+      const badge = document.getElementById('status-badge-' + pid);
+      const lastChecked = document.getElementById('last-checked-' + pid);
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+      fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+        .then(r => r.json())
+        .then(data => {
+          badge.className = 'badge bg-' + data.status_badge;
+          badge.textContent = data.status === 'ok' ? '{% trans "Connected" %}' : data.status === 'error' ? '{% trans "Error" %}' : '{% trans "Not tested" %}';
+          if (data.last_checked) {
+            const d = new Date(data.last_checked);
+            lastChecked.textContent = d.toLocaleString();
+          }
+          // Brief message toast
+          showToast(data.ok ? 'success' : 'danger', data.message || (data.ok ? '{% trans "Connection OK" %}' : '{% trans "Connection failed" %}'));
+        })
+        .catch(err => showToast('danger', '{% trans "Request failed" %}'))
+        .finally(() => {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-plug"></i>';
+        });
+    });
+  });
+
+  // ---- Document Browser ----
+  let currentBrowseUrl = '';
+  let currentPullUrl = '';
+  let currentPage = 1;
+  const pageSize = 20;
+  let searchQuery = '';
+
+  document.querySelectorAll('.btn-browse-dms').forEach(btn => {
+    btn.addEventListener('click', function () {
+      currentBrowseUrl = this.dataset.browseUrl;
+      currentPullUrl = this.dataset.pullUrl;
+      document.getElementById('browser-provider-name').textContent = this.dataset.providerName;
+      currentPage = 1;
+      searchQuery = '';
+      document.getElementById('dms-search').value = '';
+      loadBrowsePage();
+      new bootstrap.Modal(document.getElementById('dmsBrowserModal')).show();
+    });
+  });
+
+  document.getElementById('dms-search-btn').addEventListener('click', () => {
+    searchQuery = document.getElementById('dms-search').value.trim();
+    currentPage = 1;
+    loadBrowsePage();
+  });
+
+  document.getElementById('dms-search').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      searchQuery = e.target.value.trim();
+      currentPage = 1;
+      loadBrowsePage();
+    }
+  });
+
+  document.getElementById('dms-prev').addEventListener('click', () => { currentPage--; loadBrowsePage(); });
+  document.getElementById('dms-next').addEventListener('click', () => { currentPage++; loadBrowsePage(); });
+
+  function loadBrowsePage() {
+    const list = document.getElementById('dms-doc-list');
+    const loading = document.getElementById('dms-loading');
+    list.innerHTML = '';
+    list.appendChild(loading);
+    loading.style.display = 'block';
+
+    const url = currentBrowseUrl + '?page=' + currentPage + '&page_size=' + pageSize + (searchQuery ? '&q=' + encodeURIComponent(searchQuery) : '');
+    fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(r => r.json())
+      .then(data => {
+        list.innerHTML = '';
+        if (!data.ok) {
+          list.innerHTML = '<div class="alert alert-danger">' + (data.error || '{% trans "Error loading documents" %}') + '</div>';
+          return;
+        }
+
+        document.getElementById('dms-result-count').textContent = data.total_count + ' {% trans "documents" %}';
+
+        if (data.documents.length === 0) {
+          list.innerHTML = '<div class="text-center text-muted py-4">{% trans "No documents found." %}</div>';
+          return;
+        }
+
+        const ul = document.createElement('div');
+        ul.className = 'list-group';
+        data.documents.forEach(doc => {
+          const item = document.createElement('div');
+          item.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-start';
+          item.innerHTML = `
+            <div class="me-3 flex-grow-1">
+              <div class="fw-semibold">${escHtml(doc.title)}</div>
+              <small class="text-muted">
+                ${doc.created ? escHtml(doc.created.substring(0,10)) : ''}
+                ${doc.tags && doc.tags.length ? ' &middot; ' + doc.tags.map(t => '<span class="badge bg-secondary me-1">' + escHtml(t) + '</span>').join('') : ''}
+                ${doc.correspondent ? ' &middot; ' + escHtml(doc.correspondent) : ''}
+                ${doc.original_filename ? ' &middot; ' + escHtml(doc.original_filename) : ''}
+              </small>
+            </div>
+            <button class="btn btn-sm btn-outline-success flex-shrink-0 btn-pull-doc"
+                    data-doc-id="${escHtml(doc.id)}"
+                    data-doc-title="${escHtml(doc.title)}">
+              <i class="bi bi-download me-1"></i>{% trans "Import" %}
+            </button>`;
+          ul.appendChild(item);
+        });
+
+        // Wire pull buttons
+        ul.querySelectorAll('.btn-pull-doc').forEach(btn => {
+          btn.addEventListener('click', function () {
+            const docId = this.dataset.docId;
+            const docTitle = this.dataset.docTitle;
+            pullDmsDocument(docId, docTitle, this);
+          });
+        });
+
+        list.appendChild(ul);
+
+        // Pagination
+        const pag = document.getElementById('dms-pagination');
+        pag.style.display = 'flex';
+        document.getElementById('dms-prev').disabled = !data.has_prev;
+        document.getElementById('dms-next').disabled = !data.has_next;
+        document.getElementById('dms-page-info').textContent = 'Page ' + data.page + ' of ' + Math.ceil(data.total_count / data.page_size);
+      })
+      .catch(err => {
+        list.innerHTML = '<div class="alert alert-danger">{% trans "Failed to load documents." %} ' + err + '</div>';
+      });
+  }
+
+  function pullDmsDocument(docId, docTitle, btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    fetch(currentPullUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCsrfToken(),
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: JSON.stringify({dms_doc_id: docId}),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        btn.className = 'btn btn-sm btn-success flex-shrink-0';
+        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>{% trans "Imported" %}';
+        showToast('success', '"' + docTitle + '" {% trans "imported as a new VoucherVault item." %}');
+      } else {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-download me-1"></i>{% trans "Import" %}';
+        showToast('danger', '{% trans "Import failed:" %} ' + (data.error || '{% trans "unknown error" %}'));
+      }
+    })
+    .catch(err => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-download me-1"></i>{% trans "Import" %}';
+      showToast('danger', '{% trans "Request failed" %}');
+    });
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function getCsrfToken() {
+    const el = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (el) return el.value;
+    const m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+  }
+
+  function showToast(type, msg) {
+    if (typeof window.showToast === 'function') { window.showToast(type, msg); return; }
+    // Fallback
+    const c = document.createElement('div');
+    c.className = 'toast align-items-center text-bg-' + type + ' border-0 show position-fixed bottom-0 end-0 m-3';
+    c.style.zIndex = 9999;
+    c.innerHTML = '<div class="d-flex"><div class="toast-body">' + msg + '</div><button class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>';
+    document.body.appendChild(c);
+    setTimeout(() => c.remove(), 5000);
+  }
+
+  // Init Bootstrap tooltips
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
+})();
+</script>
+
+{% endblock %}

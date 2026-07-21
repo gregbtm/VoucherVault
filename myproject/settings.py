@@ -124,6 +124,7 @@ INSTALLED_APPS = [
     'notify',
     'imports',
     'ocr',
+    'dms',
     'django_celery_beat',
     'axes',
     'django.contrib.admin',

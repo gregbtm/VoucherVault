@@ -39,6 +39,7 @@ urlpatterns.append(path("serviceworker.js", myapp_views.service_worker, name="se
 urlpatterns.append(path("", include("pwa.urls")))
 urlpatterns.append(path("api/v1/", include("api.urls")))
 urlpatterns.append(path("social/", include("allauth.urls")))
+urlpatterns.append(path("dms/", include("dms.urls")))
 from health_check.views import HealthCheckView  # noqa: E402
 urlpatterns.append(path("health/", HealthCheckView.as_view(
     checks=["health_check.checks.Database", "health_check.checks.Cache"],

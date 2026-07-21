@@ -580,6 +580,9 @@ def view_item(request, item_uuid):
             else:
                 firefly_pending_count += 1
 
+    from dms.models import DMSProvider
+    dms_providers = list(DMSProvider.objects.filter(user=request.user, enabled=True)) if request.user.is_authenticated else []
+
     context = {
         'item': item,
         'transactions': transactions,
@@ -599,6 +602,7 @@ def view_item(request, item_uuid):
         'firefly_url': firefly_url,
         'firefly_synced_count': firefly_synced_count,
         'firefly_pending_count': firefly_pending_count,
+        'dms_providers': dms_providers,
     }
     return render(request, 'view-item.html', context)
 
@@ -1489,7 +1493,7 @@ def _integration_status(config):
 # superuser like every other doc here, which are all server/deployment-
 # level concerns (cert paths, service accounts, Portainer webhooks) only
 # an admin should be looking at.
-_SELF_SERVICE_DOCS = {'n8n', 'mcp-server'}
+_SELF_SERVICE_DOCS = {'n8n', 'mcp-server', 'DMS_SETUP'}
 
 
 @login_required

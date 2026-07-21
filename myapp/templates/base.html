@@ -398,6 +398,12 @@
           <span>{% trans "Import / Export" %}</span>
         </a>
       </li>
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="{% url 'dms:providers' %}">
+          <i class="bi bi-archive"></i>
+          <span>{% trans "Document Archive" %}</span>
+        </a>
+      </li>
       {% if request.user.is_superuser %}
       <li class="nav-item">
         <a class="nav-link collapsed" href="{% url 'site_settings' %}">
