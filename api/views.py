@@ -77,6 +77,142 @@ MAX_OCR_IMAGE_SIZE = 8 * 1024 * 1024  # 8MB
 OCR_ALLOWED_CONTENT_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
 MAX_PDF_UPLOAD_SIZE = 15 * 1024 * 1024  # 15MB
 
+_RAIL_TICKET_TEXT_FIELDS = (
+    'name', 'issuer', 'card_number', 'order_id', 'discount_applied',
+    'journey_origin', 'journey_destination', 'travel_time', 'travel_date',
+    'seat_number',
+)
+
+
+def _process_rail_ticket_pdf(pdf_bytes, user, preset_fields, create, serializer_context):
+    """
+    Shared processing logic for a single rail-ticket PDF. Returns (response_dict,
+    http_status_code). Used by both the single-file and batch import endpoints.
+    """
+    try:
+        redeem_code, code_type = decode_barcode_from_pdf(pdf_bytes)
+    except Exception as exc:
+        logger.warning('Rail ticket barcode decode failed: %s', exc, exc_info=True)
+        redeem_code, code_type = None, None
+
+    fields = {name: (preset_fields.get(name) or None) for name in _RAIL_TICKET_TEXT_FIELDS}
+    fields['value'] = parse_float_or_none(preset_fields.get('value'))
+    fields['currency'] = (preset_fields.get('currency') or '').upper() or None
+
+    if ocr_enabled() and any(value is None for value in fields.values()):
+        try:
+            page_image_bytes = pdf_page_to_png_bytes(pdf_bytes)
+            ocr_result = get_backend().extract(page_image_bytes, 'image/png')
+        except Exception as exc:
+            logger.warning('Rail ticket OCR fallback failed: %s', exc, exc_info=True)
+            ocr_result = {}
+
+        fields['name'] = fields['name'] or ocr_result.get('name')
+        fields['issuer'] = fields['issuer'] or ocr_result.get('issuer')
+        fields['card_number'] = fields['card_number'] or ocr_result.get('card_number')
+        fields['journey_origin'] = fields['journey_origin'] or ocr_result.get('journey_origin')
+        fields['journey_destination'] = fields['journey_destination'] or ocr_result.get('journey_destination')
+        fields['travel_time'] = fields['travel_time'] or ocr_result.get('travel_time')
+        fields['travel_date'] = (
+            fields['travel_date'] or ocr_result.get('travel_date') or ocr_result.get('expiry_date')
+        )
+        fields['value'] = fields['value'] if fields['value'] is not None else ocr_result.get('value')
+        fields['currency'] = fields['currency'] or ocr_result.get('currency')
+        if redeem_code is None:
+            redeem_code = ocr_result.get('code')
+            code_type = code_type or ocr_result.get('code_type')
+
+    barcode_decoded = bool(redeem_code) and code_type not in (None, 'none')
+    if not redeem_code:
+        redeem_code = fields['card_number'] or ''
+        code_type = 'none'
+
+    response_payload = {
+        'created': False,
+        'duplicate': False,
+        'name': fields['name'],
+        'issuer': fields['issuer'],
+        'redeem_code': redeem_code or None,
+        'code_type': code_type,
+        'card_number': fields['card_number'],
+        'order_id': fields['order_id'],
+        'discount_applied': fields['discount_applied'],
+        'journey_origin': fields['journey_origin'],
+        'journey_destination': fields['journey_destination'],
+        'travel_time': fields['travel_time'],
+        'travel_date': fields['travel_date'],
+        'value': fields['value'],
+        'currency': fields['currency'],
+        'barcode_decoded': barcode_decoded,
+    }
+
+    if not create:
+        return response_payload, status.HTTP_200_OK
+
+    if not fields['issuer'] or not redeem_code:
+        return (
+            {'detail': _(
+                'Not enough information extracted to create an item '
+                '(need at least an issuer and a code).'
+            )},
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    # Primary dedup: decoded barcode redeem_code. The same physical ticket always
+    # produces the same barcode regardless of how the PDF was re-encoded or
+    # forwarded, so this is more reliable than order_id (which OCR can misread).
+    if barcode_decoded and redeem_code:
+        existing = Item.objects.filter(
+            user=user, type='travelpass', redeem_code=redeem_code,
+        ).first()
+        if existing is not None:
+            response_payload['duplicate'] = True
+            response_payload['item'] = ItemSerializer(existing, context=serializer_context).data
+            return response_payload, status.HTTP_409_CONFLICT
+
+    # Fallback dedup: order_id catches tickets whose barcode could not be decoded.
+    if fields['order_id']:
+        existing = Item.objects.filter(
+            user=user, order_id=fields['order_id'], type='travelpass',
+        ).first()
+        if existing is not None:
+            response_payload['duplicate'] = True
+            response_payload['item'] = ItemSerializer(existing, context=serializer_context).data
+            return response_payload, status.HTTP_409_CONFLICT
+
+    travel_date = parse_date(fields['travel_date']) if fields['travel_date'] else None
+    travel_time = parse_time(fields['travel_time']) if fields['travel_time'] else None
+    travel_day = travel_date or timezone.localdate()
+
+    name = fields['name'] or ' to '.join(
+        part for part in (fields['journey_origin'], fields['journey_destination']) if part
+    ) or _('Train Ticket')
+
+    item = Item.objects.create(
+        user=user,
+        type='travelpass',
+        name=name,
+        issuer=fields['issuer'],
+        redeem_code=redeem_code,
+        code_type=code_type or 'none',
+        card_number=fields['card_number'] or '',
+        order_id=fields['order_id'] or '',
+        discount_applied=fields['discount_applied'] or '',
+        journey_origin=fields['journey_origin'] or '',
+        journey_destination=fields['journey_destination'] or '',
+        travel_time=travel_time,
+        issue_date=travel_day,
+        expiry_date=travel_day,
+        value=fields['value'] or 0,
+        currency=fields['currency'] or 'GBP',
+        source='api',
+    )
+    notify_item_created(item)
+
+    response_payload['created'] = True
+    response_payload['item'] = ItemSerializer(item, context=serializer_context).data
+    return response_payload, status.HTTP_201_CREATED
+
 
 class ItemViewSet(viewsets.ModelViewSet):
     """
@@ -656,15 +792,15 @@ class RailTicketImportView(APIView):
     way it reads other printed fields would be far less reliable than an
     actual barcode decoder, and it's the one piece of this pipeline no
     caller can reasonably do for us.
+
+    Duplicate detection uses the decoded barcode redeem_code as the primary
+    key (most reliable - same physical ticket always produces the same
+    barcode), falling back to order_id for tickets whose barcode could not
+    be decoded. A duplicate returns HTTP 409 with duplicate=true and the
+    existing item; the n8n workflow treats 409 the same as 201.
     """
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
-
-    _RAIL_TICKET_TEXT_FIELDS = (
-        'name', 'issuer', 'card_number', 'order_id', 'discount_applied',
-        'journey_origin', 'journey_destination', 'travel_time', 'travel_date',
-        'seat_number',
-    )
 
     @extend_schema(
         request={'multipart/form-data': inline_serializer(
@@ -689,6 +825,7 @@ class RailTicketImportView(APIView):
             name='RailTicketImportResponse',
             fields={
                 'created': serializers.BooleanField(),
+                'duplicate': serializers.BooleanField(),
                 'item': ItemSerializer(required=False),
                 'name': serializers.CharField(allow_null=True),
                 'issuer': serializers.CharField(allow_null=True),
@@ -719,125 +856,83 @@ class RailTicketImportView(APIView):
             return Response({'file': _('Only PDF files are supported.')}, status=status.HTTP_400_BAD_REQUEST)
 
         pdf_bytes = upload.read()
-
-        try:
-            redeem_code, code_type = decode_barcode_from_pdf(pdf_bytes)
-        except Exception as exc:
-            logger.warning('Rail ticket barcode decode failed: %s', exc, exc_info=True)
-            redeem_code, code_type = None, None
-
-        fields = {name: (request.data.get(name) or None) for name in self._RAIL_TICKET_TEXT_FIELDS}
-        fields['value'] = parse_float_or_none(request.data.get('value'))
-        fields['currency'] = (request.data.get('currency') or '').upper() or None
-
-        # OCR fills in whatever the caller didn't already supply - the
-        # common case for a manual upload with no pre-extraction step at
-        # all, and a graceful fallback if n8n's own parsing missed a field.
-        if ocr_enabled() and any(value is None for value in fields.values()):
-            try:
-                page_image_bytes = pdf_page_to_png_bytes(pdf_bytes)
-                ocr_result = get_backend().extract(page_image_bytes, 'image/png')
-            except Exception as exc:
-                logger.warning('Rail ticket OCR fallback failed: %s', exc, exc_info=True)
-                ocr_result = {}
-
-            fields['name'] = fields['name'] or ocr_result.get('name')
-            fields['issuer'] = fields['issuer'] or ocr_result.get('issuer')
-            fields['card_number'] = fields['card_number'] or ocr_result.get('card_number')
-            fields['journey_origin'] = fields['journey_origin'] or ocr_result.get('journey_origin')
-            fields['journey_destination'] = fields['journey_destination'] or ocr_result.get('journey_destination')
-            fields['travel_time'] = fields['travel_time'] or ocr_result.get('travel_time')
-            fields['travel_date'] = fields['travel_date'] or ocr_result.get('travel_date') or ocr_result.get('expiry_date')
-            fields['value'] = fields['value'] if fields['value'] is not None else ocr_result.get('value')
-            fields['currency'] = fields['currency'] or ocr_result.get('currency')
-            if redeem_code is None:
-                redeem_code = ocr_result.get('code')
-                code_type = code_type or ocr_result.get('code_type')
-
-        barcode_decoded = bool(redeem_code) and code_type not in (None, 'none')
-        if not redeem_code:
-            # Nothing decodable and OCR found nothing to read either - fall
-            # back to the ticket number itself as the redeem code, same as
-            # any other "No Barcode" item rather than failing outright.
-            redeem_code = fields['card_number'] or ''
-            code_type = 'none'
-
         create = str(request.data.get('create', '')).lower() in ('1', 'true', 'yes')
+        preset_fields = {name: (request.data.get(name) or None) for name in _RAIL_TICKET_TEXT_FIELDS}
+        preset_fields['value'] = request.data.get('value')
+        preset_fields['currency'] = request.data.get('currency')
 
-        response_payload = {
-            'created': False,
-            'name': fields['name'],
-            'issuer': fields['issuer'],
-            'redeem_code': redeem_code or None,
-            'code_type': code_type,
-            'card_number': fields['card_number'],
-            'order_id': fields['order_id'],
-            'discount_applied': fields['discount_applied'],
-            'journey_origin': fields['journey_origin'],
-            'journey_destination': fields['journey_destination'],
-            'travel_time': fields['travel_time'],
-            'travel_date': fields['travel_date'],
-            'value': fields['value'],
-            'currency': fields['currency'],
-            'barcode_decoded': barcode_decoded,
-        }
+        data, http_status = _process_rail_ticket_pdf(
+            pdf_bytes, request.user, preset_fields, create, {'request': request}
+        )
+        return Response(data, status=http_status)
 
-        if not create:
-            return Response(response_payload)
 
-        if not fields['issuer'] or not redeem_code:
+class RailTicketBatchImportView(APIView):
+    """
+    POST up to 10 PDF eTickets in a single multipart request and get back
+    per-file results. Useful when an email contains multiple legs as separate
+    PDFs, or when an n8n pipeline processes several queued emails at once.
+
+    Files are supplied as repeated `files` fields (standard HTML multi-file
+    upload). The `create=true` flag works identically to the single-file
+    endpoint - each ticket is created if it does not already exist.
+
+    Returns HTTP 207 Multi-Status with a `results` list (one entry per file).
+    Each entry carries the same fields as a single-file response plus:
+    - `file`: original filename
+    - `status_code`: per-file HTTP status so callers can distinguish outcomes
+      without inspecting every detail field.
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    MAX_FILES = 10
+
+    def post(self, request):
+        files = request.FILES.getlist('files') or list(request.FILES.values())
+        if not files:
+            return Response({'files': _('No files uploaded.')}, status=status.HTTP_400_BAD_REQUEST)
+        if len(files) > self.MAX_FILES:
             return Response(
-                {'detail': _(
-                    'Not enough information extracted to create an item '
-                    '(need at least an issuer and a code).'
-                )},
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                {'files': _(f'Too many files (max {self.MAX_FILES} per request).')},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Duplicate guard: if an order_id was extracted and a travel-pass item
-        # with that order_id already exists for this user, return the existing
-        # item rather than creating a second one.  The n8n workflow can treat a
-        # 409 the same as a 201 — label the email Processed and move on.
-        if fields['order_id']:
-            existing = Item.objects.filter(
-                user=request.user, order_id=fields['order_id'], type='travelpass',
-            ).first()
-            if existing is not None:
-                response_payload['item'] = ItemSerializer(existing, context={'request': request}).data
-                return Response(response_payload, status=status.HTTP_409_CONFLICT)
+        create = str(request.data.get('create', '')).lower() in ('1', 'true', 'yes')
+        preset_fields = {name: (request.data.get(name) or None) for name in _RAIL_TICKET_TEXT_FIELDS}
+        preset_fields['value'] = request.data.get('value')
+        preset_fields['currency'] = request.data.get('currency')
+        serializer_context = {'request': request}
 
-        travel_date = parse_date(fields['travel_date']) if fields['travel_date'] else None
-        travel_time = parse_time(fields['travel_time']) if fields['travel_time'] else None
-        travel_day = travel_date or timezone.localdate()
+        results = []
+        for upload in files:
+            entry = {'file': upload.name}
 
-        name = fields['name'] or ' to '.join(
-            part for part in (fields['journey_origin'], fields['journey_destination']) if part
-        ) or _('Train Ticket')
+            if upload.size > MAX_PDF_UPLOAD_SIZE:
+                entry['error'] = _('File is too large (max 15MB).')
+                entry['status_code'] = status.HTTP_400_BAD_REQUEST
+                results.append(entry)
+                continue
 
-        item = Item.objects.create(
-            user=request.user,
-            type='travelpass',
-            name=name,
-            issuer=fields['issuer'],
-            redeem_code=redeem_code,
-            code_type=code_type or 'none',
-            card_number=fields['card_number'] or '',
-            order_id=fields['order_id'] or '',
-            discount_applied=fields['discount_applied'] or '',
-            journey_origin=fields['journey_origin'] or '',
-            journey_destination=fields['journey_destination'] or '',
-            travel_time=travel_time,
-            issue_date=travel_day,
-            expiry_date=travel_day,
-            value=fields['value'] or 0,
-            currency=fields['currency'] or 'GBP',
-            source='api',
-        )
-        notify_item_created(item)
+            is_pdf = (
+                upload.content_type in ('application/pdf', 'application/octet-stream')
+                or upload.name.lower().endswith('.pdf')
+            )
+            if not is_pdf:
+                entry['error'] = _('Only PDF files are supported.')
+                entry['status_code'] = status.HTTP_400_BAD_REQUEST
+                results.append(entry)
+                continue
 
-        response_payload['created'] = True
-        response_payload['item'] = ItemSerializer(item, context={'request': request}).data
-        return Response(response_payload, status=status.HTTP_201_CREATED)
+            pdf_bytes = upload.read()
+            data, item_status = _process_rail_ticket_pdf(
+                pdf_bytes, request.user, preset_fields, create, serializer_context
+            )
+            entry.update(data)
+            entry['status_code'] = item_status
+            results.append(entry)
+
+        return Response({'results': results}, status=status.HTTP_207_MULTI_STATUS)
 
 
 class PkpassImportView(APIView):

@@ -48,3 +48,7 @@ Pillow==12.3.0
 # APPLE WALLET EXPORT
 cryptography==49.0.0
 
+# HEALTH CHECK + ERROR TRACKING
+django-health-check>=3.18.0
+sentry-sdk>=2.0.0
+

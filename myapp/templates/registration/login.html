@@ -153,7 +153,7 @@
         <form method="get" action="{% url 'oidc_authentication_init' %}">
             <input type="hidden" name="next" value="{{next}}" />
             {% csrf_token %}
-            <button type="submit" class="btn btn-primary"><i class="bi bi-box-arrow-in-right toggle-sidebar-btn"></i> OIDC</button>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-box-arrow-in-right toggle-sidebar-btn"></i> Login with {{ "OIDC_PROVIDER_NAME"|env|default:"SSO" }}</button>
         </form>
         {% endif %}
         <form method="get" action="/admin">

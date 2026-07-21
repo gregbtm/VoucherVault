@@ -35,5 +35,6 @@ urlpatterns = [
     path('ocr/extract/', views.OCRExtractView.as_view(), name='api-ocr-extract'),
     path('imports/pkpass/', views.PkpassImportView.as_view(), name='api-pkpass-import'),
     path('imports/rail-ticket/', views.RailTicketImportView.as_view(), name='api-rail-ticket-import'),
+    path('imports/rail-ticket/batch/', views.RailTicketBatchImportView.as_view(), name='api-rail-ticket-batch-import'),
     path('', include(router.urls)),
 ]

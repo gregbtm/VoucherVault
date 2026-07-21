@@ -139,6 +139,7 @@ INSTALLED_APPS = [
     'django_filters',
     'drf_spectacular',
     'drf_spectacular_sidecar',
+    'health_check',
 ]
 
 MIDDLEWARE = [
@@ -554,6 +555,7 @@ if OIDC_ENABLED:
     OIDC_RP_CLIENT_ID = os.environ.get('OIDC_RP_CLIENT_ID', "vouchervault")
     OIDC_RP_CLIENT_SECRET = os.environ.get('OIDC_RP_CLIENT_SECRET')
     OIDC_USERNAME_ALGO = 'myapp.utils.generate_username'
+    OIDC_PROVIDER_NAME = os.environ.get('OIDC_PROVIDER_NAME', 'SSO')
 
     # Optional: instead of configuring every OIDC_OP_*_ENDPOINT by hand,
     # point OIDC_DISCOVERY_URL at the provider's
@@ -584,13 +586,12 @@ if OIDC_ENABLED:
     OIDC_OP_JWKS_ENDPOINT = os.environ.get('OIDC_OP_JWKS_ENDPOINT') or _oidc_discovered.get('jwks_uri')
     #ALLOW_LOGOUT_GET_METHOD = True
 
-    # Add 'mozilla_django_oidc.middleware.SessionRefresh' to INSTALLED_APPS
     INSTALLED_APPS.append('mozilla_django_oidc')
     
     # Add 'mozilla_django_oidc' authentication backend - appended, not
     # replacing the axes.backends.AxesBackend + ModelBackend pair set above,
     # since AxesBackend must stay first for lockouts to apply to OIDC logins too.
-    AUTHENTICATION_BACKENDS.append('mozilla_django_oidc.auth.OIDCAuthenticationBackend')
+    AUTHENTICATION_BACKENDS.append('myapp.oidc_backend.VoucherVaultOIDCBackend')
 
     # Add 'mozilla_django_oidc.middleware.SessionRefresh' to MIDDLEWARE
     # https://mozilla-django-oidc.readthedocs.io/en/stable/installation.html#validate-id-tokens-by-renewing-them
@@ -600,3 +601,9 @@ if OIDC_ENABLED:
     # Fix http callback issue in mozilla-django-oidc by forcing https; https://github.com/mozilla/mozilla-django-oidc/issues/417
     # OIDC should only be setup behind a TLS reverse proxy anyways
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# ---- Error tracking (Sentry) ----
+SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
+if SENTRY_DSN:
+    import sentry_sdk
+    sentry_sdk.init(dsn=SENTRY_DSN, traces_sample_rate=0.0, send_default_pii=False)
