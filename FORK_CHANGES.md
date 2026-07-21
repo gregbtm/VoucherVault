@@ -152,6 +152,10 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 119 — Browser push: discoverable status card](#phase-119--browser-push-discoverable-status-card)
 - [Phase 120 — Gap-fill: Firefly III notification form, per-type fields on view-item, README refresh](#phase-120--gap-fill-firefly-iii-notification-form-per-type-fields-on-view-item-readme-refresh)
 - [Phase 121 — Firefly III deep integration (Tiers 1–4) + gap-fill](#phase-121--firefly-iii-deep-integration-tiers-14--gap-fill)
+- [Phase 122 — OIDC SSO, Synology NAS storage, health check, batch rail-ticket import](#phase-122--oidc-sso-synology-nas-storage-health-check-batch-rail-ticket-import)
+- [Phase 123 — DMS integration: Paperless-ngx, Docspell, PaperMerge](#phase-123--dms-integration-paperless-ngx-docspell-papermerge)
+- [Phase 124 — In-app Help Center, MCP/API enrichments, Help system fixes](#phase-124--in-app-help-center-mcpapi-enrichments-help-system-fixes)
+- [Phase 125 — Barcode scanning reliability: OCR prompt fix + three-tier decode pipeline](#phase-125--barcode-scanning-reliability-ocr-prompt-fix--three-tier-decode-pipeline)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -6216,6 +6220,187 @@ wallet override → first enabled user firefly rule. The item edit form gains a
 `myapp/templates/edit-item.html`, `api/serializers.py`, `api/views.py`,
 `myapp/management/commands/create_default_periodic_tasks.py`,
 `docs/FIREFLY_III_SETUP.md`, `myapp/tests.py`, `notify/tests.py`
+
+---
+
+## Phase 122 — OIDC SSO, Synology NAS storage, health check, batch rail-ticket import
+
+**OIDC single sign-on**
+`myapp/oidc_backend.py` adds `VoucherVaultOIDCBackend` (mozilla-django-oidc). It
+syncs `first_name`, `last_name`, and `email` from OIDC claims on both account
+creation and subsequent logins. The login template gains an "Login with {provider}"
+button controlled by `OIDC_PROVIDER_NAME` (default `"SSO"`). `OIDC_AUTOLOGIN=true`
+auto-redirects single-household deployments without showing the login form.
+
+**Synology NAS / WebDAV storage**
+`myapp/webdav_storage.py` implements Django's `Storage` API over plain HTTP using
+`requests` (already a dependency). Activated by `USE_WEBDAV_STORAGE=true` with
+`WEBDAV_URL`, `WEBDAV_USERNAME`, `WEBDAV_PASSWORD`, `WEBDAV_VERIFY_SSL`, and an
+optional `WEBDAV_PUBLIC_URL` for behind-proxy deployments. Takes precedence over
+`USE_S3_STORAGE` when both are set; staticfiles always remain local.
+`docs/SYNOLOGY_NAS_SETUP.md` covers Container Manager deployment, Synology SSO
+Server wiring (RS256, discovery URL, OIDC_PROVIDER_NAME), and WebDAV storage setup.
+
+**Health check endpoint**
+`django-health-check` added to `requirements.txt`; `GET /health/` returns DB
+liveness. `sentry-sdk` also added for optional Sentry error tracking
+(`SENTRY_DSN` env var).
+
+**Batch rail-ticket import**
+`POST /api/v1/imports/rail-ticket/batch/` accepts up to 10 PDFs in a single
+multipart request and returns HTTP 207 with per-ticket `{success, duplicate, item}`
+entries. Deduplication uses the decoded barcode `redeem_code` as primary key and
+`order_id` as fallback, so re-importing the same email attachment is always safe.
+The single-ticket endpoint refactored to share `_process_rail_ticket_pdf()` with
+the batch path.
+
+**Test suite:** 1006 tests, 0 failures.
+
+**Files changed:** `myapp/oidc_backend.py` (new), `myapp/webdav_storage.py` (new),
+`docs/SYNOLOGY_NAS_SETUP.md` (new), `requirements.txt`, `myproject/settings.py`,
+`myapp/templates/registration/login.html`, `docker/env.example`, `api/views.py`,
+`api/urls.py`
+
+---
+
+## Phase 123 — DMS integration: Paperless-ngx, Docspell, PaperMerge
+
+**DMS app** (`dms/`)
+A new Django app wires VoucherVault to three self-hosted document-management
+systems. A `DMSProvider` model stores connection details (`provider_type`,
+`base_url`, `credentials_*`, `sync_enabled`, `auto_pull`). `DMSSyncLog` records
+each push or pull operation. Three clients implement a shared `BaseDMSClient`
+interface:
+- `PaperlessClient` — Paperless-ngx REST API (token auth, paginated document list,
+  content/tag extraction).
+- `DocspellClient` — Docspell REST API (login + session token, document upload).
+- `PapermergeClient` — PaperMerge REST API (JWT auth, upload).
+
+`dms/signals.py` fires Celery tasks on `Document` post-save to push new attachments
+to all enabled providers. `auto_pull_from_dms` periodically browses connected
+providers for new documents and imports them as VoucherVault `Document` records,
+with content landing in `Item.notes` if the item can be matched.
+
+**UI**
+`/dms/providers/` — rich provider-card grid with connectivity status badges, a
+two-panel layout (provider list left, sync log right), and AJAX test-connection
+buttons. `/dms/sync-logs/` — paginated log table with status chips, error previews,
+and per-row retry links. Both pages are dark-mode-aware and fully responsive.
+
+**Bug fixes (code-review pass)**
+- `signals.py`: `str(instance.id)` to avoid Celery UUID JSON error; task dispatch
+  wrapped in `transaction.on_commit()` to prevent TOCTOU races; push-pull loop
+  prevention via `_dms_pulled` instance attribute.
+- `tasks.py`: missing NOT-NULL `Item` fields in `auto_pull_from_dms` filled in;
+  `Document.name` reference removed (no such field); browse loop paginated so more
+  than 50 remote docs are pulled; `None` content from Paperless guarded with
+  `or ''`.
+- `views.py`: `@require_POST` on `test_connection`; `int()` parse of `page`/
+  `page_size` guarded against non-numeric input; `_dms_pulled` flag set in
+  `pull_document`.
+- `clients/paperless.py`: null `content` handled via `d.get('content') or ''`;
+  `browse()` exceptions propagate correctly.
+
+**Docs:** `docs/DMS_SETUP.md` — provider config, env vars, Paperless-ngx walkthrough.
+
+**Test suite:** 1030 tests, 0 failures.
+
+**Files changed:** `dms/` (entire new app), `docs/DMS_SETUP.md` (new),
+`requirements.txt`, `myproject/settings.py`, `myproject/urls.py`,
+`myapp/templates/base.html`
+
+---
+
+## Phase 124 — In-app Help Center, MCP/API enrichments, Help system fixes
+
+**In-app Help Center** (`/help/`)
+A searchable page listing all documentation grouped by category (Getting Started,
+Scanning, Integrations, Administration, Security, Import/Export). Each card links
+to the in-app doc viewer modal. Accessible to any logged-in user. Sidebar gains a
+"Help & Guides" link. Contextual help buttons added to DMS, notifications,
+webhooks, import/export, and wallet pages. `help_docs.py` gains a `CATEGORIES`
+structure and four new doc slugs (`rail-ticket`, `synology`, `firefly`, `upgrade`).
+
+**Help system fixes**
+- `window.openHelpDoc` exposed globally in `base.html` so any page script can call it.
+- Delegated click handler catches both `.help-link` and `.help-doc-link`, so all
+  guide links open in the modal instead of navigating away.
+- Modal footer gains a per-doc "Open full guide" link and a "Browse all guides"
+  link to the Help Center.
+- `help_center.html` cards fixed: `help-link` class added; keyboard (Enter/Space)
+  events wired to `window.openHelpDoc` to fix `ReferenceError` that made all cards
+  non-functional.
+- `doc_viewer.html` breadcrumb corrected to "Help & Guides" (was "Site Settings").
+- `main.js`: clicking the tooltip bubble now dismisses it.
+
+**MCP server extensions**
+`mcp_server/server.py` gains 10 new tools: `update_item`, `delete_item`,
+`list_notification_rules`, `create_notification_rule`, `delete_notification_rule`,
+`list_item_documents`, `get_user_preferences`, `update_user_preferences`,
+`list_dms_providers`, `list_dms_sync_logs`.
+
+**API enrichments**
+- Nested `Document` endpoint under items: `GET /api/v1/items/{id}/documents/`.
+- `DMSProvider` and `DMSSyncLog` viewsets with full CRUD + connection test action.
+- `UserPreferenceSerializer` expanded from 9 to all 19 preference fields.
+- Help Center redesigned with category-colored icon blobs, card borders, dark-mode
+  palette, per-category count badges, and live search count label.
+
+**Test suite:** 1044 tests, 0 failures.
+
+**Files changed:** `myapp/help_docs.py`, `myapp/templates/help_center.html`,
+`myapp/templates/doc_viewer.html`, `myapp/templates/base.html`,
+`myapp/static/assets/js/main.js`, `myapp/views.py`, `myapp/urls.py`,
+`mcp_server/server.py`, `mcp_server/client.py`, `api/serializers.py`,
+`api/views.py`, `api/urls.py`, `api/tests.py`, plus notification/webhook/wallet
+template additions
+
+---
+
+## Phase 125 — Barcode scanning reliability: OCR prompt fix + three-tier decode pipeline
+
+**OCR prompt fix — barcode misclassification**
+When a card has a physical barcode (Code 128, QR, etc.) alongside a separately
+printed text redemption code, the old AI prompt allowed setting `code_type="none"`
+because the text code itself had no barcode. This caused VoucherVault to show
+"No Barcode (number only)" even on cards with a clearly visible barcode.
+
+Root cause: the prompt's `"none"` description said "if the code is a plain printed
+number with no separate scannable barcode at all", which the model satisfied by
+noting that the *text* code had no barcode, while the physical barcode (which
+encodes the card number) was silently ignored.
+
+Fix: the prompt now instructs both Claude and OpenAI backends that if **any**
+barcode is physically visible anywhere on the card, its encoded value must go in
+`"code"` and its symbology in `"code_type"`. The separately printed text code
+shifts to `"card_number"`. `"none"` is reserved strictly for cards with no
+machine-readable symbol at all. Both `ocr/backends/claude_backend.py` and
+`ocr/backends/openai_backend.py` updated (they share the same prompt text).
+
+**Three-tier file-scan decode pipeline**
+`decodeBarcodeFromImageFile()` in `scanner.js` upgraded from ZXing-JS-only to a
+three-tier fallback chain:
+
+1. **BarcodeDetector Web API** (new primary) — Chrome 83+ / Android uses Google ML
+   Kit; Safari 17+ / iOS uses Apple Vision Framework. OS-native computer-vision
+   stack, dramatically better on real-world phone photos. Activated automatically
+   when the browser supports it.
+2. **ZXing-JS** (unchanged) — 2 warmup attempts + contrast stretch + 90/180/270°
+   rotations.
+3. **Server-side zxing-cpp** (new fallback) — `POST /barcode/decode/` endpoint
+   (`myapp/views.py: barcode_decode`) passes the original file to the C++ ZXing
+   binding (`zxingcpp`, already installed for PDF ticket decoding). The C++ binding
+   applies `try_rotate` + `try_downscale` natively and often succeeds on full-frame
+   phone shots that ZXing-JS cannot handle.
+
+The server URL is injected via `data-barcode-decode-url` on the `#file` input
+(same pattern as `data-check-duplicate-image-url`).
+
+**Test suite:** 1050 tests, 0 failures.
+
+**Files changed:** `ocr/backends/claude_backend.py`, `ocr/backends/openai_backend.py`,
+`myapp/views.py`, `myapp/urls.py`, `myapp/static/assets/js/scanner.js`,
+`myapp/templates/create-item.html`, `myapp/templates/edit-item.html`, `myapp/tests.py`
 
 ---
 
