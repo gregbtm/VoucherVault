@@ -132,6 +132,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sites',
     'csp',
     'pwa',
     'rest_framework',
@@ -140,6 +141,13 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'drf_spectacular_sidecar',
     'health_check',
+    'storages',
+    'django_extensions',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
+    'allauth.socialaccount.providers.github',
 ]
 
 MIDDLEWARE = [
@@ -151,6 +159,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'axes.middleware.AxesMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
+    'allauth.account.middleware.AccountMiddleware',
     'django_http_referrer_policy.middleware.ReferrerPolicyMiddleware',
     'csp.middleware.CSPMiddleware',
 ]
@@ -440,6 +449,8 @@ BACKUP_RETENTION_COUNT = int(os.environ.get('BACKUP_RETENTION_COUNT', 7))
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+SITE_ID = 1
+
 # Django's own default LOGGING config only prints tracebacks to console
 # when DEBUG=True; with DEBUG=False (this app's production default) an
 # unhandled exception instead only tries to email ADMINS (unconfigured
@@ -505,6 +516,7 @@ WSGI_APPLICATION = 'myproject.wsgi.application'
 # ever gets a chance to check the password.
 AUTHENTICATION_BACKENDS = [
     'axes.backends.AxesBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
     'django.contrib.auth.backends.ModelBackend',
 ]
 AXES_FAILURE_LIMIT = int(os.environ.get('AXES_FAILURE_LIMIT', '5'))
@@ -542,6 +554,52 @@ if 'test' in sys.argv:
 # out every legitimate user behind the same NAT/VPN/CGNAT address because of
 # one attacker, which is the worse failure mode for a small self-hosted app.
 SILENCED_SYSTEM_CHECKS = ['axes.W006']
+
+# ---- Social auth (django-allauth) ----
+ACCOUNT_LOGIN_METHODS = {'username'}
+ACCOUNT_EMAIL_VERIFICATION = 'none'
+SOCIALACCOUNT_AUTO_SIGNUP = True
+SOCIALACCOUNT_PROVIDERS = {}
+
+_google_id = os.environ.get('GOOGLE_CLIENT_ID')
+_google_secret = os.environ.get('GOOGLE_CLIENT_SECRET')
+if _google_id and _google_secret:
+    SOCIALACCOUNT_PROVIDERS['google'] = {
+        'APP': {'client_id': _google_id, 'secret': _google_secret, 'key': ''},
+        'SCOPE': ['profile', 'email'],
+        'AUTH_PARAMS': {'access_type': 'online'},
+        'OAUTH_PKCE_ENABLED': True,
+    }
+
+_github_id = os.environ.get('GITHUB_CLIENT_ID')
+_github_secret = os.environ.get('GITHUB_CLIENT_SECRET')
+if _github_id and _github_secret:
+    SOCIALACCOUNT_PROVIDERS['github'] = {
+        'APP': {'client_id': _github_id, 'secret': _github_secret, 'key': ''},
+        'SCOPE': ['user:email'],
+    }
+
+# ---- S3-compatible object storage (django-storages) ----
+USE_S3_STORAGE = os.environ.get('USE_S3_STORAGE', 'False').lower() in ['true']
+if USE_S3_STORAGE:
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+            'OPTIONS': {
+                'bucket_name': os.environ.get('S3_BUCKET_NAME', ''),
+                'endpoint_url': os.environ.get('S3_ENDPOINT_URL'),
+                'access_key': os.environ.get('S3_ACCESS_KEY_ID'),
+                'secret_key': os.environ.get('S3_SECRET_ACCESS_KEY'),
+                'region_name': os.environ.get('S3_REGION_NAME', 'us-east-1'),
+                'custom_domain': os.environ.get('S3_CUSTOM_DOMAIN'),
+                'file_overwrite': False,
+                'querystring_auth': os.environ.get('S3_PUBLIC_BUCKET', 'False').lower() not in ['true'],
+            },
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
 
 # check if oidc is enabled
 OIDC_ENABLED = os.environ.get('OIDC_ENABLED', 'False').lower() in ['true']

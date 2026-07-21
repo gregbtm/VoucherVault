@@ -38,6 +38,7 @@ urlpatterns = i18n_patterns(
 urlpatterns.append(path("serviceworker.js", myapp_views.service_worker, name="serviceworker"))
 urlpatterns.append(path("", include("pwa.urls")))
 urlpatterns.append(path("api/v1/", include("api.urls")))
+urlpatterns.append(path("social/", include("allauth.urls")))
 from health_check.views import HealthCheckView  # noqa: E402
 urlpatterns.append(path("health/", HealthCheckView.as_view(
     checks=["health_check.checks.Database", "health_check.checks.Cache"],
