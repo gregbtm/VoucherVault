@@ -1,3 +1,10 @@
+## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.91...v1.2.0) (2026-07-21)
+
+
+### Features
+
+* **ui:** conditional field visibility across item and settings forms ([#131](https://github.com/gregbtm/VoucherVault/issues/131)) ([4c66227](https://github.com/gregbtm/VoucherVault/commit/4c6622786a79722cbfc517351e0db23875190abd))
+
 ## [1.1.91](https://github.com/gregbtm/VoucherVault/compare/v1.1.90...v1.1.91) (2026-07-21)
 
 
@@ -26,6 +33,4 @@
 ### Features
 
 * Firefly III deep integration (Tiers 1–4) ([d6740a6](https://github.com/gregbtm/VoucherVault/commit/d6740a669bc734c1f4984340501f6380b0aac8d9))
-
-## [1.1.87](https://github.com/gregbtm/VoucherVault/compare/v1.1.86...v1.1.87) (2026-07-20)
 
