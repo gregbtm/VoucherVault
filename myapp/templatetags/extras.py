@@ -106,3 +106,11 @@ def darken(hex_color, amount=20):
         return f'rgb({r}, {g}, {b})'
     except Exception:
         return '#placeholder'  # Fallback to placeholder if error
+
+
+@register.filter
+def get_item(dictionary, key):
+    """Look up `key` in `dictionary`, tolerating UUID vs string mismatches."""
+    if not dictionary:
+        return None
+    return dictionary.get(key) or dictionary.get(str(key))

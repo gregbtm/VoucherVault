@@ -80,7 +80,7 @@ class DMSProvidersViewTests(TestCase):
     def test_providers_list_empty(self):
         resp = self.client.get(reverse('dms:providers'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'No DMS providers')
+        self.assertContains(resp, 'No document archives connected')
 
     def test_providers_list_shows_own_providers(self):
         make_provider(self.user, name='My Paperless')

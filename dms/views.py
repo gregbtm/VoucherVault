@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Count, Max, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -23,7 +24,26 @@ logger = logging.getLogger(__name__)
 
 @login_required
 def providers(request):
-    provider_list = DMSProvider.objects.filter(user=request.user)
+    provider_list = list(DMSProvider.objects.filter(user=request.user))
+
+    # Attach per-provider sync stats directly to each provider object
+    stats_qs = (
+        DMSSyncLog.objects
+        .filter(provider__user=request.user)
+        .values('provider_id')
+        .annotate(
+            push_ok=Count('id', filter=Q(direction='push', status='ok')),
+            pull_ok=Count('id', filter=Q(direction='pull', status='ok')),
+            errors=Count('id', filter=Q(status='error')),
+        )
+    )
+    stats_by_id = {str(row['provider_id']): row for row in stats_qs}
+    for p in provider_list:
+        s = stats_by_id.get(str(p.id), {})
+        p.stat_push_ok = s.get('push_ok', 0)
+        p.stat_pull_ok = s.get('pull_ok', 0)
+        p.stat_errors = s.get('errors', 0)
+
     return render(request, 'dms/providers.html', {'providers': provider_list})
 
 
@@ -356,7 +376,17 @@ def sync_logs(request):
     direction = request.GET.get('direction')
     status = request.GET.get('status')
 
-    qs = DMSSyncLog.objects.filter(provider__user=request.user).select_related('provider', 'item', 'document')
+    base_qs = DMSSyncLog.objects.filter(provider__user=request.user)
+
+    # Aggregate stats across all logs (unfiltered) for the summary row
+    all_stats = base_qs.aggregate(
+        total_push_ok=Count('id', filter=Q(direction='push', status='ok')),
+        total_pull_ok=Count('id', filter=Q(direction='pull', status='ok')),
+        total_errors=Count('id', filter=Q(status='error')),
+        last_activity=Max('created_at'),
+    )
+
+    qs = base_qs.select_related('provider', 'item', 'document')
 
     if provider_id:
         qs = qs.filter(provider_id=provider_id)
@@ -374,4 +404,5 @@ def sync_logs(request):
         'filter_provider': provider_id,
         'filter_direction': direction,
         'filter_status': status,
+        'stats': all_stats,
     })

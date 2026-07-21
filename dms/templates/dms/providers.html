@@ -9,125 +9,215 @@
   <nav>
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">{% trans "Home" %}</a></li>
-      <li class="breadcrumb-item active">{% trans "DMS Providers" %}</li>
+      <li class="breadcrumb-item active">{% trans "Document Archive" %}</li>
     </ol>
   </nav>
 </div>
 
+<style>
+.dms-provider-card {
+  border-left: 4px solid var(--bs-secondary);
+  border-radius: 0.5rem;
+  transition: box-shadow 0.2s ease, border-color 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+.dms-provider-card.status-ok   { border-left-color: var(--bs-success); }
+.dms-provider-card.status-error { border-left-color: var(--bs-danger); }
+
+.dms-provider-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.10); }
+
+.dms-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.dms-stat-push  { background: rgba(var(--bs-primary-rgb), 0.1); color: var(--bs-primary); }
+.dms-stat-pull  { background: rgba(var(--bs-info-rgb), 0.12); color: var(--bs-info); }
+.dms-stat-error { background: rgba(var(--bs-danger-rgb), 0.10); color: var(--bs-danger); }
+
+.dms-auto-chip {
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid currentColor;
+  opacity: 0.85;
+}
+.dms-auto-on  { color: var(--bs-success); border-color: var(--bs-success); }
+.dms-auto-off { color: var(--bs-secondary); border-color: var(--bs-secondary); opacity: 0.5; }
+
+/* Document browser */
+#dmsBrowserModal .doc-item {
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background 0.1s, border-color 0.15s;
+}
+#dmsBrowserModal .doc-item:hover { background: rgba(var(--bs-primary-rgb),.05); }
+#dmsBrowserModal .doc-item.selected { border-left-color: var(--bs-primary); background: rgba(var(--bs-primary-rgb),.07); }
+#dmsBrowserModal .doc-item.imported { opacity: 0.6; }
+
+.dms-skeleton {
+  background: linear-gradient(90deg, #e8e8e8 25%, #f5f5f5 50%, #e8e8e8 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 4px;
+  height: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  .dms-skeleton { background: linear-gradient(90deg, #333 25%, #444 50%, #333 75%); background-size: 200% 100%; }
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+.doc-detail-panel {
+  border-left: 1px solid var(--bs-border-color);
+  min-height: 300px;
+  padding: 1rem;
+  font-size: 0.88rem;
+}
+
+.file-type-icon { font-size: 1.3rem; line-height: 1; }
+
+@keyframes card-flash-ok    { 0%,100%{} 30%{box-shadow:0 0 0 3px rgba(var(--bs-success-rgb),.4);} }
+@keyframes card-flash-error { 0%,100%{} 30%{box-shadow:0 0 0 3px rgba(var(--bs-danger-rgb),.4);} }
+.card-flash-ok    { animation: card-flash-ok 0.8s; }
+.card-flash-error { animation: card-flash-error 0.8s; }
+</style>
+
 <section class="section">
-  <div class="row">
 
-    <div class="col-lg-12">
-      <div class="card">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex gap-2 align-items-center">
+      <a href="{% url 'dms:sync_logs' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-clock-history me-1"></i>{% trans "Sync Logs" %}
+      </a>
+    </div>
+    <a href="{% url 'dms:add_provider' %}" class="btn btn-primary btn-sm">
+      <i class="bi bi-plus-circle me-1"></i>{% trans "Add Provider" %}
+    </a>
+  </div>
+
+  {% if not providers %}
+  <div class="card">
+    <div class="card-body text-center py-5">
+      <i class="bi bi-server fs-1 text-muted mb-3 d-block"></i>
+      <h5 class="text-muted">{% trans "No document archives connected yet" %}</h5>
+      <p class="text-muted mb-4">{% trans "Connect Paperless-ngx, Docspell, or PaperMerge to start syncing documents." %}</p>
+      <a href="{% url 'dms:add_provider' %}" class="btn btn-primary">
+        <i class="bi bi-plus-circle me-1"></i>{% trans "Add your first provider" %}
+      </a>
+    </div>
+  </div>
+
+  {% else %}
+
+  <div class="row g-3">
+    {% for p in providers %}
+    <div class="col-lg-6">
+      <div class="card dms-provider-card status-{{ p.status }}" id="provider-card-{{ p.id }}">
         <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center mt-3 mb-3">
-            <h5 class="card-title mb-0">{% trans "Connected DMS Providers" %}</h5>
-            <a href="{% url 'dms:add_provider' %}" class="btn btn-primary btn-sm">
-              <i class="bi bi-plus-circle me-1"></i>{% trans "Add Provider" %}
-            </a>
-          </div>
 
-          {% if not providers %}
-          <div class="alert alert-info d-flex align-items-center" role="alert">
-            <i class="bi bi-info-circle-fill me-2"></i>
+          <!-- Header row -->
+          <div class="d-flex justify-content-between align-items-start mb-2">
             <div>
-              {% trans "No DMS providers configured yet. Add one to start syncing documents with Paperless-ngx, Docspell, or PaperMerge." %}
-              <a href="{% url 'dms:add_provider' %}" class="alert-link ms-1">{% trans "Add your first provider →" %}</a>
+              <h6 class="mb-0 fw-bold">{{ p.name }}</h6>
+              <div class="d-flex align-items-center gap-2 mt-1">
+                <span class="badge bg-secondary">{{ p.get_provider_display }}</span>
+                {% if not p.enabled %}<span class="badge bg-warning text-dark">{% trans "Disabled" %}</span>{% endif %}
+                <span id="status-badge-{{ p.id }}" class="badge bg-{{ p.status_badge_class }}">
+                  <i class="bi bi-{% if p.status == 'ok' %}check-circle{% elif p.status == 'error' %}x-circle{% else %}dash-circle{% endif %} me-1"></i>{{ p.get_status_display }}
+                </span>
+              </div>
+            </div>
+            <!-- Action buttons -->
+            <div class="btn-group btn-group-sm ms-2 flex-shrink-0">
+              <button class="btn btn-outline-secondary btn-test-conn"
+                      data-provider-id="{{ p.id }}"
+                      data-card-id="provider-card-{{ p.id }}"
+                      data-test-url="{% url 'dms:test_connection' p.id %}"
+                      title="{% trans 'Test connection' %}">
+                <i class="bi bi-plug-fill"></i>
+              </button>
+              <button class="btn btn-outline-info btn-browse-dms"
+                      data-provider-id="{{ p.id }}"
+                      data-provider-name="{{ p.name }}"
+                      data-browse-url="{% url 'dms:browse' p.id %}"
+                      data-pull-url="{% url 'dms:pull_document' p.id %}"
+                      title="{% trans 'Browse documents' %}">
+                <i class="bi bi-folder2-open"></i>
+              </button>
+              <a href="{% url 'dms:edit_provider' p.id %}" class="btn btn-outline-primary" title="{% trans 'Edit' %}">
+                <i class="bi bi-pencil"></i>
+              </a>
+              <form method="post" action="{% url 'dms:delete_provider' p.id %}" class="d-inline"
+                    onsubmit="return confirm('{% trans "Delete this provider? Sync logs will be kept." %}')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger" title="{% trans 'Delete' %}">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
             </div>
           </div>
-          {% else %}
 
-          <div class="table-responsive">
-            <table class="table table-hover align-middle">
-              <thead class="table-light">
-                <tr>
-                  <th>{% trans "Name" %}</th>
-                  <th>{% trans "Type" %}</th>
-                  <th>{% trans "URL" %}</th>
-                  <th>{% trans "Status" %}</th>
-                  <th>{% trans "Auto Push" %}</th>
-                  <th>{% trans "Auto Pull" %}</th>
-                  <th>{% trans "Last Checked" %}</th>
-                  <th class="text-end">{% trans "Actions" %}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for p in providers %}
-                <tr id="provider-row-{{ p.id }}">
-                  <td><strong>{{ p.name }}</strong></td>
-                  <td>
-                    <span class="badge bg-secondary">{{ p.get_provider_display }}</span>
-                    {% if not p.enabled %}<span class="badge bg-warning ms-1">{% trans "Disabled" %}</span>{% endif %}
-                  </td>
-                  <td class="text-muted small text-truncate" style="max-width:180px" title="{{ p.base_url }}">{{ p.base_url }}</td>
-                  <td>
-                    <span id="status-badge-{{ p.id }}" class="badge bg-{{ p.status_badge_class }}">
-                      {{ p.get_status_display }}
-                    </span>
-                    {% if p.status_message %}
-                    <i class="bi bi-info-circle text-muted ms-1" data-bs-toggle="tooltip" title="{{ p.status_message }}"></i>
-                    {% endif %}
-                  </td>
-                  <td>
-                    {% if p.auto_push %}<i class="bi bi-check-circle-fill text-success"></i>{% else %}<i class="bi bi-dash text-muted"></i>{% endif %}
-                  </td>
-                  <td>
-                    {% if p.auto_pull %}<i class="bi bi-check-circle-fill text-success"></i>{% else %}<i class="bi bi-dash text-muted"></i>{% endif %}
-                  </td>
-                  <td class="small text-muted">
-                    <span id="last-checked-{{ p.id }}">
-                      {% if p.last_checked %}{{ p.last_checked|date:"d M Y H:i" }}{% else %}—{% endif %}
-                    </span>
-                  </td>
-                  <td class="text-end">
-                    <div class="btn-group btn-group-sm">
-                      <button class="btn btn-outline-secondary btn-test-conn"
-                              data-provider-id="{{ p.id }}"
-                              data-test-url="{% url 'dms:test_connection' p.id %}"
-                              title="{% trans 'Test connection' %}">
-                        <i class="bi bi-plug"></i>
-                      </button>
-                      <button class="btn btn-outline-info btn-browse-dms"
-                              data-provider-id="{{ p.id }}"
-                              data-provider-name="{{ p.name }}"
-                              data-browse-url="{% url 'dms:browse' p.id %}"
-                              data-pull-url="{% url 'dms:pull_document' p.id %}"
-                              title="{% trans 'Browse documents' %}">
-                        <i class="bi bi-folder2-open"></i>
-                      </button>
-                      <a href="{% url 'dms:edit_provider' p.id %}" class="btn btn-outline-primary" title="{% trans 'Edit' %}">
-                        <i class="bi bi-pencil"></i>
-                      </a>
-                      <form method="post" action="{% url 'dms:delete_provider' p.id %}" class="d-inline"
-                            onsubmit="return confirm('{% trans "Delete this provider? Sync logs will be kept." %}')">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-outline-danger" title="{% trans 'Delete' %}">
-                          <i class="bi bi-trash"></i>
-                        </button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
+          <!-- URL -->
+          <div class="text-muted small text-truncate mb-3" title="{{ p.base_url }}">
+            <i class="bi bi-link-45deg me-1"></i>{{ p.base_url }}
           </div>
 
-          <div class="mt-2 text-end">
-            <a href="{% url 'dms:sync_logs' %}" class="btn btn-sm btn-outline-secondary">
-              <i class="bi bi-clock-history me-1"></i>{% trans "View Sync Logs" %}
-            </a>
+          <!-- Sync stats -->
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <span class="dms-stat-pill dms-stat-push">
+              <i class="bi bi-upload"></i>{{ p.stat_push_ok }} {% trans "pushed" %}
+            </span>
+            <span class="dms-stat-pill dms-stat-pull">
+              <i class="bi bi-download"></i>{{ p.stat_pull_ok }} {% trans "pulled" %}
+            </span>
+            {% if p.stat_errors %}
+            <span class="dms-stat-pill dms-stat-error">
+              <i class="bi bi-exclamation-triangle"></i>{{ p.stat_errors }} {% trans "errors" %}
+            </span>
+            {% endif %}
           </div>
 
+          <!-- Footer row: auto chips + last checked -->
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="d-flex gap-1 flex-wrap">
+              <span class="dms-auto-chip {% if p.auto_push %}dms-auto-on{% else %}dms-auto-off{% endif %}">
+                <i class="bi bi-upload me-1"></i>{% trans "Auto-push" %}{% if p.auto_push %}: {% trans "on" %}{% else %}: {% trans "off" %}{% endif %}
+              </span>
+              <span class="dms-auto-chip {% if p.auto_pull %}dms-auto-on{% else %}dms-auto-off{% endif %}">
+                <i class="bi bi-download me-1"></i>{% trans "Auto-pull" %}{% if p.auto_pull %}: {% trans "on" %}{% else %}: {% trans "off" %}{% endif %}
+              </span>
+            </div>
+            <div class="text-muted small" id="last-checked-{{ p.id }}">
+              {% if p.last_checked %}
+              <i class="bi bi-clock me-1"></i>{% trans "Checked" %} {{ p.last_checked|date:"d M H:i" }}
+              {% else %}
+              <span class="text-muted">{% trans "Never tested" %}</span>
+              {% endif %}
+            </div>
+          </div>
+
+          {% if p.status_message %}
+          <div class="mt-2 small text-danger">
+            <i class="bi bi-exclamation-circle me-1"></i>{{ p.status_message|truncatechars:120 }}
+          </div>
           {% endif %}
+
         </div>
       </div>
     </div>
-
+    {% endfor %}
   </div>
+
+  {% endif %}
+
 </section>
 
-<!-- Document Browser Modal -->
+<!-- Document Browser Modal (two-panel) -->
 <div class="modal fade" id="dmsBrowserModal" tabindex="-1" aria-labelledby="dmsBrowserModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
@@ -137,39 +227,77 @@
         </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
-        <!-- Search bar -->
-        <div class="row mb-3 g-2">
-          <div class="col-md-8">
-            <div class="input-group">
-              <input type="text" id="dms-search" class="form-control" placeholder="{% trans 'Search documents…' %}">
-              <button class="btn btn-outline-secondary" id="dms-search-btn" type="button">
-                <i class="bi bi-search"></i>
+      <div class="modal-body p-0">
+        <div class="row g-0 h-100">
+
+          <!-- Left panel: list -->
+          <div class="col-md-7 border-end">
+            <!-- Search + filter bar -->
+            <div class="p-3 border-bottom bg-light-subtle">
+              <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" id="dms-search" class="form-control" placeholder="{% trans 'Search documents…' %}">
+                <button class="btn btn-outline-secondary" id="dms-search-btn" type="button">{% trans "Go" %}</button>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mt-2">
+                <span id="dms-result-count" class="text-muted" style="font-size:0.8rem"></span>
+                <span id="dms-page-info" class="text-muted" style="font-size:0.8rem"></span>
+              </div>
+            </div>
+
+            <!-- Document list -->
+            <div id="dms-doc-list" style="min-height:320px; max-height:520px; overflow-y:auto;">
+              <div class="text-center py-5 text-muted" id="dms-loading">
+                <div class="spinner-border text-primary mb-2" role="status"><span class="visually-hidden">{% trans "Loading…" %}</span></div>
+                <div class="small">{% trans "Connecting to DMS…" %}</div>
+              </div>
+            </div>
+
+            <!-- Pagination -->
+            <div class="d-flex justify-content-between align-items-center p-2 border-top bg-light-subtle" id="dms-pagination" style="display:none!important">
+              <button class="btn btn-sm btn-outline-secondary" id="dms-prev" disabled>
+                <i class="bi bi-chevron-left"></i> {% trans "Prev" %}
+              </button>
+              <button class="btn btn-sm btn-outline-secondary" id="dms-next" disabled>
+                {% trans "Next" %} <i class="bi bi-chevron-right"></i>
               </button>
             </div>
           </div>
-          <div class="col-md-4 text-end">
-            <span id="dms-result-count" class="text-muted small"></span>
-          </div>
-        </div>
 
-        <!-- Document list -->
-        <div id="dms-doc-list">
-          <div class="text-center py-5 text-muted" id="dms-loading">
-            <div class="spinner-border text-primary mb-2" role="status"><span class="visually-hidden">{% trans "Loading…" %}</span></div>
-            <div>{% trans "Loading documents…" %}</div>
+          <!-- Right panel: metadata + import -->
+          <div class="col-md-5 doc-detail-panel d-flex flex-column" id="dms-detail-panel">
+            <div class="text-center text-muted my-auto py-4" id="dms-detail-empty">
+              <i class="bi bi-file-earmark-text fs-2 d-block mb-2"></i>
+              {% trans "Select a document to preview its details." %}
+            </div>
+            <div id="dms-detail-content" style="display:none">
+              <div class="d-flex align-items-start gap-2 mb-3">
+                <div id="detail-type-icon" class="file-type-icon text-primary"></div>
+                <div class="flex-grow-1">
+                  <div class="fw-semibold" id="detail-title" style="word-break:break-word"></div>
+                  <div class="text-muted small" id="detail-filename"></div>
+                </div>
+              </div>
+              <dl class="row small mb-3">
+                <dt class="col-4 text-muted">{% trans "Date" %}</dt>
+                <dd class="col-8" id="detail-date">—</dd>
+                <dt class="col-4 text-muted">{% trans "Correspondent" %}</dt>
+                <dd class="col-8" id="detail-correspondent">—</dd>
+                <dt class="col-4 text-muted">{% trans "Tags" %}</dt>
+                <dd class="col-8" id="detail-tags">—</dd>
+              </dl>
+              <div id="detail-content-preview" class="border rounded p-2 bg-light-subtle small text-muted mb-3" style="max-height:120px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;display:none"></div>
+              <div class="d-grid">
+                <button id="detail-import-btn" class="btn btn-success btn-sm">
+                  <i class="bi bi-download me-1"></i>{% trans "Import into VoucherVault" %}
+                </button>
+              </div>
+              <div id="detail-imported-notice" class="alert alert-success py-2 mt-2 mb-0 small" style="display:none">
+                <i class="bi bi-check-circle me-1"></i>{% trans "Already imported" %}
+              </div>
+            </div>
           </div>
-        </div>
 
-        <!-- Pagination -->
-        <div class="d-flex justify-content-between align-items-center mt-3" id="dms-pagination" style="display:none!important">
-          <button class="btn btn-sm btn-outline-secondary" id="dms-prev" disabled>
-            <i class="bi bi-chevron-left"></i> {% trans "Previous" %}
-          </button>
-          <span id="dms-page-info" class="text-muted small"></span>
-          <button class="btn btn-sm btn-outline-secondary" id="dms-next" disabled>
-            {% trans "Next" %} <i class="bi bi-chevron-right"></i>
-          </button>
         </div>
       </div>
     </div>
@@ -184,9 +312,11 @@
   document.querySelectorAll('.btn-test-conn').forEach(btn => {
     btn.addEventListener('click', function () {
       const pid = this.dataset.providerId;
+      const cardId = this.dataset.cardId;
       const url = this.dataset.testUrl;
       const badge = document.getElementById('status-badge-' + pid);
       const lastChecked = document.getElementById('last-checked-' + pid);
+      const card = document.getElementById(cardId);
 
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
@@ -194,38 +324,56 @@
       fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
         .then(r => r.json())
         .then(data => {
-          badge.className = 'badge bg-' + data.status_badge;
-          badge.textContent = data.status === 'ok' ? '{% trans "Connected" %}' : data.status === 'error' ? '{% trans "Error" %}' : '{% trans "Not tested" %}';
+          // Update badge
+          const badgeClass = data.status_badge === 'success' ? 'success' : data.status_badge === 'danger' ? 'danger' : 'secondary';
+          const iconClass = data.ok ? 'check-circle' : 'x-circle';
+          const statusText = data.status === 'ok' ? '{% trans "Connected" %}' : data.status === 'error' ? '{% trans "Error" %}' : '{% trans "Not tested" %}';
+          badge.className = 'badge bg-' + badgeClass;
+          badge.innerHTML = '<i class="bi bi-' + iconClass + ' me-1"></i>' + statusText;
+
+          // Update card border + flash
+          card.className = card.className.replace(/status-\w+/, '').trim() + ' status-' + data.status;
+          card.classList.add(data.ok ? 'card-flash-ok' : 'card-flash-error');
+          setTimeout(() => card.classList.remove('card-flash-ok', 'card-flash-error'), 900);
+
+          // Update last checked
           if (data.last_checked) {
             const d = new Date(data.last_checked);
-            lastChecked.textContent = d.toLocaleString();
+            lastChecked.innerHTML = '<i class="bi bi-clock me-1"></i>{% trans "Checked" %} ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
           }
-          // Brief message toast
-          showToast(data.ok ? 'success' : 'danger', data.message || (data.ok ? '{% trans "Connection OK" %}' : '{% trans "Connection failed" %}'));
+
+          showToast(data.ok ? 'success' : 'danger',
+            data.message || (data.ok ? '{% trans "Connection OK" %}' : '{% trans "Connection failed" %}'));
         })
-        .catch(err => showToast('danger', '{% trans "Request failed" %}'))
+        .catch(() => showToast('danger', '{% trans "Request failed" %}'))
         .finally(() => {
           btn.disabled = false;
-          btn.innerHTML = '<i class="bi bi-plug"></i>';
+          btn.innerHTML = '<i class="bi bi-plug-fill"></i>';
         });
     });
   });
 
   // ---- Document Browser ----
   let currentBrowseUrl = '';
-  let currentPullUrl = '';
+  let currentPullUrl  = '';
   let currentPage = 1;
-  const pageSize = 20;
+  const pageSize = 25;
   let searchQuery = '';
+  let selectedDocId = null;
+  let selectedDocData = null;
+  let importedDocIds = new Set();   // track already-imported in this session
 
   document.querySelectorAll('.btn-browse-dms').forEach(btn => {
     btn.addEventListener('click', function () {
       currentBrowseUrl = this.dataset.browseUrl;
-      currentPullUrl = this.dataset.pullUrl;
+      currentPullUrl   = this.dataset.pullUrl;
       document.getElementById('browser-provider-name').textContent = this.dataset.providerName;
       currentPage = 1;
       searchQuery = '';
+      selectedDocId = null;
+      selectedDocData = null;
       document.getElementById('dms-search').value = '';
+      showDetailEmpty();
       loadBrowsePage();
       new bootstrap.Modal(document.getElementById('dmsBrowserModal')).show();
     });
@@ -236,91 +384,139 @@
     currentPage = 1;
     loadBrowsePage();
   });
-
   document.getElementById('dms-search').addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      searchQuery = e.target.value.trim();
-      currentPage = 1;
-      loadBrowsePage();
-    }
+    if (e.key === 'Enter') { searchQuery = e.target.value.trim(); currentPage = 1; loadBrowsePage(); }
   });
-
   document.getElementById('dms-prev').addEventListener('click', () => { currentPage--; loadBrowsePage(); });
   document.getElementById('dms-next').addEventListener('click', () => { currentPage++; loadBrowsePage(); });
 
+  document.getElementById('detail-import-btn').addEventListener('click', function () {
+    if (!selectedDocData) return;
+    pullDmsDocument(selectedDocData.id, selectedDocData.title, this);
+  });
+
   function loadBrowsePage() {
     const list = document.getElementById('dms-doc-list');
-    const loading = document.getElementById('dms-loading');
-    list.innerHTML = '';
-    list.appendChild(loading);
-    loading.style.display = 'block';
+    list.innerHTML = renderSkeletons(6);
 
-    const url = currentBrowseUrl + '?page=' + currentPage + '&page_size=' + pageSize + (searchQuery ? '&q=' + encodeURIComponent(searchQuery) : '');
+    const sep = currentBrowseUrl.includes('?') ? '&' : '?';
+    const url = currentBrowseUrl + sep + 'page=' + currentPage + '&page_size=' + pageSize
+               + (searchQuery ? '&q=' + encodeURIComponent(searchQuery) : '');
+
     fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
       .then(r => r.json())
       .then(data => {
         list.innerHTML = '';
         if (!data.ok) {
-          list.innerHTML = '<div class="alert alert-danger">' + (data.error || '{% trans "Error loading documents" %}') + '</div>';
+          list.innerHTML = '<div class="alert alert-danger m-3">' + esc(data.error || '{% trans "Error loading documents" %}') + '</div>';
           return;
         }
 
-        document.getElementById('dms-result-count').textContent = data.total_count + ' {% trans "documents" %}';
+        const total = data.total_count;
+        document.getElementById('dms-result-count').textContent = total + ' {% trans "documents" %}';
+        document.getElementById('dms-page-info').textContent = total > 0
+          ? '{% trans "Page" %} ' + data.page + ' {% trans "of" %} ' + Math.max(1, Math.ceil(total / data.page_size))
+          : '';
 
         if (data.documents.length === 0) {
-          list.innerHTML = '<div class="text-center text-muted py-4">{% trans "No documents found." %}</div>';
+          list.innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-inbox fs-2 d-block mb-2"></i>{% trans "No documents found." %}</div>';
+          document.getElementById('dms-pagination').style.display = 'none';
           return;
         }
 
-        const ul = document.createElement('div');
-        ul.className = 'list-group';
         data.documents.forEach(doc => {
-          const item = document.createElement('div');
-          item.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-start';
-          item.innerHTML = `
-            <div class="me-3 flex-grow-1">
-              <div class="fw-semibold">${escHtml(doc.title)}</div>
-              <small class="text-muted">
-                ${doc.created ? escHtml(doc.created.substring(0,10)) : ''}
-                ${doc.tags && doc.tags.length ? ' &middot; ' + doc.tags.map(t => '<span class="badge bg-secondary me-1">' + escHtml(t) + '</span>').join('') : ''}
-                ${doc.correspondent ? ' &middot; ' + escHtml(doc.correspondent) : ''}
-                ${doc.original_filename ? ' &middot; ' + escHtml(doc.original_filename) : ''}
-              </small>
+          const el = document.createElement('div');
+          const alreadyImported = importedDocIds.has(String(doc.id));
+          el.className = 'doc-item p-3 border-bottom d-flex align-items-center gap-3' + (alreadyImported ? ' imported' : '');
+          el.dataset.docId = doc.id;
+
+          const icon = fileTypeIcon(doc.original_filename || '');
+          const tagHtml = (doc.tags || []).slice(0, 3).map(t =>
+            '<span class="badge bg-secondary me-1" style="font-size:0.65rem">' + esc(t) + '</span>'
+          ).join('');
+
+          el.innerHTML = `
+            <div class="file-type-icon text-primary flex-shrink-0">${icon}</div>
+            <div class="flex-grow-1 overflow-hidden">
+              <div class="fw-semibold text-truncate">${esc(doc.title)}</div>
+              <div class="text-muted small d-flex flex-wrap gap-2 align-items-center mt-1">
+                ${doc.created ? '<span><i class="bi bi-calendar3 me-1"></i>' + esc(doc.created.substring(0,10)) + '</span>' : ''}
+                ${doc.correspondent ? '<span><i class="bi bi-person me-1"></i>' + esc(doc.correspondent) + '</span>' : ''}
+                <span>${tagHtml}</span>
+              </div>
             </div>
-            <button class="btn btn-sm btn-outline-success flex-shrink-0 btn-pull-doc"
-                    data-doc-id="${escHtml(doc.id)}"
-                    data-doc-title="${escHtml(doc.title)}">
-              <i class="bi bi-download me-1"></i>{% trans "Import" %}
-            </button>`;
-          ul.appendChild(item);
+            ${alreadyImported ? '<span class="badge bg-success ms-auto flex-shrink-0"><i class="bi bi-check-lg me-1"></i>{% trans "Imported" %}</span>' : ''}
+          `;
+
+          el.addEventListener('click', () => selectDoc(doc, el));
+          list.appendChild(el);
         });
 
-        // Wire pull buttons
-        ul.querySelectorAll('.btn-pull-doc').forEach(btn => {
-          btn.addEventListener('click', function () {
-            const docId = this.dataset.docId;
-            const docTitle = this.dataset.docTitle;
-            pullDmsDocument(docId, docTitle, this);
-          });
-        });
-
-        list.appendChild(ul);
-
-        // Pagination
         const pag = document.getElementById('dms-pagination');
         pag.style.display = 'flex';
         document.getElementById('dms-prev').disabled = !data.has_prev;
         document.getElementById('dms-next').disabled = !data.has_next;
-        document.getElementById('dms-page-info').textContent = 'Page ' + data.page + ' of ' + Math.ceil(data.total_count / data.page_size);
       })
       .catch(err => {
-        list.innerHTML = '<div class="alert alert-danger">{% trans "Failed to load documents." %} ' + err + '</div>';
+        list.innerHTML = '<div class="alert alert-danger m-3">{% trans "Failed to load documents." %} ' + esc(String(err)) + '</div>';
       });
+  }
+
+  function selectDoc(doc, el) {
+    document.querySelectorAll('#dms-doc-list .doc-item').forEach(i => i.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedDocId = doc.id;
+    selectedDocData = doc;
+    showDetailPanel(doc);
+  }
+
+  function showDetailPanel(doc) {
+    document.getElementById('dms-detail-empty').style.display = 'none';
+    document.getElementById('dms-detail-content').style.display = '';
+
+    const alreadyImported = importedDocIds.has(String(doc.id));
+    document.getElementById('detail-type-icon').innerHTML = fileTypeIcon(doc.original_filename || '');
+    document.getElementById('detail-title').textContent = doc.title || '—';
+    document.getElementById('detail-filename').textContent = doc.original_filename || '';
+    document.getElementById('detail-date').textContent = doc.created ? doc.created.substring(0, 10) : '—';
+    document.getElementById('detail-correspondent').textContent = doc.correspondent || '—';
+
+    const tagsEl = document.getElementById('detail-tags');
+    if (doc.tags && doc.tags.length) {
+      tagsEl.innerHTML = doc.tags.map(t => '<span class="badge bg-secondary me-1">' + esc(t) + '</span>').join('');
+    } else {
+      tagsEl.textContent = '—';
+    }
+
+    const previewEl = document.getElementById('detail-content-preview');
+    if (doc.content) {
+      previewEl.textContent = doc.content.substring(0, 500);
+      previewEl.style.display = '';
+    } else {
+      previewEl.style.display = 'none';
+    }
+
+    const importBtn = document.getElementById('detail-import-btn');
+    const importedNotice = document.getElementById('detail-imported-notice');
+    if (alreadyImported) {
+      importBtn.style.display = 'none';
+      importedNotice.style.display = '';
+    } else {
+      importBtn.style.display = '';
+      importBtn.disabled = false;
+      importBtn.innerHTML = '<i class="bi bi-download me-1"></i>{% trans "Import into VoucherVault" %}';
+      importedNotice.style.display = 'none';
+    }
+  }
+
+  function showDetailEmpty() {
+    document.getElementById('dms-detail-empty').style.display = '';
+    document.getElementById('dms-detail-content').style.display = 'none';
   }
 
   function pullDmsDocument(docId, docTitle, btn) {
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>{% trans "Importing…" %}';
 
     fetch(currentPullUrl, {
       method: 'POST',
@@ -329,28 +525,73 @@
         'X-CSRFToken': getCsrfToken(),
         'X-Requested-With': 'XMLHttpRequest',
       },
-      body: JSON.stringify({dms_doc_id: docId}),
+      body: JSON.stringify({dms_doc_id: String(docId)}),
     })
     .then(r => r.json())
     .then(data => {
       if (data.ok) {
-        btn.className = 'btn btn-sm btn-success flex-shrink-0';
-        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>{% trans "Imported" %}';
-        showToast('success', '"' + docTitle + '" {% trans "imported as a new VoucherVault item." %}');
+        importedDocIds.add(String(docId));
+        btn.style.display = 'none';
+        document.getElementById('detail-imported-notice').style.display = '';
+        // Mark list item
+        const listItem = document.querySelector('#dms-doc-list .doc-item[data-doc-id="' + docId + '"]');
+        if (listItem) {
+          listItem.classList.add('imported');
+          if (!listItem.querySelector('.badge.bg-success')) {
+            const chip = document.createElement('span');
+            chip.className = 'badge bg-success ms-auto flex-shrink-0';
+            chip.innerHTML = '<i class="bi bi-check-lg me-1"></i>{% trans "Imported" %}';
+            listItem.appendChild(chip);
+          }
+        }
+        showToast('success', '"' + esc(docTitle) + '" {% trans "imported successfully." %}');
       } else {
         btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-download me-1"></i>{% trans "Import" %}';
-        showToast('danger', '{% trans "Import failed:" %} ' + (data.error || '{% trans "unknown error" %}'));
+        btn.innerHTML = '<i class="bi bi-download me-1"></i>{% trans "Import into VoucherVault" %}';
+        showToast('danger', '{% trans "Import failed:" %} ' + esc(data.error || '{% trans "unknown error" %}'));
       }
     })
-    .catch(err => {
+    .catch(() => {
       btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-download me-1"></i>{% trans "Import" %}';
+      btn.innerHTML = '<i class="bi bi-download me-1"></i>{% trans "Import into VoucherVault" %}';
       showToast('danger', '{% trans "Request failed" %}');
     });
   }
 
-  function escHtml(str) {
+  function renderSkeletons(n) {
+    let html = '';
+    for (let i = 0; i < n; i++) {
+      html += `<div class="p-3 border-bottom d-flex align-items-center gap-3">
+        <div class="dms-skeleton" style="width:28px;height:28px;border-radius:4px;flex-shrink:0"></div>
+        <div class="flex-grow-1">
+          <div class="dms-skeleton mb-2" style="width:${55 + (i % 4)*10}%"></div>
+          <div class="dms-skeleton" style="width:${30 + (i % 3)*8}%;height:10px"></div>
+        </div>
+      </div>`;
+    }
+    return html;
+  }
+
+  function fileTypeIcon(filename) {
+    const ext = (filename.split('.').pop() || '').toLowerCase();
+    const map = {
+      pdf: 'bi-file-earmark-pdf text-danger',
+      png: 'bi-file-earmark-image text-success',
+      jpg: 'bi-file-earmark-image text-success',
+      jpeg: 'bi-file-earmark-image text-success',
+      gif: 'bi-file-earmark-image text-success',
+      tiff: 'bi-file-earmark-image text-success',
+      tif: 'bi-file-earmark-image text-success',
+      docx: 'bi-file-earmark-word text-primary',
+      doc: 'bi-file-earmark-word text-primary',
+      xlsx: 'bi-file-earmark-excel text-success',
+      txt: 'bi-file-earmark-text text-muted',
+      csv: 'bi-file-earmark-spreadsheet text-success',
+    };
+    return '<i class="bi ' + (map[ext] || 'bi-file-earmark text-secondary') + ' fs-5"></i>';
+  }
+
+  function esc(str) {
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
@@ -363,7 +604,6 @@
 
   function showToast(type, msg) {
     if (typeof window.showToast === 'function') { window.showToast(type, msg); return; }
-    // Fallback
     const c = document.createElement('div');
     c.className = 'toast align-items-center text-bg-' + type + ' border-0 show position-fixed bottom-0 end-0 m-3';
     c.style.zIndex = 9999;

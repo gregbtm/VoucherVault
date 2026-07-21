@@ -9,107 +9,176 @@
   <nav>
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">{% trans "Home" %}</a></li>
-      <li class="breadcrumb-item"><a href="{% url 'dms:providers' %}">{% trans "DMS Providers" %}</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'dms:providers' %}">{% trans "Document Archive" %}</a></li>
       <li class="breadcrumb-item active">{% trans "Sync Logs" %}</li>
     </ol>
   </nav>
 </div>
 
+<style>
+.log-stat-card {
+  border-radius: 0.5rem;
+  padding: 0.85rem 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.log-stat-icon { font-size: 1.5rem; line-height: 1; opacity: 0.85; }
+.log-stat-value { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.log-stat-label { font-size: 0.75rem; color: var(--bs-secondary-color); margin-top: 2px; }
+</style>
+
 <section class="section">
-  <div class="row">
-    <div class="col-12">
-      <div class="card">
-        <div class="card-body">
-          <h5 class="card-title mt-3">{% trans "Sync History" %}</h5>
 
-          <!-- Filters -->
-          <form method="get" class="row g-2 mb-4">
-            <div class="col-md-3">
-              <select name="provider" class="form-select form-select-sm">
-                <option value="">{% trans "All providers" %}</option>
-                {% for p in providers %}
-                <option value="{{ p.id }}" {% if filter_provider == p.id|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-md-2">
-              <select name="direction" class="form-select form-select-sm">
-                <option value="">{% trans "All directions" %}</option>
-                <option value="push" {% if filter_direction == "push" %}selected{% endif %}>{% trans "Push (VV → DMS)" %}</option>
-                <option value="pull" {% if filter_direction == "pull" %}selected{% endif %}>{% trans "Pull (DMS → VV)" %}</option>
-              </select>
-            </div>
-            <div class="col-md-2">
-              <select name="status" class="form-select form-select-sm">
-                <option value="">{% trans "All statuses" %}</option>
-                <option value="ok" {% if filter_status == "ok" %}selected{% endif %}>{% trans "Success" %}</option>
-                <option value="error" {% if filter_status == "error" %}selected{% endif %}>{% trans "Error" %}</option>
-                <option value="skipped" {% if filter_status == "skipped" %}selected{% endif %}>{% trans "Skipped" %}</option>
-              </select>
-            </div>
-            <div class="col-auto">
-              <button type="submit" class="btn btn-sm btn-outline-secondary">{% trans "Filter" %}</button>
-              <a href="{% url 'dms:sync_logs' %}" class="btn btn-sm btn-outline-secondary ms-1">{% trans "Clear" %}</a>
-            </div>
-          </form>
-
-          {% if not logs %}
-          <div class="text-center text-muted py-5">
-            <i class="bi bi-clock-history fs-1"></i>
-            <div class="mt-2">{% trans "No sync activity recorded yet." %}</div>
-          </div>
+  <!-- Stats row -->
+  {% if stats %}
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+      <div class="card log-stat-card border-start border-primary border-3">
+        <div class="log-stat-icon text-primary"><i class="bi bi-upload"></i></div>
+        <div>
+          <div class="log-stat-value text-primary">{{ stats.total_push_ok|default:"0" }}</div>
+          <div class="log-stat-label">{% trans "Documents pushed" %}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card log-stat-card border-start border-info border-3">
+        <div class="log-stat-icon text-info"><i class="bi bi-download"></i></div>
+        <div>
+          <div class="log-stat-value text-info">{{ stats.total_pull_ok|default:"0" }}</div>
+          <div class="log-stat-label">{% trans "Documents pulled" %}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card log-stat-card border-start border-danger border-3">
+        <div class="log-stat-icon text-danger"><i class="bi bi-exclamation-triangle"></i></div>
+        <div>
+          <div class="log-stat-value text-danger">{{ stats.total_errors|default:"0" }}</div>
+          <div class="log-stat-label">{% trans "Sync errors" %}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card log-stat-card border-start border-secondary border-3">
+        <div class="log-stat-icon text-secondary"><i class="bi bi-clock-history"></i></div>
+        <div>
+          {% if stats.last_activity %}
+          <div class="log-stat-value" style="font-size:1rem">{{ stats.last_activity|date:"d M H:i" }}</div>
           {% else %}
-          <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle">
-              <thead class="table-light">
-                <tr>
-                  <th>{% trans "When" %}</th>
-                  <th>{% trans "Provider" %}</th>
-                  <th>{% trans "Direction" %}</th>
-                  <th>{% trans "Status" %}</th>
-                  <th>{% trans "Document" %}</th>
-                  <th>{% trans "Item" %}</th>
-                  <th>{% trans "Detail" %}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for log in logs %}
-                <tr>
-                  <td class="small text-muted text-nowrap">{{ log.created_at|date:"d M Y H:i" }}</td>
-                  <td>{{ log.provider.name }}</td>
-                  <td>
-                    {% if log.direction == "push" %}
-                    <span class="badge bg-primary"><i class="bi bi-upload me-1"></i>{% trans "Push" %}</span>
-                    {% else %}
-                    <span class="badge bg-info text-dark"><i class="bi bi-download me-1"></i>{% trans "Pull" %}</span>
-                    {% endif %}
-                  </td>
-                  <td>
-                    <span class="badge bg-{{ log.status_badge_class }}">{{ log.get_status_display }}</span>
-                  </td>
-                  <td class="small">
-                    {% if log.dms_document_title %}
-                    {{ log.dms_document_title|truncatechars:50 }}
-                    {% if log.dms_document_id %}<br><code class="text-muted">{{ log.dms_document_id|truncatechars:20 }}</code>{% endif %}
-                    {% else %}—{% endif %}
-                  </td>
-                  <td class="small">
-                    {% if log.item %}
-                    <a href="{% url 'view_item' log.item.item_uuid %}">{{ log.item.name|truncatechars:30 }}</a>
-                    {% else %}—{% endif %}
-                  </td>
-                  <td class="small text-muted">{{ log.detail|truncatechars:80 }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          <div class="text-muted small mt-2">{% trans "Showing most recent 200 entries." %}</div>
+          <div class="log-stat-value" style="font-size:1rem">—</div>
           {% endif %}
-
+          <div class="log-stat-label">{% trans "Last activity" %}</div>
         </div>
       </div>
     </div>
   </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-body">
+      <h5 class="card-title mt-3">{% trans "Sync History" %}</h5>
+
+      <!-- Filters (auto-submit on change) -->
+      <form method="get" id="log-filter-form" class="row g-2 mb-4 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label small text-muted mb-1">{% trans "Provider" %}</label>
+          <select name="provider" class="form-select form-select-sm auto-submit">
+            <option value="">{% trans "All providers" %}</option>
+            {% for p in providers %}
+            <option value="{{ p.id }}" {% if filter_provider == p.id|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small text-muted mb-1">{% trans "Direction" %}</label>
+          <select name="direction" class="form-select form-select-sm auto-submit">
+            <option value="">{% trans "All" %}</option>
+            <option value="push" {% if filter_direction == "push" %}selected{% endif %}>{% trans "Push" %} ↑</option>
+            <option value="pull" {% if filter_direction == "pull" %}selected{% endif %}>{% trans "Pull" %} ↓</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small text-muted mb-1">{% trans "Status" %}</label>
+          <select name="status" class="form-select form-select-sm auto-submit">
+            <option value="">{% trans "All" %}</option>
+            <option value="ok"      {% if filter_status == "ok" %}selected{% endif %}>{% trans "Success" %}</option>
+            <option value="error"   {% if filter_status == "error" %}selected{% endif %}>{% trans "Error" %}</option>
+            <option value="skipped" {% if filter_status == "skipped" %}selected{% endif %}>{% trans "Skipped" %}</option>
+          </select>
+        </div>
+        <div class="col-auto">
+          {% if filter_provider or filter_direction or filter_status %}
+          <a href="{% url 'dms:sync_logs' %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-x-circle me-1"></i>{% trans "Clear" %}
+          </a>
+          {% endif %}
+        </div>
+      </form>
+
+      {% if not logs %}
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-clock-history fs-1 d-block mb-2"></i>
+        <div>{% trans "No sync activity recorded yet." %}</div>
+      </div>
+      {% else %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>{% trans "When" %}</th>
+              <th>{% trans "Provider" %}</th>
+              <th>{% trans "Direction" %}</th>
+              <th>{% trans "Status" %}</th>
+              <th>{% trans "Document" %}</th>
+              <th>{% trans "Item" %}</th>
+              <th>{% trans "Detail" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for log in logs %}
+            <tr>
+              <td class="small text-muted text-nowrap">{{ log.created_at|date:"d M Y H:i" }}</td>
+              <td class="small">{{ log.provider.name }}</td>
+              <td>
+                {% if log.direction == "push" %}
+                <span class="badge bg-primary"><i class="bi bi-upload me-1"></i>{% trans "Push" %}</span>
+                {% else %}
+                <span class="badge bg-info text-dark"><i class="bi bi-download me-1"></i>{% trans "Pull" %}</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge bg-{{ log.status_badge_class }}">{{ log.get_status_display }}</span>
+              </td>
+              <td class="small">
+                {% if log.dms_document_title %}
+                {{ log.dms_document_title|truncatechars:50 }}
+                {% if log.dms_document_id %}<br><code class="text-muted" style="font-size:0.7rem">{{ log.dms_document_id|truncatechars:24 }}</code>{% endif %}
+                {% else %}—{% endif %}
+              </td>
+              <td class="small">
+                {% if log.item %}
+                <a href="{% url 'view_item' log.item.id %}">{{ log.item.name|truncatechars:30 }}</a>
+                {% else %}—{% endif %}
+              </td>
+              <td class="small text-muted">{{ log.detail|truncatechars:80 }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="text-muted small mt-2">{% trans "Showing most recent 200 entries." %}</div>
+      {% endif %}
+
+    </div>
+  </div>
 </section>
+
+<script>
+// Auto-submit filter form when any select changes
+document.querySelectorAll('.auto-submit').forEach(el => {
+  el.addEventListener('change', () => document.getElementById('log-filter-form').submit());
+});
+</script>
 {% endblock %}

@@ -580,8 +580,32 @@ def view_item(request, item_uuid):
             else:
                 firefly_pending_count += 1
 
-    from dms.models import DMSProvider
+    from dms.models import DMSProvider, DMSSyncLog
     dms_providers = list(DMSProvider.objects.filter(user=request.user, enabled=True)) if request.user.is_authenticated else []
+
+    # Map document_id → most-recent successful push log for this item,
+    # so the template can show "Archived to X" chips on each attachment.
+    dms_doc_status = {}
+    if dms_providers:
+        for log in (
+            DMSSyncLog.objects
+            .filter(item=item, direction='push', status='ok', document__isnull=False)
+            .select_related('provider')
+            .order_by('-created_at')
+        ):
+            if log.document_id not in dms_doc_status:
+                dms_doc_status[log.document_id] = log
+
+    # Also check for a successful push of the primary item file
+    dms_item_file_status = None
+    if dms_providers:
+        dms_item_file_status = (
+            DMSSyncLog.objects
+            .filter(item=item, direction='push', status='ok', document__isnull=True)
+            .select_related('provider')
+            .order_by('-created_at')
+            .first()
+        )
 
     context = {
         'item': item,
@@ -603,6 +627,8 @@ def view_item(request, item_uuid):
         'firefly_synced_count': firefly_synced_count,
         'firefly_pending_count': firefly_pending_count,
         'dms_providers': dms_providers,
+        'dms_doc_status': dms_doc_status,
+        'dms_item_file_status': dms_item_file_status,
     }
     return render(request, 'view-item.html', context)
 

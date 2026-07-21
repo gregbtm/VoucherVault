@@ -2039,6 +2039,14 @@ body.dark-mode .tilt-scan-enable-btn {
                   </ul>
                 </div>
                 {% endif %}
+                {% with sync_log=dms_doc_status|get_item:document.id %}
+                {% if sync_log %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle ms-1"
+                      title="{{ sync_log.provider.name }} — {{ sync_log.created_at|date:'d M Y H:i' }}">
+                  <i class="bi bi-archive-fill me-1"></i>{{ sync_log.provider.name }}
+                </span>
+                {% endif %}
+                {% endwith %}
                 {% if can_edit %}
                 <form method="POST" action="{% url 'delete_document' document.id %}" style="display:inline;">
                   {% csrf_token %}
@@ -2077,20 +2085,31 @@ body.dark-mode .tilt-scan-enable-btn {
         <h5><i class="bi bi-archive me-1"></i>{% trans "Archive to DMS" %}</h5>
         <p class="text-muted small mb-2">{% trans "Send this item's primary file or attachments to your document management system." %}</p>
         {% if item.file.name %}
-        <div class="d-flex flex-wrap gap-2 mb-2">
-          <span class="text-muted small align-self-center">{% trans "Primary file:" %}</span>
-          {% for p in dms_providers %}
-          <button class="btn btn-sm btn-outline-secondary btn-dms-push-file"
-                  data-push-url="{% url 'dms:push_item_file' p.id item.item_uuid %}"
-                  data-provider-name="{{ p.name }}">
-            <i class="bi bi-box-arrow-up-right me-1"></i>{{ p.name }}
-          </button>
-          {% endfor %}
+        <div class="mb-2">
+          <div class="text-muted small mb-1">{% trans "Primary file:" %}</div>
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            {% for p in dms_providers %}
+            <button class="btn btn-sm btn-outline-secondary btn-dms-push-file"
+                    data-push-url="{% url 'dms:push_item_file' p.id item.id %}"
+                    data-provider-name="{{ p.name }}">
+              <i class="bi bi-box-arrow-up-right me-1"></i>{{ p.name }}
+            </button>
+            {% endfor %}
+            {% if dms_item_file_status %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle"
+                  title="{{ dms_item_file_status.provider.name }} — {{ dms_item_file_status.created_at|date:'d M Y H:i' }}">
+              <i class="bi bi-check-circle me-1"></i>{% trans "Archived to" %} {{ dms_item_file_status.provider.name }}
+            </span>
+            {% endif %}
+          </div>
         </div>
         {% endif %}
-        <div class="text-end small">
-          <a href="{% url 'dms:providers' %}" class="text-muted">
-            <i class="bi bi-gear me-1"></i>{% trans "Manage DMS connections" %}
+        <div class="d-flex justify-content-between align-items-center mt-2">
+          <a href="{% url 'dms:sync_logs' %}" class="text-muted small">
+            <i class="bi bi-clock-history me-1"></i>{% trans "View sync history" %}
+          </a>
+          <a href="{% url 'dms:providers' %}" class="text-muted small">
+            <i class="bi bi-gear me-1"></i>{% trans "Manage connections" %}
           </a>
         </div>
       </div>
