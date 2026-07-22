@@ -1687,12 +1687,17 @@ def site_settings(request):
     else:
         form = SiteConfigurationForm(instance=config)
 
+    webdav_ssl_warning = (
+        getattr(settings, 'USE_WEBDAV_STORAGE', False)
+        and not getattr(settings, 'WEBDAV_VERIFY_SSL', True)
+    )
     return render(request, 'site_settings.html', {
         'form': form,
         'config': config,
         'update_check_status': UpdateCheckStatus.load(),
         'installed_version': settings.VERSION,
         'integration_status': _integration_status(config),
+        'webdav_ssl_warning': webdav_ssl_warning,
     })
 
 @require_GET
@@ -3649,10 +3654,15 @@ def accept_invite(request, token):
             error = _('Username is required.')
         elif User.objects.filter(username=username).exists():
             error = _('That username is already taken.')
-        elif len(password) < 8:
-            error = _('Password must be at least 8 characters.')
         elif password != password2:
             error = _('Passwords do not match.')
+        else:
+            from django.contrib.auth.password_validation import validate_password
+            from django.core.exceptions import ValidationError as DjangoValidationError
+            try:
+                validate_password(password)
+            except DjangoValidationError as exc:
+                error = ' '.join(exc.messages)
 
         if error:
             return render(request, 'invite_accept.html', {'invite': invite, 'error': error})

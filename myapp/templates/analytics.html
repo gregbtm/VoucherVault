@@ -331,7 +331,7 @@ body.dark-mode .kpi-card {
 {% endblock %}
 
 {% block extra_scripts %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
 (function() {
   const isDark = () => localStorage.getItem('darkMode') === 'enabled';
 

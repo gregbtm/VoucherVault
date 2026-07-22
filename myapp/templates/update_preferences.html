@@ -234,7 +234,7 @@
   </div>
 </section>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 (function () {
   var prefsForm = document.getElementById('preferences-form');
   var autosaveStatus = document.getElementById('autosave-status');
@@ -315,7 +315,7 @@
 })();
 </script>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 (function () {
   var SITE_NEARBY_ENABLED = {{ site_nearby_enabled|yesno:"true,false" }};
 

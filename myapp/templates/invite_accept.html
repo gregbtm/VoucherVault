@@ -89,7 +89,7 @@
         </button>
     </form>
 </div>
-<script>
+<script nonce="{{ request.csp_nonce }}">
     document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('username').focus();
     });

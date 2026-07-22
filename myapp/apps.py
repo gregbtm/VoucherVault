@@ -7,3 +7,4 @@ class MyappConfig(AppConfig):
     
     def ready(self):
         import myapp.signals
+        import myapp.checks  # noqa: F401 — registers system checks

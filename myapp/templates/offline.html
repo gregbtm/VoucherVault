@@ -274,7 +274,7 @@
         </p>
     </div>
     
-    <script>
+    <script nonce="{{ request.csp_nonce }}">
         function getPreferredLang() {
             const langMatch = window.location.pathname.match(/^\/(en|de|fr|it)/);
             if (langMatch) return langMatch[1];

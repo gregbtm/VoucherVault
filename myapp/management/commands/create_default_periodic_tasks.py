@@ -100,6 +100,10 @@ class Command(BaseCommand):
             # that are in a terminal state (complete/failed). Runs weekly to keep
             # the database and uploads/ directory clean without hammering storage.
             {'name': 'Purge Old Import Jobs', 'task': 'imports.tasks.purge_old_import_jobs', 'crontab': weekly_schedule, 'enabled': True},
+            # Sends a ntfy security alert when the failed-login count in the last hour
+            # exceeds SiteConfiguration.security_alert_threshold. A no-op unless a
+            # security_alert_ntfy_topic is configured in Site Settings.
+            {'name': 'Login Spike Alert', 'task': 'myapp.tasks.check_login_spike_task', 'crontab': hourly_schedule, 'enabled': True},
         ]
 
         for task_data in tasks:

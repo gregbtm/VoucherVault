@@ -3748,6 +3748,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
             'DMS Auto Pull',
             'Gift Card Inactivity Check', 'Merchant Health Check',
             'Purge Old Import Jobs',
+            'Login Spike Alert',
         })
 
     def test_update_check_and_upstream_check_run_hourly_not_daily(self):
@@ -4066,6 +4067,9 @@ def _site_config_form_data(**overrides):
         'oidc_create_user': True,
         'oidc_autologin': False,
         'oidc_admin_group': '',
+        'oidc_require_totp': False,
+        'security_alert_ntfy_topic': '',
+        'security_alert_threshold': 10,
     }
     data.update(overrides)
     return data

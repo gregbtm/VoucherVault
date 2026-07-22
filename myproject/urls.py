@@ -52,4 +52,7 @@ if not settings.OIDC_ENABLED:
 
 # Conditionally include OIDC URLs if OIDC_ENABLED is True
 if settings.OIDC_ENABLED:
+    from myapp.oidc_views import VVOIDCCallbackView
+    # Override the callback first so TOTP enforcement fires before the generic include resolves it.
+    urlpatterns.append(path('oidc/callback/', VVOIDCCallbackView.as_view(), name='oidc_authentication_callback'))
     urlpatterns.append(path('oidc/', include('mozilla_django_oidc.urls')))

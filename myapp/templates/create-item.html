@@ -1149,7 +1149,7 @@ body.dark-mode .error-alert {
 </section>
 
 {% if not form.issue_date.value %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
   document.getElementById('issue_date').valueAsDate = new Date();
 </script>
 {% endif %}
@@ -1157,14 +1157,14 @@ body.dark-mode .error-alert {
 <script src="{% static 'assets/js/zxing.js' %}"></script>
 <script src="{% static 'assets/js/scanner.js' %}"></script>
 <script src="{% static 'assets/js/device-detect.js' %}"></script>
-<script>
+<script nonce="{{ request.csp_nonce }}">
   var pkpassImportSection = document.getElementById('pkpassImportSection');
   if (pkpassImportSection) pkpassImportSection.style.display = VVDeviceDetect.isApple ? '' : 'none';
   const HAS_FIREFLY_RULE = {{ has_firefly_rule|yesno:"true,false" }};
   const HAS_NOTIFICATION_RULE = {{ has_notification_rule|yesno:"true,false" }};
 </script>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 function handleSubmitButton() {
   var form = document.getElementById('myform');
   if (form.checkValidity()) {
@@ -1996,7 +1996,7 @@ document.addEventListener("DOMContentLoaded", function () {
 }
 </style>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 (function () {
   const chips = document.querySelectorAll('.expiry-chip');
   const expiryInput = document.getElementById('expiry_date');

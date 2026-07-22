@@ -229,7 +229,7 @@
     </div>
 
     {% if not "OIDC_ENABLED"|env %}
-    <script>
+    <script nonce="{{ request.csp_nonce }}">
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('username').focus();
         });
@@ -237,7 +237,7 @@
     {% endif %}
 
     {% if "OIDC_AUTOLOGIN"|env %}
-    <script>
+    <script nonce="{{ request.csp_nonce }}">
         document.addEventListener('DOMContentLoaded', function() {
                 window.location.href = "{% url 'oidc_authentication_init' %}?next={{next}}";
         });

@@ -8,7 +8,7 @@
 
 <head>
   <!-- Darkmode: toggle handler + live system-preference listener -->
-  <script>
+  <script nonce="{{ request.csp_nonce }}">
     document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('darkModeToggle').addEventListener('click', () => {
         const isDark = document.body.classList.toggle('dark-mode');
@@ -25,7 +25,7 @@
       });
     });
   </script>
-  <script>
+  <script nonce="{{ request.csp_nonce }}">
     document.addEventListener('DOMContentLoaded', () => {
       const langMatch = window.location.pathname.match(/^\/(en|de|fr|it)(\/|$)/);
       if (langMatch) {
@@ -184,7 +184,7 @@
   <a href="#main" class="skip-link">{% trans "Skip to main content" %}</a>
   <!-- Apply theme synchronously before any content renders to prevent flash.
        Priority: 1) user override in localStorage, 2) OS prefers-color-scheme, 3) light default -->
-  <script>
+  <script nonce="{{ request.csp_nonce }}">
     (function () {
       var stored = localStorage.getItem('darkMode');
       var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -687,7 +687,7 @@
   <!-- Template Main JS File -->
   <script src="{% static 'assets/js/main.js' %}"></script>
 
-  <script>
+  <script nonce="{{ request.csp_nonce }}">
     (function () {
       var modalEl = document.getElementById('helpDocModal');
       if (!modalEl || !window.bootstrap) return;
@@ -753,7 +753,7 @@
   <script src="{% static 'assets/js/pwa-install.js' %}"></script>
 
   <!-- Native Web Share -->
-  <script>window.VV_SHARE_SMART_ENABLED = {{ share_via_smart_enabled|yesno:"true,false" }};</script>
+  <script nonce="{{ request.csp_nonce }}">window.VV_SHARE_SMART_ENABLED = {{ share_via_smart_enabled|yesno:"true,false" }};</script>
   <script src="{% static 'assets/js/voucher-share.js' %}"></script>
 
   <!-- Modern color picker (replaces the native <input type="color"> UI) -->
@@ -764,7 +764,7 @@
   <!-- Interactive "suggest from your recent items" field buttons -->
   <script src="{% static 'assets/js/field-suggest.js' %}"></script>
 
-  <script>
+  <script nonce="{{ request.csp_nonce }}">
     document.getElementById('languageSelect').addEventListener('change', function() {
       document.getElementById('languageForm').submit();
     });
@@ -868,7 +868,7 @@
       </div>
     </div>
   </div>
-  <script>
+  <script nonce="{{ request.csp_nonce }}">
   (function() {
     var seq = '';
     var seqTimer;
@@ -925,7 +925,7 @@
       </div>
     </div>
   </div>
-  <script>
+  <script nonce="{{ request.csp_nonce }}">
   window.showConfirm = function(message, okLabel, onOk) {
     document.getElementById('confirmModalBody').textContent = message;
     document.getElementById('confirmModalOk').textContent = okLabel || '{% trans "Confirm" %}';

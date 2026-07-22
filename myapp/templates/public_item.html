@@ -282,7 +282,7 @@
     </p>
 </div>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 document.querySelectorAll('.copy-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
         navigator.clipboard.writeText(btn.dataset.copy).then(function () {
@@ -318,7 +318,7 @@ document.querySelectorAll('.logo-wrap').forEach(function (wrap) {
 
 {% if pkpass_enabled or google_wallet_save_url %}
 <script src="{% static 'assets/js/device-detect.js' %}"></script>
-<script>
+<script nonce="{{ request.csp_nonce }}">
 // Only show the wallet button the visiting device can actually use - see
 // device-detect.js for the detection logic itself.
 (function () {

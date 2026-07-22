@@ -1111,6 +1111,24 @@ class SiteConfiguration(models.Model):
         help_text="PocketID group name whose members are automatically given superuser access. "
                   "Members are promoted on login; non-members are demoted. Leave blank to disable.",
     )
+    oidc_require_totp = models.BooleanField(
+        default=False,
+        help_text="When enabled, users who have TOTP set up must complete the TOTP check even "
+                  "after a successful OIDC login — OIDC alone is not sufficient to open a session. "
+                  "Opt-in; default off so OIDC acts as a complete single authentication factor.",
+    )
+
+    # ---- Security alerts ----
+    security_alert_ntfy_topic = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="ntfy topic to receive admin security alerts (e.g. login-failure spikes). "
+                  "Uses the Default ntfy Server above. Leave blank to disable security alerts.",
+    )
+    security_alert_threshold = models.PositiveIntegerField(
+        default=10,
+        help_text="Number of failed login attempts in a rolling 60-minute window that triggers "
+                  "a security alert notification. Applies only when a security alert ntfy topic is set.",
+    )
 
     # ---- Analytics & duplicate detection display/behaviour limits ----
     # Previously fixed constants in myapp/analytics.py and myapp/imagehash.py -

@@ -471,7 +471,7 @@ body.dark-mode .user-search-input::placeholder {
   </div>
 </section>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
   const userList = document.getElementById('user-list');
   const hiddenSelect = document.getElementById('shared_users');

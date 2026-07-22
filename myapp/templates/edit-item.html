@@ -1204,12 +1204,12 @@ body.dark-mode .error-alert {
 <script src="{% static 'assets/js/zxing.js' %}"></script>
 <script src="{% static 'assets/js/scanner.js' %}"></script>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
   const HAS_FIREFLY_RULE = {{ has_firefly_rule|yesno:"true,false" }};
   const HAS_NOTIFICATION_RULE = {{ has_notification_rule|yesno:"true,false" }};
 </script>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 function handleSubmitButton() {
   var form = document.getElementById('myform');
   if (form.checkValidity()) {
@@ -1978,7 +1978,7 @@ document.addEventListener("DOMContentLoaded", function () {
 }
 </style>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 (function () {
   const chips = document.querySelectorAll('.expiry-chip');
   const expiryInput = document.getElementById('expiry_date');

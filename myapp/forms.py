@@ -436,6 +436,8 @@ class SiteConfigurationForm(forms.ModelForm):
             'invite_expiry_days',
             'oidc_discovery_url', 'oidc_client_id', 'oidc_client_secret',
             'oidc_provider_name', 'oidc_create_user', 'oidc_autologin', 'oidc_admin_group',
+            'oidc_require_totp',
+            'security_alert_ntfy_topic', 'security_alert_threshold',
         ]
         widgets = {
             'expiry_threshold_days': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
@@ -480,6 +482,9 @@ class SiteConfigurationForm(forms.ModelForm):
             'oidc_create_user': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'oidc_autologin': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'oidc_admin_group': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'admins'}),
+            'oidc_require_totp': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'security_alert_ntfy_topic': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'vv-security-alerts'}),
+            'security_alert_threshold': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
         }
 
     REPO_RE = re.compile(r'^[\w.-]+/[\w.-]+$')
