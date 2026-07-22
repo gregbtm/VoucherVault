@@ -965,6 +965,20 @@ class SiteConfiguration(models.Model):
     scheduled_backup_enabled = models.BooleanField(default=True)
     backup_retention_count = models.PositiveIntegerField(default=7)
 
+    # ---- Gift card health features ----
+    inactivity_threshold_days = models.PositiveIntegerField(
+        default=90,
+        help_text="Days without use before an item triggers an 'Unused Gift Card Reminder' "
+                   "notification (for rules subscribed to that event). Applies to all "
+                   "non-loyalty money-type items.",
+    )
+    companies_house_api_key = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="Companies House API key for the Merchant Health Alert notification — "
+                   "fires if a gift card issuer enters administration or liquidation. "
+                   "Get a free key at https://developer.company-information.service.gov.uk/",
+    )
+
     # ---- Nearby items (OpenStreetMap) ----
     nearby_places_enabled = models.BooleanField(
         default=True,
@@ -1013,7 +1027,7 @@ class SiteConfiguration(models.Model):
     # page on every load/save.
     SECRET_FIELDS = (
         'webpush_vapid_private_key', 'anthropic_api_key', 'openai_api_key',
-        'pkpass_cert_password', 'logo_dev_api_key',
+        'pkpass_cert_password', 'logo_dev_api_key', 'companies_house_api_key',
     )
 
     class Meta:

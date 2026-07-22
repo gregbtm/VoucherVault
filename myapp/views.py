@@ -213,6 +213,22 @@ def dashboard(request):
             # Mixed currencies, no API key
             needs_fixer_key = True
 
+    # Gift-card-specific balance total (single currency only — avoids the
+    # Fixer.io dependency for a focused gift-card breakdown stat)
+    giftcard_items = Item.objects.with_current_balance().filter(
+        user=user, is_used=False, type='giftcard', value_type='money',
+        expiry_date__gte=timezone.now(),
+    )
+    gc_currencies = list(giftcard_items.values_list('currency', flat=True).distinct())
+    if len(gc_currencies) == 1:
+        giftcards_total = round(
+            float(giftcard_items.aggregate(t=Sum('current_balance'))['t'] or 0), 2
+        )
+        giftcards_total_currency = gc_currencies[0]
+    else:
+        giftcards_total = None
+        giftcards_total_currency = None
+
     # Count the number of items shared by the user
     shared_items_count_by_you = ItemShare.objects.filter(shared_by=user).values('item').distinct().count()
     shared_items_count_with_you = ItemShare.objects.filter(
@@ -250,6 +266,8 @@ def dashboard(request):
         'expiry_calendar': expiry_calendar,
         'shared_items_count_by_you': shared_items_count_by_you,
         'shared_items_count_with_you': shared_items_count_with_you,
+        'giftcards_total': giftcards_total,
+        'giftcards_total_currency': giftcards_total_currency,
     }
     return render(request, 'dashboard.html', context)
 

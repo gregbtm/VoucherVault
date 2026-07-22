@@ -120,6 +120,20 @@
   line-height: 1.2;
 }
 
+.quick-stats-gc-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  background: rgba(239, 68, 68, 0.07);
+  border-radius: 8px;
+  padding: 6px 12px;
+  margin-bottom: 10px;
+  font-size: 0.82rem;
+}
+.gc-total-label { color: var(--text-muted, #6b7280); }
+.gc-total-value { font-weight: 600; color: #ef4444; font-variant-numeric: tabular-nums; }
+body.dark-mode .quick-stats-gc-total { background: rgba(239, 68, 68, 0.12); }
+
 /* Color Variants */
 .stat-card.giftcard .stat-card-icon {
   background: rgba(239, 68, 68, 0.12);
@@ -837,6 +851,12 @@ body.dark-mode .calendar-month-label {
         <div class="value-display-subtitle">{% trans "Available Items" %}</div>
         {% endif %}
         
+        {% if giftcards_total is not None %}
+        <div class="quick-stats-gc-total">
+          <span class="gc-total-label">{% trans "Gift card balance" %}</span>
+          <span class="gc-total-value">{{ giftcards_total|floatformat:2 }} {{ giftcards_total_currency }}</span>
+        </div>
+        {% endif %}
         <div class="quick-stats">
           <div class="quick-stat">
             <div class="quick-stat-value">{{ giftcards_count }}</div>

@@ -71,6 +71,23 @@
             </div>
 
             <div class="settings-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-gift me-2"></i>{% trans "Gift Card Health" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Inactivity reminders and merchant health alerts for gift cards and other value items.' %}"></i></h6>
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.inactivity_threshold_days.id_for_label }}" class="form-label">{% trans "Inactivity reminder threshold (days)" %}</label>
+                  {{ form.inactivity_threshold_days }}
+                  {% if form.inactivity_threshold_days.errors %}<div class="text-danger small">{{ form.inactivity_threshold_days.errors }}</div>{% endif %}
+                  <small class="form-text text-muted">{% trans "Fire an 'Unused Gift Card Reminder' for items not used in this many days (requires a matching notification rule)." %}</small>
+                </div>
+                <div class="col-md-8 mb-3">
+                  <label for="{{ form.companies_house_api_key.id_for_label }}" class="form-label">{% trans "Companies House API key" %}</label>
+                  {{ form.companies_house_api_key }}
+                  <small class="form-text text-muted">{% if config.companies_house_api_key %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %} {% trans "Free key at" %} <a href="https://developer.company-information.service.gov.uk/" target="_blank" rel="noopener">developer.company-information.service.gov.uk</a>. {% trans "Required for Merchant Health Alert notifications." %}</small>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-broadcast me-2"></i>{% trans "Web Push" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Lets users receive expiry notifications as native browser/phone push messages. Requires a one-off VAPID key pair.' %}"></i></h6>
               <p class="text-muted small">{% trans "Generate a key pair with" %} <code>docker compose exec app python manage.py generate_vapid_keys</code></p>
               <div class="row">

@@ -29,6 +29,8 @@ class NotificationRule(models.Model):
         ('next_up_reminder', 'Next Up Item Due Today'),
         ('wallet_invited', 'Wallet Invitation'),
         ('wallet_removed', 'Removed from Wallet'),
+        ('item_inactive', 'Unused Gift Card Reminder'),
+        ('merchant_health_alert', 'Merchant Health Alert'),
     ]
     DIGEST_FREQUENCY_CHOICES = [
         ('immediate', 'Immediate'),

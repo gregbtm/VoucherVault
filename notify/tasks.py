@@ -1,6 +1,6 @@
 import itertools
 import logging
-from datetime import date
+from datetime import date, timedelta
 from operator import attrgetter
 
 import requests as requests_lib
@@ -8,7 +8,11 @@ from dateutil.relativedelta import relativedelta
 
 from celery import shared_task
 
+from django.db.models import Q
+from django.utils import timezone
+
 from myapp.models import Item, SiteConfiguration, Transaction, UserPreference
+from myapp.utils import check_companies_house_status, _CH_BAD_STATUSES
 
 from .backends import get_backend
 from .models import DigestEntry, NotificationLog, NotificationRule
@@ -454,3 +458,118 @@ def advance_recurring_items():
             f"Code: {item.redeem_code}\nValue: {item.value} {item.currency}"
         )
         fire_notifications(item, 'renewal_advanced', title, message, dedupe=False)
+
+
+@shared_task
+def check_and_notify_inactivity():
+    """
+    Runs weekly. Fires 'item_inactive' through each user's NotificationRules
+    for every active money-type item (excluding loyalty cards and fully-spent
+    ones) that has not been used/viewed for more than
+    SiteConfiguration.inactivity_threshold_days.
+
+    Uses its own dedup: fires at most once per threshold period per
+    (item, rule) pair, so users get a periodic nudge rather than a one-off
+    lifetime ping.  Falls back to last_used_at=epoch (item never opened)
+    to treat never-used items the same as long-inactive ones.
+    """
+    cfg = SiteConfiguration.load()
+    threshold_days = cfg.inactivity_threshold_days
+    cutoff_dt = timezone.now() - timedelta(days=threshold_days)
+
+    items = (
+        Item.objects.filter(is_used=False, is_archived=False, value_type='money')
+        .exclude(type='loyaltycard')
+        .filter(
+            Q(last_used_at__isnull=True) | Q(last_used_at__lt=cutoff_dt)
+        )
+        .select_related('user')
+        .with_current_balance()
+    )
+
+    for item in items:
+        if item.current_balance <= 0:
+            continue
+
+        rules = NotificationRule.objects.filter(user=item.user, enabled=True)
+        matching_rules = [r for r in rules if 'item_inactive' in (r.event_types or [])]
+        if not matching_rules:
+            continue
+
+        title = f"💤 {item.name} — unused for {threshold_days}+ days"
+        message = (
+            f"You have {item.current_balance:.2f} {item.currency} remaining.\n"
+            f"Code: {item.redeem_code}"
+        )
+
+        for rule in matching_rules:
+            if NotificationLog.objects.filter(
+                item=item, event_type='item_inactive', rule=rule, success=True,
+                sent_at__gte=cutoff_dt,
+            ).exists():
+                continue
+
+            if rule.digest_frequency == 'daily':
+                DigestEntry.objects.create(
+                    rule=rule, item=item, event_type='item_inactive',
+                    title=title, message=message,
+                )
+                NotificationLog.objects.create(
+                    user=item.user, rule=rule, item=item, event_type='item_inactive',
+                    success=True, detail='Queued for daily digest.',
+                )
+            else:
+                success, detail = send_via_rule(rule, title, message, item=item)
+                NotificationLog.objects.create(
+                    user=item.user, rule=rule, item=item, event_type='item_inactive',
+                    success=success, detail=detail,
+                )
+
+
+@shared_task
+def check_merchant_health():
+    """
+    Runs weekly. For each unique issuer across all active items, queries the
+    Companies House API (requires SiteConfiguration.companies_house_api_key)
+    and fires 'merchant_health_alert' if the matched company is in a bad
+    status (dissolved, liquidation, administration, etc.).
+
+    Deduped per (item, rule): only fires once ever for the same issuer in bad
+    standing — dedupe=True prevents repeat alerts while the situation persists.
+    """
+    cfg = SiteConfiguration.load()
+    api_key = cfg.companies_house_api_key
+    if not api_key:
+        return
+
+    issuers = (
+        Item.objects.filter(is_used=False, is_archived=False)
+        .exclude(issuer='')
+        .values_list('issuer', flat=True)
+        .distinct()
+    )
+
+    bad_issuers: dict[str, dict] = {}
+    for issuer in issuers:
+        if issuer in bad_issuers:
+            continue
+        result = check_companies_house_status(issuer, api_key)
+        if result and result['company_status'] in _CH_BAD_STATUSES:
+            bad_issuers[issuer] = result
+
+    if not bad_issuers:
+        return
+
+    for issuer, ch_data in bad_issuers.items():
+        items = Item.objects.filter(
+            is_used=False, is_archived=False, issuer=issuer,
+        ).select_related('user')
+
+        for item in items:
+            title = f"⚠️ {item.issuer} may be in {ch_data['company_status']}"
+            message = (
+                f"{ch_data['company_name']} (#{ch_data['company_number']}) is "
+                f"listed as '{ch_data['company_status']}' on Companies House.\n"
+                f"Consider spending your {item.name} balance soon."
+            )
+            fire_notifications(item, 'merchant_health_alert', title, message, dedupe=True)

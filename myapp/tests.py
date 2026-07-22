@@ -3714,6 +3714,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
             'Daily Notification Digest', 'Active Today Outward-Leg Cleanup',
             'Advance Recurring Items', 'Retry Failed Firefly Pushes',
             'DMS Auto Pull',
+            'Gift Card Inactivity Check', 'Merchant Health Check',
         })
 
     def test_update_check_and_upstream_check_run_hourly_not_daily(self):
@@ -4021,6 +4022,7 @@ def _site_config_form_data(**overrides):
         'scheduled_backup_enabled': True, 'backup_retention_count': 7,
         'expiring_soon_limit': 10, 'calendar_months_ahead': 3,
         'wallet_chart_limit': 8, 'duplicate_photo_threshold': 10,
+        'inactivity_threshold_days': 90, 'companies_house_api_key': '',
     }
     data.update(overrides)
     return data

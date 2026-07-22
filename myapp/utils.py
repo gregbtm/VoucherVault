@@ -144,6 +144,57 @@ def generate_code_image_base64(item):
     return base64.b64encode(buffer.getvalue()).decode(), code_type
 
 
+_CH_BAD_STATUSES = frozenset({
+    'dissolved', 'liquidation', 'administration', 'receivership',
+    'converted-closed', 'voluntary-arrangement',
+})
+
+
+def check_companies_house_status(issuer_name: str, api_key: str) -> dict | None:
+    """
+    Look up issuer_name in Companies House and return a dict:
+        {'company_name': ..., 'company_status': ..., 'company_number': ...}
+    or None if no confident match is found or the request fails.
+
+    A match is accepted when the issuer name appears (case-insensitively) in
+    the top search result's company name, or vice versa — conservative to
+    avoid false positives from common words.  Only the first result is
+    checked; Companies House returns results ranked by relevance.
+    """
+    if not api_key or not issuer_name:
+        return None
+
+    import base64 as _b64
+    query = issuer_name.strip()
+    url = f"https://api.company-information.service.gov.uk/search/companies?q={urllib.request.quote(query)}&items_per_page=5"
+    credentials = _b64.b64encode(f"{api_key}:".encode()).decode()
+    req = urllib.request.Request(url, headers={"Authorization": f"Basic {credentials}"})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310
+            data = json.loads(response.read().decode())
+    except (urllib.error.URLError, Exception) as exc:
+        logger.warning("Companies House request failed for %r: %s", issuer_name, exc)
+        return None
+
+    items = data.get('items') or []
+    if not items:
+        return None
+
+    best = items[0]
+    ch_name = (best.get('title') or best.get('company_name') or '').lower()
+    query_lower = query.lower()
+
+    # Accept if either name contains the other (simple containment check)
+    if query_lower not in ch_name and ch_name not in query_lower:
+        return None
+
+    return {
+        'company_name': best.get('title') or best.get('company_name'),
+        'company_status': (best.get('company_status') or 'unknown').lower(),
+        'company_number': best.get('company_number'),
+    }
+
+
 def convert_currency(amount, from_currency, to_currency, rates):
     """
     Convert amount from from_currency to to_currency using EUR-based rates dict.
