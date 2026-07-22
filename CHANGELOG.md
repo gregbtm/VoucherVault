@@ -1,3 +1,10 @@
+## [1.1.109](https://github.com/gregbtm/VoucherVault/compare/v1.1.108...v1.1.109) (2026-07-22)
+
+
+### Bug Fixes
+
+* CSP nonce broken in django-csp 4.x — all inline scripts silently blocked ([038c876](https://github.com/gregbtm/VoucherVault/commit/038c876061d0b3a69da83f971505dc1b766a8979))
+
 ## [1.1.108](https://github.com/gregbtm/VoucherVault/compare/v1.1.107...v1.1.108) (2026-07-22)
 
 
@@ -15,6 +22,4 @@
 ## [1.1.106](https://github.com/gregbtm/VoucherVault/compare/v1.1.105...v1.1.106) (2026-07-22)
 
 ## [1.1.105](https://github.com/gregbtm/VoucherVault/compare/v1.1.104...v1.1.105) (2026-07-22)
-
-## [1.1.104](https://github.com/gregbtm/VoucherVault/compare/v1.1.103...v1.1.104) (2026-07-22)
 
