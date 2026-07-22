@@ -156,6 +156,78 @@
   color: #842029;
 }
 
+/* Journey Navigator */
+.journey-nav-strip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.75rem 0;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border-color, #eee);
+  flex-wrap: wrap;
+}
+.journey-nav-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6c757d;
+  white-space: nowrap;
+  padding-top: 0.35rem;
+}
+.journey-nav-legs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  flex: 1;
+}
+.journey-leg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.journey-leg-current {
+  background: #4154f1;
+  color: #fff;
+}
+.journey-leg-link {
+  background: var(--field-bg, #f0f1ff);
+  color: #4154f1;
+  border: 1.5px solid #c5caff;
+}
+.journey-leg-link:hover {
+  background: #4154f1;
+  color: #fff;
+  border-color: #4154f1;
+}
+.journey-leg-seq {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15em;
+  height: 1.15em;
+  background: rgba(255,255,255,0.25);
+  border-radius: 50%;
+  font-size: 0.7em;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.journey-leg-link .journey-leg-seq {
+  background: rgba(65,84,241,0.12);
+}
+.journey-leg-time {
+  opacity: 0.8;
+  font-weight: 400;
+  font-size: 0.75em;
+  margin-left: 0.2em;
+}
+
 /* Detail Fields */
 .detail-fields {
   display: grid;
@@ -1631,7 +1703,33 @@ body.dark-mode .tilt-scan-enable-btn {
               </div>
             </div>
           </div>
-          
+
+          {% if journey_siblings %}
+          <div class="journey-nav-strip">
+            <div class="journey-nav-label">
+              <i class="bi bi-link-45deg"></i> {% trans "Journey" %}
+            </div>
+            <div class="journey-nav-legs">
+              <span class="journey-leg journey-leg-current">
+                <span class="journey-leg-seq">{{ item.journey_sequence }}</span>
+                <span class="journey-leg-route">
+                  {{ item.journey_origin }}{% if item.journey_destination %} &rarr; {{ item.journey_destination }}{% endif %}
+                  {% if item.travel_time %}<span class="journey-leg-time">{{ item.travel_time|time:"H:i" }}</span>{% endif %}
+                </span>
+              </span>
+              {% for sibling in journey_siblings %}
+              <a href="{% url 'view_item' sibling.id %}" class="journey-leg journey-leg-link">
+                <span class="journey-leg-seq">{{ sibling.journey_sequence }}</span>
+                <span class="journey-leg-route">
+                  {{ sibling.journey_origin }}{% if sibling.journey_destination %} &rarr; {{ sibling.journey_destination }}{% endif %}
+                  {% if sibling.travel_time %}<span class="journey-leg-time">{{ sibling.travel_time|time:"H:i" }}</span>{% endif %}
+                </span>
+              </a>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
           <!-- Detail Fields -->
           <div class="detail-fields">
             <div class="detail-field">

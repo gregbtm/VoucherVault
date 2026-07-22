@@ -1624,6 +1624,45 @@ document.addEventListener("DOMContentLoaded", function () {
         } else {
           statusEl.innerHTML = '<span class="scan-chip scan-chip-empty"><i class="bi bi-eye-slash"></i> {% trans "Nothing could be confidently read from that PDF." %}</span>';
         }
+
+        if (data.multi_page && data.page_count > 1) {
+          const importAllBtn = document.createElement('button');
+          importAllBtn.type = 'button';
+          importAllBtn.className = 'btn btn-sm btn-primary mt-2';
+          importAllBtn.innerHTML = `<i class="bi bi-train-front-fill me-1"></i>{% trans "Import all" %} ${data.page_count} {% trans "linked tickets" %} &rarr;`;
+          importAllBtn.addEventListener('click', function () {
+            const btn = this;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>{% trans "Importing…" %}';
+            const fd = new FormData();
+            fd.append('file', document.getElementById('aiScanInput').files[0]);
+            fd.append('create', 'true');
+            fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+            fetch("{% url 'api-rail-ticket-import' %}", {method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'}, body: fd})
+              .then(r => r.json())
+              .then(resp => {
+                if (resp.tickets && resp.tickets.length) {
+                  const first = resp.tickets.find(t => t.item) || resp.tickets[0];
+                  if (first && first.item && first.item.id) {
+                    window.location.href = '/en/items/' + first.item.id + '/';
+                  } else {
+                    btn.disabled = false;
+                    btn.innerHTML = '{% trans "Import failed — no items created." %}';
+                  }
+                } else {
+                  btn.disabled = false;
+                  btn.innerHTML = '{% trans "Import failed." %}';
+                }
+              })
+              .catch(() => {
+                btn.disabled = false;
+                btn.innerHTML = '{% trans "Import failed." %}';
+              });
+          });
+          statusEl.appendChild(document.createElement('br'));
+          statusEl.appendChild(importAllBtn);
+        }
+
         checkDuplicateCode();
       })
       .catch(() => {

@@ -641,6 +641,16 @@ def view_item(request, item_uuid):
     balance_history = list(
         BalanceHistory.objects.filter(item=item).order_by('recorded_at').values('balance', 'recorded_at', 'note')
     )
+    journey_siblings = []
+    if item.journey_group_id:
+        journey_siblings = list(
+            Item.objects.filter(journey_group_id=item.journey_group_id)
+            .exclude(pk=item.pk)
+            .order_by('journey_sequence')
+            .only('id', 'name', 'journey_origin', 'journey_destination',
+                  'journey_sequence', 'travel_time')
+        )
+
     context = {
         'item': item,
         'transactions': transactions,
@@ -666,6 +676,7 @@ def view_item(request, item_uuid):
         'has_notification_rule': NotificationRule.objects.filter(user=request.user, enabled=True).exists(),
         'balance_history': balance_history,
         'update_balance_url': reverse('update_item_balance', args=[item.id]),
+        'journey_siblings': journey_siblings,
     }
     return render(request, 'view-item.html', context)
 

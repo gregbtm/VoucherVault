@@ -1001,6 +1001,25 @@ def _ticket_pdf_upload(barcode_data='AABXC5V4LVT', barcode_type='azteccode', nam
     return SimpleUploadedFile(name, pdf_bytes, content_type='application/pdf')
 
 
+def _multi_page_ticket_pdf_upload(codes=None, name='multi_ticket.pdf'):
+    """A two-page PDF with a distinct barcode on each page for multi-ticket tests."""
+    import fitz
+    import treepoem
+
+    if codes is None:
+        codes = ['PAGE1CODE', 'PAGE2CODE']
+    doc = fitz.open()
+    for code in codes:
+        barcode = treepoem.generate_barcode(barcode_type='azteccode', data=code, scale=2)
+        image_bytes = io.BytesIO()
+        barcode.save(image_bytes, 'PNG')
+        page = doc.new_page(width=400, height=400)
+        page.insert_image(fitz.Rect(50, 50, 350, 350), stream=image_bytes.getvalue())
+    pdf_bytes = doc.tobytes()
+    doc.close()
+    return SimpleUploadedFile(name, pdf_bytes, content_type='application/pdf')
+
+
 def _blank_pdf_upload(name='ticket.pdf'):
     import fitz
 
@@ -1300,6 +1319,90 @@ class RailTicketImportApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         item = Item.objects.get()
         self.assertIsNone(item.description)
+
+    def test_extract_only_single_page_has_no_multi_page_key(self):
+        response = self.client.post(
+            '/api/v1/imports/rail-ticket/', {'file': _ticket_pdf_upload()}, format='multipart'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn('multi_page', response.data)
+
+    def test_extract_only_multi_page_returns_multi_page_flag(self):
+        response = self.client.post(
+            '/api/v1/imports/rail-ticket/',
+            {'file': _multi_page_ticket_pdf_upload()},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data.get('multi_page'))
+        self.assertEqual(response.data.get('page_count'), 2)
+        self.assertFalse(response.data['created'])
+
+    def test_create_multi_page_creates_one_item_per_page(self):
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _multi_page_ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data['multi_ticket'])
+        self.assertEqual(response.data['created_count'], 2)
+        self.assertEqual(Item.objects.count(), 2)
+
+    def test_create_multi_page_items_share_journey_group_id(self):
+        self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _multi_page_ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+        }, format='multipart')
+        items = list(Item.objects.order_by('journey_sequence'))
+        self.assertEqual(len(items), 2)
+        self.assertIsNotNone(items[0].journey_group_id)
+        self.assertEqual(items[0].journey_group_id, items[1].journey_group_id)
+        self.assertEqual(items[0].journey_sequence, 1)
+        self.assertEqual(items[1].journey_sequence, 2)
+
+    def test_create_multi_page_pdf_attached_to_first_leg_only(self):
+        self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _multi_page_ticket_pdf_upload(),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+        }, format='multipart')
+        items = list(Item.objects.order_by('journey_sequence'))
+        self.assertEqual(items[0].documents.count(), 1)
+        self.assertEqual(items[1].documents.count(), 0)
+
+    def test_create_multi_page_dedup_skips_existing_barcode(self):
+        make_item(self.alice, type='travelpass', redeem_code='PAGE1CODE')
+        response = self.client.post('/api/v1/imports/rail-ticket/', {
+            'file': _multi_page_ticket_pdf_upload(codes=['PAGE1CODE', 'PAGE2CODE']),
+            'create': 'true',
+            'issuer': 'Greater Anglia',
+        }, format='multipart')
+        self.assertIn(response.status_code, (201, 409))
+        tickets = response.data['tickets']
+        self.assertTrue(tickets[0]['duplicate'])
+        self.assertFalse(tickets[1].get('duplicate', False))
+        self.assertEqual(Item.objects.filter(type='travelpass').count(), 2)
+
+    def test_journey_siblings_in_view_item_context(self):
+        import uuid
+        gid = uuid.uuid4()
+        item1 = make_item(
+            self.alice, type='travelpass',
+            journey_group_id=gid, journey_sequence=1,
+        )
+        item2 = make_item(
+            self.alice, type='travelpass',
+            journey_group_id=gid, journey_sequence=2,
+        )
+        self.client.logout()
+        self.client.force_login(self.alice)
+        response = self.client.get(f'/en/items/view/{item1.id}')
+        self.assertEqual(response.status_code, 200)
+        siblings = response.context['journey_siblings']
+        self.assertEqual(len(siblings), 1)
+        self.assertEqual(siblings[0].id, item2.id)
 
 
 class RailTicketBatchImportApiTests(APITestCase):

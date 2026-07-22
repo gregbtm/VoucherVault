@@ -722,10 +722,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  function getCsrfToken() {
-    var match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-    return match ? decodeURIComponent(match[1]) : '';
-  }
+  var CSRF_TOKEN = '{{ csrf_token }}';
 
   // "Redeploy now" on the update-available banner triggers the Portainer
   // webhook, then polls this page until it's back up and reloads. A plain
@@ -749,7 +746,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
       fetch(redeployBtn.dataset.url, {
         method: 'POST',
-        headers: { 'X-CSRFToken': getCsrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
+        headers: { 'X-CSRFToken': CSRF_TOKEN, 'X-Requested-With': 'XMLHttpRequest' },
       })
         .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
         .then(function (result) {
@@ -807,7 +804,7 @@ document.addEventListener('DOMContentLoaded', function () {
       window.setButtonLoading(checkUpdatesBtn, true);
       fetch(checkUpdatesBtn.dataset.url, {
         method: 'POST',
-        headers: { 'X-CSRFToken': getCsrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
+        headers: { 'X-CSRFToken': CSRF_TOKEN, 'X-Requested-With': 'XMLHttpRequest' },
       })
         .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
         .then(function (result) {
@@ -890,7 +887,7 @@ document.addEventListener('DOMContentLoaded', function () {
       window.setButtonLoading(checkUpstreamBtn, true);
       fetch(checkUpstreamBtn.dataset.url, {
         method: 'POST',
-        headers: { 'X-CSRFToken': getCsrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
+        headers: { 'X-CSRFToken': CSRF_TOKEN, 'X-Requested-With': 'XMLHttpRequest' },
       })
         .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
         .then(function (result) {
