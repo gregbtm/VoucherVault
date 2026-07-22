@@ -41,6 +41,7 @@ urlpatterns = (
     path('s/<uuid:share_id>/logo/', views.public_item_share_logo, name='public_item_share_logo'),
     path('s/<uuid:share_id>/pkpass/', views.public_item_pkpass, name='public_item_pkpass'),
     path('items/view-image/<uuid:item_id>/', views.serve_image_file, name='serve_image_file'),
+    path('items/barcode-push/<uuid:item_id>/', views.barcode_push_image, name='barcode_push_image'),
     path('items/view-file/<uuid:item_id>/', views.view_original_file, name='view_original_file'),
     path('items/<uuid:item_uuid>/documents/upload', views.upload_document, name='upload_document'),
     path('documents/<int:document_id>/download', views.download_document, name='download_document'),

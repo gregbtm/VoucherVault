@@ -1,3 +1,4 @@
+import base64
 import os
 import json
 import logging
@@ -7,6 +8,7 @@ import mimetypes
 import uuid
 import datetime as dt
 import requests
+from django.core import signing
 from django.db import IntegrityError
 from django.db.models import Q
 from django.utils.safestring import mark_safe
@@ -1168,6 +1170,38 @@ def serve_image_file(request, item_id):
         return HttpResponse("File is not an image", status=400)
 
     return HttpResponse(item.file, content_type=mime_type)
+
+
+_BARCODE_PUSH_SALT = 'barcode-push-image'
+_BARCODE_PUSH_MAX_AGE = 86_400  # 24 hours
+
+
+def barcode_push_image(request, item_id):
+    """Serves the barcode PNG for a push notification image, authenticated via
+    a short-lived signed token rather than a session cookie (push notifications
+    arrive on the lock screen, before any login session exists)."""
+    token = request.GET.get('t', '')
+    try:
+        signed_id = signing.loads(token, salt=_BARCODE_PUSH_SALT, max_age=_BARCODE_PUSH_MAX_AGE)
+    except signing.SignatureExpired:
+        return HttpResponse('Token expired', status=410)
+    except signing.BadSignature:
+        return HttpResponse('Invalid token', status=403)
+
+    if str(item_id) != str(signed_id):
+        return HttpResponse('Token mismatch', status=403)
+
+    item = get_object_or_404(Item, id=item_id)
+    if not item.qr_code_base64:
+        raise Http404('No barcode for this item')
+
+    try:
+        image_bytes = base64.b64decode(item.qr_code_base64)
+    except Exception:
+        raise Http404('Barcode data corrupted')
+
+    return HttpResponse(image_bytes, content_type='image/png')
+
 
 @require_GET
 @login_required

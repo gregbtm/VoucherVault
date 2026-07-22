@@ -446,6 +446,114 @@ class WebPushBackendTests(TestCase):
         self.assertIn('url', payload)
         self.assertIn(str(item.id), payload['url'])
 
+    @patch('notify.backends.webpush.webpush')
+    def test_send_includes_barcode_image_url_when_item_has_barcode(self, mock_webpush):
+        set_site_config(webpush_vapid_private_key='fake-key')
+        WebPushSubscription.objects.create(
+            user=self.user, endpoint='https://push.example.com/1', p256dh='a', auth='b',
+        )
+        dummy_png = base64.b64encode(b'\x89PNG\r\n\x1a\n' + b'\x00' * 16).decode()
+        item = Item.objects.create(
+            user=self.user, type='giftcard', name='Coffee Card',
+            issuer='Cafe', redeem_code='COFFEE1', code_type='qrcode',
+            expiry_date=date.today(), value=10, qr_code_base64=dummy_png,
+        )
+        backend = WebPushBackend({'user_id': self.user.id})
+        backend.send('title', 'body', item=item)
+        payload = json.loads(mock_webpush.call_args.kwargs.get('data') or mock_webpush.call_args[1]['data'])
+        self.assertIn('image_url', payload)
+        self.assertIn(str(item.id), payload['image_url'])
+        self.assertIn('barcode-push', payload['image_url'])
+
+    @patch('notify.backends.webpush.webpush')
+    def test_send_omits_barcode_image_url_when_code_type_is_none(self, mock_webpush):
+        set_site_config(webpush_vapid_private_key='fake-key')
+        WebPushSubscription.objects.create(
+            user=self.user, endpoint='https://push.example.com/1', p256dh='a', auth='b',
+        )
+        item = Item.objects.create(
+            user=self.user, type='giftcard', name='No Barcode Card',
+            issuer='Shop', redeem_code='NBR1', code_type='none',
+            expiry_date=date.today(), value=5,
+        )
+        backend = WebPushBackend({'user_id': self.user.id})
+        backend.send('title', 'body', item=item)
+        payload = json.loads(mock_webpush.call_args.kwargs.get('data') or mock_webpush.call_args[1]['data'])
+        self.assertNotIn('image_url', payload)
+
+
+class BarcodePushImageViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+        self.dummy_png = base64.b64encode(b'\x89PNG\r\n\x1a\n' + b'\x00' * 16).decode()
+        self.item = Item.objects.create(
+            user=self.user, type='giftcard', name='Barcode Card',
+            issuer='Cafe', redeem_code='QR1', code_type='qrcode',
+            expiry_date=date.today(), value=10, qr_code_base64=self.dummy_png,
+        )
+
+    def _make_token(self, item_id=None, salt='barcode-push-image'):
+        from django.core import signing
+        return signing.dumps(str(item_id or self.item.id), salt=salt)
+
+    def test_valid_token_returns_png(self):
+        token = self._make_token()
+        resp = self.client.get(reverse('barcode_push_image', args=[self.item.id]) + f'?t={token}')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'image/png')
+        self.assertEqual(resp.content, base64.b64decode(self.dummy_png))
+
+    def test_missing_token_returns_403(self):
+        resp = self.client.get(reverse('barcode_push_image', args=[self.item.id]))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_bad_signature_returns_403(self):
+        resp = self.client.get(
+            reverse('barcode_push_image', args=[self.item.id]) + '?t=definitely-not-valid'
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_wrong_salt_returns_403(self):
+        bad_token = self._make_token(salt='wrong-salt')
+        resp = self.client.get(reverse('barcode_push_image', args=[self.item.id]) + f'?t={bad_token}')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_token_for_different_item_returns_403(self):
+        other = Item.objects.create(
+            user=self.user, type='giftcard', name='Other Card',
+            issuer='Shop', redeem_code='QR2', code_type='qrcode',
+            expiry_date=date.today(), value=5, qr_code_base64=self.dummy_png,
+        )
+        token = self._make_token(item_id=other.id)
+        resp = self.client.get(reverse('barcode_push_image', args=[self.item.id]) + f'?t={token}')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_item_with_no_barcode_returns_404(self):
+        no_barcode_item = Item.objects.create(
+            user=self.user, type='giftcard', name='Empty Barcode',
+            issuer='Shop', redeem_code='NB1', code_type='none',
+            expiry_date=date.today(), value=0,
+        )
+        token = self._make_token(item_id=no_barcode_item.id)
+        resp = self.client.get(reverse('barcode_push_image', args=[no_barcode_item.id]) + f'?t={token}')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_expired_token_returns_410(self):
+        from django.core import signing
+        import time
+        with patch('django.core.signing.time') as mock_time:
+            mock_time.time.return_value = time.time() - 90_001
+            token = self._make_token()
+        resp = self.client.get(reverse('barcode_push_image', args=[self.item.id]) + f'?t={token}')
+        self.assertEqual(resp.status_code, 410)
+
+    def test_endpoint_accessible_without_login(self):
+        self.client.logout()
+        token = self._make_token()
+        resp = self.client.get(reverse('barcode_push_image', args=[self.item.id]) + f'?t={token}')
+        self.assertEqual(resp.status_code, 200)
+
 
 class FireflyTransactionIdTests(TestCase):
     """Transaction.firefly_transaction_id writeback via _do_firefly_push."""

@@ -539,14 +539,17 @@ self.addEventListener('push', event => {
         }
     }
 
-    event.waitUntil(
-        self.registration.showNotification(payload.title, {
-            body: payload.body,
-            icon: '/static/assets/img/manifest-icon-192.png',
-            badge: '/static/assets/img/manifest-icon-192.png',
-            data: { url: payload.url || '/' },
-        })
-    );
+    const notifOptions = {
+        body: payload.body,
+        icon: '/static/assets/img/manifest-icon-192.png',
+        badge: '/static/assets/img/manifest-icon-192.png',
+        data: { url: payload.url || '/' },
+    };
+    if (payload.image_url) {
+        notifOptions.image = payload.image_url;
+    }
+
+    event.waitUntil(self.registration.showNotification(payload.title, notifOptions));
 });
 
 // Web Push - focus/open the app when a notification is clicked
