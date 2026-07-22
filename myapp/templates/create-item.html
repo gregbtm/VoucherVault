@@ -964,6 +964,16 @@ body.dark-mode .error-alert {
                        value='{{ form.firefly_account_id.value|default_if_none:"" }}'>
                 <small class="form-text text-muted">{% trans "Used by the Firefly III notification backend to post withdrawal transactions when you spend from this card. You can also link this after saving via the edit form." %}</small>
               </div>
+              <div class="form-group mt-2" id="firefly-rule-wrap" style="display:none">
+                <label class="form-label" for="firefly_rule">{% trans "Firefly III Rule (override)" %}</label>
+                <select class="modern-select" id="firefly_rule" name="firefly_rule">
+                  <option value="">{% trans "Use wallet / global rule (default)" %}</option>
+                  {% for rule in form.fields.firefly_rule.queryset %}
+                  <option value="{{ rule.id }}" {% if form.firefly_rule.value|stringformat:"s" == rule.id|stringformat:"s" %}selected{% endif %}>{{ rule.name }}</option>
+                  {% endfor %}
+                </select>
+                <small class="form-text text-muted">{% trans "Pin this item to a specific Firefly notification rule instead of falling back to the wallet or user-level default." %}</small>
+              </div>
             </div>
             {% if not has_firefly_rule %}
             <p class="text-muted small mb-2" id="firefly-hint">
@@ -1028,19 +1038,34 @@ body.dark-mode .error-alert {
               <small class="form-text text-muted">{% trans "Visible to anyone with your public share link." %}</small>
             </div>
 
-            {% if has_notification_rule %}
             <div class="form-group">
-              <label class="form-label" for="notify_days_before">{% trans "Notify Me Before Expiry" %}</label>
-              <input type="number" class="modern-input" id="notify_days_before" name="notify_days_before"
-                     placeholder="{% trans 'Use global default' %}" min="0"
-                     value='{{ form.notify_days_before.value|default_if_none:"" }}'>
-              <small class="form-text text-muted">{% trans "Days before expiry to notify, overriding the global default. Leave blank to use the global setting." %}</small>
+              <div class="d-flex align-items-center gap-2">
+                <input type="checkbox" class="form-check-input" id="notifications_muted" name="notifications_muted"
+                       {% if form.notifications_muted.value %}checked{% endif %}>
+                <label class="form-label mb-0" for="notifications_muted">{% trans "Mute All Notifications" %}</label>
+              </div>
+              <small class="form-text text-muted">{% trans "Suppress all expiry and renewal alerts for this item." %}</small>
             </div>
-            {% else %}
-            <p class="text-muted small mb-2">
-              <i class="bi bi-bell-slash me-1"></i>{% trans "No expiry notifications — " %}<a href="{% url 'manage_notification_rules' %}">{% trans "set up a notification rule" %}</a>{% trans " to enable this field." %}
-            </p>
-            {% endif %}
+            <div id="notify-threshold-section">
+              {% if has_notification_rule %}
+              <div class="form-group">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                  <input type="checkbox" class="form-check-input" id="override_notify_threshold">
+                  <label class="form-label mb-0" for="override_notify_threshold">{% trans "Override expiry threshold" %}</label>
+                </div>
+                <div id="notify-days-wrap" style="display:none">
+                  <input type="number" class="modern-input" id="notify_days_before" name="notify_days_before"
+                         placeholder="{% trans 'Days before expiry' %}" min="0"
+                         value='{{ form.notify_days_before.value|default_if_none:"" }}'>
+                  <small class="form-text text-muted">{% trans "Overrides the global notification threshold for this item only." %}</small>
+                </div>
+              </div>
+              {% else %}
+              <p class="text-muted small mb-2">
+                <i class="bi bi-bell-slash me-1"></i>{% trans "No expiry notifications — " %}<a href="{% url 'manage_notification_rules' %}">{% trans "set up a notification rule" %}</a>{% trans " to enable this field." %}
+              </p>
+              {% endif %}
+            </div>
 
             <!-- Recurring / Subscription -->
             <div class="form-group">
@@ -1182,6 +1207,42 @@ function handleSubmitButton() {
       fields.style.display = this.checked ? '' : 'none';
     });
   }
+})();
+
+(function () {
+  const mutedCb = document.getElementById('notifications_muted');
+  const thresholdSection = document.getElementById('notify-threshold-section');
+  const overrideCb = document.getElementById('override_notify_threshold');
+  const notifyDaysWrap = document.getElementById('notify-days-wrap');
+  const notifyDaysInput = document.getElementById('notify_days_before');
+
+  function syncMuted() {
+    if (thresholdSection) thresholdSection.style.display = mutedCb && mutedCb.checked ? 'none' : '';
+  }
+  function syncOverride() {
+    if (notifyDaysWrap) notifyDaysWrap.style.display = overrideCb && overrideCb.checked ? '' : 'none';
+    if (overrideCb && !overrideCb.checked && notifyDaysInput) notifyDaysInput.value = '';
+  }
+
+  if (mutedCb) mutedCb.addEventListener('change', syncMuted);
+  if (overrideCb) overrideCb.addEventListener('change', syncOverride);
+
+  // On load: expand override section if notify_days_before already has a value
+  if (overrideCb && notifyDaysInput && notifyDaysInput.value.trim() !== '') {
+    overrideCb.checked = true;
+    if (notifyDaysWrap) notifyDaysWrap.style.display = '';
+  }
+  syncMuted();
+})();
+
+(function () {
+  const accountIdField = document.getElementById('firefly_account_id');
+  const ruleWrap = document.getElementById('firefly-rule-wrap');
+  function syncFireflyRule() {
+    if (ruleWrap) ruleWrap.style.display = accountIdField && accountIdField.value.trim() ? '' : 'none';
+  }
+  if (accountIdField) accountIdField.addEventListener('input', syncFireflyRule);
+  syncFireflyRule();
 })();
 
 function resetTileColor() {
