@@ -722,6 +722,11 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  function getCsrfToken() {
+    var match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : '';
+  }
+
   // "Redeploy now" on the update-available banner triggers the Portainer
   // webhook, then polls this page until it's back up and reloads. A plain
   // button + fetch, not a <form>, since this banner now lives inside
@@ -736,7 +741,6 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!redeployBtn) return;
     redeployBtn.addEventListener('click', function () {
       showConfirm('{% trans "This rebuilds and restarts the app container now. Continue?" %}', '{% trans "Restart" %}', function() {
-      var csrfInput = document.querySelector('input[name=csrfmiddlewaretoken]');
       var progress = document.getElementById('redeploy-progress');
       var progressText = document.getElementById('redeploy-progress-text');
       redeployBtn.disabled = true;
@@ -745,7 +749,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
       fetch(redeployBtn.dataset.url, {
         method: 'POST',
-        headers: { 'X-CSRFToken': csrfInput.value, 'X-Requested-With': 'XMLHttpRequest' },
+        headers: { 'X-CSRFToken': getCsrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
       })
         .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
         .then(function (result) {
@@ -800,11 +804,10 @@ document.addEventListener('DOMContentLoaded', function () {
   var checkUpdatesBtn = document.getElementById('check-updates-btn');
   if (checkUpdatesBtn) {
     checkUpdatesBtn.addEventListener('click', function () {
-      var csrfInput = document.querySelector('input[name=csrfmiddlewaretoken]');
       window.setButtonLoading(checkUpdatesBtn, true);
       fetch(checkUpdatesBtn.dataset.url, {
         method: 'POST',
-        headers: { 'X-CSRFToken': csrfInput.value, 'X-Requested-With': 'XMLHttpRequest' },
+        headers: { 'X-CSRFToken': getCsrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
       })
         .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
         .then(function (result) {
@@ -884,11 +887,10 @@ document.addEventListener('DOMContentLoaded', function () {
   var checkUpstreamBtn = document.getElementById('check-upstream-btn');
   if (checkUpstreamBtn) {
     checkUpstreamBtn.addEventListener('click', function () {
-      var csrfInput = document.querySelector('input[name=csrfmiddlewaretoken]');
       window.setButtonLoading(checkUpstreamBtn, true);
       fetch(checkUpstreamBtn.dataset.url, {
         method: 'POST',
-        headers: { 'X-CSRFToken': csrfInput.value, 'X-Requested-With': 'XMLHttpRequest' },
+        headers: { 'X-CSRFToken': getCsrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
       })
         .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
         .then(function (result) {
