@@ -158,6 +158,8 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 125 — Barcode scanning reliability: OCR prompt fix + three-tier decode pipeline](#phase-125--barcode-scanning-reliability-ocr-prompt-fix--three-tier-decode-pipeline)
 - [Phase 126 — Docker hotfix: dms module missing from production image](#phase-126--docker-hotfix-dms-module-missing-from-production-image)
 - [Phase 127 — Conditional field visibility, Preferences autosave, expanded Help Center](#phase-127--conditional-field-visibility-preferences-autosave-expanded-help-center)
+- [Phase 128 — PocketID / OIDC integration: invites, user management, identity card](#phase-128--pocketid--oidc-integration-invites-user-management-identity-card)
+- [Phase 129 — Security hardening: 8-point audit pass](#phase-129--security-hardening-8-point-audit-pass)
 - [New environment variables](#new-environment-variables)
 - [Upgrading an existing deployment](#upgrading-an-existing-deployment)
 
@@ -6481,6 +6483,137 @@ doc opens in the existing overlay without a page load.
 `myapp/templates/wallet_activity.html`,
 `docs/NOTIFICATIONS_SETUP.md` (new), `docs/WEBHOOKS_SETUP.md` (new),
 `docs/API_ACCESS.md` (new), `docs/WALLETS_AND_TAGS.md` (new)
+
+---
+
+## Phase 128 — PocketID / OIDC integration: invites, user management, identity card
+
+Full OpenID Connect single sign-on wired end-to-end for PocketID (and any
+OIDC-compliant provider), with a matching user-management UI and an in-app
+invite system for controlled onboarding.
+
+**OIDC / PocketID**
+`myapp/oidc_backend.py` rewritten as `VoucherVaultOIDCBackend`:
+- RS256 default (`OIDC_RP_SIGN_ALGO=RS256`); previous HS256 default caused
+  silent auth failures with PocketID.
+- `create_user()` respects the `allow_registration` gate in `SiteConfiguration`.
+- Syncs `first_name`, `last_name`, `email`, and PocketID avatar URL on every
+  login.
+- Reads a `groups` OIDC claim: if it matches `SiteConfiguration.oidc_admin_group`,
+  the user is promoted to Django superuser; removed from the group → demoted.
+- `SessionRefresh` middleware re-enabled (was accidentally disabled).
+
+**All OIDC credentials in the database**
+Discovery URL, client ID/secret, provider name, autologin flag, admin-group claim,
+and the new `oidc_create_user` toggle moved from environment variables into
+`SiteConfiguration` and exposed in **Site Settings → OIDC / PocketID Integration**
+— no container restart needed to change connection details.
+
+**Invite link system**
+`InviteLink` model (UUID token, expiry date, creator, redeemed flag). Admins
+create, list, and revoke links at **Settings → Manage Invites**. The `accept_invite`
+view applies Django password validators at registration time. Useful when public
+registration is closed but you want to onboard a new user who doesn't have a
+PocketID account.
+
+**Connected Identity card**
+Security page (`session_management.html`) shows a PocketID identity card: avatar,
+display name, provider, last auth time, **Re-authenticate** button, and an
+**Unlink** button that clears OIDC fields from the user's profile without
+disabling their password login.
+
+**User management panel**
+Superuser-only page (`/users/`) listing all accounts with: OIDC badge, session
+count, joined/last-login dates, and a one-click promote/demote action. Accessible
+from the sidebar under Admin.
+
+**Nav avatar**
+Sidebar profile icon shows the PocketID avatar thumbnail when available; falls back
+to the Bootstrap `person-circle` icon.
+
+**Test suite:** 1113 tests, 0 failures (22 new tests across `InviteLinkModelTests`,
+`ManageInvitesViewTests`, `AcceptInviteViewTests`, `ManageUsersViewTests`,
+`UnlinkOIDCViewTests`).
+
+**Files changed:** `myapp/models.py`, `myapp/oidc_backend.py`, `myapp/forms.py`,
+`myapp/views.py`, `myapp/urls.py`, `myapp/migrations/0079_pocketid_integration.py`,
+`myproject/settings.py`, `myproject/urls.py`, `myapp/templates/base.html`,
+`myapp/templates/login.html`, `myapp/templates/session_management.html`,
+`myapp/templates/site_settings.html`, new `myapp/templates/invite_accept.html`,
+`myapp/templates/manage_invites.html`, `myapp/templates/manage_users.html`
+
+---
+
+## Phase 129 — Security hardening: 8-point audit pass
+
+A targeted security audit identified eight gaps; all eight were closed in this
+phase.
+
+**1. Invite-link password validation**
+`validate_password()` from `django.contrib.auth.password_validation` is now called
+inside `accept_invite` — the registration form rejects weak passwords at the Django
+layer, consistent with the standard sign-up flow.
+
+**2. SECRET_KEY system check (`myapp.W001`)**
+A `@register()` check warns at startup when `SECRET_KEY` is derived from Django's
+random fallback rather than the environment. A random key invalidates all sessions
+on every container restart.
+*Fix: set `SECRET_KEY` in your `docker-compose.yml`.*
+
+**3. Dependency audit CI**
+`.github/workflows/dependency-audit.yml` runs `pip-audit` against
+`requirements.txt` on every push that touches it, on all PRs, and on a weekly
+Monday 06:00 UTC schedule. Scans for CVEs in the Python dependency tree.
+
+**4. API token expiry**
+`api/authentication.py` subclasses `TokenAuthentication` as
+`ExpiringTokenAuthentication`. Tokens older than `API_TOKEN_EXPIRY_DAYS` days are
+rejected and deleted at authentication time. Default is 0 (disabled). A
+`purge_expired_tokens` management command does manual housekeeping.
+
+**5. TOTP bypass for OIDC logins closed**
+`myapp/oidc_views.py` — `VVOIDCCallbackView` overrides `login_success()`. When
+`SiteConfiguration.oidc_require_totp` is enabled and the user has a confirmed TOTP
+device, authentication is paused and they are redirected to the TOTP verification
+screen. Users without TOTP are unaffected.
+
+**6. Login spike alert**
+`check_login_spike_task` Celery task (hourly schedule) counts failed login attempts
+in the last 60 minutes from `LoginAuditLog`. If the count exceeds
+`SiteConfiguration.security_alert_threshold`, a single ntfy alert is posted to
+`security_alert_ntfy_topic`. A no-op until both fields are configured.
+
+**7. WebDAV SSL warning**
+`site_settings` view passes `webdav_ssl_warning` context when
+`WEBDAV_VERIFY_SSL=False` is set. A Bootstrap `alert-warning` banner renders in
+Site Settings above the form. `myapp.W002` system check also warns at startup.
+
+**8. CSP nonce rollout**
+`unsafe-inline` removed from `script-src`. All 55 inline `<script>` blocks across
+21 templates now carry `nonce="{{ request.csp_nonce }}"`.
+`CONTENT_SECURITY_POLICY_NONCE_IN = ['script-src']` wires the nonce into every
+response. (`unsafe-eval` is retained for ECharts.)
+
+**Help docs added**
+- `docs/OIDC_SETUP.md` — full PocketID setup walkthrough, invite system,
+  admin-group mapping, troubleshooting. Registered as `oidc-setup` in the Help
+  Center under **Security**.
+- `docs/SECURITY_SETTINGS.md` — login spike alerts, API token expiry, TOTP/OIDC
+  interaction, system-check warnings, CSP summary. Registered as
+  `security-settings` in the Help Center under **Security**.
+- `?` help buttons added to the **OIDC / PocketID Integration** and **Security
+  Alerts** sections in Site Settings.
+
+**Test suite:** 1113 tests, 0 failures.
+
+**Files changed:** `api/authentication.py` (new), `myapp/checks.py` (new),
+`myapp/oidc_views.py` (new), `myapp/management/commands/purge_expired_tokens.py`
+(new), `myapp/migrations/0080_security_settings.py` (new),
+`.github/workflows/dependency-audit.yml` (new), `docs/OIDC_SETUP.md` (new),
+`docs/SECURITY_SETTINGS.md` (new), `myapp/apps.py`, `myapp/forms.py`,
+`myapp/help_docs.py`, `myapp/management/commands/create_default_periodic_tasks.py`,
+`myapp/models.py`, `myapp/tasks.py`, `myapp/tests.py`, `myapp/views.py`,
+`myproject/settings.py`, `myproject/urls.py`, 21 templates
 
 ---
 

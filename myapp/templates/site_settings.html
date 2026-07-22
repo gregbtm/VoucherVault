@@ -340,7 +340,7 @@
             </div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-person-badge me-2"></i>{% trans "OIDC / PocketID Integration" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Configure OpenID Connect authentication. Requires a server restart to take effect.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-person-badge me-2"></i>{% trans "OIDC / PocketID Integration" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Configure OpenID Connect authentication. Requires a server restart to take effect.' %}"></i><a href="{% url 'view_doc' 'oidc-setup' %}" data-doc-url="{% url 'view_doc' 'oidc-setup' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a></h6>
               <p class="text-muted small mb-3">{% trans "OIDC is enabled/disabled via the OIDC_ENABLED environment variable. These fields configure the connection details and are editable without a Portainer restart." %}</p>
               <div class="row">
                 <div class="col-md-6 mb-3">
@@ -385,7 +385,7 @@
             </div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-shield-exclamation me-2"></i>{% trans "Security Alerts" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Send an ntfy alert when a failed-login spike is detected. Uses the Default ntfy Server configured above.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-shield-exclamation me-2"></i>{% trans "Security Alerts" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Send an ntfy alert when a failed-login spike is detected. Uses the Default ntfy Server configured above.' %}"></i><a href="{% url 'view_doc' 'security-settings' %}" data-doc-url="{% url 'view_doc' 'security-settings' %}" class="help-link" title="{% trans 'Security guide' %}"><i class="bi bi-question-circle"></i></a></h6>
               <div class="row">
                 <div class="col-md-6 mb-3">
                   <label for="{{ form.security_alert_ntfy_topic.id_for_label }}" class="form-label">{% trans "Alert ntfy topic" %}</label>
