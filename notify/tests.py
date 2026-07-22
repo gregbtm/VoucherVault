@@ -179,6 +179,163 @@ class BackendTests(TestCase):
         self.assertIsInstance(backend, FireflyBackend)
 
 
+class TelegramBackendTests(TestCase):
+    @patch('notify.backends.telegram.requests.post')
+    def test_successful_send(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200)
+        from notify.backends.telegram import TelegramBackend
+        backend = TelegramBackend({'bot_token': 'abc:123', 'chat_id': '99'})
+        self.assertTrue(backend.send('Hello', 'World'))
+        args, kwargs = mock_post.call_args
+        self.assertIn('sendMessage', args[0])
+        self.assertEqual(kwargs['json']['chat_id'], '99')
+        self.assertIn('Hello', kwargs['json']['text'])
+
+    def test_missing_token_returns_false(self):
+        from notify.backends.telegram import TelegramBackend
+        self.assertFalse(TelegramBackend({'chat_id': '99'}).send('t', 'm'))
+
+    def test_missing_chat_id_returns_false(self):
+        from notify.backends.telegram import TelegramBackend
+        self.assertFalse(TelegramBackend({'bot_token': 'abc:123'}).send('t', 'm'))
+
+    @patch('notify.backends.telegram.requests.post', side_effect=Exception('boom'))
+    def test_network_error_returns_false(self, mock_post):
+        import requests
+        mock_post.side_effect = requests.RequestException('timeout')
+        from notify.backends.telegram import TelegramBackend
+        self.assertFalse(TelegramBackend({'bot_token': 'abc:123', 'chat_id': '99'}).send('t', 'm'))
+
+    @patch('notify.backends.telegram.requests.post')
+    def test_html_parse_mode_bolds_title(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200)
+        from notify.backends.telegram import TelegramBackend
+        backend = TelegramBackend({'bot_token': 'abc:123', 'chat_id': '99', 'parse_mode': 'HTML'})
+        backend.send('Title', 'Body')
+        text = mock_post.call_args[1]['json']['text']
+        self.assertIn('<b>Title</b>', text)
+        self.assertEqual(mock_post.call_args[1]['json']['parse_mode'], 'HTML')
+
+
+class DiscordBackendTests(TestCase):
+    @patch('notify.backends.discord.requests.post')
+    def test_successful_send(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=204)
+        from notify.backends.discord import DiscordBackend
+        backend = DiscordBackend({'webhook_url': 'https://discord.com/api/webhooks/123/abc'})
+        self.assertTrue(backend.send('Title', 'Body'))
+        payload = mock_post.call_args[1]['json']
+        self.assertEqual(payload['embeds'][0]['title'], 'Title')
+        self.assertEqual(payload['embeds'][0]['description'], 'Body')
+
+    def test_non_http_url_returns_false(self):
+        from notify.backends.discord import DiscordBackend
+        self.assertFalse(DiscordBackend({'webhook_url': 'file:///etc/passwd'}).send('t', 'm'))
+
+    def test_missing_url_returns_false(self):
+        from notify.backends.discord import DiscordBackend
+        self.assertFalse(DiscordBackend({}).send('t', 'm'))
+
+    @patch('notify.backends.discord.requests.post')
+    def test_item_fields_included_in_embed(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=204)
+        from notify.backends.discord import DiscordBackend
+        user = User.objects.create_user(username='discord_test', password='pw12345!')
+        item = make_item(user, type='giftcard', value='25.00', currency='GBP')
+        backend = DiscordBackend({'webhook_url': 'https://discord.com/api/webhooks/1/x'})
+        backend.send('Title', 'Body', item=item)
+        fields = mock_post.call_args[1]['json']['embeds'][0]['fields']
+        field_names = [f['name'] for f in fields]
+        self.assertIn('Type', field_names)
+        self.assertIn('Value', field_names)
+
+    @patch('notify.backends.discord.requests.post', side_effect=Exception('boom'))
+    def test_network_error_returns_false(self, mock_post):
+        import requests
+        mock_post.side_effect = requests.RequestException('timeout')
+        from notify.backends.discord import DiscordBackend
+        self.assertFalse(DiscordBackend({'webhook_url': 'https://discord.com/api/webhooks/1/x'}).send('t', 'm'))
+
+    @patch('notify.backends.discord.requests.post')
+    def test_custom_username_used(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=204)
+        from notify.backends.discord import DiscordBackend
+        backend = DiscordBackend({'webhook_url': 'https://discord.com/api/webhooks/1/x', 'username': 'MyBot'})
+        backend.send('t', 'm')
+        self.assertEqual(mock_post.call_args[1]['json']['username'], 'MyBot')
+
+
+class EmailBackendTests(TestCase):
+    @patch('notify.backends.email_smtp.smtplib.SMTP')
+    def test_successful_send_via_starttls(self, mock_smtp_cls):
+        mock_conn = MagicMock()
+        mock_smtp_cls.return_value = mock_conn
+        from notify.backends.email_smtp import EmailBackend
+        backend = EmailBackend({
+            'smtp_host': 'smtp.example.com',
+            'smtp_port': '587',
+            'smtp_user': 'user@example.com',
+            'smtp_password': 'pw',
+            'to_addresses': 'dest@example.com',
+        })
+        self.assertTrue(backend.send('Alert', 'Your item expires soon'))
+        mock_conn.starttls.assert_called_once()
+        mock_conn.login.assert_called_once_with('user@example.com', 'pw')
+        mock_conn.sendmail.assert_called_once()
+        mock_conn.quit.assert_called_once()
+
+    @patch('notify.backends.email_smtp.smtplib.SMTP_SSL')
+    def test_ssl_connection_uses_smtp_ssl(self, mock_smtp_ssl_cls):
+        mock_conn = MagicMock()
+        mock_smtp_ssl_cls.return_value = mock_conn
+        from notify.backends.email_smtp import EmailBackend
+        backend = EmailBackend({
+            'smtp_host': 'smtp.example.com',
+            'smtp_port': '465',
+            'use_ssl': 'true',
+            'use_tls': 'false',
+            'smtp_user': 'u',
+            'smtp_password': 'p',
+            'to_addresses': 'dest@example.com',
+        })
+        self.assertTrue(backend.send('Alert', 'Body'))
+        mock_smtp_ssl_cls.assert_called_once()
+        mock_conn.starttls.assert_not_called()
+
+    def test_missing_host_returns_false(self):
+        from notify.backends.email_smtp import EmailBackend
+        self.assertFalse(EmailBackend({'to_addresses': 'dest@example.com'}).send('t', 'm'))
+
+    def test_missing_to_addresses_returns_false(self):
+        from notify.backends.email_smtp import EmailBackend
+        self.assertFalse(EmailBackend({'smtp_host': 'smtp.example.com'}).send('t', 'm'))
+
+    @patch('notify.backends.email_smtp.smtplib.SMTP')
+    def test_smtp_exception_returns_false(self, mock_smtp_cls):
+        import smtplib
+        mock_smtp_cls.side_effect = smtplib.SMTPConnectError(421, 'refused')
+        from notify.backends.email_smtp import EmailBackend
+        backend = EmailBackend({
+            'smtp_host': 'smtp.example.com',
+            'to_addresses': 'dest@example.com',
+        })
+        self.assertFalse(backend.send('t', 'm'))
+
+    @patch('notify.backends.email_smtp.smtplib.SMTP')
+    def test_multiple_recipients_parsed_from_comma_list(self, mock_smtp_cls):
+        mock_conn = MagicMock()
+        mock_smtp_cls.return_value = mock_conn
+        from notify.backends.email_smtp import EmailBackend
+        backend = EmailBackend({
+            'smtp_host': 'smtp.example.com',
+            'to_addresses': 'a@x.com, b@x.com, c@x.com',
+            'use_tls': 'false',
+        })
+        backend.send('t', 'm')
+        _, to_addrs, _ = mock_conn.sendmail.call_args[0]
+        self.assertEqual(to_addrs, ['a@x.com', 'b@x.com', 'c@x.com'])
+
+
 class FireflyBackendTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='fiona', password='pw12345!')

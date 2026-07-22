@@ -797,6 +797,43 @@ body.dark-mode .calendar-month-label {
       </div>
       {% endif %}
 
+      <!-- Spending Analytics -->
+      <div class="dashboard-section">
+        <div class="section-header">
+          <i class="bi bi-cash-stack"></i>
+          <h2>{% trans "Spending" %}</h2>
+        </div>
+        <div class="stats-grid two-col">
+          <div class="stat-card total-value">
+            <div class="stat-card-icon">
+              <i class="bi bi-arrow-down-circle"></i>
+            </div>
+            <div class="stat-card-content">
+              <div class="stat-card-label">{% trans "Total Spent" %}</div>
+              <div class="stat-card-value">{{ spend_stats.total_spent }}</div>
+            </div>
+          </div>
+          <div class="stat-card shared">
+            <div class="stat-card-icon">
+              <i class="bi bi-bag-check-fill"></i>
+            </div>
+            <div class="stat-card-content">
+              <div class="stat-card-label">{% trans "Redeemed Value" %}</div>
+              <div class="stat-card-value">{{ spend_stats.redeemed_value }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="chart-card" style="margin-top: 1rem;">
+          <div class="chart-card-header">
+            <div>
+              <h3 class="chart-card-title">{% trans "Monthly Spend" %}</h3>
+              <span class="chart-card-subtitle">{% trans "Last 12 months" %}</span>
+            </div>
+          </div>
+          <div id="monthlySpendChart" style="height: 220px;"></div>
+        </div>
+      </div>
+
       <!-- Shared Items Section -->
       <div class="dashboard-section">
         <div class="section-header">
@@ -1110,5 +1147,77 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 {% endif %}
+
+<script nonce="{{ request.csp_nonce }}">
+document.addEventListener('DOMContentLoaded', () => {
+  const spendMonths = [{% for entry in spend_stats.monthly_spend %}"{{ entry.month }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+  const spendAmounts = [{% for entry in spend_stats.monthly_spend %}{{ entry.amount }}{% if not forloop.last %}, {% endif %}{% endfor %}];
+
+  const setMonthlySpendOptions = (isDarkMode) => ({
+    grid: { left: 8, right: 16, top: 12, bottom: 8, containLabel: true },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      backgroundColor: isDarkMode ? '#2d2d2d' : '#fff',
+      borderColor: isDarkMode ? '#404040' : '#e5e7eb',
+      borderWidth: 1,
+      textStyle: { color: isDarkMode ? '#e5e7eb' : '#374151' }
+    },
+    xAxis: {
+      type: 'category',
+      data: spendMonths,
+      axisLabel: {
+        color: isDarkMode ? '#9ca3af' : '#6b7280',
+        rotate: 45,
+        fontSize: 11
+      },
+      axisLine: { lineStyle: { color: isDarkMode ? '#404040' : '#e5e7eb' } }
+    },
+    yAxis: {
+      type: 'value',
+      minInterval: 0.01,
+      axisLabel: { color: isDarkMode ? '#9ca3af' : '#6b7280' },
+      splitLine: { lineStyle: { color: isDarkMode ? '#333' : '#f1f3f5' } }
+    },
+    series: [{
+      name: '{% trans "Spent" %}',
+      type: 'bar',
+      barMaxWidth: 32,
+      itemStyle: {
+        borderRadius: [4, 4, 0, 0],
+        color: isDarkMode ? '#22d3ee' : '#0891b2'
+      },
+      emphasis: {
+        itemStyle: { color: isDarkMode ? '#67e8f9' : '#06b6d4' }
+      },
+      data: spendAmounts
+    }]
+  });
+
+  const initMonthlySpendChart = () => {
+    const isDarkMode = localStorage.getItem('darkMode') === 'enabled';
+    const chartEl = document.querySelector('#monthlySpendChart');
+    if (!chartEl) return null;
+    const spendChart = echarts.init(chartEl);
+    spendChart.setOption(setMonthlySpendOptions(isDarkMode));
+    window.addEventListener('resize', () => spendChart.resize());
+    return spendChart;
+  };
+
+  let spendChart = initMonthlySpendChart();
+
+  const darkModeToggle = document.getElementById('darkModeToggle');
+  if (darkModeToggle && spendChart) {
+    darkModeToggle.addEventListener('click', () => {
+      setTimeout(() => {
+        if (spendChart) {
+          spendChart.dispose();
+          spendChart = initMonthlySpendChart();
+        }
+      }, 100);
+    });
+  }
+});
+</script>
 
 {% endblock content %}

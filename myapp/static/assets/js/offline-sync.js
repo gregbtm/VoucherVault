@@ -249,6 +249,13 @@ class OfflineSyncManager {
             request.onsuccess = () => {
                 console.log('[OfflineSync] Added to sync queue:', action.type);
                 this.showNotification('Changes saved offline. Will sync when online.');
+                // Register a Background Sync tag so the SW can replay even if
+                // the tab is closed before reconnection.
+                if ('serviceWorker' in navigator && 'SyncManager' in window) {
+                    navigator.serviceWorker.ready.then(reg => {
+                        reg.sync.register('sync-offline-changes').catch(() => {});
+                    });
+                }
                 resolve(request.result);
             };
             

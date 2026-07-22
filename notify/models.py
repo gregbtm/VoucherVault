@@ -13,8 +13,11 @@ class NotificationRule(models.Model):
     """
     BACKEND_CHOICES = [
         ('apprise', 'Apprise URL'),
+        ('discord', 'Discord'),
+        ('email', 'Email (SMTP)'),
         ('firefly', 'Firefly III'),
         ('ntfy', 'ntfy'),
+        ('telegram', 'Telegram'),
         ('webhook', 'Webhook (n8n etc.)'),
         ('webpush', 'Web Push'),
     ]

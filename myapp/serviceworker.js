@@ -521,14 +521,62 @@ self.addEventListener('message', event => {
     }
 });
 
-// Function to sync offline changes
+// Open the same IndexedDB the client-side OfflineSyncManager writes to
+function openSyncDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open('VoucherVaultOfflineDB', 1);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+        // If the DB doesn't exist yet (SW fired before any page visit) just
+        // resolve with null — nothing to sync.
+        req.onupgradeneeded = () => { req.transaction.abort(); resolve(null); };
+    });
+}
+
 async function syncOfflineChanges() {
+    console.log('[ServiceWorker] Background sync: replaying offline queue...');
+    let db;
     try {
-        console.log('[ServiceWorker] Syncing offline changes...');
-        return Promise.resolve();
-    } catch (error) {
-        console.error('[ServiceWorker] Sync failed:', error);
-        return Promise.reject(error);
+        db = await openSyncDB();
+    } catch (e) {
+        console.warn('[ServiceWorker] Could not open sync DB:', e);
+        return;
+    }
+    if (!db) return;
+
+    const tx = db.transaction(['syncQueue'], 'readwrite');
+    const store = tx.objectStore('syncQueue');
+    const idx = store.index('status');
+
+    const pending = await new Promise((resolve, reject) => {
+        const req = idx.getAll('pending');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+
+    if (!pending.length) {
+        console.log('[ServiceWorker] No pending offline changes.');
+        return;
+    }
+
+    console.log(`[ServiceWorker] Replaying ${pending.length} queued changes.`);
+    for (const item of pending) {
+        try {
+            const init = { method: item.method || 'POST' };
+            if (item.data) {
+                init.headers = { 'Content-Type': 'application/json' };
+                init.body = JSON.stringify(item.data);
+            }
+            const resp = await fetch(item.url, init);
+            const updTx = db.transaction(['syncQueue'], 'readwrite');
+            const updStore = updTx.objectStore('syncQueue');
+            item.status = resp.ok ? 'synced' : 'failed';
+            item.retries = (item.retries || 0) + 1;
+            updStore.put(item);
+            console.log(`[ServiceWorker] Replayed ${item.url}: ${resp.status}`);
+        } catch (err) {
+            console.warn('[ServiceWorker] Replay failed for', item.url, err);
+        }
     }
 }
 

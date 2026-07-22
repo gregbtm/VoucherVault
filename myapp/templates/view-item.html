@@ -2211,8 +2211,8 @@ body.dark-mode .tilt-scan-enable-btn {
       </div>
       {% endif %}
       
-      <!-- Transaction History (Gift Cards only) -->
-      {% if can_edit and item.type == 'giftcard' %}
+      <!-- Transaction History (Gift Cards, Vouchers, Coupons with a value) -->
+      {% if can_edit and item.value and item.type in 'giftcard,voucher,coupon' %}
       <div class="transaction-card">
         <div class="transaction-header">
           <h5><i class="bi bi-receipt"></i> {% trans "Transaction History" %}</h5>
