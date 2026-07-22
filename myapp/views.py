@@ -146,6 +146,7 @@ def dashboard(request):
         vouchers_count=Count('id', filter=Q(is_used=False, type='voucher', expiry_date__gte=now_dt)),
         giftcards_count=Count('id', filter=Q(is_used=False, type='giftcard', expiry_date__gte=now_dt)),
         loyaltycards_count=Count('id', filter=Q(is_used=False, type='loyaltycard', expiry_date__gte=now_dt)),
+        travelpasses_count=Count('id', filter=Q(is_used=False, type='travelpass', expiry_date__gte=now_dt)),
         soon_expiring_items=Count('id', filter=Q(is_used=False, expiry_date__gte=now_dt, expiry_date__lt=soon_expiry_date)),
     )
     total_items = counts['total_items']
@@ -156,6 +157,7 @@ def dashboard(request):
     vouchers_count = counts['vouchers_count']
     giftcards_count = counts['giftcards_count']
     loyaltycards_count = counts['loyaltycards_count']
+    travelpasses_count = counts['travelpasses_count']
     soon_expiring_items = counts['soon_expiring_items']
 
     # Calculate the current total value of available money-type items
@@ -257,6 +259,7 @@ def dashboard(request):
         'vouchers_count': vouchers_count,
         'giftcards_count': giftcards_count,
         'loyaltycards_count': loyaltycards_count,
+        'travelpasses_count': travelpasses_count,
         'expired_items': expired_items,
         'soon_expiring_items': soon_expiring_items,
         'items_by_wallet': items_by_wallet,
