@@ -384,6 +384,10 @@ SPECTACULAR_SETTINGS = {
     'SERVE_INCLUDE_SCHEMA': False,
     'SWAGGER_UI_DIST': 'SIDECAR',
     'SWAGGER_UI_FAVICON_HREF': 'SIDECAR',
+    # drf-spectacular defaults SERVE_PERMISSIONS to AllowAny, making /api/v1/schema/
+    # and /api/v1/docs/ publicly accessible even when the rest of the API requires
+    # authentication. Require login for both.
+    'SERVE_PERMISSIONS': ['rest_framework.permissions.IsAuthenticated'],
 }
 
 # --------------------------------------------------------------------------

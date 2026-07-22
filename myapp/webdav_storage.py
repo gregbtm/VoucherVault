@@ -127,7 +127,7 @@ class WebDAVStorage(Storage):
         # Minimal XML parse without lxml/minidom for the common case
         dirs, files = [], []
         import xml.etree.ElementTree as ET
-        root = ET.fromstring(resp.content)
+        root = ET.fromstring(resp.content)  # nosec B314 — content is from the admin-configured WebDAV server, not user input
         ns = {'d': 'DAV:'}
         responses = root.findall('d:response', ns)
         base_href = url.rstrip('/') + '/'

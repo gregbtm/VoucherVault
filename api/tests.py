@@ -55,7 +55,14 @@ class AuthenticationTests(APITestCase):
         response = self.client.get('/api/v1/items/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-    def test_schema_and_docs_are_reachable(self):
+    def test_schema_and_docs_require_authentication(self):
+        # Schema and Swagger UI are gated by IsAuthenticated (SERVE_PERMISSIONS setting).
+        self.assertEqual(self.client.get('/api/v1/schema/').status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(self.client.get('/api/v1/docs/').status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_schema_and_docs_accessible_when_authenticated(self):
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
         self.assertEqual(self.client.get('/api/v1/schema/').status_code, status.HTTP_200_OK)
         self.assertEqual(self.client.get('/api/v1/docs/').status_code, status.HTTP_200_OK)
 
