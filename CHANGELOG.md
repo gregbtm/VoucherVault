@@ -1,3 +1,10 @@
+## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.96...v1.2.0) (2026-07-22)
+
+
+### Features
+
+* **n8n:** improve rail ticket import workflow to v7 ([ea4384a](https://github.com/gregbtm/VoucherVault/commit/ea4384a1ce516b533f79ec8873c99ba953a7b080))
+
 ## [1.1.96](https://github.com/gregbtm/VoucherVault/compare/v1.1.95...v1.1.96) (2026-07-21)
 
 
@@ -15,11 +22,4 @@
 ## [1.1.94](https://github.com/gregbtm/VoucherVault/compare/v1.1.93...v1.1.94) (2026-07-21)
 
 ## [1.1.93](https://github.com/gregbtm/VoucherVault/compare/v1.1.92...v1.1.93) (2026-07-21)
-
-## [1.1.92](https://github.com/gregbtm/VoucherVault/compare/v1.1.91...v1.1.92) (2026-07-21)
-
-
-### Features
-
-* **ui:** conditional field visibility across item and settings forms ([#131](https://github.com/gregbtm/VoucherVault/issues/131)) ([4c66227](https://github.com/gregbtm/VoucherVault/commit/4c6622786a79722cbfc517351e0db23875190abd))
 
