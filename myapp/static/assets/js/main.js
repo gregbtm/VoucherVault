@@ -202,4 +202,16 @@
     });
   }
 
+  // When the browser restores a page from the back-forward cache (bfcache)
+  // the page was frozen mid-fade with vv-page-leaving still on <body>.
+  // Also unhide any entrance-animation elements that never scrolled into view.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) {
+      document.body.classList.remove('vv-page-leaving');
+      document.querySelectorAll('.vv-anim-pre').forEach((el) => {
+        el.classList.remove('vv-anim-pre');
+      });
+    }
+  });
+
 })();
