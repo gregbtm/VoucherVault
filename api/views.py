@@ -1440,7 +1440,7 @@ class GiftCardEmailImportView(APIView):
         fields.setdefault('issue_date', today)
         item = Item.objects.create(user=request.user, type='giftcard', source='api', **fields)
         notify_item_created(item)
-        fetch_merchant_logo_task.delay(str(item.id))
+        fetch_merchant_logo_task.delay(item.issuer, item.logo_slug)
 
         return Response(ItemSerializer(item, context={'request': request}).data, status=status.HTTP_201_CREATED)
 

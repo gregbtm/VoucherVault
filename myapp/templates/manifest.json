@@ -16,7 +16,7 @@
   "screenshots": {{ PWA_APP_SCREENSHOTS|js }},
   "shortcuts": {{ PWA_APP_SHORTCUTS|js }},
   "share_target": {
-    "action": "/en/items/create/",
+    "action": "{% url 'create_item' %}",
     "method": "POST",
     "enctype": "multipart/form-data",
     "params": {
