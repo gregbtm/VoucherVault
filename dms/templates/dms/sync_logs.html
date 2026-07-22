@@ -181,7 +181,7 @@
   </div>
 </section>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 // Auto-submit filter form when any select changes
 document.querySelectorAll('.auto-submit').forEach(el => {
   el.addEventListener('change', () => document.getElementById('log-filter-form').submit());

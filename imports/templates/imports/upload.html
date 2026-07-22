@@ -59,7 +59,7 @@
         </div>
       </div>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 (function () {
   document.getElementById('previewImportBtn').addEventListener('click', function () {
     const form = this.closest('section').querySelector('form[action*="upload"]');
