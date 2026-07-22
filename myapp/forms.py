@@ -417,7 +417,7 @@ class SiteConfigurationForm(forms.ModelForm):
     class Meta:
         model = SiteConfiguration
         fields = [
-            'expiry_threshold_days', 'expiry_last_notification_days', 'ntfy_default_server',
+            'expiry_threshold_days', 'expiry_last_notification_days', 'ntfy_default_server', 'vv_base_url',
             'inactivity_threshold_days', 'companies_house_api_key',
             'webpush_vapid_public_key', 'webpush_vapid_private_key', 'webpush_vapid_claims_email',
             'merchant_logos_enabled', 'logo_dev_api_key',
@@ -437,6 +437,7 @@ class SiteConfigurationForm(forms.ModelForm):
             'expiry_last_notification_days': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
             'inactivity_threshold_days': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
             'ntfy_default_server': forms.TextInput(attrs={'class': 'form-control'}),
+            'vv_base_url': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'https://vault.example.com'}),
             'webpush_vapid_public_key': forms.TextInput(attrs={'class': 'form-control'}),
             'webpush_vapid_claims_email': forms.TextInput(attrs={'class': 'form-control'}),
             'merchant_logos_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),

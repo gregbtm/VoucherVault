@@ -88,8 +88,24 @@ def _expiry_message(item, days_left: int) -> tuple[str, str]:
         title = f"⏰ {item.name} expires in {days_left} day(s)"
     else:
         title = f"⏰ {item.name} has expired"
-    message = f"Code: {item.redeem_code}\nValue: {item.value} {item.currency}\nExpiry: {item.expiry_date}"
+    code_hint = _short_code(item.redeem_code)
+    message = f"Code: {code_hint}\nValue: {item.value} {item.currency}\nExpiry: {item.expiry_date}"
     return title, message
+
+
+def _short_code(code: str, max_len: int = 40) -> str:
+    """Return a display-safe version of a redeem code.
+
+    Long codes (e.g. Aztec/PDF417 rail ticket payloads) are hundreds of
+    characters of binary-ish data — useless as plain text in a push
+    notification. Truncate them and tell the recipient to tap for the full
+    barcode image instead.
+    """
+    if not code:
+        return '—'
+    if len(code) <= max_len:
+        return code
+    return f'{code[:max_len]}… (tap to view full barcode)'
 
 
 def notify_item_created(item):
@@ -107,7 +123,7 @@ def notify_item_used(item):
     fire_notifications(
         item, 'item_used',
         title=f"✅ {item.name} marked used",
-        message=f"Code: {item.redeem_code}",
+        message=f"Code: {_short_code(item.redeem_code)}",
         dedupe=False,
     )
 
@@ -117,7 +133,7 @@ def notify_item_archived(item):
     fire_notifications(
         item, 'item_archived',
         title=f"🗄️ {item.name} archived",
-        message=f"Code: {item.redeem_code}",
+        message=f"Code: {_short_code(item.redeem_code)}",
         dedupe=False,
     )
     _close_firefly_account_if_configured(item)

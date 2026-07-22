@@ -67,6 +67,11 @@
                   {{ form.ntfy_default_server }}
                   <small class="form-text text-muted">{% trans "Pre-filled when a user creates a new ntfy notification rule." %}</small>
                 </div>
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.vv_base_url.id_for_label }}" class="form-label">{% trans "Site base URL" %}</label>
+                  {{ form.vv_base_url }}
+                  <small class="form-text text-muted">{% trans "Public URL of this VoucherVault install (e.g. https://vault.example.com). Adds a tap-to-open link and barcode image to ntfy notifications." %}</small>
+                </div>
               </div>
             </div>
 

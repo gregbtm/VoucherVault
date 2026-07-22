@@ -979,6 +979,13 @@ class SiteConfiguration(models.Model):
                    "Get a free key at https://developer.company-information.service.gov.uk/",
     )
 
+    # ---- Notification enrichment ----
+    vv_base_url = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="Public base URL of this VoucherVault installation (e.g. https://vault.example.com). "
+                   "Used to build clickable links in ntfy notifications. Leave blank to omit links.",
+    )
+
     # ---- Nearby items (OpenStreetMap) ----
     nearby_places_enabled = models.BooleanField(
         default=True,
