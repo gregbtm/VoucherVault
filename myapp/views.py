@@ -405,8 +405,9 @@ def show_items(request):
             Q(redeem_code__icontains=search_query) |
             Q(card_number__icontains=search_query) |
             Q(description__icontains=search_query) |
-            Q(notes__icontains=search_query)
-        )
+            Q(notes__icontains=search_query) |
+            Q(tags__name__icontains=search_query)
+        ).distinct()
 
     # Apply sorting based on user preference
     sort_by = preferences.sort_by
@@ -628,6 +629,7 @@ def view_item(request, item_uuid):
             .first()
         )
 
+    from notify.models import NotificationRule
     context = {
         'item': item,
         'transactions': transactions,
@@ -650,6 +652,7 @@ def view_item(request, item_uuid):
         'dms_providers': dms_providers,
         'dms_doc_status': dms_doc_status,
         'dms_item_file_status': dms_item_file_status,
+        'has_notification_rule': NotificationRule.objects.filter(user=request.user, enabled=True).exists(),
     }
     return render(request, 'view-item.html', context)
 
@@ -748,7 +751,7 @@ def create_item(request):
             fire_user_webhooks(item.user, 'item_created', item)
             _log_wallet_activity(item.wallet, request.user, 'item_added', item=item)
 
-            return redirect('show_items')
+            return redirect(f"{reverse('view_item', args=[item.id])}?new=1")
         else:
             # If form is not valid, render the form with validation errors
             return render(request, 'create-item.html', {'form': form, **_item_form_ctx(request.user)})
@@ -1074,11 +1077,7 @@ def duplicate_item(request, item_uuid):
     }
 
     form = ItemForm(initial=initial_data)
-    return render(request, 'create-item.html', {
-        'form': form,
-        'ocr_enabled': ocr_enabled(),
-        'known_issuers': _known_issuers(request.user),
-    })
+    return render(request, 'create-item.html', {'form': form, **_item_form_ctx(request.user)})
 
 @require_POST
 @login_required
@@ -2583,6 +2582,45 @@ def bulk_move_items(request):
         item.wallet = wallet
         item.save(update_fields=['wallet'])
     return JsonResponse({'success': True, 'processed': len(items), 'skipped': skipped})
+
+@require_POST
+@login_required
+def bulk_unarchive_items(request):
+    """Restore a selection of archived items back to active."""
+    items, skipped, _data = _bulk_selected_items(request)
+    processed = 0
+    for item in items:
+        if item.is_archived:
+            item.is_archived = False
+            item.save(update_fields=['is_archived'])
+            processed += 1
+    return JsonResponse({'success': True, 'processed': processed, 'skipped': skipped})
+
+@require_POST
+@login_required
+def bulk_currency_items(request):
+    """Change the currency on a selection of items."""
+    items, skipped, data = _bulk_selected_items(request)
+    currency = (data.get('currency') or '').strip().upper()
+    if not currency:
+        return JsonResponse({'success': False, 'message': _('No currency provided.')}, status=400)
+    for item in items:
+        item.currency = currency
+        item.save(update_fields=['currency'])
+    return JsonResponse({'success': True, 'processed': len(items), 'skipped': skipped})
+
+@require_POST
+@login_required
+def wallet_reorder(request):
+    """Accept a JSON list of wallet IDs in the new order and persist sort_order."""
+    try:
+        data = json.loads(request.body)
+        ids = data.get('order', [])
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False}, status=400)
+    for idx, wallet_id in enumerate(ids):
+        Wallet.objects.filter(id=wallet_id, user=request.user).update(sort_order=idx)
+    return JsonResponse({'success': True})
 
 @require_POST
 @login_required

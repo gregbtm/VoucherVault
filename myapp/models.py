@@ -172,9 +172,10 @@ class Wallet(models.Model):
         null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
         help_text="Firefly III notification rule used for items in this wallet. Overrides user default; overridden by per-item setting.",
     )
+    sort_order = models.IntegerField(default=0)
 
     class Meta:
-        ordering = ['name']
+        ordering = ['sort_order', 'name']
         unique_together = ('user', 'name')
 
     def __str__(self):

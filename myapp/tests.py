@@ -271,7 +271,9 @@ class CreateItemWithOrganizationTests(TestCase):
             'wallet': self.wallet.id, 'tags': [self.tag.id], 'new_tags': 'summer',
             'notes': 'Show at gate.',
         })
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         item = Item.objects.get(name='Flight Voucher')
         self.assertEqual(item.wallet, self.wallet)
         self.assertEqual(item.notes, 'Show at gate.')
@@ -287,7 +289,9 @@ class CreateItemWithOrganizationTests(TestCase):
             'value': '0.00', 'currency': 'GBP', 'code_type': 'qrcode', 'value_type': 'money',
             'issue_date': date.today().isoformat(),
         })
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         item = Item.objects.get(name='HAP to LON')
         self.assertEqual(item.wallet, train_wallet)
 
@@ -298,7 +302,9 @@ class CreateItemWithOrganizationTests(TestCase):
             'value': '0.00', 'currency': 'GBP', 'code_type': 'qrcode', 'value_type': 'money',
             'issue_date': date.today().isoformat(), 'wallet': self.wallet.id,
         })
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         item = Item.objects.get(name='HAP to LON')
         self.assertEqual(item.wallet, self.wallet)
 
@@ -309,7 +315,9 @@ class CreateItemWithOrganizationTests(TestCase):
             'value': '0.00', 'currency': 'GBP', 'code_type': 'qrcode', 'value_type': 'money',
             'issue_date': date.today().isoformat(),
         })
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         item = Item.objects.get(name='Unrelated Item')
         self.assertIsNone(item.wallet)
 
@@ -357,7 +365,9 @@ class TravelPassTypeTests(TestCase):
 
     def test_create_item_travelpass_auto_assigns_travel_pass_wallet(self):
         response = self._post_travelpass()
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         item = Item.objects.get(name='HAP to LON')
         self.assertEqual(item.wallet.name, 'Travel Pass')
         self.assertEqual(item.wallet.user, self.user)
@@ -365,7 +375,9 @@ class TravelPassTypeTests(TestCase):
     def test_create_item_travelpass_overrides_explicit_wallet_choice(self):
         other_wallet = Wallet.objects.create(user=self.user, name='Everything Else')
         response = self._post_travelpass(wallet=other_wallet.id)
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         item = Item.objects.get(name='HAP to LON')
         self.assertEqual(item.wallet.name, 'Travel Pass')
 
@@ -381,26 +393,34 @@ class TravelPassTypeTests(TestCase):
 
     def test_create_item_travelpass_issue_date_defaults_to_expiry_when_blank(self):
         response = self._post_travelpass(expiry_date='2027-03-15')
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         item = Item.objects.get(name='HAP to LON')
         self.assertEqual(item.issue_date.isoformat(), '2027-03-15')
         self.assertEqual(item.expiry_date.isoformat(), '2027-03-15')
 
     def test_create_item_travelpass_respects_explicit_issue_date(self):
         response = self._post_travelpass(issue_date='2027-01-01', expiry_date='2027-03-15')
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         item = Item.objects.get(name='HAP to LON')
         self.assertEqual(item.issue_date.isoformat(), '2027-01-01')
 
     def test_create_item_travelpass_value_defaults_to_zero(self):
         response = self._post_travelpass()
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         item = Item.objects.get(name='HAP to LON')
         self.assertEqual(item.value, 0)
 
     def test_create_item_travelpass_stores_travel_time(self):
         response = self._post_travelpass(travel_time='09:14')
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         item = Item.objects.get(name='HAP to LON')
         self.assertEqual(item.travel_time, time(9, 14))
 
@@ -684,7 +704,9 @@ class ScanLearningTests(TestCase):
             'journey_origin': 'Hatfield Peverel', 'journey_destination': 'London Terminals',
             'ai_scan_snapshot': json.dumps({'issuer': 'Nationl Rail', 'type': 'travelpass'}),
         })
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         correction = ScanFieldCorrection.objects.get(user=self.user, field='issuer')
         self.assertEqual(correction.corrected_value, 'National Rail')
 
@@ -696,7 +718,9 @@ class ScanLearningTests(TestCase):
             'issue_date': date.today().isoformat(),
             'ai_scan_snapshot': 'not-json-at-all',
         })
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         self.assertFalse(ScanFieldCorrection.objects.exists())
 
 
@@ -711,7 +735,9 @@ class NoBarcodeCodeTypeTests(TestCase):
             'value': '25.00', 'currency': 'GBP', 'code_type': 'none', 'value_type': 'money',
             'issue_date': date.today().isoformat(),
         })
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         item = Item.objects.get(name='Numbers Only Card')
         self.assertEqual(item.code_type, 'none')
         self.assertFalse(item.qr_code_base64)
@@ -1693,7 +1719,9 @@ class MerchantLogoViewIntegrationTests(TestCase):
             'value': '100.00', 'currency': 'EUR', 'code_type': 'qrcode', 'value_type': 'money',
             'issue_date': date.today().isoformat(),
         })
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         mock_delay.assert_called_once_with('Airline', None)
 
     @patch('myapp.views.fetch_merchant_logo_task.delay', side_effect=RuntimeError('broker down'))
@@ -1703,7 +1731,9 @@ class MerchantLogoViewIntegrationTests(TestCase):
             'value': '100.00', 'currency': 'EUR', 'code_type': 'qrcode', 'value_type': 'money',
             'issue_date': date.today().isoformat(),
         })
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         self.assertTrue(Item.objects.filter(name='Flight Voucher').exists())
 
     @patch('myapp.views.fetch_merchant_logo_task.delay')
@@ -2888,7 +2918,9 @@ class WebhookEventWiringTests(TestCase):
             'value': '10.00', 'currency': 'GBP', 'code_type': 'qrcode', 'value_type': 'money',
             'issue_date': date.today().isoformat(),
         })
-        self.assertRedirects(response, reverse('show_items'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/items/view/', response['Location'])
+        self.assertIn('?new=1', response['Location'])
         mock_notify.assert_called_once()
         self.assertEqual(mock_notify.call_args[0][0].name, 'New Voucher')
 
@@ -3715,6 +3747,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
             'Advance Recurring Items', 'Retry Failed Firefly Pushes',
             'DMS Auto Pull',
             'Gift Card Inactivity Check', 'Merchant Health Check',
+            'Purge Old Import Jobs',
         })
 
     def test_update_check_and_upstream_check_run_hourly_not_daily(self):

@@ -2,6 +2,7 @@ import json
 import logging
 
 import requests
+from django.urls import reverse
 from pywebpush import WebPushException, webpush
 
 from myapp.models import SiteConfiguration
@@ -41,7 +42,7 @@ class WebPushBackend(NotificationBackend):
             return False
 
         claims_email = config.webpush_vapid_claims_email
-        item_url = f'/en/items/view/{item.id}/' if item is not None else '/'
+        item_url = reverse('view_item', args=[item.id]) if item is not None else '/'
         payload = json.dumps({'title': title, 'body': message, 'url': item_url})
 
         any_success = False

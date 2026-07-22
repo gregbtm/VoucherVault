@@ -113,18 +113,23 @@
           <h5 class="card-title">{% trans "Your Wallets" %}</h5>
 
           {% if wallets %}
+          <p class="text-muted small mb-2"><i class="bi bi-grip-vertical me-1"></i>{% trans "Drag rows to reorder your wallets." %}</p>
           <div class="table-responsive">
-          <table class="table table-hover align-middle">
+          <table class="table table-hover align-middle" id="wallet-reorder-table">
             <thead>
               <tr>
+                <th style="width:32px;"></th>
                 <th>{% trans "Name" %}</th>
                 <th>{% trans "Items" %}</th>
                 <th class="text-end">{% trans "Actions" %}</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="wallet-tbody">
               {% for wallet in wallets %}
-              <tr>
+              <tr draggable="true" data-wallet-id="{{ wallet.id }}" class="wallet-row">
+                <td class="drag-handle text-muted" style="cursor:grab;user-select:none;">
+                  <i class="bi bi-grip-vertical"></i>
+                </td>
                 <td>
                   <i class="bi {{ wallet.icon|default:'bi-wallet2' }} me-2" style="color: {{ wallet.color }};"></i>
                   <a href="{% url 'show_items' %}?wallet={{ wallet.id }}&status=all">{{ wallet.name }}</a>
@@ -208,4 +213,40 @@
     </div>
   </div>
 </section>
+
+<script>
+(function () {
+  const tbody = document.getElementById('wallet-tbody');
+  if (!tbody) return;
+  const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+  let dragged = null;
+
+  tbody.addEventListener('dragstart', e => {
+    dragged = e.target.closest('tr');
+    if (dragged) dragged.style.opacity = '0.5';
+  });
+  tbody.addEventListener('dragend', e => {
+    if (dragged) { dragged.style.opacity = ''; dragged = null; }
+  });
+  tbody.addEventListener('dragover', e => {
+    e.preventDefault();
+    const target = e.target.closest('tr');
+    if (!target || target === dragged) return;
+    const rect = target.getBoundingClientRect();
+    const after = e.clientY > rect.top + rect.height / 2;
+    tbody.insertBefore(dragged, after ? target.nextSibling : target);
+  });
+  tbody.addEventListener('drop', e => {
+    e.preventDefault();
+    const order = Array.from(tbody.querySelectorAll('tr[data-wallet-id]'))
+      .map(row => row.getAttribute('data-wallet-id'));
+    fetch('{% url "wallet_reorder" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+      body: JSON.stringify({ order }),
+    }).catch(() => {});
+  });
+})();
+</script>
+
 {% endblock content %}

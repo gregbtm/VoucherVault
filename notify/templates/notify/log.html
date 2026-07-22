@@ -63,7 +63,14 @@
       </table>
       </div>
       {% else %}
-      <p class="text-muted">{% trans "No notifications have been sent yet." %}</p>
+      <div class="text-center py-4">
+        <i class="bi bi-bell-slash" style="font-size:2.5rem;color:var(--text-muted,#6c757d);margin-bottom:.75rem;display:block;"></i>
+        <p class="text-muted mb-2">{% trans "No notifications have been sent yet." %}</p>
+        <p class="text-muted small mb-3">{% trans "Notifications fire automatically when items approach expiry, balances change, or other events occur — as long as at least one notification rule is active." %}</p>
+        <a href="{% url 'manage_notification_rules' %}" class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-plus-circle me-1"></i>{% trans "Create a notification rule" %}
+        </a>
+      </div>
       {% endif %}
     </div>
   </div>

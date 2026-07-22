@@ -1466,11 +1466,22 @@ body.dark-mode .next-up-card {
   </div>
   {% else %}
   <!-- Empty State -->
+  {% if not available_count and not used_count and not expired_count and not archived_count %}
+  <div class="empty-state">
+    <i class="bi bi-stars" style="font-size:3.5rem;color:var(--primary-color,#4154f1);margin-bottom:.75rem;display:block;"></i>
+    <h3>{% trans "Your vault is empty" %}</h3>
+    <p>{% trans "Add your first gift card, voucher, coupon, or loyalty card to get started." %}</p>
+    <a href="{% url 'create_item' %}" class="btn btn-primary btn-lg mt-2">
+      <i class="bi bi-plus-circle me-1"></i> {% trans "Add your first item" %}
+    </a>
+  </div>
+  {% else %}
   <div class="empty-state">
     <i class="bi bi-inbox"></i>
     <h3>{% trans "No items found" %}</h3>
-    <p>{% trans "Try adjusting your filters or create a new item." %}</p>
+    <p>{% trans "Try adjusting your filters or search." %}</p>
   </div>
+  {% endif %}
   {% endif %}
 </section>
 
@@ -1480,11 +1491,17 @@ body.dark-mode .next-up-card {
   <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkArchiveBtn">
     <i class="bi bi-archive"></i> {% trans "Archive" %}
   </button>
+  <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkUnarchiveBtn">
+    <i class="bi bi-archive-fill"></i> {% trans "Unarchive" %}
+  </button>
   <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkTagModal">
     <i class="bi bi-tag"></i> {% trans "Tag" %}
   </button>
   <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkMoveModal">
     <i class="bi bi-folder-symlink"></i> {% trans "Move to Wallet" %}
+  </button>
+  <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkCurrencyModal">
+    <i class="bi bi-currency-exchange"></i> {% trans "Currency" %}
   </button>
   <div class="dropdown d-inline-block">
     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="bulkExportDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -1541,6 +1558,26 @@ body.dark-mode .next-up-card {
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
         <button type="button" class="btn btn-primary" id="bulkMoveConfirmBtn">{% trans "Move" %}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Currency Modal -->
+<div class="modal fade" id="bulkCurrencyModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">{% trans "Change Currency" %}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label for="bulkCurrencyInput" class="form-label">{% trans "Currency code (e.g. GBP, EUR, USD)" %}</label>
+        <input type="text" class="form-control text-uppercase" id="bulkCurrencyInput" maxlength="3" placeholder="GBP">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+        <button type="button" class="btn btn-primary" id="bulkCurrencyConfirmBtn">{% trans "Apply" %}</button>
       </div>
     </div>
   </div>
@@ -1798,6 +1835,16 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   });
 
+  document.getElementById('bulkUnarchiveBtn').addEventListener('click', () => {
+    if (selectedIds.size === 0) return;
+    const btn = document.getElementById('bulkUnarchiveBtn');
+    window.setButtonLoading(btn, true);
+    postBulkAction('{% url "bulk_unarchive_items" %}').then(data => {
+      if (data.success) { window.location.reload(); return; }
+      window.setButtonLoading(btn, false);
+    });
+  });
+
   document.getElementById('bulkDeleteBtn').addEventListener('click', () => {
     if (selectedIds.size === 0) return;
     showConfirm('{% trans "Delete the selected items? This cannot be undone." %}', '{% trans "Delete" %}', function() {
@@ -1834,6 +1881,19 @@ document.addEventListener("DOMContentLoaded", function () {
       window.setButtonLoading(btn, false);
       const modalEl = document.getElementById('bulkMoveModal');
       bootstrap.Modal.getInstance(modalEl).hide();
+    });
+  });
+
+  document.getElementById('bulkCurrencyConfirmBtn').addEventListener('click', () => {
+    if (selectedIds.size === 0) return;
+    const currency = document.getElementById('bulkCurrencyInput').value.trim().toUpperCase();
+    if (!currency) return;
+    const btn = document.getElementById('bulkCurrencyConfirmBtn');
+    window.setButtonLoading(btn, true);
+    postBulkAction('{% url "bulk_currency_items" %}', { currency }).then(data => {
+      if (data.success) { window.location.reload(); return; }
+      window.setButtonLoading(btn, false);
+      bootstrap.Modal.getInstance(document.getElementById('bulkCurrencyModal')).hide();
     });
   });
 

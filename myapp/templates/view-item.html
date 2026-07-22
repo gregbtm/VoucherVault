@@ -1546,6 +1546,24 @@ body.dark-mode .tilt-scan-enable-btn {
 </div>
 {% endif %}
 
+{% if request.GET.new %}
+<div class="alert alert-success alert-dismissible d-flex align-items-start gap-3 mb-3 fade show" role="alert" id="what-next-banner">
+  <i class="bi bi-check-circle-fill fs-4 mt-1 flex-shrink-0"></i>
+  <div>
+    <strong>{% trans "Item added!" %}</strong>
+    {% trans "Here's what you can do next:" %}
+    <ul class="mb-0 mt-1 ps-3">
+      <li><a href="{% url 'upload_document' item.id %}">{% trans "Attach a receipt or file" %}</a></li>
+      <li><a href="{% url 'edit_item' item.id %}">{% trans "Add a tag or wallet" %}</a></li>
+      {% if not has_notification_rule %}
+      <li><a href="{% url 'manage_notification_rules' %}">{% trans "Set up an expiry notification" %}</a></li>
+      {% endif %}
+    </ul>
+  </div>
+  <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="{% trans 'Close' %}"></button>
+</div>
+{% endif %}
+
 <div class="detail-header">
   <div>
     <h1>{% trans "Item Details" %}</h1>
