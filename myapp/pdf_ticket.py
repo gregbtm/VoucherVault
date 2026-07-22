@@ -88,6 +88,26 @@ def decode_barcode_from_pdf(pdf_bytes, dpi=300):
     return None, None
 
 
+def pdf_page_count(pdf_bytes):
+    """Returns the number of pages in a PDF."""
+    with fitz.open(stream=pdf_bytes, filetype='pdf') as doc:
+        return len(doc)
+
+
+def iter_pdf_pages(pdf_bytes, dpi=300):
+    """
+    Yields (page_index, png_bytes, redeem_code, code_type) for every page.
+    The barcode fields are (None, None) if the page contains no decodable barcode.
+    """
+    images = rasterize_pdf(pdf_bytes, dpi=dpi)
+    for idx, image in enumerate(images):
+        buf = io.BytesIO()
+        image.save(buf, 'PNG')
+        png_bytes = buf.getvalue()
+        redeem_code, code_type = decode_barcode_from_image(image)
+        yield idx, png_bytes, redeem_code, code_type
+
+
 def pdf_page_to_png_bytes(pdf_bytes, page_number=0, dpi=200):
     """
     Renders a single PDF page to PNG bytes - used to hand a rasterized page

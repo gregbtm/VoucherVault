@@ -386,6 +386,16 @@ class Item(models.Model):
         help_text="Discount or railcard applied at purchase, e.g. \"Network Railcard\". "
                    "Informational only.",
     )
+    journey_group_id = models.UUIDField(
+        null=True, blank=True, db_index=True,
+        help_text="Shared UUID linking tickets that belong to the same booking (e.g. outward + "
+                   "return). Set automatically when a multi-page PDF is imported. Never set manually.",
+    )
+    journey_sequence = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Position of this ticket within its journey group (1 = first leg, 2 = second "
+                   "leg, etc.). Set automatically alongside journey_group_id.",
+    )
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     minimum_spend = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True,

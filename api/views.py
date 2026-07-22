@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import uuid as uuid_module
 
 import requests
 from django.contrib.auth.models import User
@@ -41,7 +42,9 @@ from myapp.models import (
     WalletActivity, WalletMembership,
 )
 from dms.models import DMSProvider, DMSSyncLog
-from myapp.pdf_ticket import decode_barcode_from_pdf, pdf_page_to_png_bytes
+from myapp.pdf_ticket import (
+    decode_barcode_from_pdf, iter_pdf_pages, pdf_page_count, pdf_page_to_png_bytes,
+)
 from myapp.scan_learning import apply_learned_corrections
 from myapp.tasks import fetch_merchant_logo_task
 from myapp.utils import generate_code_image_base64
@@ -118,11 +121,206 @@ _RAIL_OPERATOR_LOGOS = {
 }
 
 
+def _process_multi_page_rail_ticket_pdf(pdf_bytes, user, preset_fields, serializer_context):
+    """
+    Creates one Item per page of a multi-page rail ticket PDF, all sharing the
+    same journey_group_id UUID. Returns (response_dict, http_status_code).
+    """
+    group_id = uuid_module.uuid4()
+    tickets = []
+    created_count = 0
+    duplicate_count = 0
+
+    for page_idx, png_bytes, redeem_code, code_type in iter_pdf_pages(pdf_bytes):
+        seq = page_idx + 1
+
+        fields = {name: (preset_fields.get(name) or None) for name in _RAIL_TICKET_TEXT_FIELDS}
+        fields['value'] = parse_float_or_none(preset_fields.get('value'))
+        fields['currency'] = (preset_fields.get('currency') or '').upper() or None
+
+        if ocr_enabled() and any(v is None for v in fields.values()):
+            try:
+                ocr_result = get_backend().extract(png_bytes, 'image/png')
+            except Exception as exc:
+                logger.warning('Multi-page rail OCR page %d failed: %s', page_idx, exc, exc_info=True)
+                ocr_result = {}
+
+            fields['name'] = fields['name'] or ocr_result.get('name')
+            fields['issuer'] = fields['issuer'] or ocr_result.get('issuer')
+            fields['card_number'] = fields['card_number'] or ocr_result.get('card_number')
+            fields['journey_origin'] = fields['journey_origin'] or ocr_result.get('journey_origin')
+            fields['journey_destination'] = fields['journey_destination'] or ocr_result.get('journey_destination')
+            fields['travel_time'] = fields['travel_time'] or ocr_result.get('travel_time')
+            fields['travel_date'] = (
+                fields['travel_date'] or ocr_result.get('travel_date') or ocr_result.get('expiry_date')
+            )
+            fields['value'] = fields['value'] if fields['value'] is not None else ocr_result.get('value')
+            fields['currency'] = fields['currency'] or ocr_result.get('currency')
+            if redeem_code is None:
+                redeem_code = ocr_result.get('code')
+                code_type = code_type or ocr_result.get('code_type')
+
+        barcode_decoded = bool(redeem_code) and code_type not in (None, 'none')
+        if not redeem_code:
+            redeem_code = fields['card_number'] or ''
+            code_type = 'none'
+
+        ticket_payload = {
+            'journey_sequence': seq,
+            'created': False,
+            'duplicate': False,
+            'name': fields['name'],
+            'issuer': fields['issuer'],
+            'redeem_code': redeem_code or None,
+            'code_type': code_type,
+            'card_number': fields['card_number'],
+            'order_id': fields['order_id'],
+            'discount_applied': fields['discount_applied'],
+            'journey_origin': fields['journey_origin'],
+            'journey_destination': fields['journey_destination'],
+            'travel_time': fields['travel_time'],
+            'travel_date': fields['travel_date'],
+            'value': fields['value'],
+            'currency': fields['currency'],
+            'barcode_decoded': barcode_decoded,
+        }
+
+        if not fields['issuer'] or not redeem_code:
+            ticket_payload['error'] = str(
+                _('Not enough information extracted (need at least an issuer and a code).')
+            )
+            tickets.append(ticket_payload)
+            continue
+
+        if barcode_decoded and redeem_code:
+            existing = Item.objects.filter(
+                user=user, type='travelpass', redeem_code=redeem_code,
+            ).first()
+            if existing is not None:
+                duplicate_count += 1
+                ticket_payload['duplicate'] = True
+                ticket_payload['item'] = ItemSerializer(existing, context=serializer_context).data
+                tickets.append(ticket_payload)
+                continue
+
+        if fields['order_id']:
+            existing = Item.objects.filter(
+                user=user, order_id=fields['order_id'], type='travelpass',
+            ).first()
+            if existing is not None:
+                duplicate_count += 1
+                ticket_payload['duplicate'] = True
+                ticket_payload['item'] = ItemSerializer(existing, context=serializer_context).data
+                tickets.append(ticket_payload)
+                continue
+
+        travel_date = parse_date(fields['travel_date']) if fields['travel_date'] else None
+        travel_time = parse_time(fields['travel_time']) if fields['travel_time'] else None
+        travel_day = travel_date or timezone.localdate()
+
+        name = fields['name'] or ' to '.join(
+            part for part in (fields['journey_origin'], fields['journey_destination']) if part
+        ) or _('Train Ticket')
+
+        _desc_parts = []
+        if fields['journey_origin'] and fields['journey_destination']:
+            _desc_parts.append(f"{fields['journey_origin']} to {fields['journey_destination']}")
+        if fields['travel_date']:
+            _desc_parts.append(fields['travel_date'])
+        description = ' | '.join(_desc_parts) if _desc_parts else None
+
+        issuer_lower = (fields['issuer'] or '').lower().strip()
+        logo_slug = _RAIL_OPERATOR_LOGOS.get(issuer_lower)
+
+        item = Item.objects.create(
+            user=user,
+            type='travelpass',
+            name=name,
+            issuer=fields['issuer'],
+            redeem_code=redeem_code,
+            code_type=code_type or 'none',
+            card_number=fields['card_number'] or '',
+            order_id=fields['order_id'] or '',
+            discount_applied=fields['discount_applied'] or '',
+            journey_origin=fields['journey_origin'] or '',
+            journey_destination=fields['journey_destination'] or '',
+            travel_time=travel_time,
+            issue_date=travel_day,
+            expiry_date=travel_day,
+            value=fields['value'] or 0,
+            currency=fields['currency'] or 'GBP',
+            source='api',
+            description=description,
+            logo_slug=logo_slug,
+            journey_group_id=group_id,
+            journey_sequence=seq,
+        )
+
+        try:
+            item.qr_code_base64, item.code_type = generate_code_image_base64(item)
+        except Exception:
+            item.code_type = 'none'
+            item.qr_code_base64 = None
+        item.save(update_fields=['qr_code_base64', 'code_type'])
+
+        try:
+            item.file.save(f'rail_{item.id}.png', ContentFile(png_bytes), save=True)
+        except Exception as exc:
+            logger.warning('Rail ticket page %d file save failed: %s', page_idx, exc)
+
+        # Attach the full PDF as a Document on the first leg only.
+        if seq == 1:
+            try:
+                issuer_safe = re.sub(r'[^a-z0-9]', '_', issuer_lower) or 'ticket'
+                Document.objects.create(
+                    item=item,
+                    file=ContentFile(pdf_bytes, name=f'{issuer_safe}_ticket.pdf'),
+                )
+            except Exception as exc:
+                logger.warning('Rail ticket PDF document attach failed: %s', exc)
+
+        if fields['issuer']:
+            try:
+                fetch_merchant_logo_task.delay(fields['issuer'], logo_slug)
+            except Exception:
+                logger.warning('Could not queue logo fetch for %r', fields['issuer'], exc_info=True)
+
+        notify_item_created(item)
+        created_count += 1
+        ticket_payload['created'] = True
+        ticket_payload['item'] = ItemSerializer(item, context=serializer_context).data
+        tickets.append(ticket_payload)
+
+    response = {
+        'multi_ticket': True,
+        'journey_group_id': str(group_id),
+        'created_count': created_count,
+        'duplicate_count': duplicate_count,
+        'tickets': tickets,
+    }
+    if created_count > 0:
+        return response, status.HTTP_201_CREATED
+    if duplicate_count > 0:
+        return response, status.HTTP_409_CONFLICT
+    return response, status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
 def _process_rail_ticket_pdf(pdf_bytes, user, preset_fields, create, serializer_context):
     """
     Shared processing logic for a single rail-ticket PDF. Returns (response_dict,
     http_status_code). Used by both the single-file and batch import endpoints.
     """
+    # Delegate multi-page PDFs to per-page processing when creating items.
+    if create:
+        try:
+            page_count = pdf_page_count(pdf_bytes)
+        except Exception:
+            page_count = 1
+        if page_count > 1:
+            return _process_multi_page_rail_ticket_pdf(
+                pdf_bytes, user, preset_fields, serializer_context
+            )
+
     try:
         redeem_code, code_type = decode_barcode_from_pdf(pdf_bytes)
     except Exception as exc:
@@ -181,6 +379,13 @@ def _process_rail_ticket_pdf(pdf_bytes, user, preset_fields, create, serializer_
     }
 
     if not create:
+        try:
+            page_count = pdf_page_count(pdf_bytes)
+        except Exception:
+            page_count = 1
+        if page_count > 1:
+            response_payload['multi_page'] = True
+            response_payload['page_count'] = page_count
         return response_payload, status.HTTP_200_OK
 
     if not fields['issuer'] or not redeem_code:
