@@ -2968,7 +2968,9 @@ def analytics(request):
             for r in value_by_type
         ]),
         'top_issuers': top_issuers,
-        'top_issuers_json': json.dumps([{'name': r['issuer'], 'count': r['count']} for r in top_issuers]),
+        'top_issuers_json': json.dumps(
+            [{'name': r['issuer'], 'count': r['count']} for r in top_issuers]
+        ).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026'),
         'currency_breakdown': currency_breakdown,
         'wallet_budgets': wallet_budgets,
     }
