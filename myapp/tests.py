@@ -4057,6 +4057,15 @@ def _site_config_form_data(**overrides):
         'wallet_chart_limit': 8, 'duplicate_photo_threshold': 10,
         'inactivity_threshold_days': 90, 'companies_house_api_key': '',
         'webpush_barcode_key_version': 1,
+        'allow_registration': True,
+        'invite_expiry_days': 7,
+        'oidc_discovery_url': '',
+        'oidc_client_id': '',
+        'oidc_client_secret': '',
+        'oidc_provider_name': 'SSO',
+        'oidc_create_user': True,
+        'oidc_autologin': False,
+        'oidc_admin_group': '',
     }
     data.update(overrides)
     return data
@@ -5917,3 +5926,197 @@ class DMSSyncLogAPITests(TestCase):
         results = data.get('results', data)
         self.assertEqual(len(results), 0)
         self.assertNotContains(resp, 'Membership Tier')
+
+
+# ---------------------------------------------------------------------------
+# PocketID / Invite-link / User-management tests
+# ---------------------------------------------------------------------------
+
+class InviteLinkModelTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin_inv', 'a@e.com', 'Pw123456!')
+
+    def test_is_valid_fresh_invite(self):
+        from myapp.models import InviteLink
+        inv = InviteLink.objects.create(created_by=self.admin)
+        self.assertTrue(inv.is_valid())
+
+    def test_is_invalid_when_revoked(self):
+        from myapp.models import InviteLink
+        inv = InviteLink.objects.create(created_by=self.admin, revoked=True)
+        self.assertFalse(inv.is_valid())
+
+    def test_is_invalid_when_used(self):
+        from myapp.models import InviteLink
+        inv = InviteLink.objects.create(created_by=self.admin, used_at=timezone.now())
+        self.assertFalse(inv.is_valid())
+
+    def test_is_invalid_when_expired(self):
+        from myapp.models import InviteLink
+        inv = InviteLink.objects.create(
+            created_by=self.admin,
+            expires_at=timezone.now() - timedelta(days=1),
+        )
+        self.assertFalse(inv.is_valid())
+
+    def test_is_valid_before_expiry(self):
+        from myapp.models import InviteLink
+        inv = InviteLink.objects.create(
+            created_by=self.admin,
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+        self.assertTrue(inv.is_valid())
+
+
+class ManageInvitesViewTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin_mi', 'b@e.com', 'Pw123456!')
+        self.user = User.objects.create_user('regular_mi', 'c@e.com', 'Pw123456!')
+        self.client.login(username='admin_mi', password='Pw123456!')
+
+    def test_get_page_200(self):
+        resp = self.client.get(reverse('manage_invites'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Invite')
+
+    def test_non_superuser_redirected(self):
+        self.client.logout()
+        self.client.login(username='regular_mi', password='Pw123456!')
+        resp = self.client.get(reverse('manage_invites'))
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_create_invite(self):
+        from myapp.models import InviteLink
+        resp = self.client.post(reverse('manage_invites'), {
+            'action': 'create', 'note': 'Test invite',
+        })
+        self.assertRedirects(resp, reverse('manage_invites'))
+        self.assertTrue(InviteLink.objects.filter(note='Test invite').exists())
+
+    def test_revoke_invite(self):
+        from myapp.models import InviteLink
+        inv = InviteLink.objects.create(created_by=self.admin, note='to_revoke')
+        resp = self.client.post(reverse('manage_invites'), {
+            'action': 'revoke', 'token': str(inv.token),
+        })
+        self.assertRedirects(resp, reverse('manage_invites'))
+        inv.refresh_from_db()
+        self.assertTrue(inv.revoked)
+
+
+class AcceptInviteViewTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin_ai', 'd@e.com', 'Pw123456!')
+        from myapp.models import InviteLink
+        self.invite = InviteLink.objects.create(created_by=self.admin)
+
+    def test_get_valid_invite_page(self):
+        resp = self.client.get(reverse('accept_invite', args=[str(self.invite.token)]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Create')
+
+    def test_invalid_token_redirects_to_login(self):
+        resp = self.client.get(reverse('accept_invite', args=[str(uuid.uuid4())]))
+        self.assertEqual(resp.status_code, 302)
+
+    def test_register_via_invite(self):
+        resp = self.client.post(reverse('accept_invite', args=[str(self.invite.token)]), {
+            'username': 'newuser_via_invite',
+            'email': 'new@example.com',
+            'password': 'StrongPass!1',
+            'password2': 'StrongPass!1',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(User.objects.filter(username='newuser_via_invite').exists())
+        self.invite.refresh_from_db()
+        self.assertIsNotNone(self.invite.used_at)
+
+    def test_register_password_mismatch(self):
+        resp = self.client.post(reverse('accept_invite', args=[str(self.invite.token)]), {
+            'username': 'newuser_mismatch',
+            'email': '',
+            'password': 'StrongPass!1',
+            'password2': 'WrongPass!1',
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(User.objects.filter(username='newuser_mismatch').exists())
+
+    def test_revoked_invite_redirects_to_login(self):
+        self.invite.revoked = True
+        self.invite.save()
+        resp = self.client.get(reverse('accept_invite', args=[str(self.invite.token)]))
+        self.assertEqual(resp.status_code, 302)
+
+
+class ManageUsersViewTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin_mu', 'e@e.com', 'Pw123456!')
+        self.user = User.objects.create_user('regular_mu', 'f@e.com', 'Pw123456!')
+        self.client.login(username='admin_mu', password='Pw123456!')
+
+    def test_get_page_200(self):
+        resp = self.client.get(reverse('manage_users'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'regular_mu')
+
+    def test_non_superuser_forbidden(self):
+        self.client.logout()
+        self.client.login(username='regular_mu', password='Pw123456!')
+        resp = self.client.get(reverse('manage_users'))
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_promote_user(self):
+        resp = self.client.post(reverse('toggle_user_superuser'), {
+            'user_id': self.user.pk,
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_superuser)
+
+    def test_demote_user(self):
+        self.user.is_superuser = True
+        self.user.save()
+        resp = self.client.post(reverse('toggle_user_superuser'), {
+            'user_id': self.user.pk,
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_superuser)
+
+    def test_cannot_toggle_self(self):
+        resp = self.client.post(reverse('toggle_user_superuser'), {
+            'user_id': self.admin.pk,
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.admin.refresh_from_db()
+        self.assertTrue(self.admin.is_superuser)
+
+
+class UnlinkOIDCViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user('oidc_user', 'g@e.com', 'Pw123456!')
+        from myapp.models import UserProfile
+        self.profile, _ = UserProfile.objects.get_or_create(user=self.user)
+        self.profile.oidc_sub = 'sub|abc123'
+        self.profile.oidc_avatar_url = 'https://example.com/avatar.jpg'
+        self.profile.oidc_last_login = timezone.now()
+        self.profile.save()
+        self.client.login(username='oidc_user', password='Pw123456!')
+
+    def test_unlink_clears_oidc_fields(self):
+        resp = self.client.post(reverse('unlink_oidc'))
+        self.assertEqual(resp.status_code, 302)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.oidc_sub, '')
+        self.assertEqual(self.profile.oidc_avatar_url, '')
+        self.assertIsNone(self.profile.oidc_last_login)
+
+    def test_get_not_allowed(self):
+        resp = self.client.get(reverse('unlink_oidc'))
+        self.assertEqual(resp.status_code, 405)
+
+    def test_unauthenticated_redirected(self):
+        self.client.logout()
+        resp = self.client.post(reverse('unlink_oidc'))
+        self.assertNotEqual(resp.status_code, 200)
+        self.assertNotEqual(resp.status_code, 405)

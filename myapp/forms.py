@@ -433,6 +433,9 @@ class SiteConfigurationForm(forms.ModelForm):
             'scheduled_backup_enabled', 'backup_retention_count',
             'expiring_soon_limit', 'calendar_months_ahead', 'wallet_chart_limit', 'duplicate_photo_threshold',
             'allow_registration',
+            'invite_expiry_days',
+            'oidc_discovery_url', 'oidc_client_id', 'oidc_client_secret',
+            'oidc_provider_name', 'oidc_create_user', 'oidc_autologin', 'oidc_admin_group',
         ]
         widgets = {
             'expiry_threshold_days': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
@@ -470,6 +473,13 @@ class SiteConfigurationForm(forms.ModelForm):
             'wallet_chart_limit': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 20}),
             'duplicate_photo_threshold': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'max': 64}),
             'allow_registration': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'invite_expiry_days': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+            'oidc_discovery_url': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'https://id.example.com/.well-known/openid-configuration'}),
+            'oidc_client_id': forms.TextInput(attrs={'class': 'form-control'}),
+            'oidc_provider_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'oidc_create_user': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'oidc_autologin': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'oidc_admin_group': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'admins'}),
         }
 
     REPO_RE = re.compile(r'^[\w.-]+/[\w.-]+$')

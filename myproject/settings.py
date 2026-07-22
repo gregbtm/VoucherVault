@@ -630,7 +630,7 @@ OIDC_AUTOLOGIN = os.environ.get('OIDC_AUTOLOGIN', 'False').lower() in ['true']
 if OIDC_ENABLED:
     # get oidc config from env
     OIDC_CREATE_USER = os.environ.get('OIDC_CREATE_USER', 'True').lower() in ['true']
-    OIDC_RP_SIGN_ALGO = os.environ.get('OIDC_RP_SIGN_ALGO', 'HS256')
+    OIDC_RP_SIGN_ALGO = os.environ.get('OIDC_RP_SIGN_ALGO', 'RS256')
     OIDC_RP_IDP_SIGN_KEY = os.environ.get('OIDC_RP_IDP_SIGN_KEY')
     OIDC_RP_CLIENT_ID = os.environ.get('OIDC_RP_CLIENT_ID', "vouchervault")
     OIDC_RP_CLIENT_SECRET = os.environ.get('OIDC_RP_CLIENT_SECRET')
@@ -673,10 +673,9 @@ if OIDC_ENABLED:
     # since AxesBackend must stay first for lockouts to apply to OIDC logins too.
     AUTHENTICATION_BACKENDS.append('myapp.oidc_backend.VoucherVaultOIDCBackend')
 
-    # Add 'mozilla_django_oidc.middleware.SessionRefresh' to MIDDLEWARE
-    # https://mozilla-django-oidc.readthedocs.io/en/stable/installation.html#validate-id-tokens-by-renewing-them
-    # disabled atm, as it leads to a circular import with container error "partially initialized module 'josepy'"
-    #MIDDLEWARE.append('mozilla_django_oidc.middleware.SessionRefresh')
+    # Validate OIDC ID tokens on each request by refreshing them from the provider.
+    # Ensures revoked sessions are invalidated promptly (within SESSION_COOKIE_AGE seconds).
+    MIDDLEWARE.append('mozilla_django_oidc.middleware.SessionRefresh')
 
     # Fix http callback issue in mozilla-django-oidc by forcing https; https://github.com/mozilla/mozilla-django-oidc/issues/417
     # OIDC should only be setup behind a TLS reverse proxy anyways

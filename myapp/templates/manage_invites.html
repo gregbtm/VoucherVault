@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{% trans "Invite Links" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'manage_users' %}">{% trans "Users" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "Invite Links" %}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="row">
+    <div class="col-lg-6">
+
+      <!-- Create invite -->
+      <div class="card mb-4">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-envelope-plus me-1"></i> {% trans "Create Invite Link" %}</h5>
+          <p class="text-muted small">{% trans "Generate a one-time link. The recipient can use it to create an account even when registration is closed." %}</p>
+          <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="create">
+            <div class="mb-3">
+              <input type="text" name="note" class="form-control" placeholder="{% trans 'Note (optional, e.g. partner name)' %}" maxlength="255">
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">
+              <i class="bi bi-plus-circle me-1"></i> {% trans "Generate Invite" %}
+            </button>
+          </form>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="col-lg-12">
+      <!-- Invite list -->
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-list-check me-1"></i> {% trans "All Invite Links" %}</h5>
+          {% if invites %}
+          <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>{% trans "Link" %}</th>
+                  <th>{% trans "Note" %}</th>
+                  <th>{% trans "Created by" %}</th>
+                  <th>{% trans "Created" %}</th>
+                  <th>{% trans "Expires" %}</th>
+                  <th>{% trans "Status" %}</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for inv in invites %}
+                <tr>
+                  <td>
+                    {% if inv.is_valid %}
+                    <code class="small user-select-all">{{ request.scheme }}://{{ request.get_host }}{% url 'accept_invite' inv.token %}</code>
+                    {% else %}
+                    <span class="text-muted small">—</span>
+                    {% endif %}
+                  </td>
+                  <td class="small">{{ inv.note|default:"—" }}</td>
+                  <td class="small">{{ inv.created_by.username|default:"—" }}</td>
+                  <td class="small text-muted">{{ inv.created_at|date:"d M Y" }}</td>
+                  <td class="small text-muted">{{ inv.expires_at|date:"d M Y"|default:"Never" }}</td>
+                  <td>
+                    {% if inv.used_at %}
+                    <span class="badge bg-secondary">{% trans "Used" %} — {{ inv.used_by.username|default:"?" }}</span>
+                    {% elif inv.revoked %}
+                    <span class="badge bg-danger">{% trans "Revoked" %}</span>
+                    {% elif inv.expires_at and inv.expires_at < now %}
+                    <span class="badge bg-warning text-dark">{% trans "Expired" %}</span>
+                    {% else %}
+                    <span class="badge bg-success">{% trans "Active" %}</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if inv.is_valid %}
+                    <form method="POST" class="d-inline">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="revoke">
+                      <input type="hidden" name="token" value="{{ inv.token }}">
+                      <button type="submit" class="btn btn-sm btn-outline-danger">{% trans "Revoke" %}</button>
+                    </form>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <p class="text-muted">{% trans "No invite links yet. Create one above." %}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+{% endblock %}

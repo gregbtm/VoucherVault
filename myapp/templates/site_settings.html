@@ -317,7 +317,56 @@
                 {{ form.allow_registration }}
                 <label class="form-check-label" for="{{ form.allow_registration.id_for_label }}">{% trans "Allow new user registrations" %}</label>
               </div>
-              <p class="text-muted small mb-0">{% trans "Disable to make this instance invite-only. Existing accounts, API tokens, and SSO/OIDC logins continue to work normally." %}</p>
+              <p class="text-muted small mb-2">{% trans "Disable to make this instance invite-only. Existing accounts, API tokens, and SSO/OIDC logins continue to work normally." %}</p>
+              <div class="row">
+                <div class="col-md-6 mb-2">
+                  <label for="{{ form.invite_expiry_days.id_for_label }}" class="form-label">{% trans "Invite link expiry (days, 0 = never)" %}</label>
+                  {{ form.invite_expiry_days }}
+                </div>
+              </div>
+              <a href="{% url 'manage_invites' %}" class="btn btn-sm btn-outline-primary mt-1">
+                <i class="bi bi-envelope-plus me-1"></i> {% trans "Manage invite links" %}
+              </a>
+            </div>
+
+            <div class="settings-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-person-badge me-2"></i>{% trans "OIDC / PocketID Integration" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Configure OpenID Connect authentication. Requires a server restart to take effect.' %}"></i></h6>
+              <p class="text-muted small mb-3">{% trans "OIDC is enabled/disabled via the OIDC_ENABLED environment variable. These fields configure the connection details and are editable without a Portainer restart." %}</p>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.oidc_provider_name.id_for_label }}" class="form-label">{% trans "Provider display name" %}</label>
+                  {{ form.oidc_provider_name }}
+                  <div class="form-text">{% trans "Shown on the 'Login with …' button." %}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.oidc_admin_group.id_for_label }}" class="form-label">{% trans "Admin group claim" %}</label>
+                  {{ form.oidc_admin_group }}
+                  <div class="form-text">{% trans "PocketID group name → superuser. Leave blank to disable." %}</div>
+                </div>
+                <div class="col-12 mb-3">
+                  <label for="{{ form.oidc_discovery_url.id_for_label }}" class="form-label">{% trans "Discovery URL" %}</label>
+                  {{ form.oidc_discovery_url }}
+                  <div class="form-text">{% trans "e.g. https://id.example.com/.well-known/openid-configuration" %}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.oidc_client_id.id_for_label }}" class="form-label">{% trans "Client ID" %}</label>
+                  {{ form.oidc_client_id }}
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.oidc_client_secret.id_for_label }}" class="form-label">{% trans "Client secret" %}</label>
+                  {{ form.oidc_client_secret }}
+                </div>
+                <div class="col-md-6">
+                  <div class="form-check mb-2">
+                    {{ form.oidc_create_user }}
+                    <label class="form-check-label" for="{{ form.oidc_create_user.id_for_label }}">{% trans "Create account on first OIDC login" %}</label>
+                  </div>
+                  <div class="form-check">
+                    {{ form.oidc_autologin }}
+                    <label class="form-check-label" for="{{ form.oidc_autologin.id_for_label }}">{% trans "Auto-redirect to OIDC on login page" %}</label>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="settings-group-label"><i class="bi bi-tools me-1"></i> {% trans "Maintenance & Deployment" %}</div>
