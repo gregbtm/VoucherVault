@@ -17,12 +17,18 @@
   "shortcuts": {{ PWA_APP_SHORTCUTS|js }},
   "share_target": {
     "action": "/en/items/create/",
-    "method": "GET",
-    "enctype": "application/x-www-form-urlencoded",
+    "method": "POST",
+    "enctype": "multipart/form-data",
     "params": {
       "title": "shared_title",
       "text": "shared_text",
-      "url": "shared_url"
+      "url": "shared_url",
+      "files": [
+        {
+          "name": "image",
+          "accept": ["image/*"]
+        }
+      ]
     }
   }
 }

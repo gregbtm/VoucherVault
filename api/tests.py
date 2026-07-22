@@ -785,6 +785,85 @@ class AnalyticsApiTests(APITestCase):
         response = self.client.get('/api/v1/analytics/expiry-timeline/?months=1')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    def test_summary_includes_spend_stats(self):
+        item = make_item(self.alice, type='giftcard', value='50.00')
+        Transaction.objects.create(item=item, description='Spend', value='-12.50')
+        Transaction.objects.create(item=item, description='Top-up', value='5.00')
+        response = self.client.get('/api/v1/analytics/summary/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('spend_stats', response.data)
+        stats = response.data['spend_stats']
+        self.assertEqual(stats['total_spent'], '12.50')
+        self.assertEqual(len(stats['monthly_spend']), 12)
+        for entry in stats['monthly_spend']:
+            self.assertIn('month', entry)
+            self.assertIn('amount', entry)
+
+    def test_spend_stats_only_counts_own_transactions(self):
+        bob = User.objects.create_user(username='spend_bob', password='pw12345!')
+        bob_item = make_item(bob, type='giftcard', value='100.00')
+        Transaction.objects.create(item=bob_item, description='Bob spend', value='-99.00')
+
+        alice_item = make_item(self.alice, type='giftcard', value='20.00')
+        Transaction.objects.create(item=alice_item, description='Alice spend', value='-5.00')
+
+        response = self.client.get('/api/v1/analytics/summary/')
+        self.assertEqual(response.data['spend_stats']['total_spent'], '5.00')
+
+    def test_redeemed_value_excludes_loyalty_cards(self):
+        make_item(self.alice, type='giftcard', value='30.00', is_used=True)
+        make_item(self.alice, type='loyaltycard', value='500.00', is_used=True, redeem_code='LC1')
+        response = self.client.get('/api/v1/analytics/summary/')
+        self.assertEqual(response.data['spend_stats']['redeemed_value'], '30.00')
+
+
+class ItemWalletAutoAssignApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.force_authenticate(user=self.user)
+        self.wallet = Wallet.objects.create(
+            user=self.user, name='Supermarkets', auto_assign_issuer_match='tesco'
+        )
+
+    def test_api_create_auto_assigns_matching_wallet(self):
+        response = self.client.post('/api/v1/items/', {
+            'type': 'giftcard', 'name': 'Tesco Card', 'issuer': 'Tesco',
+            'redeem_code': 'GC1', 'value': '25.00', 'currency': 'GBP',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        item = Item.objects.get(pk=response.data['id'])
+        self.assertEqual(item.wallet, self.wallet)
+
+    def test_api_create_no_match_leaves_wallet_unset(self):
+        response = self.client.post('/api/v1/items/', {
+            'type': 'voucher', 'name': 'Random Voucher', 'issuer': 'Nobody',
+            'redeem_code': 'X1', 'value': '5.00', 'currency': 'GBP',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        item = Item.objects.get(pk=response.data['id'])
+        self.assertIsNone(item.wallet)
+
+    def test_api_create_explicit_wallet_not_overridden(self):
+        other_wallet = Wallet.objects.create(user=self.user, name='Other')
+        response = self.client.post('/api/v1/items/', {
+            'type': 'giftcard', 'name': 'Tesco Card 2', 'issuer': 'Tesco',
+            'redeem_code': 'GC2', 'value': '25.00', 'currency': 'GBP',
+            'wallet': str(other_wallet.id),
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        item = Item.objects.get(pk=response.data['id'])
+        self.assertEqual(item.wallet, other_wallet)
+
+    def test_other_users_wallet_pattern_not_used(self):
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        Wallet.objects.create(user=bob, name='Bob Wallet', auto_assign_issuer_match='tesco')
+        response = self.client.post('/api/v1/items/', {
+            'type': 'giftcard', 'name': 'Tesco', 'issuer': 'Tesco',
+            'redeem_code': 'GC3', 'value': '10.00', 'currency': 'GBP',
+        })
+        item = Item.objects.get(pk=response.data['id'])
+        self.assertEqual(item.wallet, self.wallet)
+
 
 class MerchantProfileApiTests(APITestCase):
     def setUp(self):

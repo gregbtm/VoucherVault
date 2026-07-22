@@ -4,9 +4,10 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.db.models import Count, Sum
+from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
-from .models import Item, SiteConfiguration
+from .models import Item, SiteConfiguration, Transaction
 
 EXPIRING_SOON_DAYS = 7
 OTHER_WALLET_COLOR = '#9ca3af'
@@ -211,6 +212,74 @@ def get_active_today_item(user, enabled, home_station, cutoff_time):
     if timezone.localtime().time() < cutoff_time:
         return outward or return_leg
     return return_leg
+
+
+def get_spend_stats(user):
+    """
+    Spending analytics for a user's transaction history:
+
+    - `total_spent`: absolute sum of all negative Transaction.value amounts
+      across the user's items (i.e. money spent out of gift cards / vouchers),
+      returned as a 2 d.p. string.
+    - `monthly_spend`: list of {'month': 'YYYY-MM', 'amount': str} for the
+      last 12 calendar months (current month included), ordered oldest-first.
+      Months with no spend are included as '0.00' so the chart always has a
+      complete 12-bar axis.
+    - `redeemed_value`: sum of item.value (the stored face value) for all
+      items owned by `user` where is_used=True and type is not 'loyaltycard',
+      returned as a 2 d.p. string.  Loyalty cards are excluded because their
+      `value` field typically holds points rather than a monetary amount.
+    """
+    now = timezone.now()
+
+    # Total spent — sum of all negative transactions, returned as positive
+    total_spent_agg = Transaction.objects.filter(
+        item__user=user, value__lt=0
+    ).aggregate(total=Sum('value'))
+    total_spent_raw = total_spent_agg['total'] or Decimal('0')
+    total_spent = abs(total_spent_raw).quantize(Decimal('0.01'))
+
+    # Monthly spend for the last 12 calendar months
+    twelve_months_ago = now - timedelta(days=365)
+    monthly_rows = (
+        Transaction.objects.filter(item__user=user, value__lt=0, date__gte=twelve_months_ago)
+        .annotate(month=TruncMonth('date'))
+        .values('month')
+        .annotate(amount=Sum('value'))
+        .order_by('month')
+    )
+    spend_by_month = {
+        row['month'].strftime('%Y-%m'): abs(row['amount']).quantize(Decimal('0.01'))
+        for row in monthly_rows
+    }
+
+    # Build a complete 12-month list (oldest → newest), filling gaps with 0
+    current_year, current_month = now.year, now.month
+    monthly_spend = []
+    for i in range(11, -1, -1):
+        m = current_month - i
+        y = current_year
+        while m <= 0:
+            m += 12
+            y -= 1
+        label = f"{y:04d}-{m:02d}"
+        monthly_spend.append({
+            'month': label,
+            'amount': str(spend_by_month.get(label, Decimal('0.00'))),
+        })
+
+    # Redeemed value — face value of used non-loyalty items
+    redeemed_agg = Item.objects.filter(
+        user=user, is_used=True
+    ).exclude(type='loyaltycard').aggregate(total=Sum('value'))
+    redeemed_raw = redeemed_agg['total'] or Decimal('0')
+    redeemed_value = redeemed_raw.quantize(Decimal('0.01'))
+
+    return {
+        'total_spent': str(total_spent),
+        'monthly_spend': monthly_spend,
+        'redeemed_value': str(redeemed_value),
+    }
 
 
 def build_expiry_calendar(user, months_ahead=None):

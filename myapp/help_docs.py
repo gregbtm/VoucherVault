@@ -27,6 +27,9 @@ DOCS = {
     'firefly':            ('Syncing spend to Firefly III', 'FIREFLY_III_SETUP.md'),
     'upgrade':            ('Upgrading from the upstream image', 'UPGRADE.md'),
     'notifications':      ('Notification rules & expiry alerts', 'NOTIFICATIONS_SETUP.md'),
+    'telegram-discord-email': ('Telegram, Discord & Email notifications', 'TELEGRAM_DISCORD_EMAIL_SETUP.md'),
+    'balance-tracking':   ('Balance & redemption tracking', 'BALANCE_TRACKING.md'),
+    'pwa-offline':        ('PWA install & offline mode', 'PWA_OFFLINE.md'),
     'webhooks':           ('Outbound webhooks', 'WEBHOOKS_SETUP.md'),
     'api-access':         ('REST API access', 'API_ACCESS.md'),
     'wallets-tags':       ('Wallets & tags', 'WALLETS_AND_TAGS.md'),
@@ -39,8 +42,11 @@ DOCS = {
 CATEGORIES = [
     ('Getting Started', 'bi-house', [
         ('wallets-tags',   'Organise items into wallets and apply tags for filtering'),
+        ('balance-tracking', 'Log transactions, track remaining balance, and view spend analytics'),
         ('notifications',  'Set up expiry alerts via ntfy, webhook, web push, or Apprise'),
+        ('telegram-discord-email', 'Send alerts directly to Telegram, a Discord channel, or email'),
         ('api-access',     'Generate an API token and use the REST API or MCP server'),
+        ('pwa-offline',    'Install as a PWA, browse offline, and share items directly from Android'),
     ]),
     ('Wallet & Sharing', 'bi-wallet2', [
         ('google-wallet',  'Export vouchers to Google Wallet on Android'),

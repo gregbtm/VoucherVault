@@ -33,7 +33,7 @@ from imports.models import ImportJob
 from imports.parsers import get_parser
 from imports.pkpass_import import PkpassImportError, extract_pkpass_fields
 from imports.tasks import process_import_job
-from myapp.analytics import get_expiry_timeline, get_summary_stats
+from myapp.analytics import get_expiry_timeline, get_spend_stats, get_summary_stats
 from myapp.merchant_logos import remember_balance_check_url
 from myapp.models import (
     Document, Item, ItemShare, MerchantProfile, Tag, Transaction,
@@ -323,6 +323,12 @@ class ItemViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         item = serializer.save(user=self.request.user, source='api')
         remember_balance_check_url(item.issuer, item.balance_check_url)
+        # Auto-assign wallet by issuer text match (same logic as the web form path)
+        if not item.wallet_id and item.issuer:
+            matched = Wallet.match_for_issuer(self.request.user, item.issuer)
+            if matched:
+                item.wallet = matched
+                item.save(update_fields=['wallet'])
         notify_item_created(item)
 
     def perform_update(self, serializer):
@@ -1326,7 +1332,9 @@ class AnalyticsSummaryView(APIView):
         )
     )
     def get(self, request):
-        return Response(get_summary_stats(request.user))
+        data = get_summary_stats(request.user)
+        data['spend_stats'] = get_spend_stats(request.user)
+        return Response(data)
 
 
 class AnalyticsExpiryTimelineView(APIView):

@@ -21,7 +21,7 @@ from rest_framework.authtoken.models import Token
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from .avatar import generate_initial_avatar, normalize_logo_image
-from .forms import ItemForm, SiteConfigurationForm, TagForm, WalletForm
+from .forms import ItemForm, SiteConfigurationForm, TagForm, TransactionForm, WalletForm
 from .merchant_logos import (
     _logo_sources,
     fetch_merchant_logo,
@@ -34,7 +34,7 @@ from .merchant_logos import (
 from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
 from .nearby_places import _names_match, _normalize, find_nearby_issuer_matches
 from .imagehash import compute_dhash, hamming_distance
-from .models import AppSettings, Document, Item, ItemPublicShare, LoginAuditLog, MerchantProfile, ScanFieldCorrection, SiteConfiguration, Tag, TOTPDevice, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, UserWebhook, Wallet, WalletActivity, WalletMembership
+from .models import AppSettings, BalanceHistory, Document, Item, ItemPublicShare, LoginAuditLog, MerchantProfile, ScanFieldCorrection, SiteConfiguration, Tag, TOTPDevice, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, UserWebhook, Wallet, WalletActivity, WalletMembership
 from .scan_learning import apply_learned_corrections, record_scan_corrections
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .test_utils import set_site_config
@@ -105,6 +105,131 @@ class LedgerBalanceTests(TestCase):
         item.refresh_from_db()
         annotated = Item.objects.with_current_balance().get(pk=item.pk)
         self.assertEqual(annotated.current_balance, item.value)
+
+
+class TransactionFormDateTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.item = make_item(self.user, value='50.00')
+        self.item.refresh_from_db()
+
+    def test_form_valid_without_date(self):
+        form = TransactionForm({'description': 'Spend', 'value': '-10.00'}, item=self.item)
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_form_valid_with_datetime_local_format(self):
+        form = TransactionForm(
+            {'description': 'Spend', 'value': '-5.00', 'date': '2026-03-15T14:30'},
+            item=self.item,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        txn = form.save(commit=False)
+        self.assertEqual(txn.date.year, 2026)
+        self.assertEqual(txn.date.month, 3)
+
+    def test_form_valid_with_date_only_format(self):
+        form = TransactionForm(
+            {'description': 'Spend', 'value': '-5.00', 'date': '2026-01-20'},
+            item=self.item,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_form_invalid_with_garbage_date(self):
+        form = TransactionForm(
+            {'description': 'Spend', 'value': '-5.00', 'date': 'not-a-date'},
+            item=self.item,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn('date', form.errors)
+
+
+class BalanceHistoryOnTransactionSaveTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.item = make_item(self.user, value='30.00', type='giftcard')
+        self.item.refresh_from_db()
+        self.client.force_login(self.user)
+
+    def _post_transaction(self, value, description='Spend'):
+        url = reverse('view_item', args=[self.item.id])
+        return self.client.post(url, {'description': description, 'value': value})
+
+    def test_transaction_post_creates_balance_history_entry(self):
+        response = self._post_transaction('-10.00')
+        self.assertRedirects(response, reverse('view_item', args=[self.item.id]))
+        self.assertEqual(BalanceHistory.objects.filter(item=self.item).count(), 1)
+        entry = BalanceHistory.objects.get(item=self.item)
+        self.assertEqual(entry.balance, Decimal('20.00'))
+
+    def test_multiple_transactions_each_create_history_entry(self):
+        self._post_transaction('-5.00', 'First')
+        self._post_transaction('-3.00', 'Second')
+        self.assertEqual(BalanceHistory.objects.filter(item=self.item).count(), 2)
+        balances = list(BalanceHistory.objects.filter(item=self.item).order_by('recorded_at').values_list('balance', flat=True))
+        self.assertEqual(balances[0], Decimal('25.00'))
+        self.assertEqual(balances[1], Decimal('22.00'))
+
+    def test_balance_history_note_contains_description(self):
+        self._post_transaction('-7.00', 'Weekly shop')
+        entry = BalanceHistory.objects.get(item=self.item)
+        self.assertEqual(entry.note, 'Weekly shop')
+
+    def test_item_marked_used_when_balance_reaches_zero(self):
+        self._post_transaction('-30.00')
+        self.item.refresh_from_db()
+        self.assertTrue(self.item.is_used)
+
+
+class SpendStatsTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.item = make_item(self.user, type='giftcard', value='100.00')
+
+    def test_no_transactions_returns_zeros(self):
+        from .analytics import get_spend_stats
+        stats = get_spend_stats(self.user)
+        self.assertEqual(stats['total_spent'], '0.00')
+        self.assertEqual(stats['redeemed_value'], '0.00')
+        self.assertEqual(len(stats['monthly_spend']), 12)
+
+    def test_total_spent_sums_negative_transactions_only(self):
+        from .analytics import get_spend_stats
+        Transaction.objects.create(item=self.item, description='Spend', value='-10.00')
+        Transaction.objects.create(item=self.item, description='Top-up', value='5.00')
+        stats = get_spend_stats(self.user)
+        self.assertEqual(stats['total_spent'], '10.00')
+
+    def test_redeemed_value_excludes_loyalty_cards(self):
+        from .analytics import get_spend_stats
+        loyalty = make_item(self.user, type='loyaltycard', value='500.00', is_used=True, redeem_code='LC')
+        regular = make_item(self.user, type='giftcard', value='20.00', is_used=True, redeem_code='GC')
+        stats = get_spend_stats(self.user)
+        self.assertEqual(stats['redeemed_value'], '20.00')
+
+    def test_monthly_spend_always_has_12_entries(self):
+        from .analytics import get_spend_stats
+        stats = get_spend_stats(self.user)
+        months = stats['monthly_spend']
+        self.assertEqual(len(months), 12)
+        for entry in months:
+            self.assertRegex(entry['month'], r'^\d{4}-\d{2}$')
+
+    def test_monthly_spend_reflects_current_month_transactions(self):
+        from .analytics import get_spend_stats
+        from django.utils import timezone as tz
+        Transaction.objects.create(item=self.item, description='S', value='-15.00', date=tz.now())
+        stats = get_spend_stats(self.user)
+        current_month = tz.now().strftime('%Y-%m')
+        current_entry = next(e for e in stats['monthly_spend'] if e['month'] == current_month)
+        self.assertEqual(current_entry['amount'], '15.00')
+
+    def test_other_users_transactions_excluded(self):
+        from .analytics import get_spend_stats
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        bob_item = make_item(bob, type='giftcard', value='100.00', redeem_code='BOB1')
+        Transaction.objects.create(item=bob_item, description='Bob spend', value='-99.00')
+        stats = get_spend_stats(self.user)
+        self.assertEqual(stats['total_spent'], '0.00')
 
 
 class DefaultCurrencyTests(TestCase):

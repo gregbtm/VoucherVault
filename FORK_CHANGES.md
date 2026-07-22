@@ -6617,6 +6617,111 @@ response. (`unsafe-eval` is retained for ECharts.)
 
 ---
 
+## Phase 130 — Balance tracking, spend analytics, new notification channels, smart auto-categorisation & PWA hardening
+
+### 1. Balance & redemption tracking improvements
+
+`TransactionForm` now accepts an optional `date` field (`datetime-local` and
+`date` formats both accepted) so transactions can be back-dated. The form's
+`clean_value` validation correctly handles SQLite returning `value` as a string
+before `refresh_from_db()`.
+
+`BalanceHistory` entries are written on every transaction save and the sparkline
+on the item detail page reflects the running balance over time. Items whose
+balance reaches zero are automatically marked as used.
+
+### 2. Spending analytics dashboard
+
+`myapp/analytics.py` now exports `get_spend_stats(user)` which returns:
+- `total_spent` — sum of all negative transactions across the user's gift cards,
+  vouchers and coupons (loyalty cards excluded).
+- `redeemed_value` — total face value of fully redeemed items (balance = 0).
+- `monthly_spend` — list of `{month, amount}` dicts for the trailing 12 months,
+  always 12 entries (months with no activity are `0`).
+
+The analytics dashboard page and the `GET /api/v1/analytics/summary/` API
+endpoint both expose these figures.
+
+### 3. New notification channels
+
+Three new backends added under `notify/backends/`:
+
+| File | Channel |
+|------|---------|
+| `telegram.py` | Telegram Bot API — `sendMessage` with HTML parse mode; bold title, code-formatted value |
+| `discord.py` | Discord webhook — rich embed with item name, type, expiry and value fields |
+| `email_smtp.py` | SMTP email — supports STARTTLS (port 587) and SSL (port 465); comma-separated `to_addresses` |
+
+`NotificationRule.BACKEND_CHOICES` extended to include `telegram`, `discord`,
+and `email_smtp`. Rules UI and admin updated automatically.
+
+**Help doc added:** `docs/TELEGRAM_DISCORD_EMAIL_SETUP.md` — BotFather setup,
+chat-ID discovery, Discord webhook creation, Gmail/Outlook/self-hosted SMTP
+config. Registered in Help Center under **Getting Started**.
+
+### 4. Smart auto-categorisation (wallet auto-assign via API)
+
+`ItemViewSet.perform_create` in `api/views.py` now calls
+`Wallet.match_for_issuer(user, issuer)` after saving a new item. When the item's
+issuer text matches a wallet's `auto_assign_issuer_match` pattern (and no
+wallet was explicitly supplied), the wallet is set automatically — the same
+behaviour as the web form path.
+
+Bug fixed: arguments were originally swapped (`match_for_issuer(issuer, user)`)
+causing `ValueError: Field 'id' expected a number but got '<string>'` on every
+API item-create call.
+
+### 5. PWA / offline hardening
+
+`myapp/serviceworker.js` updated:
+- `BackgroundSync` registration (`sync-offline-changes`) queues failed mutations
+  during offline periods and replays them when connectivity is restored.
+- `share_target` handler for `POST multipart/form-data` allows sharing images
+  directly from Android to VoucherVault's create-item page.
+- Cache-busting version token bumped.
+
+`myapp/static/assets/js/offline-sync.js` — client-side helper that listens for
+`online` events and triggers the sync registration.
+
+`myapp/templates/manifest.json` updated with `share_target` entry.
+
+**Help doc added:** `docs/PWA_OFFLINE.md` — install instructions per platform,
+offline browsing, Background Sync flow, share-to-VoucherVault, troubleshooting.
+Registered in Help Center under **Getting Started**.
+
+**Help doc added:** `docs/BALANCE_TRACKING.md` — initial balance, recording
+spends, transaction history, sparkline, BalanceHistory API, analytics dashboard,
+tips. Registered in Help Center under **Getting Started**.
+
+### Bug fixes
+
+- `myapp/oidc_views.py`: `OIDCCallbackView` renamed to
+  `OIDCAuthenticationCallbackView` in `mozilla-django-oidc` 5.x — import updated
+  with alias so `VVOIDCCallbackView` class name is unchanged.
+- `myapp/views.py` (`view_item`): removed redundant local
+  `from .models import BalanceHistory` that caused `UnboundLocalError` because
+  Python scoped the name as local for the entire function, shadowing the
+  module-level wildcard import.
+- `myapp/templates/view-item.html`: merged double-nested `{% if %}` (missing
+  closing `{% endif %}`) into a single condition using `in` substring check,
+  fixing `TemplateSyntaxError` on page load.
+
+**Test suite:** 1152 tests, 0 failures.
+
+**Files changed (new):** `notify/backends/telegram.py`,
+`notify/backends/discord.py`, `notify/backends/email_smtp.py`,
+`docs/BALANCE_TRACKING.md`, `docs/TELEGRAM_DISCORD_EMAIL_SETUP.md`,
+`docs/PWA_OFFLINE.md`.  
+**Files changed (modified):** `api/tests.py`, `api/views.py`,
+`myapp/analytics.py`, `myapp/forms.py`, `myapp/help_docs.py`,
+`myapp/oidc_views.py`, `myapp/serviceworker.js`,
+`myapp/static/assets/js/offline-sync.js`, `myapp/templates/dashboard.html`,
+`myapp/templates/manifest.json`, `myapp/templates/view-item.html`,
+`myapp/tests.py`, `myapp/views.py`, `notify/backends/__init__.py`,
+`notify/models.py`, `notify/tests.py`.
+
+---
+
 ## Upgrading an existing deployment
 
 If you're running the upstream Docker image and want to switch to this

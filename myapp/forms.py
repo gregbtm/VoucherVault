@@ -205,25 +205,32 @@ class ItemForm(forms.ModelForm):
 class TransactionForm(forms.ModelForm):
     class Meta:
         model = Transaction
-        fields = ['description', 'value']
-    
+        fields = ['description', 'value', 'date']
+        widgets = {
+            'date': forms.DateTimeInput(
+                attrs={'type': 'datetime-local', 'class': 'form-control'},
+                format='%Y-%m-%dT%H:%M',
+            ),
+        }
+
     def __init__(self, *args, **kwargs):
         self.item = kwargs.pop('item', None)
-        super(TransactionForm, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
+        self.fields['date'].required = False
+        self.fields['date'].input_formats = ['%Y-%m-%dT%H:%M', '%Y-%m-%d %H:%M', '%Y-%m-%d']
 
     def clean_value(self):
         value = self.cleaned_data['value']
         if value >= 0:
             error_msg_transaction = _('Transaction value must be negative.')
             raise forms.ValidationError(error_msg_transaction)
-        
+
         if self.item:
-            # Calculate the total value after applying this transaction
             total_value = self.item.get_current_balance() + value
             if total_value < 0:
                 error_msg_value_calc = _('Transaction would result in negative item value.')
                 raise forms.ValidationError(error_msg_value_calc)
-        return value     
+        return value
 
 class UserProfileForm(forms.ModelForm):
     class Meta:

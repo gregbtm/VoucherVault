@@ -1,7 +1,7 @@
 import logging
 
 from django.shortcuts import redirect
-from mozilla_django_oidc.views import OIDCCallbackView
+from mozilla_django_oidc.views import OIDCAuthenticationCallbackView as OIDCCallbackView
 
 logger = logging.getLogger(__name__)
 

@@ -35,7 +35,7 @@ from django.contrib import messages
 from django.utils.timezone import now
 from django.utils.http import url_has_allowed_host_and_scheme
 from .decorators import require_authorization_header_with_api_token
-from .analytics import build_expiry_calendar, get_active_today_item, get_expiring_soon_items, get_items_by_wallet, get_next_up_items
+from .analytics import build_expiry_calendar, get_active_today_item, get_expiring_soon_items, get_items_by_wallet, get_next_up_items, get_spend_stats
 from .avatar import generate_initial_avatar, normalize_logo_image
 from .merchant_logos import fetch_merchant_logo, get_cached_balance_check_url, get_cached_logo, get_cached_logos_for_issuers, merchant_logos_enabled, remember_balance_check_url
 from .nearby_places import find_nearby_issuer_matches, nearby_places_enabled
@@ -273,6 +273,7 @@ def dashboard(request):
         'shared_items_count_with_you': shared_items_count_with_you,
         'giftcards_total': giftcards_total,
         'giftcards_total_currency': giftcards_total_currency,
+        'spend_stats': get_spend_stats(request.user),
     }
     return render(request, 'dashboard.html', context)
 
@@ -566,6 +567,11 @@ def view_item(request, item_uuid):
             transaction.item = item
             transaction.save()
             total_value += transaction.value
+            BalanceHistory.objects.create(
+                item=item,
+                balance=total_value,
+                note=transaction.description or '',
+            )
             notify_balance_changed(item, transaction)
             fire_user_webhooks(item.user, 'item_balance_changed', item)
 
@@ -632,7 +638,6 @@ def view_item(request, item_uuid):
         )
 
     from notify.models import NotificationRule
-    from .models import BalanceHistory
     balance_history = list(
         BalanceHistory.objects.filter(item=item).order_by('recorded_at').values('balance', 'recorded_at', 'note')
     )
