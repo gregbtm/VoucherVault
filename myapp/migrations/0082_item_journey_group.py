@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('myapp', '0080_security_settings'),
+        ('myapp', '0081_alter_siteconfiguration_oidc_admin_group_and_more'),
     ]
 
     operations = [

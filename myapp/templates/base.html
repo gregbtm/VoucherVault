@@ -39,6 +39,11 @@
   <meta content="" name="description">
   <meta content="" name="keywords">
   {% progressive_web_app_meta %}
+  <script nonce="{{ request.csp_nonce }}">
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/serviceworker.js', { scope: '/' });
+    }
+  </script>
 
   <!-- Favicons -->
   <link href="{% static 'assets/img/favicon.ico' %}" rel="shortcut icon">
