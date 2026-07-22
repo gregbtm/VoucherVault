@@ -47,6 +47,11 @@
   }
 }
 
+html, body {
+  overflow-x: hidden; /* prevent horizontal scroll from any overflowing child */
+  max-width: 100%;
+}
+
 body {
   font-family: "Open Sans", sans-serif;
   background: #f6f9ff;

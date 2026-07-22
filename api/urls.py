@@ -42,5 +42,7 @@ urlpatterns = [
     # Nested: /api/v1/items/{item_pk}/documents/
     path('items/<uuid:item_pk>/documents/', views.ItemDocumentViewSet.as_view({'get': 'list', 'post': 'create'}), name='api-item-documents'),
     path('items/<uuid:item_pk>/documents/<int:pk>/', views.ItemDocumentViewSet.as_view({'delete': 'destroy'}), name='api-item-document-detail'),
+    # Token-authenticated barcode image for ntfy notification attachments
+    path('items/<uuid:item_pk>/notification-barcode/', views.NotificationBarcodeView.as_view(), name='api-notification-barcode'),
     path('', include(router.urls)),
 ]

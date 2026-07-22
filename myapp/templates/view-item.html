@@ -913,10 +913,13 @@ body.dark-mode a.more-action-row-danger:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.5rem;
   padding: 0.75rem;
   background: var(--field-bg, #f8f9fa);
   border-radius: 8px;
   margin-bottom: 0.5rem;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .shared-user-item:last-child {
@@ -926,6 +929,17 @@ body.dark-mode a.more-action-row-danger:hover {
 .shared-user-info {
   font-size: 0.9rem;
   color: var(--text-color, #1e1e1e);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 0;
+}
+
+.shared-user-info .doc-filename {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 /* Shared With rows specifically stack the Unshare button beneath the
@@ -2007,9 +2021,10 @@ body.dark-mode .tilt-scan-enable-btn {
             <h5><i class="bi bi-paperclip"></i> {% trans "Receipts & Documents" %}</h5>
             {% for document in item.documents.all %}
             <div class="shared-user-item">
-              <a href="{% url 'download_document' document.id %}" class="shared-user-info" target="_blank" rel="noopener">
-                <i class="bi bi-file-earmark-text"></i> {{ document.file.name|basename }}
-                <small class="text-muted">({{ document.uploaded_at|date:"Y-m-d H:i" }})</small>
+              <a href="{% url 'download_document' document.id %}" class="shared-user-info" target="_blank" rel="noopener" title="{{ document.file.name|basename }}">
+                <i class="bi bi-file-earmark-text flex-shrink-0"></i>
+                <span class="doc-filename ms-1">{{ document.file.name|basename }}</span>
+                <small class="text-muted text-nowrap ms-1">({{ document.uploaded_at|date:"Y-m-d H:i" }})</small>
               </a>
               <div class="d-flex gap-2 align-items-center flex-wrap">
                 {% if document.file.name|is_image_file %}

@@ -36,6 +36,9 @@ class NtfyBackend(NotificationBackend):
         if token:
             headers['Authorization'] = f'Bearer {token}'
 
+        if item is not None:
+            self._add_item_headers(headers, item)
+
         try:
             response = requests.post(
                 f'{server}/{topic}',
@@ -48,3 +51,27 @@ class NtfyBackend(NotificationBackend):
         except requests.RequestException as exc:
             logger.warning('ntfy notification failed: %s', exc)
             return False
+
+    def _add_item_headers(self, headers: dict, item) -> None:
+        """Add Click, Actions, and Attach headers when a base URL is configured."""
+        from myapp.models import SiteConfiguration
+        base_url = (SiteConfiguration.load().vv_base_url or '').rstrip('/')
+        if not base_url:
+            return
+
+        item_url = f'{base_url}/en/items/{item.id}/'
+        # Tap anywhere on the notification to open the item
+        headers['Click'] = item_url
+        # Explicit action button visible in the ntfy app's expanded view
+        headers['Actions'] = f'view, Open in VoucherVault, {item_url}'
+
+        # Attach barcode image if the item has one
+        if getattr(item, 'code_type', None) and item.code_type != 'none' and getattr(item, 'redeem_code', None):
+            try:
+                from django.core import signing
+                token = signing.dumps(str(item.id), salt='ntfy-barcode')
+                barcode_url = f'{base_url}/api/v1/items/{item.id}/notification-barcode/?s={token}'
+                headers['Attach'] = barcode_url
+                headers['Filename'] = 'barcode.png'
+            except Exception as exc:  # pragma: no cover
+                logger.warning('Could not generate barcode URL for ntfy notification: %s', exc)
