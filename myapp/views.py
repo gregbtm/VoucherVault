@@ -2341,35 +2341,24 @@ def get_stats(request):
             for issuer in issuers
         ]
 
-        # Individual item detail dump
-        item_details = list(
-            items_query.values(
-                'id',
-                'type',
-                'name',
-                'redeem_code',
-                'code_type',
-                'pin',
-                'issuer',
-                'value',
-                'value_type',
-                'currency',
-                'issue_date',
-                'expiry_date',
-                'description',
-                'is_used',
-                'is_pinned',
-                'user__username'
-            )
-        )
-
         response_data = {
             "item_stats": item_stats,
-            "item_details": item_details,
             "issuer_stats": issuer_stats,
         }
 
-        if user_stats is not None:
+        if users_filtered:
+            # Per-user call: include the item detail dump (redeem codes, PINs, etc.)
+            # and user-management counts. The caller explicitly named a user, so
+            # this is scoped to that user's own data — nothing cross-user is exposed.
+            item_details = list(
+                items_query.values(
+                    'id', 'type', 'name', 'redeem_code', 'code_type', 'pin',
+                    'issuer', 'value', 'value_type', 'currency',
+                    'issue_date', 'expiry_date', 'description',
+                    'is_used', 'is_pinned', 'user__username',
+                )
+            )
+            response_data["item_details"] = item_details
             response_data["user_stats"] = user_stats
 
         return JsonResponse(response_data, status=200)
