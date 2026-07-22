@@ -11,7 +11,12 @@ from myapp.models import SiteConfiguration
 from ..models import WebPushSubscription
 from .base import NotificationBackend
 
-_BARCODE_PUSH_SALT = 'barcode-push-image'
+_BARCODE_PUSH_SALT_PREFIX = 'barcode-push-image'
+
+
+def _barcode_push_salt() -> str:
+    version = SiteConfiguration.load().webpush_barcode_key_version
+    return f'{_BARCODE_PUSH_SALT_PREFIX}-v{version}'
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +54,10 @@ class WebPushBackend(NotificationBackend):
 
         payload_data: dict = {'title': title, 'body': message, 'url': item_url}
         if item is not None and item.qr_code_base64 and item.code_type != 'none':
-            token = signing.dumps(str(item.id), salt=_BARCODE_PUSH_SALT)
+            token = signing.dumps(str(item.id), salt=_barcode_push_salt())
             payload_data['image_url'] = reverse('barcode_push_image', args=[item.id]) + f'?t={token}'
+        if item is not None and not item.is_used:
+            payload_data['mark_used_url'] = reverse('toggle_item_status', args=[item.id])
 
         payload = json.dumps(payload_data)
 

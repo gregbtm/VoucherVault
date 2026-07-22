@@ -420,6 +420,7 @@ class SiteConfigurationForm(forms.ModelForm):
             'expiry_threshold_days', 'expiry_last_notification_days', 'ntfy_default_server', 'vv_base_url',
             'inactivity_threshold_days', 'companies_house_api_key',
             'webpush_vapid_public_key', 'webpush_vapid_private_key', 'webpush_vapid_claims_email',
+            'webpush_barcode_key_version',
             'merchant_logos_enabled', 'logo_dev_api_key',
             'share_via_smart_enabled', 'share_link_expiry_days', 'share_link_pin_enabled',
             'ocr_backend', 'anthropic_api_key', 'anthropic_ocr_model', 'openai_api_key', 'openai_ocr_model',
@@ -431,6 +432,7 @@ class SiteConfigurationForm(forms.ModelForm):
             'nearby_places_enabled', 'overpass_api_url',
             'scheduled_backup_enabled', 'backup_retention_count',
             'expiring_soon_limit', 'calendar_months_ahead', 'wallet_chart_limit', 'duplicate_photo_threshold',
+            'allow_registration',
         ]
         widgets = {
             'expiry_threshold_days': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
@@ -440,6 +442,7 @@ class SiteConfigurationForm(forms.ModelForm):
             'vv_base_url': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'https://vault.example.com'}),
             'webpush_vapid_public_key': forms.TextInput(attrs={'class': 'form-control'}),
             'webpush_vapid_claims_email': forms.TextInput(attrs={'class': 'form-control'}),
+            'webpush_barcode_key_version': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
             'merchant_logos_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'share_via_smart_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'share_link_expiry_days': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
@@ -466,6 +469,7 @@ class SiteConfigurationForm(forms.ModelForm):
             'calendar_months_ahead': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 12}),
             'wallet_chart_limit': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 20}),
             'duplicate_photo_threshold': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'max': 64}),
+            'allow_registration': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
     REPO_RE = re.compile(r'^[\w.-]+/[\w.-]+$')

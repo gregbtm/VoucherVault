@@ -765,7 +765,7 @@ body.dark-mode .error-alert {
                 </button>
                 <input type="file" id="fileInput" accept="image/*" style="display: none;">
               </div>
-              <small class="form-text text-warning" id="duplicate-code-warning" style="display:none;"></small>
+              <div id="duplicate-code-warning" style="display:none;" role="alert"></div>
               <small class="form-text text-warning" id="ocr-confidence-warning" style="display:none;"></small>
             </div>
 
@@ -1437,12 +1437,12 @@ document.addEventListener("DOMContentLoaded", function () {
       .then(response => response.ok ? response.json() : null)
       .then(data => {
         if (data && data.duplicate) {
-          duplicateWarning.innerHTML = '<i class="bi bi-exclamation-triangle"></i> {% trans "You already have this: " %}' +
-            '<a href="' + data.item_url + '" target="_blank">' + data.item_name.replace(/</g, '&lt;') + '</a>';
+          duplicateWarning.className = 'alert alert-danger d-flex align-items-center gap-2 mt-1 py-2 px-3';
+          duplicateWarning.innerHTML = '<i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i><span><strong>{% trans "Duplicate detected" %}:</strong> {% trans "You already have" %} <a href="' + data.item_url + '" target="_blank">' + data.item_name.replace(/</g, '&lt;') + '</a>. {% trans "Do you really want to add it again?" %}</span>';
           duplicateWarning.style.display = '';
         } else if (data && data.near_duplicate) {
-          duplicateWarning.innerHTML = '<i class="bi bi-question-diamond"></i> {% trans "This looks similar to an existing code - possible misread? " %}' +
-            '<a href="' + data.item_url + '" target="_blank">' + data.item_name.replace(/</g, '&lt;') + '</a>';
+          duplicateWarning.className = 'alert alert-warning d-flex align-items-center gap-2 mt-1 py-2 px-3';
+          duplicateWarning.innerHTML = '<i class="bi bi-question-diamond-fill flex-shrink-0"></i><span>{% trans "Possible duplicate" %}: <a href="' + data.item_url + '" target="_blank">' + data.item_name.replace(/</g, '&lt;') + '</a>. {% trans "Verify the code is correct." %}</span>';
           duplicateWarning.style.display = '';
         } else {
           duplicateWarning.style.display = 'none';

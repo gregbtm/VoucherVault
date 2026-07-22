@@ -84,7 +84,16 @@
               <label class="form-check-label" for="{{ form.enabled.id_for_label }}">{% trans "Enabled" %}</label>
             </div>
 
-            <div class="mb-3">
+            <div class="mb-3 form-check">
+              {{ form.apply_to_all }}
+              <label class="form-check-label" for="{{ form.apply_to_all.id_for_label }}">
+                {% trans "Apply to all my items" %}
+                <i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top"
+                   title="{% trans 'When on, this rule fires for every item you own — no per-item wiring needed. When off, select which events below.' %}"></i>
+              </label>
+            </div>
+
+            <div id="event-types-section" class="mb-3">
               <label class="form-label">{{ form.event_types.label }}</label>
               {{ form.event_types }}
               {% if form.event_types.errors %}<div class="text-danger small">{{ form.event_types.errors }}</div>{% endif %}
@@ -232,7 +241,13 @@
               <tr>
                 <td>{{ rule.name }}</td>
                 <td>{{ rule.get_backend_display }}</td>
-                <td><small class="text-muted">{{ rule.event_types|join:", " }}</small></td>
+                <td>
+                  {% if rule.apply_to_all %}
+                  <span class="badge bg-secondary">{% trans "All events" %}</span>
+                  {% else %}
+                  <small class="text-muted">{{ rule.event_types|join:", " }}</small>
+                  {% endif %}
+                </td>
                 <td>
                   {% if rule.enabled %}
                   <span class="badge bg-success">{% trans "Enabled" %}</span>
@@ -294,6 +309,20 @@ document.addEventListener('DOMContentLoaded', function () {
   if (backendSelect) {
     backendSelect.addEventListener('change', updateVisibility);
     updateVisibility();
+  }
+
+  // apply_to_all — dim event-types section when rule applies to everything
+  const applyToAllCheck = document.getElementById('{{ form.apply_to_all.id_for_label }}');
+  const eventTypesSection = document.getElementById('event-types-section');
+  function syncApplyToAll() {
+    if (!eventTypesSection) return;
+    const all = applyToAllCheck && applyToAllCheck.checked;
+    eventTypesSection.style.opacity = all ? '0.4' : '';
+    eventTypesSection.style.pointerEvents = all ? 'none' : '';
+  }
+  if (applyToAllCheck) {
+    applyToAllCheck.addEventListener('change', syncApplyToAll);
+    syncApplyToAll();
   }
 
   // Firefly III — Test Connection

@@ -4056,6 +4056,7 @@ def _site_config_form_data(**overrides):
         'expiring_soon_limit': 10, 'calendar_months_ahead': 3,
         'wallet_chart_limit': 8, 'duplicate_photo_threshold': 10,
         'inactivity_threshold_days': 90, 'companies_house_api_key': '',
+        'webpush_barcode_key_version': 1,
     }
     data.update(overrides)
     return data

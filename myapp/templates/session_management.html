@@ -28,22 +28,30 @@
           {% if backup_codes_remaining == 0 %}
           <div class="alert alert-warning d-flex align-items-center gap-2 mb-2">
             <i class="bi bi-exclamation-triangle-fill"></i>
-            <span>{% trans "All backup codes have been used. Re-enable 2FA to generate new ones." %}</span>
+            <span>{% trans "All backup codes have been used." %}</span>
           </div>
           {% elif backup_codes_remaining <= 2 %}
           <div class="alert alert-warning d-flex align-items-center gap-2 mb-2">
             <i class="bi bi-exclamation-triangle"></i>
-            <span>{% blocktrans with n=backup_codes_remaining %}Only {{ n }} backup code(s) remaining. Consider regenerating by disabling and re-enabling 2FA.{% endblocktrans %}</span>
+            <span>{% blocktrans with n=backup_codes_remaining %}Only {{ n }} backup code(s) remaining.{% endblocktrans %}</span>
           </div>
           {% else %}
           <p class="small text-muted mb-2">{% blocktrans with n=backup_codes_remaining %}{{ n }} backup codes remaining.{% endblocktrans %}</p>
           {% endif %}
-          <form method="POST" action="{% url 'totp_disable' %}" onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Disable two-factor authentication? Your account will be less secure." %}','{% trans "Disable" %}',function(){f.submit();})">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-danger">
-              <i class="bi bi-shield-x me-1"></i> {% trans "Disable 2FA" %}
-            </button>
-          </form>
+          <div class="d-flex gap-2 flex-wrap">
+            <form method="POST" action="{% url 'regenerate_totp_backup_codes' %}" class="d-inline">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-repeat me-1"></i> {% trans "Regenerate backup codes" %}
+              </button>
+            </form>
+            <form method="POST" action="{% url 'totp_disable' %}" onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Disable two-factor authentication? Your account will be less secure." %}','{% trans "Disable" %}',function(){f.submit();})">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-shield-x me-1"></i> {% trans "Disable 2FA" %}
+              </button>
+            </form>
+          </div>
           {% else %}
           <p class="text-muted">{% trans "Add a second layer of security with an authenticator app." %}</p>
           <a href="{% url 'totp_setup' %}" class="btn btn-primary">
@@ -64,6 +72,7 @@
               {% if s.is_current %}
               <span class="badge bg-primary me-1">{% trans "Current" %}</span>
               {% endif %}
+              <div class="small fw-semibold">{{ s.device }}</div>
               <small class="text-muted">{% trans "Expires" %}: {{ s.expire_date|date:"d M Y H:i" }}</small>
             </div>
             {% if not s.is_current %}

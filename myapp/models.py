@@ -1,6 +1,7 @@
 from datetime import time
 from decimal import Decimal
 
+from django.core.cache import cache
 from django.db import models
 from django.db.models import ExpressionWrapper, F, Sum
 from django.utils import timezone
@@ -876,6 +877,20 @@ OCR_BACKEND_CHOICES = (
 )
 
 
+class BalanceHistory(models.Model):
+    """One row per balance change, used to draw a spend sparkline on the item detail page."""
+    item = models.ForeignKey('Item', on_delete=models.CASCADE, related_name='balance_history')
+    balance = models.DecimalField(max_digits=10, decimal_places=2)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+    note = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ['recorded_at']
+
+    def __str__(self):
+        return f'{self.item_id} @ {self.recorded_at}: {self.balance}'
+
+
 class SiteConfiguration(models.Model):
     """
     Singleton row (always pk=1) holding every operational setting that can
@@ -906,6 +921,12 @@ class SiteConfiguration(models.Model):
     webpush_vapid_public_key = models.CharField(max_length=255, blank=True, default='')
     webpush_vapid_private_key = models.CharField(max_length=255, blank=True, default='')
     webpush_vapid_claims_email = models.CharField(max_length=255, blank=True, default='mailto:admin@example.com')
+    webpush_barcode_key_version = models.PositiveIntegerField(
+        default=1,
+        help_text="Incrementing this value invalidates all previously issued barcode push-image "
+                  "tokens, forcing new tokens to be generated on the next notification send. "
+                  "Rotate this if you suspect a token has been captured in transit.",
+    )
 
     # ---- Merchant logos ----
     merchant_logos_enabled = models.BooleanField(default=True)
@@ -1000,6 +1021,13 @@ class SiteConfiguration(models.Model):
                    "one's rate limits - see https://wiki.openstreetmap.org/wiki/Overpass_API/Installation.",
     )
 
+    # ---- Registration control ----
+    allow_registration = models.BooleanField(
+        default=True,
+        help_text="Allow new users to register accounts. Disable to make the instance invite-only "
+                   "(existing users and social/OIDC logins are unaffected).",
+    )
+
     # ---- Analytics & duplicate detection display/behaviour limits ----
     # Previously fixed constants in myapp/analytics.py and myapp/imagehash.py -
     # moved here after a settings-gap audit found them to be genuine
@@ -1044,8 +1072,19 @@ class SiteConfiguration(models.Model):
 
     @classmethod
     def load(cls):
+        import sys
+        if 'test' not in sys.argv:
+            cached = cache.get('vv_site_config')
+            if cached is not None:
+                return cached
         obj, _ = cls.objects.get_or_create(pk=1)
+        if 'test' not in sys.argv:
+            cache.set('vv_site_config', obj, 60)
         return obj
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        cache.delete('vv_site_config')
 
     def __str__(self):
         return "Site Configuration"

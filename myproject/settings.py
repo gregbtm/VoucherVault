@@ -580,6 +580,7 @@ if USE_WEBDAV_STORAGE:
 ACCOUNT_LOGIN_METHODS = {'username'}
 ACCOUNT_EMAIL_VERIFICATION = 'none'
 SOCIALACCOUNT_AUTO_SIGNUP = True
+ACCOUNT_ADAPTER = 'myapp.allauth_adapter.RegistrationGateAdapter'
 SOCIALACCOUNT_PROVIDERS = {}
 
 _google_id = os.environ.get('GOOGLE_CLIENT_ID')

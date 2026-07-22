@@ -1927,4 +1927,73 @@ document.addEventListener("DOMContentLoaded", function () {
 })();
 </script>
 
+{% if search_query %}
+<script>
+(function() {
+  var query = "{{ search_query|escapejs }}";
+  if (!query) return;
+  var words = query.trim().split(/\s+/).filter(Boolean);
+  var pattern = new RegExp('(' + words.map(function(w) {
+    return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }).join('|') + ')', 'gi');
+
+  function highlightNode(node) {
+    if (node.nodeType === 3) {
+      var text = node.nodeValue;
+      if (!pattern.test(text)) return;
+      pattern.lastIndex = 0;
+      var frag = document.createDocumentFragment();
+      var lastIdx = 0, match;
+      while ((match = pattern.exec(text)) !== null) {
+        frag.appendChild(document.createTextNode(text.slice(lastIdx, match.index)));
+        var mark = document.createElement('mark');
+        mark.className = 'search-highlight';
+        mark.textContent = match[0];
+        frag.appendChild(mark);
+        lastIdx = pattern.lastIndex;
+      }
+      frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+      node.parentNode.replaceChild(frag, node);
+    } else if (node.nodeType === 1 && !['script','style','mark'].includes(node.tagName.toLowerCase())) {
+      Array.from(node.childNodes).forEach(highlightNode);
+    }
+  }
+
+  document.querySelectorAll('.item-name, .item-issuer').forEach(function(el) {
+    highlightNode(el);
+  });
+})();
+</script>
+<style>
+.search-highlight { background: rgba(255,220,0,0.45); border-radius: 2px; padding: 0 1px; color: inherit; }
+body.dark-mode .search-highlight { background: rgba(255,200,0,0.35); }
+</style>
+{% endif %}
+
+<script>
+(function() {
+  var cards = document.querySelectorAll('.item-card');
+  var swipeStartX, swipeStartY, swipeCard;
+  var SWIPE_MIN = 60, SWIPE_MAX_Y = 40;
+  cards.forEach(function(card) {
+    card.addEventListener('touchstart', function(e) {
+      var t = e.changedTouches[0];
+      swipeStartX = t.clientX; swipeStartY = t.clientY; swipeCard = card;
+    }, {passive: true});
+    card.addEventListener('touchend', function(e) {
+      if (swipeCard !== card) return;
+      var t = e.changedTouches[0];
+      var dx = t.clientX - swipeStartX, dy = t.clientY - swipeStartY;
+      if (Math.abs(dy) > SWIPE_MAX_Y || Math.abs(dx) < SWIPE_MIN) return;
+      if (dx < 0) {
+        var shareBtn = card.querySelector('.share-btn');
+        if (shareBtn) shareBtn.click();
+      } else {
+        var pinBtn = card.querySelector('.pin-btn');
+        if (pinBtn) pinBtn.click();
+      }
+    }, {passive: true});
+  });
+})();
+</script>
 {% endblock content %}

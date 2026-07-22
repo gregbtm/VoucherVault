@@ -93,6 +93,13 @@ urlpatterns = (
     path('admin-tools/help/<str:doc_slug>/', views.view_doc, name='view_doc'),
     path('help/', views.help_center, name='help_center'),
     path('barcode/decode/', views.barcode_decode, name='barcode_decode'),
+    # #5: Bulk export
+    path('items/export/csv/', views.export_selected_csv, name='export_selected_csv'),
+    path('items/export/json/', views.export_selected_json, name='export_selected_json'),
+    # #11: Inline balance editing
+    path('items/<uuid:item_uuid>/update-balance/', views.update_item_balance, name='update_item_balance'),
+    # #16: Regenerate TOTP backup codes
+    path('user/security/totp/regenerate-backup-codes/', views.regenerate_totp_backup_codes, name='regenerate_totp_backup_codes'),
 )
 
 admin.site.site_header = "VoucherVault Plus+"

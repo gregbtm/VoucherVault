@@ -55,7 +55,7 @@ def fire_notifications(item, event_type: str, title: str, message: str, dedupe: 
         return
 
     rules = NotificationRule.objects.filter(user=item.user, enabled=True)
-    matching_rules = [r for r in rules if event_type in (r.event_types or [])]
+    matching_rules = [r for r in rules if r.apply_to_all or event_type in (r.event_types or [])]
 
     if not matching_rules:
         return
@@ -508,7 +508,7 @@ def check_and_notify_inactivity():
             continue
 
         rules = NotificationRule.objects.filter(user=item.user, enabled=True)
-        matching_rules = [r for r in rules if 'item_inactive' in (r.event_types or [])]
+        matching_rules = [r for r in rules if r.apply_to_all or 'item_inactive' in (r.event_types or [])]
         if not matching_rules:
             continue
 

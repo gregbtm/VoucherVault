@@ -81,7 +81,11 @@
             {% endfor %}
           </div>
           {% else %}
-          <p class="text-muted">{% trans "You haven't created any tags yet." %}</p>
+          <div class="text-center py-4">
+            <i class="bi bi-tags" style="font-size:3rem;color:var(--bs-secondary);opacity:.5;"></i>
+            <p class="text-muted mt-2 mb-1"><strong>{% trans "No tags yet" %}</strong></p>
+            <p class="text-muted small">{% trans "Tags let you label items across wallets — e.g. 'Christmas', 'Work', or 'Food'. Create one using the form on the left." %}</p>
+          </div>
           {% endif %}
         </div>
       </div>

@@ -493,9 +493,10 @@ class BarcodePushImageViewTests(TestCase):
             expiry_date=date.today(), value=10, qr_code_base64=self.dummy_png,
         )
 
-    def _make_token(self, item_id=None, salt='barcode-push-image'):
+    def _make_token(self, item_id=None, salt=None):
         from django.core import signing
-        return signing.dumps(str(item_id or self.item.id), salt=salt)
+        from myapp.views import _barcode_push_salt
+        return signing.dumps(str(item_id or self.item.id), salt=salt or _barcode_push_salt())
 
     def test_valid_token_returns_png(self):
         token = self._make_token()

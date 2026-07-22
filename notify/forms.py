@@ -24,7 +24,7 @@ class NotificationRuleForm(forms.ModelForm):
     event_types = forms.MultipleChoiceField(
         choices=NotificationRule.EVENT_CHOICES,
         widget=forms.CheckboxSelectMultiple,
-        required=True,
+        required=False,
         label=_('Notify me when'),
     )
 
@@ -74,12 +74,13 @@ class NotificationRuleForm(forms.ModelForm):
 
     class Meta:
         model = NotificationRule
-        fields = ['name', 'backend', 'enabled', 'event_types', 'digest_frequency']
+        fields = ['name', 'backend', 'enabled', 'event_types', 'digest_frequency', 'apply_to_all']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'backend': forms.Select(attrs={'class': 'form-select'}),
             'enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'digest_frequency': forms.Select(attrs={'class': 'form-select'}),
+            'apply_to_all': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
     def __init__(self, *args, user=None, **kwargs):
@@ -123,6 +124,10 @@ class NotificationRuleForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         backend = cleaned_data.get('backend')
+
+        if not cleaned_data.get('apply_to_all') and not cleaned_data.get('event_types'):
+            self.add_error('event_types', _('Select at least one event type, or enable "Apply to all items".'))
+
 
         if backend == 'ntfy':
             if not cleaned_data.get('ntfy_server') or not cleaned_data.get('ntfy_topic'):
