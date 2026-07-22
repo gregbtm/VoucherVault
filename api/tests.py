@@ -1,6 +1,7 @@
 import io
 import json
 from datetime import date, timedelta
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
@@ -1440,3 +1441,147 @@ class SharedWalletApiTests(APITestCase):
         response = self.client.get(f'/api/v1/wallets/{self.wallet.id}/items/')
         self.assertEqual(response.data['count'], 1)
         self.assertEqual(response.data['results'][0]['id'], str(self.item.id))
+
+
+class GiftCardEmailParserTests(APITestCase):
+    """Unit tests for the _parse_gift_card_email helper (no HTTP, no DB)."""
+
+    def _parse(self, **kwargs):
+        from api.views import _parse_gift_card_email
+        defaults = {
+            'subject': '',
+            'from_address': '',
+            'body_text': '',
+            'body_html': '',
+        }
+        defaults.update(kwargs)
+        return _parse_gift_card_email(**defaults)
+
+    def test_extracts_labelled_code(self):
+        result = self._parse(
+            subject='Your Gift Card',
+            from_address='noreply@amazon.co.uk',
+            body_text='Your gift card code: ABCD1234EFGH5678. Enjoy!',
+        )
+        self.assertEqual(result['redeem_code'], 'ABCD1234EFGH5678')
+        self.assertEqual(result['issuer'], 'Amazon')
+
+    def test_extracts_value_and_gbp_currency(self):
+        result = self._parse(body_text='Your £50.00 gift card has arrived.')
+        self.assertAlmostEqual(result['value'], 50.0)
+        self.assertEqual(result['currency'], 'GBP')
+
+    def test_extracts_value_and_eur_currency(self):
+        result = self._parse(body_text='€25 e-gift card — use code GC12345678.')
+        self.assertAlmostEqual(result['value'], 25.0)
+        self.assertEqual(result['currency'], 'EUR')
+
+    def test_issuer_derived_from_domain(self):
+        result = self._parse(
+            from_address='no-reply@marks-and-spencer.com',
+            body_text='£10 gift voucher code: MSXYZ12345678.',
+        )
+        self.assertEqual(result['issuer'], 'Marks And Spencer')
+
+    def test_falls_back_to_html_when_no_plain_text(self):
+        result = self._parse(
+            body_html='<p>Your code: <strong>HTMLCODE12345</strong> worth £30.</p>',
+        )
+        self.assertEqual(result['redeem_code'], 'HTMLCODE12345')
+        self.assertAlmostEqual(result['value'], 30.0)
+
+    def test_raises_if_no_code_and_no_value(self):
+        from api.views import _parse_gift_card_email
+        with self.assertRaises(ValueError):
+            _parse_gift_card_email(
+                subject='Hello',
+                from_address='newsletter@example.com',
+                body_text='Thanks for subscribing!',
+                body_html='',
+            )
+
+    def test_subject_used_as_name(self):
+        result = self._parse(
+            subject='Your £20 Boots Gift Card',
+            from_address='giftcards@boots.com',
+            body_text='Code: BOOTS12345678',
+        )
+        self.assertEqual(result['name'], 'Your £20 Boots Gift Card')
+
+    def test_default_name_when_no_subject(self):
+        result = self._parse(
+            from_address='noreply@tesco.com',
+            body_text='Code: TESCO1234567890',
+        )
+        self.assertIn('Tesco', result['name'])
+
+
+class GiftCardEmailImportApiTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.url = '/api/v1/imports/gift-card-email/'
+
+    def _post(self, user=None, **payload):
+        self.client.force_authenticate(user=user or self.alice)
+        return self.client.post(self.url, payload, format='json')
+
+    @patch('api.views.fetch_merchant_logo_task')
+    @patch('api.views.notify_item_created')
+    def test_creates_item_and_returns_201(self, mock_notify, mock_logo):
+        mock_logo.delay = lambda *a, **kw: None
+        response = self._post(
+            subject='Your £25 Amazon Gift Card',
+            from_address='noreply@amazon.co.uk',
+            body_text='Your gift card code: AMZN1234567890AB. Value: £25.00.',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['type'], 'giftcard')
+        self.assertEqual(response.data['redeem_code'], 'AMZN1234567890AB')
+        mock_notify.assert_called_once()
+
+    @patch('api.views.fetch_merchant_logo_task')
+    @patch('api.views.notify_item_created')
+    def test_duplicate_returns_409(self, mock_notify, mock_logo):
+        mock_logo.delay = lambda *a, **kw: None
+        # Create item with the same code first
+        Item.objects.create(
+            user=self.alice, type='giftcard', name='Existing', value_type='money',
+            redeem_code='DUP1234567890AB', currency='GBP', value=Decimal('10.00'),
+            expiry_date=date.today() + timedelta(days=365),
+        )
+        response = self._post(
+            subject='Your Gift Card',
+            from_address='noreply@shop.com',
+            body_text='Your code: DUP1234567890AB.',
+        )
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertTrue(response.data['duplicate'])
+
+    def test_unparseable_email_returns_422(self):
+        response = self._post(
+            subject='Newsletter',
+            from_address='news@example.com',
+            body_text='Thanks for subscribing to our mailing list.',
+        )
+        self.assertEqual(response.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+        self.assertIn('error', response.data)
+
+    def test_requires_authentication(self):
+        response = self.client.post(self.url, {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    @patch('api.views.fetch_merchant_logo_task')
+    @patch('api.views.notify_item_created')
+    def test_item_scoped_to_authenticated_user(self, mock_notify, mock_logo):
+        mock_logo.delay = lambda *a, **kw: None
+        response = self._post(
+            user=self.alice,
+            subject='Gift Card',
+            from_address='noreply@store.com',
+            body_text='Code: SCOPETEST1234AB. Value: £10.',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        item = Item.objects.get(redeem_code='SCOPETEST1234AB')
+        self.assertEqual(item.user, self.alice)
+        self.assertFalse(Item.objects.filter(user=self.bob, redeem_code='SCOPETEST1234AB').exists())

@@ -1,0 +1,353 @@
+{
+  "name": "VoucherVault - Gift Card Email Auto-Import",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Before you activate this workflow\n\n1. **Gmail credential** — the 'Watch for Gift Card Emails' trigger needs a Gmail OAuth2 credential. Add one under Credentials → New → Gmail OAuth2 API, then select it on that node and on 'Get Full Message'.\n\n2. **VoucherVault API token** — on your VoucherVault server run:\n   `docker compose exec app python manage.py drf_create_token <your-username>`\n   Then in n8n: Credentials → New → Header Auth, Name=`Authorization`, Value=`Token <the-token>`. Select it on the 'Import to VoucherVault' node.\n\n3. **Gmail labels** — create two labels in Gmail first: `VoucherVault-GC-Processed` and `VoucherVault-GC-Failed`. The workflow applies these after each attempt so it never reprocesses an email.\n\n4. **ntfy topic** (optional) — edit the 'Notify: Imported' and 'Notify: Failed' nodes and replace `CHANGE_ME` with your ntfy topic. Remove the auth header if using a public topic.\n\n5. **VoucherVault URL** — replace `https://your-vouchervault.example.com` in the 'Import to VoucherVault' node with your actual server URL.\n\n6. **Sender filter** — the trigger searches for emails from common gift card senders. Extend the `q` search query to cover any additional senders you receive gift cards from.\n\n---\n**How it works:**\n- Every 15 minutes the workflow polls Gmail for unprocessed emails whose subject or body looks like a gift card delivery.\n- The full message (plain-text + HTML body) is forwarded to VoucherVault's `/api/v1/imports/gift-card-email/` endpoint, which parses the issuer, redemption code, value, and expiry date server-side.\n- On success (HTTP 201) the email is labelled `VoucherVault-GC-Processed` and an ntfy notification fires.\n- On duplicate (HTTP 409) the email is labelled Processed silently — the item already exists.\n- On parse failure (HTTP 422) or any other error the email is labelled `VoucherVault-GC-Failed` and a failure notification fires so you can check the email manually.\n\n**Tip:** Forward any gift card confirmation emails to your Gmail account from other inboxes (Apple Mail rules, Outlook rules) and this workflow picks them up automatically.",
+        "height": 1100,
+        "width": 460
+      },
+      "id": "a1b2c3d4-0001-0000-0000-000000000001",
+      "name": "Setup notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-1500, 60]
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 15,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "subject:(\"gift card\" OR \"gift voucher\" OR \"e-gift\" OR \"egift\" OR \"your code\" OR \"voucher code\" OR \"redeem\") -label:VoucherVault-GC-Processed -label:VoucherVault-GC-Failed"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0002-0000-0000-000000000002",
+      "name": "Watch for Gift Card Emails",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [-960, 220],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + $json.id + '?format=full' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-0003-0000-0000-000000000003",
+      "name": "Get Full Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-720, 220],
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract subject, from address, and body text/html from the Gmail message.\nconst msg = $input.first().json;\n\nfunction getHeader(headers, name) {\n  const h = (headers || []).find(h => h.name.toLowerCase() === name.toLowerCase());\n  return h ? h.value : '';\n}\n\nfunction decodePart(part) {\n  if (!part || !part.body || !part.body.data) return '';\n  return Buffer.from(part.body.data, 'base64').toString('utf-8');\n}\n\nfunction findParts(payload, mimeType) {\n  const results = [];\n  if (!payload) return results;\n  if (payload.mimeType === mimeType) {\n    results.push(payload);\n  }\n  for (const part of (payload.parts || [])) {\n    results.push(...findParts(part, mimeType));\n  }\n  return results;\n}\n\nconst headers = msg.payload?.headers || [];\nconst subject = getHeader(headers, 'Subject');\nconst from_address = getHeader(headers, 'From');\n\nconst textParts = findParts(msg.payload, 'text/plain');\nconst htmlParts = findParts(msg.payload, 'text/html');\n\nconst body_text = textParts.map(decodePart).join('\\n');\nconst body_html = htmlParts.map(decodePart).join('\\n');\n\nreturn [{ json: { subject, from_address, body_text, body_html, gmail_id: msg.id } }];"
+      },
+      "id": "a1b2c3d4-0004-0000-0000-000000000004",
+      "name": "Extract Email Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-480, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://your-vouchervault.example.com/api/v1/imports/gift-card-email/",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "subject": "={{ $json.subject }}",
+          "from_address": "={{ $json.from_address }}",
+          "body_text": "={{ $json.body_text }}",
+          "body_html": "={{ $json.body_html }}"
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-0005-0000-0000-000000000005",
+      "name": "Import to VoucherVault",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-240, 220],
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_VV_API_CREDENTIAL_ID",
+          "name": "VoucherVault API token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-201",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 201,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0006-0000-0000-000000000006",
+      "name": "Created?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [0, 220]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-409",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 409,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0007-0000-0000-000000000007",
+      "name": "Duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [240, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gmail.googleapis.com/gmail/v1/users/me/messages/{{ $('Extract Email Fields').item.json.gmail_id }}/modify",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "addLabelIds": ["={{ $('Watch for Gift Card Emails').item.json.labelIds.find(l => false) || 'VoucherVault-GC-Processed' }}"],
+          "removeLabelIds": []
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0008-0000-0000-000000000008",
+      "name": "Label: Processed (success)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 100],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gmail.googleapis.com/gmail/v1/users/me/messages/{{ $('Extract Email Fields').item.json.gmail_id }}/modify",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "addLabelIds": ["VoucherVault-GC-Processed"],
+          "removeLabelIds": []
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0009-0000-0000-000000000009",
+      "name": "Label: Processed (duplicate)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 320],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gmail.googleapis.com/gmail/v1/users/me/messages/{{ $('Extract Email Fields').item.json.gmail_id }}/modify",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "addLabelIds": ["VoucherVault-GC-Failed"],
+          "removeLabelIds": []
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0010-0000-0000-000000000010",
+      "name": "Label: Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 480],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh/CHANGE_ME",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "topic": "CHANGE_ME",
+          "title": "Gift card imported",
+          "message": "={{ 'Added: ' + $('Import to VoucherVault').item.json.body.name + ($('Import to VoucherVault').item.json.body.value ? ' · ' + $('Import to VoucherVault').item.json.body.currency + ' ' + $('Import to VoucherVault').item.json.body.value : '') }}",
+          "priority": 3
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0011-0000-0000-000000000011",
+      "name": "Notify: Imported",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh/CHANGE_ME",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "topic": "CHANGE_ME",
+          "title": "Gift card import failed",
+          "message": "={{ 'Could not parse gift card email: ' + $('Extract Email Fields').item.json.subject }}",
+          "priority": 4,
+          "tags": ["warning"]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0012-0000-0000-000000000012",
+      "name": "Notify: Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 480]
+    }
+  ],
+  "connections": {
+    "Watch for Gift Card Emails": {
+      "main": [
+        [{ "node": "Get Full Message", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get Full Message": {
+      "main": [
+        [{ "node": "Extract Email Fields", "type": "main", "index": 0 }]
+      ],
+      "error": [
+        [{ "node": "Label: Failed", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Email Fields": {
+      "main": [
+        [{ "node": "Import to VoucherVault", "type": "main", "index": 0 }]
+      ]
+    },
+    "Import to VoucherVault": {
+      "main": [
+        [{ "node": "Created?", "type": "main", "index": 0 }]
+      ],
+      "error": [
+        [{ "node": "Label: Failed", "type": "main", "index": 0 }]
+      ]
+    },
+    "Created?": {
+      "main": [
+        [
+          { "node": "Label: Processed (success)", "type": "main", "index": 0 },
+          { "node": "Notify: Imported", "type": "main", "index": 0 }
+        ],
+        [{ "node": "Duplicate?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Duplicate?": {
+      "main": [
+        [{ "node": "Label: Processed (duplicate)", "type": "main", "index": 0 }],
+        [{ "node": "Label: Failed", "type": "main", "index": 0 }]
+      ]
+    },
+    "Label: Failed": {
+      "main": [
+        [{ "node": "Notify: Failed", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-07-21T00:00:00.000Z",
+  "versionId": "1"
+}

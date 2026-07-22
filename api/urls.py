@@ -38,6 +38,7 @@ urlpatterns = [
     path('imports/pkpass/', views.PkpassImportView.as_view(), name='api-pkpass-import'),
     path('imports/rail-ticket/', views.RailTicketImportView.as_view(), name='api-rail-ticket-import'),
     path('imports/rail-ticket/batch/', views.RailTicketBatchImportView.as_view(), name='api-rail-ticket-batch-import'),
+    path('imports/gift-card-email/', views.GiftCardEmailImportView.as_view(), name='api-gift-card-email-import'),
     # Nested: /api/v1/items/{item_pk}/documents/
     path('items/<uuid:item_pk>/documents/', views.ItemDocumentViewSet.as_view({'get': 'list', 'post': 'create'}), name='api-item-documents'),
     path('items/<uuid:item_pk>/documents/<int:pk>/', views.ItemDocumentViewSet.as_view({'delete': 'destroy'}), name='api-item-document-detail'),

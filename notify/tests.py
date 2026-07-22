@@ -34,6 +34,8 @@ from .tasks import (
     advance_recurring_items,
     backfill_firefly_transactions,
     check_and_notify_expiry,
+    check_and_notify_inactivity,
+    check_merchant_health,
     check_next_up_reminders,
     fire_notifications,
     notify_balance_changed,
@@ -1408,3 +1410,140 @@ class NotificationRuleViewTests(TestCase):
         NotificationLog.objects.create(user=self.bob, event_type='test', success=True)
         response = self.client.get(reverse('notification_log'))
         self.assertEqual(len(response.context['logs']), 1)
+
+
+class CheckAndNotifyInactivityTaskTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def _make_gc(self, **kwargs):
+        defaults = {
+            'type': 'giftcard', 'value_type': 'money',
+            'name': 'Test GC', 'redeem_code': 'GC001',
+            'issuer': 'Acme', 'value': '20.00',
+            'expiry_date': date.today() + timedelta(days=90),
+        }
+        defaults.update(kwargs)
+        return make_item(self.user, **defaults)
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_fires_for_gc_not_used_past_threshold(self, mock_send):
+        make_rule(self.user, event_types=['item_inactive'])
+        set_site_config(inactivity_threshold_days=30)
+        stale_ts = timezone.now() - timedelta(days=31)
+        item = self._make_gc(redeem_code='GC-STALE')
+        item.last_used_at = stale_ts
+        item.save(update_fields=['last_used_at'])
+
+        check_and_notify_inactivity()
+
+        self.assertTrue(NotificationLog.objects.filter(item=item, event_type='item_inactive', success=True).exists())
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_fires_for_gc_with_null_last_used_at(self, mock_send):
+        make_rule(self.user, event_types=['item_inactive'])
+        set_site_config(inactivity_threshold_days=30)
+        item = self._make_gc(redeem_code='GC-NEVER')
+
+        check_and_notify_inactivity()
+
+        self.assertTrue(NotificationLog.objects.filter(item=item, event_type='item_inactive').exists())
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_does_not_fire_for_recently_used_gc(self, mock_send):
+        make_rule(self.user, event_types=['item_inactive'])
+        set_site_config(inactivity_threshold_days=30)
+        item = self._make_gc(redeem_code='GC-RECENT')
+        item.last_used_at = timezone.now() - timedelta(days=5)
+        item.save(update_fields=['last_used_at'])
+
+        check_and_notify_inactivity()
+
+        self.assertFalse(NotificationLog.objects.filter(item=item, event_type='item_inactive').exists())
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_does_not_fire_for_used_items(self, mock_send):
+        make_rule(self.user, event_types=['item_inactive'])
+        set_site_config(inactivity_threshold_days=30)
+        item = self._make_gc(redeem_code='GC-USED', is_used=True)
+
+        check_and_notify_inactivity()
+
+        self.assertFalse(NotificationLog.objects.filter(item=item, event_type='item_inactive').exists())
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_does_not_fire_for_loyalty_cards(self, mock_send):
+        make_rule(self.user, event_types=['item_inactive'])
+        set_site_config(inactivity_threshold_days=30)
+        item = make_item(self.user, type='loyaltycard', value_type='money', redeem_code='LC-001')
+
+        check_and_notify_inactivity()
+
+        self.assertFalse(NotificationLog.objects.filter(item=item, event_type='item_inactive').exists())
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_period_dedup_prevents_refiring_within_threshold(self, mock_send):
+        rule = make_rule(self.user, event_types=['item_inactive'])
+        set_site_config(inactivity_threshold_days=30)
+        item = self._make_gc(redeem_code='GC-DEDUP')
+
+        check_and_notify_inactivity()
+        first_count = NotificationLog.objects.filter(item=item, event_type='item_inactive', success=True).count()
+
+        check_and_notify_inactivity()
+        second_count = NotificationLog.objects.filter(item=item, event_type='item_inactive', success=True).count()
+
+        self.assertEqual(first_count, 1)
+        self.assertEqual(second_count, 1, 'Second run should not re-fire within threshold period')
+
+    def test_noop_without_any_rules(self):
+        set_site_config(inactivity_threshold_days=30)
+        self._make_gc(redeem_code='GC-NORULE')
+        check_and_notify_inactivity()
+        self.assertEqual(NotificationLog.objects.count(), 0)
+
+
+class CheckMerchantHealthTaskTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    @patch('notify.tasks.check_companies_house_status')
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_fires_alert_for_bad_company_status(self, mock_send, mock_ch):
+        make_rule(self.user, event_types=['merchant_health_alert'])
+        set_site_config(companies_house_api_key='dummy-key')
+        item = make_item(self.user, issuer='Acme Retail', redeem_code='MH-001')
+
+        mock_ch.return_value = {
+            'company_name': 'Acme Retail Ltd',
+            'company_status': 'administration',
+            'company_number': '12345678',
+        }
+
+        check_merchant_health()
+
+        self.assertTrue(NotificationLog.objects.filter(item=item, event_type='merchant_health_alert', success=True).exists())
+
+    @patch('notify.tasks.check_companies_house_status')
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_no_alert_for_active_company(self, mock_send, mock_ch):
+        make_rule(self.user, event_types=['merchant_health_alert'])
+        set_site_config(companies_house_api_key='dummy-key')
+        item = make_item(self.user, issuer='Acme Retail', redeem_code='MH-002')
+
+        mock_ch.return_value = None  # None means active / not in bad status
+
+        check_merchant_health()
+
+        self.assertFalse(NotificationLog.objects.filter(item=item, event_type='merchant_health_alert').exists())
+
+    @patch('notify.tasks.check_companies_house_status')
+    def test_noop_without_api_key(self, mock_ch):
+        make_rule(self.user, event_types=['merchant_health_alert'])
+        set_site_config(companies_house_api_key='')
+        make_item(self.user, issuer='Acme Retail', redeem_code='MH-003')
+
+        check_merchant_health()
+
+        mock_ch.assert_not_called()
+        self.assertEqual(NotificationLog.objects.count(), 0)

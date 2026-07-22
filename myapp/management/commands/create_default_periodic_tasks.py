@@ -15,6 +15,16 @@ class Command(BaseCommand):
             month_of_year='*'
         )
 
+        # Weekly schedule (Monday 10am UTC) for low-frequency health checks that
+        # don't need daily cadence — inactivity nudges and merchant health alerts.
+        weekly_schedule, created = CrontabSchedule.objects.get_or_create(
+            minute='0',
+            hour='10',
+            day_of_week='1',
+            day_of_month='*',
+            month_of_year='*'
+        )
+
         # A separate, quieter schedule for the nightly backup task, so it
         # doesn't compete with the 9am notification checks above.
         backup_schedule, created = CrontabSchedule.objects.get_or_create(
@@ -78,6 +88,14 @@ class Command(BaseCommand):
             # and imports them. A no-op until a user configures a DMS provider with
             # auto_pull=True.
             {'name': 'DMS Auto Pull', 'task': 'dms.tasks.dms_scheduled_pull_all', 'crontab': hourly_schedule, 'enabled': True},
+            # Fires 'item_inactive' for money-type items not used/viewed for longer than
+            # SiteConfiguration.inactivity_threshold_days. A no-op until a user creates
+            # a NotificationRule subscribed to that event.
+            {'name': 'Gift Card Inactivity Check', 'task': 'notify.tasks.check_and_notify_inactivity', 'crontab': weekly_schedule, 'enabled': True},
+            # Looks up each unique item issuer on Companies House and fires
+            # 'merchant_health_alert' if the company is in administration/liquidation.
+            # A no-op unless SiteConfiguration.companies_house_api_key is set.
+            {'name': 'Merchant Health Check', 'task': 'notify.tasks.check_merchant_health', 'crontab': weekly_schedule, 'enabled': True},
         ]
 
         for task_data in tasks:

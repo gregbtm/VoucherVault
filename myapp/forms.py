@@ -418,6 +418,7 @@ class SiteConfigurationForm(forms.ModelForm):
         model = SiteConfiguration
         fields = [
             'expiry_threshold_days', 'expiry_last_notification_days', 'ntfy_default_server',
+            'inactivity_threshold_days', 'companies_house_api_key',
             'webpush_vapid_public_key', 'webpush_vapid_private_key', 'webpush_vapid_claims_email',
             'merchant_logos_enabled', 'logo_dev_api_key',
             'share_via_smart_enabled', 'share_link_expiry_days', 'share_link_pin_enabled',
@@ -434,6 +435,7 @@ class SiteConfigurationForm(forms.ModelForm):
         widgets = {
             'expiry_threshold_days': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
             'expiry_last_notification_days': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+            'inactivity_threshold_days': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
             'ntfy_default_server': forms.TextInput(attrs={'class': 'form-control'}),
             'webpush_vapid_public_key': forms.TextInput(attrs={'class': 'form-control'}),
             'webpush_vapid_claims_email': forms.TextInput(attrs={'class': 'form-control'}),
