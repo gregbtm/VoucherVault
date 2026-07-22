@@ -96,6 +96,10 @@ class Command(BaseCommand):
             # 'merchant_health_alert' if the company is in administration/liquidation.
             # A no-op unless SiteConfiguration.companies_house_api_key is set.
             {'name': 'Merchant Health Check', 'task': 'notify.tasks.check_merchant_health', 'crontab': weekly_schedule, 'enabled': True},
+            # Deletes ImportJob records (and their uploaded files) older than 30 days
+            # that are in a terminal state (complete/failed). Runs weekly to keep
+            # the database and uploads/ directory clean without hammering storage.
+            {'name': 'Purge Old Import Jobs', 'task': 'imports.tasks.purge_old_import_jobs', 'crontab': weekly_schedule, 'enabled': True},
         ]
 
         for task_data in tasks:

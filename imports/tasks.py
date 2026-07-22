@@ -186,6 +186,24 @@ def run_scheduled_backups():
 
 
 @shared_task
+def purge_old_import_jobs():
+    """Delete completed/failed ImportJob records older than 30 days along with their uploaded files."""
+    cutoff = timezone.now() - timedelta(days=30)
+    old_jobs = ImportJob.objects.filter(
+        status__in=['complete', 'failed'],
+        created_at__lt=cutoff,
+    )
+    for job in old_jobs:
+        if job.file and os.path.isfile(job.file.path):
+            try:
+                os.remove(job.file.path)
+            except OSError:
+                pass
+    deleted, _ = old_jobs.delete()
+    logger.info('Purged %d old ImportJob records', deleted)
+    return deleted
+
+@shared_task
 def update_google_wallet_pass_task(item_id):
     """
     Best-effort push of an item's current state to its already-issued

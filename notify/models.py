@@ -48,6 +48,11 @@ class NotificationRule(models.Model):
         help_text='"Daily Digest" batches matching events into one combined message sent once a day '
                    'instead of pinging for each one separately.',
     )
+    apply_to_all = models.BooleanField(
+        default=False,
+        help_text="Apply this rule to every item owned by the user — no per-item rule needed. "
+                   "When off, the rule only fires for items explicitly wired to a notification rule.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

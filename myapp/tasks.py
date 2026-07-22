@@ -10,11 +10,14 @@ from .update_check import check_for_update, check_upstream_version
 def run_expiration_check():
     call_command('check_expiration')
 
-@shared_task
-def fetch_merchant_logo_task(name, domain_hint=None):
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def fetch_merchant_logo_task(self, name, domain_hint=None):
     if not name or not merchant_logos_enabled():
         return
-    fetch_merchant_logo(name, domain_hint=domain_hint)
+    try:
+        fetch_merchant_logo(name, domain_hint=domain_hint)
+    except Exception as exc:
+        raise self.retry(exc=exc)
 
 @shared_task
 def check_for_update_task():

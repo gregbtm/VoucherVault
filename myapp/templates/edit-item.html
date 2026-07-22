@@ -904,10 +904,17 @@ body.dark-mode .error-alert {
                 {% else %}
                 <input type="date" class="modern-input" id="expiry_date" name="expiry_date" value="{{ form.expiry_date.value|date:'Y-m-d' }}">
                 {% endif %}
+                <div class="expiry-chips mt-2">
+                  <button type="button" class="expiry-chip" data-months="3">{% trans "3 months" %}</button>
+                  <button type="button" class="expiry-chip" data-months="6">{% trans "6 months" %}</button>
+                  <button type="button" class="expiry-chip" data-months="12">{% trans "1 year" %}</button>
+                  <button type="button" class="expiry-chip" data-months="36">{% trans "3 years" %}</button>
+                  <button type="button" class="expiry-chip" data-never="1">{% trans "Never" %}</button>
+                </div>
               </div>
             </div>
           </div>
-          
+
           <!-- Value Section -->
           <div class="form-section" id="value-field">
             <div class="form-section-title">
@@ -1956,6 +1963,43 @@ document.addEventListener("DOMContentLoaded", function () {
   });
   {% endif %}
 });
+</script>
+
+<style>
+.expiry-chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+.expiry-chip {
+  padding: .25rem .7rem; border-radius: 20px; font-size: .8rem; font-weight: 500;
+  border: 1.5px solid var(--border-color, #dee2e6); background: transparent;
+  color: var(--text-muted, #6c757d); cursor: pointer; transition: all .15s ease;
+}
+.expiry-chip:hover, .expiry-chip.active {
+  background: var(--primary-color, #4154f1); border-color: var(--primary-color, #4154f1);
+  color: #fff;
+}
+</style>
+
+<script>
+(function () {
+  const chips = document.querySelectorAll('.expiry-chip');
+  const expiryInput = document.getElementById('expiry_date');
+  if (!expiryInput) return;
+  chips.forEach(chip => {
+    chip.addEventListener('click', function () {
+      chips.forEach(c => c.classList.remove('active'));
+      this.classList.add('active');
+      if (this.dataset.never) {
+        expiryInput.value = '2099-12-31';
+      } else {
+        const months = parseInt(this.dataset.months, 10);
+        const d = new Date();
+        d.setMonth(d.getMonth() + months);
+        expiryInput.value = d.toISOString().slice(0, 10);
+      }
+      expiryInput.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  });
+  expiryInput.addEventListener('input', () => chips.forEach(c => c.classList.remove('active')));
+})();
 </script>
 
 {% endblock content %}

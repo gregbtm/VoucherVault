@@ -111,6 +111,10 @@
         <div class="card-body">
           <h5 class="card-title">{% trans "Export / Backup" %}</h5>
           <p class="text-muted small">{% trans "Download all your items. Both formats can be re-imported above for a full backup/restore round trip." %}</p>
+          <div class="alert alert-info py-2 px-3 mb-3 small d-flex gap-2 align-items-start">
+            <i class="bi bi-info-circle-fill flex-shrink-0 mt-1"></i>
+            <span>{% trans "CSV and JSON exports contain item data only — attached files and documents are not included. Use the Full Backup (below) to export everything." %}</span>
+          </div>
           <a href="{% url 'export_csv' %}" class="btn btn-outline-secondary">
             <i class="bi bi-filetype-csv me-1"></i>{% trans "Download CSV" %}
           </a>

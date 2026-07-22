@@ -1466,11 +1466,22 @@ body.dark-mode .next-up-card {
   </div>
   {% else %}
   <!-- Empty State -->
+  {% if not available_count and not used_count and not expired_count and not archived_count %}
+  <div class="empty-state">
+    <i class="bi bi-stars" style="font-size:3.5rem;color:var(--primary-color,#4154f1);margin-bottom:.75rem;display:block;"></i>
+    <h3>{% trans "Your vault is empty" %}</h3>
+    <p>{% trans "Add your first gift card, voucher, coupon, or loyalty card to get started." %}</p>
+    <a href="{% url 'create_item' %}" class="btn btn-primary btn-lg mt-2">
+      <i class="bi bi-plus-circle me-1"></i> {% trans "Add your first item" %}
+    </a>
+  </div>
+  {% else %}
   <div class="empty-state">
     <i class="bi bi-inbox"></i>
     <h3>{% trans "No items found" %}</h3>
-    <p>{% trans "Try adjusting your filters or create a new item." %}</p>
+    <p>{% trans "Try adjusting your filters or search." %}</p>
   </div>
+  {% endif %}
   {% endif %}
 </section>
 
@@ -1480,11 +1491,17 @@ body.dark-mode .next-up-card {
   <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkArchiveBtn">
     <i class="bi bi-archive"></i> {% trans "Archive" %}
   </button>
+  <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkUnarchiveBtn">
+    <i class="bi bi-archive-fill"></i> {% trans "Unarchive" %}
+  </button>
   <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkTagModal">
     <i class="bi bi-tag"></i> {% trans "Tag" %}
   </button>
   <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkMoveModal">
     <i class="bi bi-folder-symlink"></i> {% trans "Move to Wallet" %}
+  </button>
+  <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkCurrencyModal">
+    <i class="bi bi-currency-exchange"></i> {% trans "Currency" %}
   </button>
   <div class="dropdown d-inline-block">
     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="bulkExportDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -1541,6 +1558,26 @@ body.dark-mode .next-up-card {
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
         <button type="button" class="btn btn-primary" id="bulkMoveConfirmBtn">{% trans "Move" %}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Currency Modal -->
+<div class="modal fade" id="bulkCurrencyModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">{% trans "Change Currency" %}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label for="bulkCurrencyInput" class="form-label">{% trans "Currency code (e.g. GBP, EUR, USD)" %}</label>
+        <input type="text" class="form-control text-uppercase" id="bulkCurrencyInput" maxlength="3" placeholder="GBP">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+        <button type="button" class="btn btn-primary" id="bulkCurrencyConfirmBtn">{% trans "Apply" %}</button>
       </div>
     </div>
   </div>
@@ -1798,6 +1835,16 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   });
 
+  document.getElementById('bulkUnarchiveBtn').addEventListener('click', () => {
+    if (selectedIds.size === 0) return;
+    const btn = document.getElementById('bulkUnarchiveBtn');
+    window.setButtonLoading(btn, true);
+    postBulkAction('{% url "bulk_unarchive_items" %}').then(data => {
+      if (data.success) { window.location.reload(); return; }
+      window.setButtonLoading(btn, false);
+    });
+  });
+
   document.getElementById('bulkDeleteBtn').addEventListener('click', () => {
     if (selectedIds.size === 0) return;
     showConfirm('{% trans "Delete the selected items? This cannot be undone." %}', '{% trans "Delete" %}', function() {
@@ -1837,6 +1884,19 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   });
 
+  document.getElementById('bulkCurrencyConfirmBtn').addEventListener('click', () => {
+    if (selectedIds.size === 0) return;
+    const currency = document.getElementById('bulkCurrencyInput').value.trim().toUpperCase();
+    if (!currency) return;
+    const btn = document.getElementById('bulkCurrencyConfirmBtn');
+    window.setButtonLoading(btn, true);
+    postBulkAction('{% url "bulk_currency_items" %}', { currency }).then(data => {
+      if (data.success) { window.location.reload(); return; }
+      window.setButtonLoading(btn, false);
+      bootstrap.Modal.getInstance(document.getElementById('bulkCurrencyModal')).hide();
+    });
+  });
+
   function bulkExportDownload(url, filename) {
     if (selectedIds.size === 0) return;
     fetch(url, {
@@ -1867,4 +1927,73 @@ document.addEventListener("DOMContentLoaded", function () {
 })();
 </script>
 
+{% if search_query %}
+<script>
+(function() {
+  var query = "{{ search_query|escapejs }}";
+  if (!query) return;
+  var words = query.trim().split(/\s+/).filter(Boolean);
+  var pattern = new RegExp('(' + words.map(function(w) {
+    return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }).join('|') + ')', 'gi');
+
+  function highlightNode(node) {
+    if (node.nodeType === 3) {
+      var text = node.nodeValue;
+      if (!pattern.test(text)) return;
+      pattern.lastIndex = 0;
+      var frag = document.createDocumentFragment();
+      var lastIdx = 0, match;
+      while ((match = pattern.exec(text)) !== null) {
+        frag.appendChild(document.createTextNode(text.slice(lastIdx, match.index)));
+        var mark = document.createElement('mark');
+        mark.className = 'search-highlight';
+        mark.textContent = match[0];
+        frag.appendChild(mark);
+        lastIdx = pattern.lastIndex;
+      }
+      frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+      node.parentNode.replaceChild(frag, node);
+    } else if (node.nodeType === 1 && !['script','style','mark'].includes(node.tagName.toLowerCase())) {
+      Array.from(node.childNodes).forEach(highlightNode);
+    }
+  }
+
+  document.querySelectorAll('.item-name, .item-issuer').forEach(function(el) {
+    highlightNode(el);
+  });
+})();
+</script>
+<style>
+.search-highlight { background: rgba(255,220,0,0.45); border-radius: 2px; padding: 0 1px; color: inherit; }
+body.dark-mode .search-highlight { background: rgba(255,200,0,0.35); }
+</style>
+{% endif %}
+
+<script>
+(function() {
+  var cards = document.querySelectorAll('.item-card');
+  var swipeStartX, swipeStartY, swipeCard;
+  var SWIPE_MIN = 60, SWIPE_MAX_Y = 40;
+  cards.forEach(function(card) {
+    card.addEventListener('touchstart', function(e) {
+      var t = e.changedTouches[0];
+      swipeStartX = t.clientX; swipeStartY = t.clientY; swipeCard = card;
+    }, {passive: true});
+    card.addEventListener('touchend', function(e) {
+      if (swipeCard !== card) return;
+      var t = e.changedTouches[0];
+      var dx = t.clientX - swipeStartX, dy = t.clientY - swipeStartY;
+      if (Math.abs(dy) > SWIPE_MAX_Y || Math.abs(dx) < SWIPE_MIN) return;
+      if (dx < 0) {
+        var shareBtn = card.querySelector('.share-btn');
+        if (shareBtn) shareBtn.click();
+      } else {
+        var pinBtn = card.querySelector('.pin-btn');
+        if (pinBtn) pinBtn.click();
+      }
+    }, {passive: true});
+  });
+})();
+</script>
 {% endblock content %}

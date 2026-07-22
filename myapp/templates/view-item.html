@@ -1546,6 +1546,24 @@ body.dark-mode .tilt-scan-enable-btn {
 </div>
 {% endif %}
 
+{% if request.GET.new %}
+<div class="alert alert-success alert-dismissible d-flex align-items-start gap-3 mb-3 fade show" role="alert" id="what-next-banner">
+  <i class="bi bi-check-circle-fill fs-4 mt-1 flex-shrink-0"></i>
+  <div>
+    <strong>{% trans "Item added!" %}</strong>
+    {% trans "Here's what you can do next:" %}
+    <ul class="mb-0 mt-1 ps-3">
+      <li><a href="{% url 'upload_document' item.id %}">{% trans "Attach a receipt or file" %}</a></li>
+      <li><a href="{% url 'edit_item' item.id %}">{% trans "Add a tag or wallet" %}</a></li>
+      {% if not has_notification_rule %}
+      <li><a href="{% url 'manage_notification_rules' %}">{% trans "Set up an expiry notification" %}</a></li>
+      {% endif %}
+    </ul>
+  </div>
+  <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="{% trans 'Close' %}"></button>
+</div>
+{% endif %}
+
 <div class="detail-header">
   <div>
     <h1>{% trans "Item Details" %}</h1>
@@ -1643,15 +1661,53 @@ body.dark-mode .tilt-scan-enable-btn {
                 <i class="bi bi-wallet2"></i> {% trans "Value" %}
                 {% endif %}
               </div>
-              <div class="detail-field-value value-highlight">
+              <div class="detail-field-value value-highlight" id="balance-display">
                 {% if item.value_type == "percentage" %}
-                {{ total_value|floatformat:0 }}%
+                <span id="balance-text">{{ total_value|floatformat:0 }}%</span>
                 {% elif item.value_type == "multiplier" %}
-                {{ total_value|floatformat:1 }}x
+                <span id="balance-text">{{ total_value|floatformat:1 }}x</span>
                 {% else %}
-                {{ total_value|floatformat:2 }} {{ item.currency }}
+                <span id="balance-text">{{ total_value|floatformat:2 }} {{ item.currency }}</span>
+                {% if can_edit and item.value_type == "fixed" %}
+                <button class="btn btn-link btn-sm p-0 ms-1 text-muted" id="edit-balance-btn" title="{% trans 'Edit balance' %}" style="vertical-align:baseline;font-size:0.8em;">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                {% endif %}
                 {% endif %}
               </div>
+              {% if can_edit and item.value_type == "fixed" and item.type != "loyaltycard" and item.type != "travelpass" %}
+              <div id="balance-edit-form" class="mt-2" style="display:none;">
+                <div class="input-group input-group-sm" style="max-width:280px;">
+                  <input type="number" id="balance-new-value" class="form-control" step="0.01" min="0"
+                    value="{{ total_value|floatformat:2 }}" placeholder="{% trans 'New balance' %}">
+                  <span class="input-group-text">{{ item.currency }}</span>
+                  <button class="btn btn-success" id="balance-save-btn">{% trans "Save" %}</button>
+                  <button class="btn btn-outline-secondary" id="balance-cancel-btn">{% trans "Cancel" %}</button>
+                </div>
+                <input type="text" id="balance-note" class="form-control form-control-sm mt-1" style="max-width:280px;"
+                  placeholder="{% trans 'Note (optional)' %}">
+              </div>
+              {% endif %}
+            </div>
+            {% if balance_history|length > 1 %}
+            <div class="detail-field">
+              <div class="detail-field-label">
+                <i class="bi bi-graph-down"></i> {% trans "Balance History" %}
+              </div>
+              <div class="detail-field-value">
+                <canvas id="balance-sparkline" height="40" style="max-width:200px;width:100%;cursor:pointer;"
+                  title="{% trans 'Balance over time' %}"></canvas>
+              </div>
+            </div>
+            {% endif %}
+            {% endif %}
+
+            {% if item.last_used_at and item.type != "travelpass" %}
+            <div class="detail-field">
+              <div class="detail-field-label">
+                <i class="bi bi-clock-history"></i> {% trans "Last Viewed" %}
+              </div>
+              <div class="detail-field-value text-muted small">{{ item.last_used_at|date:"M d, Y H:i" }}</div>
             </div>
             {% endif %}
 
@@ -2816,6 +2872,101 @@ vvInitTiltScanDetect({
   document.querySelectorAll('.btn-dms-push-file').forEach(function(btn) {
     btn.addEventListener('click', function() { dmsPost(this.dataset.pushUrl, this); });
   });
+})();
+</script>
+{% endif %}
+
+{% if can_edit and item.value_type == "fixed" and item.type != "loyaltycard" and item.type != "travelpass" %}
+<script>
+(function() {
+  var editBtn = document.getElementById('edit-balance-btn');
+  var editForm = document.getElementById('balance-edit-form');
+  var cancelBtn = document.getElementById('balance-cancel-btn');
+  var saveBtn = document.getElementById('balance-save-btn');
+  var balanceText = document.getElementById('balance-text');
+  if (!editBtn || !editForm) return;
+
+  editBtn.addEventListener('click', function() {
+    editForm.style.display = 'block';
+    editBtn.style.display = 'none';
+    document.getElementById('balance-new-value').focus();
+  });
+  cancelBtn.addEventListener('click', function() {
+    editForm.style.display = 'none';
+    editBtn.style.display = '';
+  });
+  saveBtn.addEventListener('click', function() {
+    var newVal = parseFloat(document.getElementById('balance-new-value').value);
+    var note = document.getElementById('balance-note').value.trim();
+    if (isNaN(newVal) || newVal < 0) {
+      if (typeof showToast === 'function') showToast('danger', '{% trans "Please enter a valid balance." %}');
+      return;
+    }
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    fetch('{{ update_balance_url }}', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+      body: JSON.stringify({balance: newVal, note: note || '{% trans "Manual adjustment" %}'})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.success) {
+        balanceText.textContent = data.new_balance.toFixed(2) + ' {{ item.currency }}';
+        editForm.style.display = 'none';
+        editBtn.style.display = '';
+        if (typeof showToast === 'function') showToast('success', '{% trans "Balance updated." %}');
+      } else {
+        if (typeof showToast === 'function') showToast('danger', data.error || '{% trans "Update failed." %}');
+      }
+    })
+    .catch(function() {
+      if (typeof showToast === 'function') showToast('danger', '{% trans "Request failed." %}');
+    })
+    .finally(function() {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '{% trans "Save" %}';
+    });
+  });
+})();
+</script>
+{% endif %}
+
+{% if balance_history|length > 1 %}
+<script>
+(function() {
+  var canvas = document.getElementById('balance-sparkline');
+  if (!canvas) return;
+  var data = [{% for h in balance_history %}{{ h.balance }}{% if not forloop.last %},{% endif %}{% endfor %}];
+  var ctx = canvas.getContext('2d');
+  var w = canvas.offsetWidth || 200;
+  var h = canvas.height;
+  canvas.width = w;
+  var min = Math.min.apply(null, data);
+  var max = Math.max.apply(null, data);
+  var range = max - min || 1;
+  var pad = 4;
+  var style = getComputedStyle(document.documentElement);
+  var accent = style.getPropertyValue('--bs-primary').trim() || '#0d6efd';
+  var dim = style.getPropertyValue('--bs-secondary').trim() || '#6c757d';
+  ctx.clearRect(0, 0, w, h);
+  ctx.beginPath();
+  data.forEach(function(val, i) {
+    var x = pad + (i / (data.length - 1)) * (w - pad * 2);
+    var y = pad + (1 - (val - min) / range) * (h - pad * 2);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  // endpoint dot
+  var lastX = pad + (w - pad * 2);
+  var lastY = pad + (1 - (data[data.length-1] - min) / range) * (h - pad * 2);
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+  ctx.fillStyle = accent;
+  ctx.fill();
 })();
 </script>
 {% endif %}

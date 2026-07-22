@@ -824,6 +824,71 @@
     }
   </script>
 
+  <!-- Keyboard shortcuts modal (#12) -->
+  <div class="modal fade" id="shortcutsModal" tabindex="-1" aria-modal="true" role="dialog" aria-labelledby="shortcutsModalLabel">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header pb-1">
+          <h5 class="modal-title fs-6 fw-semibold" id="shortcutsModalLabel"><i class="bi bi-keyboard me-1"></i> {% trans "Keyboard Shortcuts" %}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans 'Close' %}"></button>
+        </div>
+        <div class="modal-body">
+          <table class="table table-sm mb-0">
+            <tbody>
+              <tr><td><kbd>/</kbd></td><td>{% trans "Focus search" %}</td></tr>
+              <tr><td><kbd>N</kbd></td><td>{% trans "New item" %}</td></tr>
+              <tr><td><kbd>G</kbd> <kbd>H</kbd></td><td>{% trans "Go home (inventory)" %}</td></tr>
+              <tr><td><kbd>G</kbd> <kbd>D</kbd></td><td>{% trans "Go to dashboard" %}</td></tr>
+              <tr><td><kbd>G</kbd> <kbd>N</kbd></td><td>{% trans "Go to notification rules" %}</td></tr>
+              <tr><td><kbd>Esc</kbd></td><td>{% trans "Close modal / clear search" %}</td></tr>
+              <tr><td><kbd>?</kbd></td><td>{% trans "Show this help" %}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+  (function() {
+    var seq = '';
+    var seqTimer;
+    document.addEventListener('keydown', function(e) {
+      var tag = (e.target.tagName || '').toLowerCase();
+      var inInput = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      if (e.key === '?' && !inInput) {
+        var modal = new bootstrap.Modal(document.getElementById('shortcutsModal'));
+        modal.show();
+        e.preventDefault();
+        return;
+      }
+      if (e.key === '/' && !inInput) {
+        var si = document.getElementById('searchInput');
+        if (si) { si.focus(); si.select(); e.preventDefault(); }
+        return;
+      }
+      if (e.key === 'Escape' && !inInput) {
+        var si2 = document.getElementById('searchInput');
+        if (si2 && document.activeElement === si2) { si2.blur(); }
+        return;
+      }
+      if (!inInput) {
+        seq += e.key.toLowerCase();
+        clearTimeout(seqTimer);
+        seqTimer = setTimeout(function() { seq = ''; }, 1000);
+        if (e.key.toLowerCase() === 'n' && seq === 'n') {
+          window.location.href = '{% url "create_item" %}';
+          seq = '';
+          return;
+        }
+        if (seq === 'gh') { window.location.href = '{% url "show_items" %}'; seq = ''; return; }
+        if (seq === 'gd') { window.location.href = '{% url "dashboard" %}'; seq = ''; return; }
+        if (seq === 'gn') { window.location.href = '{% url "manage_notification_rules" %}'; seq = ''; return; }
+      }
+    });
+  })();
+  </script>
+
   <!-- Accessible confirmation modal — replaces all browser confirm() calls site-wide -->
   <div class="modal fade" id="confirmModal" tabindex="-1" aria-modal="true" role="dialog" aria-labelledby="confirmModalLabel">
     <div class="modal-dialog modal-sm modal-dialog-centered">

@@ -2,12 +2,21 @@ import json
 import logging
 
 import requests
+from django.core import signing
+from django.urls import reverse
 from pywebpush import WebPushException, webpush
 
 from myapp.models import SiteConfiguration
 
 from ..models import WebPushSubscription
 from .base import NotificationBackend
+
+_BARCODE_PUSH_SALT_PREFIX = 'barcode-push-image'
+
+
+def _barcode_push_salt() -> str:
+    version = SiteConfiguration.load().webpush_barcode_key_version
+    return f'{_BARCODE_PUSH_SALT_PREFIX}-v{version}'
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +50,16 @@ class WebPushBackend(NotificationBackend):
             return False
 
         claims_email = config.webpush_vapid_claims_email
-        item_url = f'/en/items/view/{item.id}/' if item is not None else '/'
-        payload = json.dumps({'title': title, 'body': message, 'url': item_url})
+        item_url = reverse('view_item', args=[item.id]) if item is not None else '/'
+
+        payload_data: dict = {'title': title, 'body': message, 'url': item_url}
+        if item is not None and item.qr_code_base64 and item.code_type != 'none':
+            token = signing.dumps(str(item.id), salt=_barcode_push_salt())
+            payload_data['image_url'] = reverse('barcode_push_image', args=[item.id]) + f'?t={token}'
+        if item is not None and not item.is_used:
+            payload_data['mark_used_url'] = reverse('toggle_item_status', args=[item.id])
+
+        payload = json.dumps(payload_data)
 
         any_success = False
         for sub in subscriptions:

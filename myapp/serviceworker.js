@@ -515,6 +515,10 @@ self.addEventListener('message', event => {
     if (event.data && event.data.type === 'INVALIDATE_PATH' && event.data.path) {
         event.waitUntil(invalidatePath(event.data.path));
     }
+
+    if (event.data && event.data.type === 'RECORD_ITEM_VISIT' && event.data.url) {
+        event.waitUntil(recordItemPageVisit(event.data.url));
+    }
 });
 
 // Function to sync offline changes
@@ -528,6 +532,52 @@ async function syncOfflineChanges() {
     }
 }
 
+// Offline item pre-caching — store last N viewed item page URLs in SW storage
+const OFFLINE_ITEM_CACHE_KEY = 'vv-offline-items';
+const OFFLINE_ITEM_MAX = 10;
+
+async function recordItemPageVisit(url) {
+    try {
+        const db = await openItemHistoryDB();
+        const tx = db.transaction('history', 'readwrite');
+        const store = tx.objectStore('history');
+        const existing = await idbGet(store, 'urls') || [];
+        const filtered = existing.filter(u => u !== url);
+        const updated = [url, ...filtered].slice(0, OFFLINE_ITEM_MAX);
+        await idbPut(store, 'urls', updated);
+        await tx.done;
+        const cache = await caches.open(PAGE_CACHE);
+        await cache.add(url).catch(() => {});
+    } catch (e) {
+        // IndexedDB may not be available in all browsers/contexts
+    }
+}
+
+function openItemHistoryDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open('vv-item-history', 1);
+        req.onupgradeneeded = e => e.target.result.createObjectStore('history');
+        req.onsuccess = e => resolve(e.target.result);
+        req.onerror = e => reject(e.target.error);
+    });
+}
+
+function idbGet(store, key) {
+    return new Promise((resolve, reject) => {
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+function idbPut(store, key, value) {
+    return new Promise((resolve, reject) => {
+        const req = store.put(value, key);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+    });
+}
+
 // Web Push - show a notification for incoming push messages
 self.addEventListener('push', event => {
     let payload = { title: 'VoucherVault', body: '' };
@@ -539,21 +589,44 @@ self.addEventListener('push', event => {
         }
     }
 
-    event.waitUntil(
-        self.registration.showNotification(payload.title, {
-            body: payload.body,
-            icon: '/static/assets/img/manifest-icon-192.png',
-            badge: '/static/assets/img/manifest-icon-192.png',
-            data: { url: payload.url || '/' },
-        })
-    );
+    const notifOptions = {
+        body: payload.body,
+        icon: '/static/assets/img/manifest-icon-192.png',
+        badge: '/static/assets/img/manifest-icon-192.png',
+        data: {
+            url: payload.url || '/',
+            mark_used_url: payload.mark_used_url || null,
+        },
+        actions: [
+            { action: 'view', title: 'View' },
+        ],
+    };
+    if (payload.mark_used_url) {
+        notifOptions.actions.push({ action: 'mark_used', title: 'Mark used' });
+    }
+    if (payload.image_url) {
+        notifOptions.image = payload.image_url;
+    }
+
+    event.waitUntil(self.registration.showNotification(payload.title, notifOptions));
 });
 
-// Web Push - focus/open the app when a notification is clicked
+// Web Push - handle notification click and action buttons
 self.addEventListener('notificationclick', event => {
     event.notification.close();
-    const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+    const data = event.notification.data || {};
+    const action = event.action;
 
+    if (action === 'mark_used' && data.mark_used_url) {
+        event.waitUntil(
+            fetch(data.mark_used_url, { method: 'POST', credentials: 'include' })
+                .then(() => self.clients.openWindow(data.url || '/'))
+                .catch(() => self.clients.openWindow(data.url || '/'))
+        );
+        return;
+    }
+
+    const targetUrl = data.url || '/';
     event.waitUntil(
         self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
             for (const client of clientList) {

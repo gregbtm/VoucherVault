@@ -26,9 +26,11 @@ urlpatterns = (
     path('items/toggle_mute/<uuid:item_uuid>', views.toggle_mute_notifications, name='toggle_mute_notifications'),
     path('nearby-items/', views.nearby_items, name='nearby_items'),
     path('items/bulk-archive/', views.bulk_archive_items, name='bulk_archive_items'),
+    path('items/bulk-unarchive/', views.bulk_unarchive_items, name='bulk_unarchive_items'),
     path('items/bulk-delete/', views.bulk_delete_items, name='bulk_delete_items'),
     path('items/bulk-tag/', views.bulk_tag_items, name='bulk_tag_items'),
     path('items/bulk-move/', views.bulk_move_items, name='bulk_move_items'),
+    path('items/bulk-currency/', views.bulk_currency_items, name='bulk_currency_items'),
     path('items/share/<uuid:item_id>', views.share_item_view, name='share_item'),
     path('items/unshare/<uuid:item_id>/<int:user_id>', views.unshare_item, name='unshare_item'),
     path('items/<uuid:item_id>/public-share/', views.get_public_share_link, name='get_public_share_link'),
@@ -39,6 +41,7 @@ urlpatterns = (
     path('s/<uuid:share_id>/logo/', views.public_item_share_logo, name='public_item_share_logo'),
     path('s/<uuid:share_id>/pkpass/', views.public_item_pkpass, name='public_item_pkpass'),
     path('items/view-image/<uuid:item_id>/', views.serve_image_file, name='serve_image_file'),
+    path('items/barcode-push/<uuid:item_id>/', views.barcode_push_image, name='barcode_push_image'),
     path('items/view-file/<uuid:item_id>/', views.view_original_file, name='view_original_file'),
     path('items/<uuid:item_uuid>/documents/upload', views.upload_document, name='upload_document'),
     path('documents/<int:document_id>/download', views.download_document, name='download_document'),
@@ -57,6 +60,7 @@ urlpatterns = (
     path('user/edit/preferences', views.update_user_preferences, name='update_user_preferences'),
     path('user/api-access/', views.api_access, name='api_access'),
     path('wallets/', views.manage_wallets, name='manage_wallets'),
+    path('wallets/reorder/', views.wallet_reorder, name='wallet_reorder'),
     path('wallets/<int:wallet_id>/edit', views.edit_wallet, name='edit_wallet'),
     path('wallets/<int:wallet_id>/delete', views.delete_wallet, name='delete_wallet'),
     path('wallets/<int:wallet_id>/share', views.share_wallet, name='share_wallet'),
@@ -89,6 +93,13 @@ urlpatterns = (
     path('admin-tools/help/<str:doc_slug>/', views.view_doc, name='view_doc'),
     path('help/', views.help_center, name='help_center'),
     path('barcode/decode/', views.barcode_decode, name='barcode_decode'),
+    # #5: Bulk export
+    path('items/export/csv/', views.export_selected_csv, name='export_selected_csv'),
+    path('items/export/json/', views.export_selected_json, name='export_selected_json'),
+    # #11: Inline balance editing
+    path('items/<uuid:item_uuid>/update-balance/', views.update_item_balance, name='update_item_balance'),
+    # #16: Regenerate TOTP backup codes
+    path('user/security/totp/regenerate-backup-codes/', views.regenerate_totp_backup_codes, name='regenerate_totp_backup_codes'),
 )
 
 admin.site.site_header = "VoucherVault Plus+"

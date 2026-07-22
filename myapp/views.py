@@ -1,3 +1,4 @@
+import base64
 import os
 import json
 import logging
@@ -7,6 +8,7 @@ import mimetypes
 import uuid
 import datetime as dt
 import requests
+from django.core import signing
 from django.db import IntegrityError
 from django.db.models import Q
 from django.utils.safestring import mark_safe
@@ -405,8 +407,9 @@ def show_items(request):
             Q(redeem_code__icontains=search_query) |
             Q(card_number__icontains=search_query) |
             Q(description__icontains=search_query) |
-            Q(notes__icontains=search_query)
-        )
+            Q(notes__icontains=search_query) |
+            Q(tags__name__icontains=search_query)
+        ).distinct()
 
     # Apply sorting based on user preference
     sort_by = preferences.sort_by
@@ -628,6 +631,11 @@ def view_item(request, item_uuid):
             .first()
         )
 
+    from notify.models import NotificationRule
+    from .models import BalanceHistory
+    balance_history = list(
+        BalanceHistory.objects.filter(item=item).order_by('recorded_at').values('balance', 'recorded_at', 'note')
+    )
     context = {
         'item': item,
         'transactions': transactions,
@@ -650,6 +658,9 @@ def view_item(request, item_uuid):
         'dms_providers': dms_providers,
         'dms_doc_status': dms_doc_status,
         'dms_item_file_status': dms_item_file_status,
+        'has_notification_rule': NotificationRule.objects.filter(user=request.user, enabled=True).exists(),
+        'balance_history': balance_history,
+        'update_balance_url': reverse('update_item_balance', args=[item.id]),
     }
     return render(request, 'view-item.html', context)
 
@@ -748,7 +759,7 @@ def create_item(request):
             fire_user_webhooks(item.user, 'item_created', item)
             _log_wallet_activity(item.wallet, request.user, 'item_added', item=item)
 
-            return redirect('show_items')
+            return redirect(f"{reverse('view_item', args=[item.id])}?new=1")
         else:
             # If form is not valid, render the form with validation errors
             return render(request, 'create-item.html', {'form': form, **_item_form_ctx(request.user)})
@@ -1074,11 +1085,7 @@ def duplicate_item(request, item_uuid):
     }
 
     form = ItemForm(initial=initial_data)
-    return render(request, 'create-item.html', {
-        'form': form,
-        'ocr_enabled': ocr_enabled(),
-        'known_issuers': _known_issuers(request.user),
-    })
+    return render(request, 'create-item.html', {'form': form, **_item_form_ctx(request.user)})
 
 @require_POST
 @login_required
@@ -1169,6 +1176,43 @@ def serve_image_file(request, item_id):
         return HttpResponse("File is not an image", status=400)
 
     return HttpResponse(item.file, content_type=mime_type)
+
+
+_BARCODE_PUSH_SALT_PREFIX = 'barcode-push-image'
+_BARCODE_PUSH_MAX_AGE = 86_400  # 24 hours
+
+
+def _barcode_push_salt() -> str:
+    version = SiteConfiguration.load().webpush_barcode_key_version
+    return f'{_BARCODE_PUSH_SALT_PREFIX}-v{version}'
+
+
+def barcode_push_image(request, item_id):
+    """Serves the barcode PNG for a push notification image, authenticated via
+    a short-lived signed token rather than a session cookie (push notifications
+    arrive on the lock screen, before any login session exists)."""
+    token = request.GET.get('t', '')
+    try:
+        signed_id = signing.loads(token, salt=_barcode_push_salt(), max_age=_BARCODE_PUSH_MAX_AGE)
+    except signing.SignatureExpired:
+        return HttpResponse('Token expired', status=410)
+    except signing.BadSignature:
+        return HttpResponse('Invalid token', status=403)
+
+    if str(item_id) != str(signed_id):
+        return HttpResponse('Token mismatch', status=403)
+
+    item = get_object_or_404(Item, id=item_id)
+    if not item.qr_code_base64:
+        raise Http404('No barcode for this item')
+
+    try:
+        image_bytes = base64.b64decode(item.qr_code_base64)
+    except Exception:
+        raise Http404('Barcode data corrupted')
+
+    return HttpResponse(image_bytes, content_type='image/png')
+
 
 @require_GET
 @login_required
@@ -2586,6 +2630,45 @@ def bulk_move_items(request):
 
 @require_POST
 @login_required
+def bulk_unarchive_items(request):
+    """Restore a selection of archived items back to active."""
+    items, skipped, _data = _bulk_selected_items(request)
+    processed = 0
+    for item in items:
+        if item.is_archived:
+            item.is_archived = False
+            item.save(update_fields=['is_archived'])
+            processed += 1
+    return JsonResponse({'success': True, 'processed': processed, 'skipped': skipped})
+
+@require_POST
+@login_required
+def bulk_currency_items(request):
+    """Change the currency on a selection of items."""
+    items, skipped, data = _bulk_selected_items(request)
+    currency = (data.get('currency') or '').strip().upper()
+    if not currency:
+        return JsonResponse({'success': False, 'message': _('No currency provided.')}, status=400)
+    for item in items:
+        item.currency = currency
+        item.save(update_fields=['currency'])
+    return JsonResponse({'success': True, 'processed': len(items), 'skipped': skipped})
+
+@require_POST
+@login_required
+def wallet_reorder(request):
+    """Accept a JSON list of wallet IDs in the new order and persist sort_order."""
+    try:
+        data = json.loads(request.body)
+        ids = data.get('order', [])
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False}, status=400)
+    for idx, wallet_id in enumerate(ids):
+        Wallet.objects.filter(id=wallet_id, user=request.user).update(sort_order=idx)
+    return JsonResponse({'success': True})
+
+@require_POST
+@login_required
 def toggle_view_mode(request):
     """Toggle between compact and standard view modes"""
     preferences, _ = UserPreference.objects.get_or_create(user=request.user)
@@ -3048,6 +3131,33 @@ def _client_ip_view(request):
     return request.META.get('REMOTE_ADDR') or None
 
 
+def _ua_device_label(request):
+    """Return a short human-readable device description from the User-Agent header."""
+    ua = request.META.get('HTTP_USER_AGENT', '')
+    if not ua:
+        return 'Unknown device'
+    ua_l = ua.lower()
+    if 'iphone' in ua_l:
+        label = 'iPhone'
+    elif 'ipad' in ua_l:
+        label = 'iPad'
+    elif 'android' in ua_l:
+        label = 'Android'
+    elif 'macintosh' in ua_l or 'mac os' in ua_l:
+        label = 'Mac'
+    elif 'windows' in ua_l:
+        label = 'Windows'
+    elif 'linux' in ua_l:
+        label = 'Linux'
+    else:
+        label = 'Desktop'
+    for browser in ('Chrome', 'Firefox', 'Safari', 'Edge', 'Opera'):
+        if browser.lower() in ua_l:
+            label += f' / {browser}'
+            break
+    return label
+
+
 def custom_login(request):
     """TOTP-aware login view. Replaces django.contrib.auth.views.LoginView."""
     from django.contrib.auth import REDIRECT_FIELD_NAME
@@ -3068,10 +3178,12 @@ def custom_login(request):
                     request.session['_totp_user_id'] = user.pk
                     if next_url:
                         request.session['_totp_next'] = next_url
+                    request.session['_ua_label'] = _ua_device_label(request)
                     return redirect('totp_verify')
             except TOTPDevice.DoesNotExist:
                 pass
             _login(request, user)
+            request.session['_ua_label'] = _ua_device_label(request)
             if next_url and _safe_redirect(next_url, allowed_hosts={request.get_host()}):
                 return redirect(next_url)
             return redirect('show_items')
@@ -3213,6 +3325,7 @@ def session_management(request):
                 'expire_date': s.expire_date,
                 'is_current': s.session_key == current_key,
                 'created': data.get('_session_created'),
+                'device': data.get('_ua_label', 'Unknown device'),
             })
     user_sessions.sort(key=lambda x: x['expire_date'], reverse=True)
 
@@ -3331,6 +3444,140 @@ def gdpr_data_export(request):
     )
     response['Content-Disposition'] = 'attachment; filename="vouchervault-my-data.json"'
     return response
+
+
+# ── Phase 99: 20-improvement mega-batch ──────────────────────────────────────
+
+
+# --- #5: Bulk CSV / JSON export for selected items ---
+
+def _item_to_dict(item):
+    return {
+        'id': str(item.id),
+        'name': item.name,
+        'type': item.type,
+        'issuer': item.issuer,
+        'redeem_code': item.redeem_code,
+        'card_number': item.card_number,
+        'code_type': item.code_type,
+        'pin': item.pin,
+        'value': str(item.value) if item.value is not None else '',
+        'value_type': item.value_type,
+        'currency': item.currency,
+        'expiry_date': str(item.expiry_date) if item.expiry_date else '',
+        'issue_date': str(item.issue_date) if item.issue_date else '',
+        'description': item.description or '',
+        'notes': item.notes or '',
+        'wallet': item.wallet.name if item.wallet else '',
+        'tags': ','.join(t.name for t in item.tags.all()),
+        'is_used': item.is_used,
+        'is_pinned': item.is_pinned,
+        'is_archived': item.is_archived,
+        'last_used_at': str(item.last_used_at) if item.last_used_at else '',
+    }
+
+
+@require_POST
+@login_required
+def export_selected_csv(request):
+    import csv
+    from io import StringIO
+    data = json.loads(request.body)
+    item_ids = data.get('item_ids', [])
+    items = Item.objects.filter(
+        user=request.user, id__in=item_ids,
+    ).prefetch_related('tags').select_related('wallet')[:500]
+
+    buf = StringIO()
+    if items:
+        fieldnames = list(_item_to_dict(items[0]).keys())
+        writer = csv.DictWriter(buf, fieldnames=fieldnames)
+        writer.writeheader()
+        for item in items:
+            writer.writerow(_item_to_dict(item))
+
+    response = HttpResponse(buf.getvalue(), content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="vouchervault-export.csv"'
+    return response
+
+
+@require_POST
+@login_required
+def export_selected_json(request):
+    data = json.loads(request.body)
+    item_ids = data.get('item_ids', [])
+    items = Item.objects.filter(
+        user=request.user, id__in=item_ids,
+    ).prefetch_related('tags').select_related('wallet')[:500]
+    payload = [_item_to_dict(item) for item in items]
+    response = HttpResponse(
+        json.dumps(payload, indent=2, default=str),
+        content_type='application/json',
+    )
+    response['Content-Disposition'] = 'attachment; filename="vouchervault-export.json"'
+    return response
+
+
+# --- #11: Inline balance editing ---
+
+@require_POST
+@login_required
+def update_item_balance(request, item_uuid):
+    from .models import BalanceHistory
+    item = get_object_or_404(Item, id=item_uuid, user=request.user)
+    try:
+        data = json.loads(request.body)
+        new_balance = data.get('balance')
+        note = data.get('note', 'Manual adjustment')
+        if new_balance is None:
+            return JsonResponse({'error': 'balance required'}, status=400)
+        import decimal
+        new_balance = decimal.Decimal(str(new_balance))
+    except (json.JSONDecodeError, decimal.InvalidOperation):
+        return JsonResponse({'error': 'invalid balance'}, status=400)
+
+    old_value = item.value
+    old_balance = item.get_current_balance()
+    adjustment = new_balance - old_balance
+    item.value = item.value + adjustment
+    item.save(update_fields=['value'])
+
+    BalanceHistory.objects.create(item=item, balance=new_balance, note=note)
+
+    from notify.tasks import fire_notifications
+    fire_notifications(
+        item, 'balance_changed',
+        f'Balance updated: {item.name}',
+        f'Balance changed from {old_balance} to {new_balance} {item.currency}',
+    )
+
+    return JsonResponse({
+        'success': True,
+        'new_balance': float(new_balance),
+        'new_value': float(item.value),
+        'currency': item.currency,
+    })
+
+
+# --- #16: Regenerate TOTP backup codes without disabling 2FA ---
+
+@require_POST
+@login_required
+def regenerate_totp_backup_codes(request):
+    try:
+        device = request.user.totp_device
+        if not device.confirmed:
+            messages.error(request, _('2FA is not enabled.'))
+            return redirect('session_management')
+        plaintext_codes = _generate_totp_backup_codes(device)
+        return render(request, 'totp_setup.html', {
+            'setup_complete': True,
+            'backup_codes': plaintext_codes,
+            'regenerated': True,
+        })
+    except TOTPDevice.DoesNotExist:
+        messages.error(request, _('2FA is not enabled.'))
+        return redirect('session_management')
 
 
 # ── Phase C: PWA Install prompt ───────────────────────────────────────────────
