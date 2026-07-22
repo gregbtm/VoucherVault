@@ -133,6 +133,13 @@
 .gc-total-label { color: var(--text-muted, #6b7280); }
 .gc-total-value { font-weight: 600; color: #ef4444; font-variant-numeric: tabular-nums; }
 body.dark-mode .quick-stats-gc-total { background: rgba(239, 68, 68, 0.12); }
+/* Inside the coloured hero cards the above grey/red tones are invisible — use white */
+.value-display .quick-stats-gc-total {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.value-display .gc-total-label { color: rgba(255, 255, 255, 0.8); }
+.value-display .gc-total-value { color: #fff; }
 
 /* Color Variants */
 .stat-card.giftcard .stat-card-icon {

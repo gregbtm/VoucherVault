@@ -138,6 +138,13 @@ h6 {
   visibility: visible;
   opacity: 1;
 }
+/* Hide the scroll-to-top button whenever a Bootstrap modal is open so it
+   never covers the modal footer's action links. */
+body.modal-open .back-to-top {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none;
+}
 
 /*--------------------------------------------------------------
 # Override some default Bootstrap stylings
