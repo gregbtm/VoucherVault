@@ -140,7 +140,7 @@
                 {{ form.merchant_logos_enabled }}
                 <label class="form-check-label" for="{{ form.merchant_logos_enabled.id_for_label }}">{% trans "Auto-fetch merchant logos on item cards" %}</label>
               </div>
-              <div class="row">
+              <div class="row" id="logo-dev-row">
                 <div class="col-md-6 mb-3">
                   <label for="{{ form.logo_dev_api_key.id_for_label }}" class="form-label">{% trans "logo.dev publishable key" %}</label>
                   {{ form.logo_dev_api_key }}
@@ -328,15 +328,17 @@
                 <label class="form-check-label" for="{{ form.allow_registration.id_for_label }}">{% trans "Allow new user registrations" %}</label>
               </div>
               <p class="text-muted small mb-2">{% trans "Disable to make this instance invite-only. Existing accounts, API tokens, and SSO/OIDC logins continue to work normally." %}</p>
-              <div class="row">
-                <div class="col-md-6 mb-2">
-                  <label for="{{ form.invite_expiry_days.id_for_label }}" class="form-label">{% trans "Invite link expiry (days, 0 = never)" %}</label>
-                  {{ form.invite_expiry_days }}
+              <div id="invite-controls">
+                <div class="row">
+                  <div class="col-md-6 mb-2">
+                    <label for="{{ form.invite_expiry_days.id_for_label }}" class="form-label">{% trans "Invite link expiry (days, 0 = never)" %}</label>
+                    {{ form.invite_expiry_days }}
+                  </div>
                 </div>
+                <a href="{% url 'manage_invites' %}" class="btn btn-sm btn-outline-primary mt-1">
+                  <i class="bi bi-envelope-plus me-1"></i> {% trans "Manage invite links" %}
+                </a>
               </div>
-              <a href="{% url 'manage_invites' %}" class="btn btn-sm btn-outline-primary mt-1">
-                <i class="bi bi-envelope-plus me-1"></i> {% trans "Manage invite links" %}
-              </a>
             </div>
 
             <div class="settings-section">
@@ -392,7 +394,7 @@
                   {{ form.security_alert_ntfy_topic }}
                   <div class="form-text">{% trans "Leave blank to disable security alerts." %}</div>
                 </div>
-                <div class="col-md-6 mb-3">
+                <div class="col-md-6 mb-3" id="security-threshold-col">
                   <label for="{{ form.security_alert_threshold.id_for_label }}" class="form-label">{% trans "Failure threshold (per hour)" %}</label>
                   {{ form.security_alert_threshold }}
                   <div class="form-text">{% trans "Alert fires when this many failed logins occur within 60 minutes." %}</div>
@@ -426,7 +428,7 @@
                 {{ form.update_check_enabled }}
                 <label class="form-check-label" for="{{ form.update_check_enabled.id_for_label }}">{% trans "Check GitHub Releases and show an update banner to admins" %}</label>
               </div>
-              <div class="row">
+              <div class="row" id="update-check-repo-row">
                 <div class="col-md-6 mb-3">
                   <label for="{{ form.update_check_repo.id_for_label }}" class="form-label">{% trans "Repository to check (owner/repo)" %}</label>
                   {{ form.update_check_repo }}
@@ -625,6 +627,38 @@ document.addEventListener('DOMContentLoaded', function () {
     if (backupRetentionRow) backupRetentionRow.style.display = backupToggle && backupToggle.checked ? '' : 'none';
   }
   if (backupToggle) { backupToggle.addEventListener('change', syncBackupFields); syncBackupFields(); }
+
+  // merchant_logos_enabled → logo-dev-row
+  var merchantLogosToggle = document.getElementById('{{ form.merchant_logos_enabled.id_for_label }}');
+  var logoDevRow = document.getElementById('logo-dev-row');
+  function syncLogoDevRow() {
+    if (logoDevRow) logoDevRow.style.display = merchantLogosToggle && merchantLogosToggle.checked ? '' : 'none';
+  }
+  if (merchantLogosToggle) { merchantLogosToggle.addEventListener('change', syncLogoDevRow); syncLogoDevRow(); }
+
+  // security_alert_ntfy_topic (non-blank) → security-threshold-col
+  var securityTopicInput = document.getElementById('{{ form.security_alert_ntfy_topic.id_for_label }}');
+  var securityThresholdCol = document.getElementById('security-threshold-col');
+  function syncSecurityThreshold() {
+    if (securityThresholdCol) securityThresholdCol.style.display = securityTopicInput && securityTopicInput.value.trim() ? '' : 'none';
+  }
+  if (securityTopicInput) { securityTopicInput.addEventListener('input', syncSecurityThreshold); syncSecurityThreshold(); }
+
+  // update_check_enabled → update-check-repo-row
+  var updateCheckToggle = document.getElementById('{{ form.update_check_enabled.id_for_label }}');
+  var updateCheckRepoRow = document.getElementById('update-check-repo-row');
+  function syncUpdateCheckRepo() {
+    if (updateCheckRepoRow) updateCheckRepoRow.style.display = updateCheckToggle && updateCheckToggle.checked ? '' : 'none';
+  }
+  if (updateCheckToggle) { updateCheckToggle.addEventListener('change', syncUpdateCheckRepo); syncUpdateCheckRepo(); }
+
+  // allow_registration ON → hide invite controls (invites are for invite-only mode)
+  var allowRegistrationToggle = document.getElementById('{{ form.allow_registration.id_for_label }}');
+  var inviteControls = document.getElementById('invite-controls');
+  function syncInviteControls() {
+    if (inviteControls) inviteControls.style.display = allowRegistrationToggle && allowRegistrationToggle.checked ? 'none' : '';
+  }
+  if (allowRegistrationToggle) { allowRegistrationToggle.addEventListener('change', syncInviteControls); syncInviteControls(); }
 
   // Show only the OCR backend's own fields - hidden entirely when the
   // backend is 'none', since there's nothing to configure at that point.

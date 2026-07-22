@@ -99,7 +99,7 @@
               {% if form.event_types.errors %}<div class="text-danger small">{{ form.event_types.errors }}</div>{% endif %}
             </div>
 
-            <div class="mb-3">
+            <div class="mb-3" id="digest-frequency-section">
               <label for="{{ form.digest_frequency.id_for_label }}" class="form-label">{% trans "Delivery" %}</label>
               {{ form.digest_frequency }}
               <small class="form-text text-muted">{{ form.digest_frequency.help_text }}</small>
@@ -122,11 +122,14 @@
                 {{ form.ntfy_priority }}
               </div>
               <div class="mb-2">
-                <label class="form-label">
-                  {{ form.ntfy_token.label }}
-                  <span class="text-muted small fw-normal">{% trans "(optional)" %}</span>
-                </label>
-                {{ form.ntfy_token }}
+                <div class="form-check mb-1">
+                  <input type="checkbox" class="form-check-input" id="ntfy-private-toggle">
+                  <label class="form-check-label" for="ntfy-private-toggle">{% trans "Private topic (requires access token)" %}</label>
+                </div>
+                <div id="ntfy-token-wrap" style="display:none">
+                  <label class="form-label mb-1">{{ form.ntfy_token.label }}</label>
+                  {{ form.ntfy_token }}
+                </div>
               </div>
             </div>
 
@@ -138,18 +141,20 @@
                 {% if form.webhook_url.errors %}<div class="text-danger small mt-1">{{ form.webhook_url.errors }}</div>{% endif %}
               </div>
               <div class="mb-2">
-                <label class="form-label">
-                  {{ form.webhook_header_name.label }}
-                  <span class="text-muted small fw-normal">{% trans "(optional)" %}</span>
-                </label>
-                {{ form.webhook_header_name }}
-              </div>
-              <div class="mb-2">
-                <label class="form-label">
-                  {{ form.webhook_header_value.label }}
-                  <span class="text-muted small fw-normal">{% trans "(optional)" %}</span>
-                </label>
-                {{ form.webhook_header_value }}
+                <div class="form-check mb-1">
+                  <input type="checkbox" class="form-check-input" id="webhook-header-toggle">
+                  <label class="form-check-label" for="webhook-header-toggle">{% trans "Add a custom request header (e.g. for auth)" %}</label>
+                </div>
+                <div id="webhook-header-wrap" style="display:none">
+                  <div class="mb-2">
+                    <label class="form-label mb-1">{{ form.webhook_header_name.label }}</label>
+                    {{ form.webhook_header_name }}
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label mb-1">{{ form.webhook_header_value.label }}</label>
+                    {{ form.webhook_header_value }}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -299,11 +304,13 @@ document.addEventListener('DOMContentLoaded', function () {
     webpush: document.getElementById('backend-fields-webpush'),
   };
 
+  const digestSection = document.getElementById('digest-frequency-section');
   function updateVisibility() {
     const selected = backendSelect.value;
     Object.entries(sections).forEach(([key, el]) => {
       if (el) el.style.display = key === selected ? 'block' : 'none';
     });
+    if (digestSection) digestSection.style.display = selected === 'firefly' ? 'none' : '';
   }
 
   if (backendSelect) {
@@ -311,18 +318,50 @@ document.addEventListener('DOMContentLoaded', function () {
     updateVisibility();
   }
 
-  // apply_to_all — dim event-types section when rule applies to everything
+  // apply_to_all — hide event-types section when rule applies to everything
   const applyToAllCheck = document.getElementById('{{ form.apply_to_all.id_for_label }}');
   const eventTypesSection = document.getElementById('event-types-section');
   function syncApplyToAll() {
     if (!eventTypesSection) return;
-    const all = applyToAllCheck && applyToAllCheck.checked;
-    eventTypesSection.style.opacity = all ? '0.4' : '';
-    eventTypesSection.style.pointerEvents = all ? 'none' : '';
+    eventTypesSection.style.display = applyToAllCheck && applyToAllCheck.checked ? 'none' : '';
   }
   if (applyToAllCheck) {
     applyToAllCheck.addEventListener('change', syncApplyToAll);
     syncApplyToAll();
+  }
+
+  // ntfy private topic toggle
+  const ntfyPrivateToggle = document.getElementById('ntfy-private-toggle');
+  const ntfyTokenWrap = document.getElementById('ntfy-token-wrap');
+  const ntfyTokenInput = document.getElementById('{{ form.ntfy_token.id_for_label }}');
+  if (ntfyPrivateToggle) {
+    if (ntfyTokenInput && ntfyTokenInput.value.trim()) {
+      ntfyPrivateToggle.checked = true;
+      if (ntfyTokenWrap) ntfyTokenWrap.style.display = '';
+    }
+    ntfyPrivateToggle.addEventListener('change', function () {
+      if (ntfyTokenWrap) ntfyTokenWrap.style.display = ntfyPrivateToggle.checked ? '' : 'none';
+      if (!ntfyPrivateToggle.checked && ntfyTokenInput) ntfyTokenInput.value = '';
+    });
+  }
+
+  // webhook custom header toggle
+  const webhookHeaderToggle = document.getElementById('webhook-header-toggle');
+  const webhookHeaderWrap = document.getElementById('webhook-header-wrap');
+  const webhookHeaderName = document.getElementById('{{ form.webhook_header_name.id_for_label }}');
+  const webhookHeaderValue = document.getElementById('{{ form.webhook_header_value.id_for_label }}');
+  if (webhookHeaderToggle) {
+    if ((webhookHeaderName && webhookHeaderName.value.trim()) || (webhookHeaderValue && webhookHeaderValue.value.trim())) {
+      webhookHeaderToggle.checked = true;
+      if (webhookHeaderWrap) webhookHeaderWrap.style.display = '';
+    }
+    webhookHeaderToggle.addEventListener('change', function () {
+      if (webhookHeaderWrap) webhookHeaderWrap.style.display = webhookHeaderToggle.checked ? '' : 'none';
+      if (!webhookHeaderToggle.checked) {
+        if (webhookHeaderName) webhookHeaderName.value = '';
+        if (webhookHeaderValue) webhookHeaderValue.value = '';
+      }
+    });
   }
 
   // Firefly III — Test Connection

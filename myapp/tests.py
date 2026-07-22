@@ -5840,7 +5840,7 @@ class ViewItemPhase116FieldsTests(TestCase):
         return self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
 
     def test_seat_number_shown(self):
-        item = make_item(self.user, seat_number='12A Coach B')
+        item = make_item(self.user, type='travelpass', seat_number='12A Coach B')
         resp = self._get(item)
         self.assertContains(resp, '12A Coach B')
 
@@ -5857,13 +5857,13 @@ class ViewItemPhase116FieldsTests(TestCase):
         self.assertContains(resp, 'Minimum Spend')
 
     def test_points_balance_shown(self):
-        item = make_item(self.user, points_balance=3500)
+        item = make_item(self.user, type='loyaltycard', points_balance=3500)
         resp = self._get(item)
         self.assertContains(resp, '3500')
         self.assertContains(resp, 'Points Balance')
 
     def test_membership_tier_shown(self):
-        item = make_item(self.user, membership_tier='Gold')
+        item = make_item(self.user, type='loyaltycard', membership_tier='Gold')
         resp = self._get(item)
         self.assertContains(resp, 'Gold')
 
