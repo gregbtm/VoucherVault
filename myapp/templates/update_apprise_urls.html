@@ -69,7 +69,7 @@
   </div>
 </section>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 document.addEventListener("DOMContentLoaded", function() {
   const appriseField = document.querySelector("#id_apprise_urls");
   const spinner = document.getElementById("spinner");

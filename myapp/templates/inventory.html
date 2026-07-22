@@ -1029,7 +1029,7 @@ body.dark-mode .next-up-card {
     <ul class="nearby-items-list" id="nearby-items-list"></ul>
   </div>
   <script src="{% static 'assets/js/nearby-items.js' %}"></script>
-  <script>
+  <script nonce="{{ request.csp_nonce }}">
   vvInitNearbyItems({
     nearbyUrl: "{% url 'nearby_items' %}",
   });
@@ -1583,7 +1583,7 @@ body.dark-mode .next-up-card {
   </div>
 </div>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 // Mobile filter function
 function applyMobileFilters() {
   const statusSelect = document.getElementById('mobileStatusFilter');
@@ -1748,7 +1748,7 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 </script>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 // Bulk actions: select mode, sticky action bar, archive/delete/tag/move
 (function() {
   const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
@@ -1928,7 +1928,7 @@ document.addEventListener("DOMContentLoaded", function () {
 </script>
 
 {% if search_query %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
 (function() {
   var query = "{{ search_query|escapejs }}";
   if (!query) return;
@@ -1970,7 +1970,7 @@ body.dark-mode .search-highlight { background: rgba(255,200,0,0.35); }
 </style>
 {% endif %}
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 (function() {
   var cards = document.querySelectorAll('.item-card');
   var swipeStartX, swipeStartY, swipeCard;

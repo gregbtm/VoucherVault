@@ -1,0 +1,98 @@
+{% load static %}
+{% load i18n %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoucherVault Plus+ — {% trans "Create Account" %}</title>
+    <link href="{% static 'assets/img/favicon.ico' %}" rel="shortcut icon">
+    <link rel="stylesheet" href="{% static 'assets/css/style.css' %}">
+    <link href="{% static 'assets/vendor/bootstrap/css/bootstrap.min.css' %}" rel="stylesheet">
+    <link href="{% static 'assets/vendor/bootstrap-icons/bootstrap-icons.css' %}" rel="stylesheet">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #0f0f0f;
+        }
+        .container {
+            margin-top: 8vh;
+            width: 340px;
+            padding: 28px 24px;
+            background: linear-gradient(145deg, #1b1b1b, #1f1f1f);
+            border-radius: 12px;
+            position: relative;
+        }
+        .container::before {
+            content: '';
+            position: absolute;
+            top: -2px; left: -2px; right: -2px; bottom: -2px;
+            border-radius: 12px;
+            background: linear-gradient(45deg, #6c63ff, #00c9ff, #6c63ff);
+            background-size: 300% 300%;
+            animation: border-anim 6s infinite;
+            z-index: -1;
+        }
+        @keyframes border-anim {
+            0%,100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        h2 { color:#fff; text-align:center; margin-bottom:6px; font-size:1.3rem; }
+        .subtitle { color:#aaa; text-align:center; font-size:0.85rem; margin-bottom:20px; }
+        label { color:#fff; font-size:0.88rem; }
+        .form-control {
+            background:#333; color:#fff; border:none; border-radius:5px;
+        }
+        .form-control:focus { background:#525252; color:#fff; border-color:#6c63ff; box-shadow:none; }
+        .btn-primary { background: linear-gradient(45deg, #6c63ff, #00c9ff); border:none; color:#fff; width:100%; margin-top:14px; }
+        .logo-wrap { display:flex; justify-content:center; margin-bottom:18px; }
+        .error-msg { background:#7f1d1d; color:#fff; padding:8px 12px; border-radius:6px; font-size:0.85rem; margin-bottom:14px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="logo-wrap">
+        <a href="/"><img src="{% static 'assets/img/logo-mono-white.svg' %}" width="44px" alt="VoucherVault Plus+"></a>
+    </div>
+    <h2>{% trans "Create Your Account" %}</h2>
+    <p class="subtitle">{% trans "You've been invited to VoucherVault Plus+." %}</p>
+
+    {% if error %}
+    <div class="error-msg"><i class="bi bi-exclamation-triangle me-1"></i> {{ error }}</div>
+    {% endif %}
+
+    <form method="POST">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label for="username">{% trans "Username" %}</label>
+            <input type="text" id="username" name="username" class="form-control" autocomplete="username" required>
+        </div>
+        <div class="mb-3">
+            <label for="email">{% trans "Email" %} <span class="text-muted">({% trans "optional" %})</span></label>
+            <input type="email" id="email" name="email" class="form-control" autocomplete="email">
+        </div>
+        <div class="mb-3">
+            <label for="password">{% trans "Password" %}</label>
+            <input type="password" id="password" name="password" class="form-control" autocomplete="new-password" required>
+        </div>
+        <div class="mb-3">
+            <label for="password2">{% trans "Confirm password" %}</label>
+            <input type="password" id="password2" name="password2" class="form-control" autocomplete="new-password" required>
+        </div>
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-person-plus me-1"></i> {% trans "Create Account" %}
+        </button>
+    </form>
+</div>
+<script nonce="{{ request.csp_nonce }}">
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('username').focus();
+    });
+</script>
+</body>
+</html>

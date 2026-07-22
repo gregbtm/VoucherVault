@@ -930,7 +930,7 @@ body.dark-mode .calendar-month-label {
 </div>
 
 {% if giftcards_count or coupons_count or vouchers_count or loyaltycards_count or items_by_wallet %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
 document.addEventListener('DOMContentLoaded', () => {
   const setChartOptions = (isDarkMode) => {
     return {

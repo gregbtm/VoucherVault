@@ -48,6 +48,7 @@ VERSION = escape(os.environ.get("VERSION") or _read_version_file('VERSION') or '
 UPSTREAM_VERSION = escape(_read_version_file('UPSTREAM_VERSION') or 'unknown')
 
 # auto-generate a secure secret key or use from env variable
+_SECRET_KEY_FROM_ENV = bool(os.environ.get("SECRET_KEY"))
 SECRET_KEY = os.environ.get("SECRET_KEY", secrets.token_urlsafe(32))
 
 # define allowed hosts and trusted domains via env variables
@@ -106,7 +107,7 @@ CONTENT_SECURITY_POLICY = {
     "DIRECTIVES": {
         "default-src": ["'self'"],
         "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        "script-src": ["'self'", "'unsafe-eval'"],  # unsafe-eval kept for ECharts
         "font-src": ["'self'", "https://fonts.googleapis.com", "https://fonts.gstatic.com"],
         "img-src": ["'self'", "data:", "https://img.logo.dev", "https://logo.clearbit.com", "https://www.google.com"],
         "manifest-src": ["'self'"],
@@ -116,6 +117,8 @@ CONTENT_SECURITY_POLICY = {
         "frame-ancestors": FRAME_ANCESTORS,
     },
 }
+
+CONTENT_SECURITY_POLICY_NONCE_IN = ['script-src']
 
 # Application definition
 INSTALLED_APPS = [
@@ -352,7 +355,7 @@ PWA_SERVICE_WORKER_PATH = os.path.join(BASE_DIR, 'myapp', 'serviceworker.js')
 # fully offline/self-hosted deployments.
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
+        'api.authentication.ExpiringTokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
@@ -371,6 +374,8 @@ REST_FRAMEWORK = {
         'write': os.environ.get('API_WRITE_RATE_LIMIT', '60/minute'),
     },
 }
+
+API_TOKEN_EXPIRY_DAYS = int(os.environ.get('API_TOKEN_EXPIRY_DAYS', '0'))
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'VoucherVault Plus+ API',
@@ -630,7 +635,7 @@ OIDC_AUTOLOGIN = os.environ.get('OIDC_AUTOLOGIN', 'False').lower() in ['true']
 if OIDC_ENABLED:
     # get oidc config from env
     OIDC_CREATE_USER = os.environ.get('OIDC_CREATE_USER', 'True').lower() in ['true']
-    OIDC_RP_SIGN_ALGO = os.environ.get('OIDC_RP_SIGN_ALGO', 'HS256')
+    OIDC_RP_SIGN_ALGO = os.environ.get('OIDC_RP_SIGN_ALGO', 'RS256')
     OIDC_RP_IDP_SIGN_KEY = os.environ.get('OIDC_RP_IDP_SIGN_KEY')
     OIDC_RP_CLIENT_ID = os.environ.get('OIDC_RP_CLIENT_ID', "vouchervault")
     OIDC_RP_CLIENT_SECRET = os.environ.get('OIDC_RP_CLIENT_SECRET')
@@ -673,10 +678,9 @@ if OIDC_ENABLED:
     # since AxesBackend must stay first for lockouts to apply to OIDC logins too.
     AUTHENTICATION_BACKENDS.append('myapp.oidc_backend.VoucherVaultOIDCBackend')
 
-    # Add 'mozilla_django_oidc.middleware.SessionRefresh' to MIDDLEWARE
-    # https://mozilla-django-oidc.readthedocs.io/en/stable/installation.html#validate-id-tokens-by-renewing-them
-    # disabled atm, as it leads to a circular import with container error "partially initialized module 'josepy'"
-    #MIDDLEWARE.append('mozilla_django_oidc.middleware.SessionRefresh')
+    # Validate OIDC ID tokens on each request by refreshing them from the provider.
+    # Ensures revoked sessions are invalidated promptly (within SESSION_COOKIE_AGE seconds).
+    MIDDLEWARE.append('mozilla_django_oidc.middleware.SessionRefresh')
 
     # Fix http callback issue in mozilla-django-oidc by forcing https; https://github.com/mozilla/mozilla-django-oidc/issues/417
     # OIDC should only be setup behind a TLS reverse proxy anyways

@@ -166,6 +166,15 @@
         <div class="logo-container">
             <a href="/"><img title="VoucherVault Plus+" src="{% static 'assets/img/logo-mono-white.svg' %}" width="50px" alt=""></a>
         </div>
+        {% if messages %}
+        <div style="margin-bottom:12px;">
+          {% for message in messages %}
+          <div style="background:{% if message.tags == 'error' %}#7f1d1d{% elif message.tags == 'warning' %}#78350f{% else %}#14532d{% endif %};color:#fff;padding:8px 12px;border-radius:6px;margin-bottom:6px;font-size:0.85rem;">
+            {{ message }}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
         {% if not "OIDC_ENABLED"|env %}
         <form method="post" action="{% url 'login' %}">
             <input type="hidden" name="next" value="{{next}}" />
@@ -220,7 +229,7 @@
     </div>
 
     {% if not "OIDC_ENABLED"|env %}
-    <script>
+    <script nonce="{{ request.csp_nonce }}">
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('username').focus();
         });
@@ -228,7 +237,7 @@
     {% endif %}
 
     {% if "OIDC_AUTOLOGIN"|env %}
-    <script>
+    <script nonce="{{ request.csp_nonce }}">
         document.addEventListener('DOMContentLoaded', function() {
                 window.location.href = "{% url 'oidc_authentication_init' %}?next={{next}}";
         });

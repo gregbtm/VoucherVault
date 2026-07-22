@@ -79,6 +79,51 @@ def extract_document_text_task(document_id):
 
 
 @shared_task
+def check_login_spike_task():
+    """
+    Hourly check: if failed login attempts in the last 60 minutes exceed
+    SiteConfiguration.security_alert_threshold and a security ntfy topic is
+    configured, fire a single ntfy alert to that topic.
+    """
+    import logging
+    import requests as _requests
+    from datetime import timedelta
+    from django.utils import timezone
+    from .models import SiteConfiguration, LoginAuditLog
+
+    _log = logging.getLogger(__name__)
+    config = SiteConfiguration.load()
+    topic = config.security_alert_ntfy_topic.strip()
+    if not topic:
+        return
+
+    window_start = timezone.now() - timedelta(hours=1)
+    failed_count = LoginAuditLog.objects.filter(
+        success=False,
+        timestamp__gte=window_start,
+    ).count()
+
+    if failed_count < config.security_alert_threshold:
+        return
+
+    server = (config.ntfy_default_server or 'https://ntfy.sh').rstrip('/')
+    try:
+        _requests.post(
+            f'{server}/{topic}',
+            data=f'{failed_count} failed login attempts in the last hour.'.encode('utf-8'),
+            headers={
+                'Title': 'VoucherVault Security Alert'.encode('utf-8'),
+                'Priority': 'high',
+                'Tags': 'warning',
+            },
+            timeout=10,
+        )
+        _log.warning('Security alert sent: %d failed logins in last hour.', failed_count)
+    except Exception as exc:
+        _log.warning('Failed to send security alert: %s', exc)
+
+
+@shared_task
 def mark_expired_commute_outward_tickets():
     """
     Bookkeeping companion to analytics.get_active_today_item(): once a

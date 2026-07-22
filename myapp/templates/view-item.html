@@ -2060,7 +2060,7 @@ body.dark-mode .tilt-scan-enable-btn {
             </form>
             {% endif %}
           </div>
-          <script>
+          <script nonce="{{ request.csp_nonce }}">
           document.getElementById('copy-public-share-btn')?.addEventListener('click', function () {
             const input = document.getElementById('public-share-url');
             navigator.clipboard.writeText(input.value).then(() => {
@@ -2417,7 +2417,7 @@ body.dark-mode .tilt-scan-enable-btn {
   </div>
 </div>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 document.addEventListener("DOMContentLoaded", function() {
   const previewOverlay = document.getElementById('file-preview-overlay');
   const previewImg = document.getElementById('file-preview-img');
@@ -2470,7 +2470,7 @@ document.addEventListener("DOMContentLoaded", function() {
 </script>
 
 {% if item.pin %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
 document.addEventListener("DOMContentLoaded", function() {
   const pinInput = document.getElementById('pin-code');
   const toggleButton = document.getElementById('toggle-pin');
@@ -2510,7 +2510,7 @@ document.addEventListener("DOMContentLoaded", function() {
 {% endif %}
 
 {% if item.type == 'giftcard' %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
 document.addEventListener("DOMContentLoaded", function() {
   const valueInput = document.getElementById('value');
   if (valueInput) {
@@ -2525,7 +2525,7 @@ document.addEventListener("DOMContentLoaded", function() {
 </script>
 {% endif %}
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 document.addEventListener("DOMContentLoaded", function() {
   const blurCodesEnabled = {{ global_preferences.blur_codes_enabled|yesno:"true,false" }};
   const qrCode = document.getElementById('qr-code');
@@ -2653,7 +2653,7 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 // Inline date editing for transaction rows
 document.querySelectorAll('.editable-date').forEach(span => {
   span.addEventListener('click', () => {
@@ -2704,7 +2704,7 @@ document.querySelectorAll('.editable-date').forEach(span => {
 </script>
 
 {% if preferences.keep_screen_awake %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
 // Keep the screen on while this item's barcode is being shown to a cashier.
 // The lock auto-releases when the tab is backgrounded, so it's re-acquired
 // on visibilitychange per the Screen Wake Lock spec.
@@ -2733,7 +2733,7 @@ document.querySelectorAll('.editable-date').forEach(span => {
 
 {% if preferences.tilt_scan_detection_enabled and can_edit and not item.is_used and item.type != "loyaltycard" and item.code_type != "none" %}
 <script src="{% static 'assets/js/tilt-scan-detect.js' %}"></script>
-<script>
+<script nonce="{{ request.csp_nonce }}">
 vvInitTiltScanDetect({
   toggleUrl: "{% url 'toggle_item_status' item.id %}",
 });
@@ -2742,7 +2742,7 @@ vvInitTiltScanDetect({
 
 {% if pkpass_enabled or google_wallet_save_url %}
 <script src="{% static 'assets/js/device-detect.js' %}"></script>
-<script>
+<script nonce="{{ request.csp_nonce }}">
 // Only show the wallet button the visiting device can actually use - see
 // device-detect.js for the detection logic itself.
 (function() {
@@ -2756,7 +2756,7 @@ vvInitTiltScanDetect({
 {% endif %}
 
 {% if can_edit %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
 // "More actions" sheet toggle for the action toolbar - plain show/hide,
 // closes on an outside tap or Escape to match the profile dropdown's
 // existing outside-click behavior elsewhere in the app.
@@ -2794,7 +2794,7 @@ vvInitTiltScanDetect({
 </script>
 {% endif %}
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 (function() {
   var btn = document.getElementById('muteNotifBtn');
   if (!btn) return;
@@ -2829,7 +2829,7 @@ vvInitTiltScanDetect({
 </script>
 
 {% if dms_providers %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
 (function () {
   'use strict';
 
@@ -2877,7 +2877,7 @@ vvInitTiltScanDetect({
 {% endif %}
 
 {% if can_edit and item.value_type == "fixed" and item.type != "loyaltycard" and item.type != "travelpass" %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
 (function() {
   var editBtn = document.getElementById('edit-balance-btn');
   var editForm = document.getElementById('balance-edit-form');
@@ -2933,7 +2933,7 @@ vvInitTiltScanDetect({
 {% endif %}
 
 {% if balance_history|length > 1 %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
 (function() {
   var canvas = document.getElementById('balance-sparkline');
   if (!canvas) return;

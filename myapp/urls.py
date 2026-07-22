@@ -100,6 +100,14 @@ urlpatterns = (
     path('items/<uuid:item_uuid>/update-balance/', views.update_item_balance, name='update_item_balance'),
     # #16: Regenerate TOTP backup codes
     path('user/security/totp/regenerate-backup-codes/', views.regenerate_totp_backup_codes, name='regenerate_totp_backup_codes'),
+    # Invite links
+    path('admin-tools/invites/', views.manage_invites, name='manage_invites'),
+    path('invite/<uuid:token>/', views.accept_invite, name='accept_invite'),
+    # Users panel (superuser)
+    path('admin-tools/users/', views.manage_users, name='manage_users'),
+    path('admin-tools/users/toggle-superuser/', views.toggle_user_superuser, name='toggle_user_superuser'),
+    # OIDC identity management
+    path('user/security/unlink-oidc/', views.unlink_oidc, name='unlink_oidc'),
 )
 
 admin.site.site_header = "VoucherVault Plus+"

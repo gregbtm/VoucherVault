@@ -128,7 +128,7 @@
   </div>
 </section>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function () {
   var btn = document.getElementById('copy-token-btn');
   if (btn) {

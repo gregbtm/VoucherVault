@@ -30,6 +30,8 @@ DOCS = {
     'webhooks':           ('Outbound webhooks', 'WEBHOOKS_SETUP.md'),
     'api-access':         ('REST API access', 'API_ACCESS.md'),
     'wallets-tags':       ('Wallets & tags', 'WALLETS_AND_TAGS.md'),
+    'oidc-setup':         ('OIDC / PocketID SSO setup', 'OIDC_SETUP.md'),
+    'security-settings':  ('Security settings & hardening', 'SECURITY_SETTINGS.md'),
 }
 
 # Categories for the Help Center index page.
@@ -65,6 +67,10 @@ CATEGORIES = [
         ('auto-deploy',    'One-click redeploy triggered by a Portainer webhook — no manual restarts'),
         ('upgrade',        'Migrate from the upstream VoucherVault image to this fork'),
         ('upstream-sync',  'How changes from the upstream project are merged into this fork'),
+    ]),
+    ('Security', 'bi-shield-lock', [
+        ('oidc-setup',        'Set up PocketID or any OIDC provider for single sign-on'),
+        ('security-settings', 'Login spike alerts, API token expiry, CSP, and system-check warnings'),
     ]),
 ]
 

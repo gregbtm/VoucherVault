@@ -639,7 +639,7 @@ body.dark-mode .status-badge.expired {
   {% endif %}
 </section>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 document.addEventListener("DOMContentLoaded", function () {
   // Real-time search with debounce
   const searchInput = document.getElementById('searchInput');

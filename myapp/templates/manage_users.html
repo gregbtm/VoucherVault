@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{% trans "Users" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item active">{% trans "Users" %}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="row">
+
+    <div class="col-12">
+      <div class="card mb-4">
+        <div class="card-body">
+          <h5 class="card-title">
+            <i class="bi bi-people me-1"></i> {% trans "All Accounts" %}
+            <a href="{% url 'manage_invites' %}" class="btn btn-sm btn-outline-primary ms-2">
+              <i class="bi bi-envelope-plus me-1"></i> {% trans "Invite Someone" %}
+            </a>
+          </h5>
+          <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle">
+              <thead>
+                <tr>
+                  <th style="width:48px;"></th>
+                  <th>{% trans "Username" %}</th>
+                  <th>{% trans "Name" %}</th>
+                  <th>{% trans "Email" %}</th>
+                  <th>{% trans "Auth" %}</th>
+                  <th>{% trans "Sessions" %}</th>
+                  <th>{% trans "Joined" %}</th>
+                  <th>{% trans "Last login" %}</th>
+                  <th>{% trans "Role" %}</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in user_rows %}
+                {% with u=row.user p=row.profile %}
+                <tr>
+                  <td>
+                    {% if p and p.oidc_avatar_url %}
+                    <img src="{{ p.oidc_avatar_url }}" class="rounded-circle" width="36" height="36"
+                         style="object-fit:cover;" onerror="this.style.display='none'">
+                    {% else %}
+                    <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center text-white fw-bold"
+                         style="width:36px;height:36px;font-size:1rem;">
+                      {{ u.username|slice:":1"|upper }}
+                    </div>
+                    {% endif %}
+                  </td>
+                  <td class="fw-semibold">
+                    {{ u.username }}
+                    {% if u.is_superuser %}<span class="badge bg-warning text-dark ms-1">{% trans "Admin" %}</span>{% endif %}
+                  </td>
+                  <td class="small">{{ u.get_full_name|default:"—" }}</td>
+                  <td class="small text-muted">{{ u.email|default:"—" }}</td>
+                  <td>
+                    <span class="badge {% if row.auth_method == 'OIDC' %}bg-info text-dark{% else %}bg-secondary{% endif %}">
+                      {{ row.auth_method }}
+                    </span>
+                    {% if p and p.oidc_last_login %}
+                    <div class="text-muted small">{{ p.oidc_last_login|date:"d M" }}</div>
+                    {% endif %}
+                  </td>
+                  <td class="text-center">
+                    {% if row.session_count %}
+                    <span class="badge bg-primary">{{ row.session_count }}</span>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
+                  <td class="small text-muted">{{ u.date_joined|date:"d M Y" }}</td>
+                  <td class="small text-muted">{{ u.last_login|date:"d M Y"|default:"—" }}</td>
+                  <td>
+                    {% if u.is_superuser %}
+                    <span class="text-warning small">{% trans "Superuser" %}</span>
+                    {% else %}
+                    <span class="text-muted small">{% trans "User" %}</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if u != request.user %}
+                    <form method="POST" action="{% url 'toggle_user_superuser' %}" class="d-inline">
+                      {% csrf_token %}
+                      <input type="hidden" name="user_id" value="{{ u.pk }}">
+                      <button type="submit" class="btn btn-sm {% if u.is_superuser %}btn-outline-warning{% else %}btn-outline-secondary{% endif %}">
+                        {% if u.is_superuser %}{% trans "Demote" %}{% else %}{% trans "Promote" %}{% endif %}
+                      </button>
+                    </form>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endwith %}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if invites %}
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-envelope me-1"></i> {% trans "Pending Invites" %}</h5>
+          {% for inv in invites %}
+          <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+            <div>
+              <div class="small fw-semibold">{{ inv.note|default:"(no note)" }}</div>
+              <div class="text-muted small">{% trans "Expires" %}: {{ inv.expires_at|date:"d M Y"|default:"Never" }}</div>
+            </div>
+            <span class="badge bg-success">{% trans "Active" %}</span>
+          </div>
+          {% endfor %}
+          <a href="{% url 'manage_invites' %}" class="btn btn-sm btn-outline-primary mt-2">{% trans "Manage all invites" %}</a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</section>
+{% endblock %}

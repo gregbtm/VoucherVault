@@ -637,6 +637,18 @@ class UserProfile(models.Model):
         max_length=64, unique=True, default=uuid.uuid4,
         help_text="Secret token in the subscribe-able .ics calendar feed URL. Regenerating it invalidates the old feed URL.",
     )
+    oidc_sub = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="OIDC subject identifier from the identity provider (stable unique ID for this user).",
+    )
+    oidc_avatar_url = models.URLField(
+        max_length=500, blank=True, default='',
+        help_text="Avatar URL fetched from the OIDC provider's userinfo endpoint.",
+    )
+    oidc_last_login = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Timestamp of the last successful OIDC authentication.",
+    )
 
     def __str__(self):
         return self.user.username
@@ -699,6 +711,39 @@ class AppSettings(models.Model):
 
     def __str__(self):
         return f"API Token (Updated: {self.updated_at})"
+
+
+class InviteLink(models.Model):
+    """
+    One-time registration invite that bypasses the allow_registration gate.
+    Superusers generate tokens and share them (e.g. send by message/email).
+    The token is consumed on first successful registration and cannot be reused.
+    """
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name='created_invites',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+    used_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='invite_used',
+    )
+    revoked = models.BooleanField(default=False)
+    note = models.CharField(max_length=255, blank=True, default='')
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def is_valid(self):
+        if self.revoked or self.used_at:
+            return False
+        if self.expires_at and timezone.now() > self.expires_at:
+            return False
+        return True
+
+    def __str__(self):
+        return f"Invite {self.token} ({'used' if self.used_at else 'active'})"
 
 
 class UpdateCheckStatus(models.Model):
@@ -1027,6 +1072,63 @@ class SiteConfiguration(models.Model):
         help_text="Allow new users to register accounts. Disable to make the instance invite-only "
                    "(existing users and social/OIDC logins are unaffected).",
     )
+    invite_expiry_days = models.PositiveIntegerField(
+        default=7,
+        help_text="How many days a generated invite link stays valid. 0 means it never expires.",
+    )
+
+    # ---- OIDC / PocketID integration ----
+    oidc_discovery_url = models.CharField(
+        max_length=500, blank=True, default='',
+        help_text="OpenID Connect discovery URL "
+                  "(e.g. https://id.example.com/.well-known/openid-configuration). "
+                  "When set, endpoint URLs are fetched automatically. Requires a server restart to apply.",
+    )
+    oidc_client_id = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="OIDC application client ID. Takes precedence over the OIDC_RP_CLIENT_ID env var.",
+    )
+    oidc_client_secret = models.CharField(
+        max_length=500, blank=True, default='',
+        help_text="OIDC application client secret.",
+    )
+    oidc_provider_name = models.CharField(
+        max_length=100, blank=True, default='SSO',
+        help_text="Display name shown on the 'Login with …' button (e.g. PocketID, Authentik).",
+    )
+    oidc_create_user = models.BooleanField(
+        default=True,
+        help_text="Create a VoucherVault account automatically when a new user authenticates "
+                  "via OIDC for the first time. Disable to allow only pre-existing accounts to log in via OIDC.",
+    )
+    oidc_autologin = models.BooleanField(
+        default=False,
+        help_text="Redirect straight to the OIDC provider on the login page, skipping the "
+                  "username/password form. Only useful when OIDC is the sole login method.",
+    )
+    oidc_admin_group = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="PocketID group name whose members are automatically given superuser access. "
+                  "Members are promoted on login; non-members are demoted. Leave blank to disable.",
+    )
+    oidc_require_totp = models.BooleanField(
+        default=False,
+        help_text="When enabled, users who have TOTP set up must complete the TOTP check even "
+                  "after a successful OIDC login — OIDC alone is not sufficient to open a session. "
+                  "Opt-in; default off so OIDC acts as a complete single authentication factor.",
+    )
+
+    # ---- Security alerts ----
+    security_alert_ntfy_topic = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="ntfy topic to receive admin security alerts (e.g. login-failure spikes). "
+                  "Uses the Default ntfy Server above. Leave blank to disable security alerts.",
+    )
+    security_alert_threshold = models.PositiveIntegerField(
+        default=10,
+        help_text="Number of failed login attempts in a rolling 60-minute window that triggers "
+                  "a security alert notification. Applies only when a security alert ntfy topic is set.",
+    )
 
     # ---- Analytics & duplicate detection display/behaviour limits ----
     # Previously fixed constants in myapp/analytics.py and myapp/imagehash.py -
@@ -1064,6 +1166,7 @@ class SiteConfiguration(models.Model):
     SECRET_FIELDS = (
         'webpush_vapid_private_key', 'anthropic_api_key', 'openai_api_key',
         'pkpass_cert_password', 'logo_dev_api_key', 'companies_house_api_key',
+        'oidc_client_secret',
     )
 
     class Meta:

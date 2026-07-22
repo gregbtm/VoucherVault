@@ -1687,12 +1687,17 @@ def site_settings(request):
     else:
         form = SiteConfigurationForm(instance=config)
 
+    webdav_ssl_warning = (
+        getattr(settings, 'USE_WEBDAV_STORAGE', False)
+        and not getattr(settings, 'WEBDAV_VERIFY_SSL', True)
+    )
     return render(request, 'site_settings.html', {
         'form': form,
         'config': config,
         'update_check_status': UpdateCheckStatus.load(),
         'installed_version': settings.VERSION,
         'integration_status': _integration_status(config),
+        'webdav_ssl_warning': webdav_ssl_warning,
     })
 
 @require_GET
@@ -3339,11 +3344,21 @@ def session_management(request):
 
     recent_logins = LoginAuditLog.objects.filter(user=request.user).order_by('-timestamp')[:20]
 
+    oidc_profile = None
+    try:
+        oidc_profile = request.user.userprofile
+        if not oidc_profile.oidc_sub:
+            oidc_profile = None
+    except UserProfile.DoesNotExist:
+        pass
+
     return render(request, 'session_management.html', {
         'user_sessions': user_sessions,
         'totp_enabled': totp_enabled,
         'backup_codes_remaining': backup_codes_remaining,
         'recent_logins': recent_logins,
+        'oidc_profile': oidc_profile,
+        'oidc_enabled': settings.OIDC_ENABLED,
     })
 
 
@@ -3582,3 +3597,163 @@ def regenerate_totp_backup_codes(request):
 
 # ── Phase C: PWA Install prompt ───────────────────────────────────────────────
 # (No server-side view needed — fully client-side in pwa-install.js)
+
+
+# ── Invite link system ────────────────────────────────────────────────────────
+
+@login_required
+def manage_invites(request):
+    """Superuser: list and create invite links."""
+    if not request.user.is_superuser:
+        return redirect('show_items')
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'create':
+            config = SiteConfiguration.load()
+            expiry = None
+            if config.invite_expiry_days:
+                expiry = timezone.now() + dt.timedelta(days=config.invite_expiry_days)
+            note = request.POST.get('note', '').strip()[:255]
+            InviteLink.objects.create(
+                created_by=request.user,
+                expires_at=expiry,
+                note=note,
+            )
+            messages.success(request, _('Invite link created.'))
+        elif action == 'revoke':
+            token = request.POST.get('token', '')
+            InviteLink.objects.filter(token=token, revoked=False, used_at__isnull=True).update(revoked=True)
+            messages.success(request, _('Invite link revoked.'))
+        return redirect('manage_invites')
+
+    invites = InviteLink.objects.select_related('created_by', 'used_by').all()
+    return render(request, 'manage_invites.html', {'invites': invites})
+
+
+def accept_invite(request, token):
+    """Public (unauthenticated) registration page for invite-link recipients."""
+    try:
+        invite = InviteLink.objects.get(token=token)
+    except InviteLink.DoesNotExist:
+        messages.error(request, _('This invite link is invalid.'))
+        return redirect('login')
+
+    if not invite.is_valid():
+        messages.error(request, _('This invite link has expired or already been used.'))
+        return redirect('login')
+
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+        password2 = request.POST.get('password2', '')
+        email = request.POST.get('email', '').strip()
+        error = None
+
+        if not username:
+            error = _('Username is required.')
+        elif User.objects.filter(username=username).exists():
+            error = _('That username is already taken.')
+        elif password != password2:
+            error = _('Passwords do not match.')
+        else:
+            from django.contrib.auth.password_validation import validate_password
+            from django.core.exceptions import ValidationError as DjangoValidationError
+            try:
+                validate_password(password)
+            except DjangoValidationError as exc:
+                error = ' '.join(exc.messages)
+
+        if error:
+            return render(request, 'invite_accept.html', {'invite': invite, 'error': error})
+
+        user = User.objects.create_user(username=username, email=email, password=password)
+        invite.used_at = timezone.now()
+        invite.used_by = user
+        invite.save(update_fields=['used_at', 'used_by'])
+        from django.contrib.auth import login as _login_user
+        _login_user(request, user, backend='django.contrib.auth.backends.ModelBackend')
+        messages.success(request, _('Welcome! Your account has been created.'))
+        return redirect('show_items')
+
+    return render(request, 'invite_accept.html', {'invite': invite})
+
+
+# ── Site users panel (superuser) ──────────────────────────────────────────────
+
+@login_required
+def manage_users(request):
+    """Superuser: list all accounts + their OIDC status."""
+    if not request.user.is_superuser:
+        return redirect('show_items')
+
+    from django.contrib.sessions.models import Session
+    from django.contrib.auth.models import User as _User
+
+    users = _User.objects.select_related('userprofile').prefetch_related(
+        'created_invites',
+    ).order_by('-date_joined')
+
+    # Count active sessions per user
+    active_sessions = {}
+    for s in Session.objects.filter(expire_date__gt=timezone.now()):
+        try:
+            data = s.get_decoded()
+            uid = str(data.get('_auth_user_id', ''))
+            active_sessions[uid] = active_sessions.get(uid, 0) + 1
+        except Exception:
+            pass
+
+    user_rows = []
+    for u in users:
+        profile = getattr(u, 'userprofile', None)
+        user_rows.append({
+            'user': u,
+            'profile': profile,
+            'session_count': active_sessions.get(str(u.pk), 0),
+            'auth_method': (
+                'OIDC' if (profile and profile.oidc_sub) else
+                'Password'
+            ),
+        })
+
+    invites = InviteLink.objects.filter(used_at__isnull=True, revoked=False).order_by('-created_at')
+    return render(request, 'manage_users.html', {
+        'user_rows': user_rows,
+        'invites': invites,
+    })
+
+
+@require_POST
+@login_required
+def toggle_user_superuser(request):
+    """Superuser: promote/demote another user's superuser status."""
+    if not request.user.is_superuser:
+        return redirect('show_items')
+    uid = request.POST.get('user_id')
+    try:
+        u = User.objects.get(pk=uid)
+    except User.DoesNotExist:
+        messages.error(request, _('User not found.'))
+        return redirect('manage_users')
+    if u == request.user:
+        messages.error(request, _('You cannot change your own superuser status.'))
+        return redirect('manage_users')
+    u.is_superuser = not u.is_superuser
+    u.is_staff = u.is_superuser
+    u.save(update_fields=['is_superuser', 'is_staff'])
+    messages.success(request, _(f"{'Promoted' if u.is_superuser else 'Demoted'} {u.username}."))
+    return redirect('manage_users')
+
+
+@require_POST
+@login_required
+def unlink_oidc(request):
+    """Remove the OIDC identity binding from the current user's profile."""
+    profile, _created = UserProfile.objects.get_or_create(user=request.user)
+    profile.oidc_sub = ''
+    profile.oidc_avatar_url = ''
+    profile.oidc_last_login = None
+    profile.save(update_fields=['oidc_sub', 'oidc_avatar_url', 'oidc_last_login'])
+    messages.success(request, _('PocketID account unlinked. You can log in with your password.'))
+    return redirect('session_management')

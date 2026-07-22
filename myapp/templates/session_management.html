@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load i18n %}
+{% load extras %}
 
 {% block content %}
 <div class="pagetitle">
@@ -92,6 +93,54 @@
     </div>
 
     <div class="col-lg-6">
+
+      <!-- Connected Identity (OIDC / PocketID) -->
+      {% if oidc_enabled %}
+      <div class="card mb-4">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-person-badge me-1"></i> {% trans "Connected Identity" %}</h5>
+          {% if oidc_profile %}
+          <div class="d-flex align-items-center gap-3 mb-3">
+            {% if oidc_profile.oidc_avatar_url %}
+            <img src="{{ oidc_profile.oidc_avatar_url }}" alt="avatar"
+                 class="rounded-circle" width="56" height="56"
+                 onerror="this.style.display='none'">
+            {% else %}
+            <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center text-white fw-bold"
+                 style="width:56px;height:56px;font-size:1.4rem;">
+              {{ user.username|slice:":1"|upper }}
+            </div>
+            {% endif %}
+            <div>
+              <div class="fw-semibold">{{ user.get_full_name|default:user.username }}</div>
+              <div class="text-muted small">{% trans "Linked via" %} {{ "OIDC_PROVIDER_NAME"|env|default:"SSO" }}</div>
+              {% if oidc_profile.oidc_last_login %}
+              <div class="text-muted small">{% trans "Last authenticated" %}: {{ oidc_profile.oidc_last_login|date:"d M Y H:i" }}</div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="{% url 'oidc_authentication_init' %}" class="btn btn-outline-primary btn-sm">
+              <i class="bi bi-arrow-repeat me-1"></i> {% trans "Re-authenticate" %}
+            </a>
+            <form method="POST" action="{% url 'unlink_oidc' %}"
+                  onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Unlink your PocketID account? You will need a password to log in." %}','{% trans "Unlink" %}',function(){f.submit();})">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-link-45deg me-1"></i> {% trans "Unlink" %}
+              </button>
+            </form>
+          </div>
+          {% else %}
+          <p class="text-muted small">{% trans "Your account is not linked to an external identity provider." %}</p>
+          <a href="{% url 'oidc_authentication_init' %}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-box-arrow-in-right me-1"></i> {% trans "Link with" %} {{ "OIDC_PROVIDER_NAME"|env|default:"SSO" }}
+          </a>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
       <!-- Download My Data (GDPR) -->
       <div class="card mb-4">
         <div class="card-body">
