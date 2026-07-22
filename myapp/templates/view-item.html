@@ -1766,14 +1766,14 @@ body.dark-mode .tilt-scan-enable-btn {
                 <span id="balance-text">{{ total_value|floatformat:1 }}x</span>
                 {% else %}
                 <span id="balance-text">{{ total_value|floatformat:2 }} {{ item.currency }}</span>
-                {% if can_edit and item.value_type == "fixed" %}
+                {% if can_edit and item.value_type == "money" %}
                 <button class="btn btn-link btn-sm p-0 ms-1 text-muted" id="edit-balance-btn" title="{% trans 'Edit balance' %}" style="vertical-align:baseline;font-size:0.8em;">
                   <i class="bi bi-pencil"></i>
                 </button>
                 {% endif %}
                 {% endif %}
               </div>
-              {% if can_edit and item.value_type == "fixed" and item.type != "loyaltycard" and item.type != "travelpass" %}
+              {% if can_edit and item.value_type == "money" and item.type != "loyaltycard" and item.type != "travelpass" %}
               <div id="balance-edit-form" class="mt-2" style="display:none;">
                 <div class="input-group input-group-sm" style="max-width:280px;">
                   <input type="number" id="balance-new-value" class="form-control" step="0.01" min="0"

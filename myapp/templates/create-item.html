@@ -1626,6 +1626,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         if (data.multi_page && data.page_count > 1) {
+          const capturedFile = document.getElementById('aiScanInput').files[0];
           const importAllBtn = document.createElement('button');
           importAllBtn.type = 'button';
           importAllBtn.className = 'btn btn-sm btn-primary mt-2';
@@ -1635,7 +1636,7 @@ document.addEventListener("DOMContentLoaded", function () {
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>{% trans "Importing…" %}';
             const fd = new FormData();
-            fd.append('file', document.getElementById('aiScanInput').files[0]);
+            fd.append('file', capturedFile);
             fd.append('create', 'true');
             fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
             fetch("{% url 'api-rail-ticket-import' %}", {method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'}, body: fd})
@@ -1644,7 +1645,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 if (resp.tickets && resp.tickets.length) {
                   const first = resp.tickets.find(t => t.item) || resp.tickets[0];
                   if (first && first.item && first.item.id) {
-                    window.location.href = '/en/items/' + first.item.id + '/';
+                    const viewItemUrl = '{% url "view_item" item_uuid="00000000-0000-0000-0000-000000000000" %}'.replace('00000000-0000-0000-0000-000000000000', first.item.id);
+                    window.location.href = viewItemUrl;
                   } else {
                     btn.disabled = false;
                     btn.innerHTML = '{% trans "Import failed — no items created." %}';

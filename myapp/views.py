@@ -1,3 +1,4 @@
+import apprise
 import base64
 import os
 import json
@@ -1322,6 +1323,8 @@ def delete_document(request, document_id):
 @login_required
 def toggle_item_status(request, item_id):
     item = get_object_or_404(Item, id=item_id)
+    if not has_item_access(item, request.user):
+        raise Http404
     if not _check_item_edit_permission(item, request.user):
         return HttpResponse("Forbidden", status=403)
     desc_txt = _('Marked as used, removing remaining value')
@@ -1801,7 +1804,7 @@ def share_item_view(request, item_id):
         selected_users = request.POST.getlist('shared_users')
         if selected_users:
             for user_id in selected_users:
-                recipient = User.objects.get(id=user_id)
+                recipient = get_object_or_404(User, id=user_id)
                 _share, created = ItemShare.objects.get_or_create(item=item, shared_with_user=recipient, shared_by=request.user)
                 if created:
                     notify_item_shared(item, recipient.username)
@@ -3426,7 +3429,7 @@ def gdpr_data_export(request):
                 {'username': s.shared_with_user.username, 'shared_at': str(s.shared_at)}
                 for s in item.shares.all()
             ],
-            'created_at': str(item.issue_date),
+            'created_at': str(item.created_at) if item.created_at else None,
             'last_used_at': str(item.last_used_at) if item.last_used_at else None,
         })
 

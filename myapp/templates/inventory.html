@@ -1822,7 +1822,15 @@ document.addEventListener("DOMContentLoaded", function () {
         'X-Requested-With': 'XMLHttpRequest',
       },
       body: JSON.stringify(Object.assign({ item_ids: Array.from(selectedIds) }, extraBody || {})),
-    }).then(response => response.json());
+    }).then(response => {
+      if (!response.ok) throw new Error('Request failed');
+      return response.json();
+    });
+  }
+
+  function handleBulkError(btn) {
+    window.setButtonLoading(btn, false);
+    if (window.showToast) window.showToast('{% trans "Action failed. Please try again." %}', 'danger');
   }
 
   document.getElementById('bulkArchiveBtn').addEventListener('click', () => {
@@ -1832,7 +1840,7 @@ document.addEventListener("DOMContentLoaded", function () {
     postBulkAction('{% url "bulk_archive_items" %}').then(data => {
       if (data.success) { window.location.reload(); return; }
       window.setButtonLoading(btn, false);
-    });
+    }).catch(() => handleBulkError(btn));
   });
 
   document.getElementById('bulkUnarchiveBtn').addEventListener('click', () => {
@@ -1842,7 +1850,7 @@ document.addEventListener("DOMContentLoaded", function () {
     postBulkAction('{% url "bulk_unarchive_items" %}').then(data => {
       if (data.success) { window.location.reload(); return; }
       window.setButtonLoading(btn, false);
-    });
+    }).catch(() => handleBulkError(btn));
   });
 
   document.getElementById('bulkDeleteBtn').addEventListener('click', () => {
@@ -1853,7 +1861,7 @@ document.addEventListener("DOMContentLoaded", function () {
       postBulkAction('{% url "bulk_delete_items" %}').then(data => {
         if (data.success) { window.location.reload(); return; }
         window.setButtonLoading(btn, false);
-      });
+      }).catch(() => handleBulkError(btn));
     });
   });
 
@@ -1868,7 +1876,7 @@ document.addEventListener("DOMContentLoaded", function () {
       window.setButtonLoading(btn, false);
       const modalEl = document.getElementById('bulkTagModal');
       bootstrap.Modal.getInstance(modalEl).hide();
-    });
+    }).catch(() => handleBulkError(btn));
   });
 
   document.getElementById('bulkMoveConfirmBtn').addEventListener('click', () => {
@@ -1881,7 +1889,7 @@ document.addEventListener("DOMContentLoaded", function () {
       window.setButtonLoading(btn, false);
       const modalEl = document.getElementById('bulkMoveModal');
       bootstrap.Modal.getInstance(modalEl).hide();
-    });
+    }).catch(() => handleBulkError(btn));
   });
 
   document.getElementById('bulkCurrencyConfirmBtn').addEventListener('click', () => {
@@ -1894,7 +1902,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (data.success) { window.location.reload(); return; }
       window.setButtonLoading(btn, false);
       bootstrap.Modal.getInstance(document.getElementById('bulkCurrencyModal')).hide();
-    });
+    }).catch(() => handleBulkError(btn));
   });
 
   function bulkExportDownload(url, filename) {
