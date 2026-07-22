@@ -567,30 +567,70 @@
   </div>
 
   <style>
-    .doc-viewer-body { max-width: 860px; line-height: 1.6; }
-    .doc-viewer-body h1 { font-size: 1.6rem; margin-top: 0; }
-    .doc-viewer-body h2 { font-size: 1.3rem; margin-top: 1.75rem; }
-    .doc-viewer-body h3 { font-size: 1.1rem; margin-top: 1.5rem; }
+    .doc-viewer-body {
+      max-width: 860px;
+      line-height: 1.7;
+      color: var(--text-color, #212529);
+      font-size: 0.975rem;
+    }
+    .doc-viewer-body h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-top: 0;
+      margin-bottom: 1rem;
+      color: var(--primary-color, #4154f1);
+      line-height: 1.3;
+    }
+    .doc-viewer-body h2 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-top: 2rem;
+      margin-bottom: 0.5rem;
+      padding-bottom: 0.35rem;
+      border-bottom: 2px solid var(--primary-color, #4154f1);
+      color: var(--text-color, #212529);
+    }
+    .doc-viewer-body h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-top: 1.5rem;
+      margin-bottom: 0.4rem;
+      color: var(--text-color, #212529);
+    }
+    .doc-viewer-body p { margin-bottom: 0.85rem; }
+    .doc-viewer-body ul, .doc-viewer-body ol {
+      padding-left: 1.4rem;
+      margin-bottom: 0.85rem;
+    }
+    .doc-viewer-body li { margin-bottom: 0.3rem; }
     .doc-viewer-body pre {
       background: var(--bs-tertiary-bg, #f3f3f3);
       border: 1px solid var(--border-color, #dee2e6);
       border-radius: 8px;
-      padding: 0.9rem;
+      padding: 0.9rem 1rem;
       overflow-x: auto;
+      font-size: 0.875rem;
+      line-height: 1.5;
     }
     .doc-viewer-body code {
       background: var(--bs-tertiary-bg, #f3f3f3);
-      padding: 0.1rem 0.35rem;
+      color: #c7254e;
+      padding: 0.15rem 0.4rem;
       border-radius: 4px;
-      font-size: 0.9em;
+      font-size: 0.875em;
     }
-    .doc-viewer-body pre code { background: transparent; padding: 0; }
+    .doc-viewer-body pre code { background: transparent; padding: 0; color: inherit; }
     .doc-viewer-body table {
       width: 100%;
       border-collapse: collapse;
       margin: 1rem 0;
       display: block;
       overflow-x: auto;
+      font-size: 0.9rem;
+    }
+    .doc-viewer-body th {
+      background: var(--bs-tertiary-bg, #f3f3f3);
+      font-weight: 600;
     }
     .doc-viewer-body th, .doc-viewer-body td {
       border: 1px solid var(--border-color, #dee2e6);
@@ -598,16 +638,26 @@
       text-align: left;
     }
     .doc-viewer-body blockquote {
-      border-left: 3px solid var(--primary-color, #4154f1);
-      margin-left: 0;
-      padding-left: 1rem;
-      color: var(--text-muted, #6c757d);
+      border-left: 4px solid var(--primary-color, #4154f1);
+      margin: 1rem 0;
+      padding: 0.5rem 1rem;
+      background: rgba(65, 84, 241, 0.05);
+      border-radius: 0 6px 6px 0;
+      color: var(--text-color, #212529);
     }
     body.dark-mode .doc-viewer-body pre,
     body.dark-mode .doc-viewer-body code {
       background: #2a2b2f;
       border-color: #3a3b40;
     }
+    body.dark-mode .doc-viewer-body th {
+      background: #2a2b2f;
+    }
+    body.dark-mode .doc-viewer-body blockquote {
+      background: rgba(65, 84, 241, 0.1);
+    }
+    body.dark-mode .doc-viewer-body h1 { color: #818cf8; }
+    body.dark-mode .doc-viewer-body h2 { border-bottom-color: #818cf8; }
   </style>
 
   <!-- Vendor JS Files -->
