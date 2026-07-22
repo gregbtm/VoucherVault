@@ -19,7 +19,7 @@ import secrets
 import sys
 from django.utils.html import escape
 from django.utils.translation import gettext_lazy as _
-from csp.constants import NONE, SELF, UNSAFE_INLINE, UNSAFE_EVAL
+from csp.constants import NONE, NONCE, SELF, UNSAFE_INLINE, UNSAFE_EVAL
 
 # Load environment variables from .env file
 load_dotenv()
@@ -107,7 +107,7 @@ CONTENT_SECURITY_POLICY = {
     "DIRECTIVES": {
         "default-src": ["'self'"],
         "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        "script-src": ["'self'", "'unsafe-eval'"],  # unsafe-eval kept for ECharts
+        "script-src": ["'self'", "'unsafe-eval'", NONCE],  # unsafe-eval for ECharts; NONCE allows nonce-gated inline scripts
         "font-src": ["'self'", "https://fonts.googleapis.com", "https://fonts.gstatic.com"],
         "img-src": ["'self'", "data:", "https://img.logo.dev", "https://logo.clearbit.com", "https://www.google.com"],
         "manifest-src": ["'self'"],
@@ -118,7 +118,7 @@ CONTENT_SECURITY_POLICY = {
     },
 }
 
-CONTENT_SECURITY_POLICY_NONCE_IN = ['script-src']
+# NONCE sentinel in DIRECTIVES above activates per-request nonce injection (django-csp 4.x API)
 
 # Application definition
 INSTALLED_APPS = [
