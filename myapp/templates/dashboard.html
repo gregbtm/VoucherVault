@@ -281,11 +281,11 @@ body.dark-mode .quick-stats-gc-total { background: rgba(239, 68, 68, 0.12); }
   margin-top: 0.5rem;
 }
 
-/* Quick Stats Row */
+/* Quick Stats Row — 5 types, wrap into two rows (3 + 2) */
 .quick-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
+  gap: 0.6rem;
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid rgba(255,255,255,0.2);
@@ -426,7 +426,7 @@ body.dark-mode .stat-card.total-value .stat-card-icon {
   
   .quick-stats {
     grid-template-columns: repeat(3, 1fr);
-    gap: 0.5rem;
+    gap: 0.4rem;
   }
   
   .quick-stat-value {
@@ -876,6 +876,14 @@ body.dark-mode .calendar-month-label {
           <div class="quick-stat">
             <div class="quick-stat-value">{{ coupons_count }}</div>
             <div class="quick-stat-label">{% trans "Coupons" %}</div>
+          </div>
+          <div class="quick-stat">
+            <div class="quick-stat-value">{{ loyaltycards_count }}</div>
+            <div class="quick-stat-label">{% trans "Loyalty Cards" %}</div>
+          </div>
+          <div class="quick-stat">
+            <div class="quick-stat-value">{{ travelpasses_count }}</div>
+            <div class="quick-stat-label">{% trans "Travel Passes" %}</div>
           </div>
         </div>
       </div>
