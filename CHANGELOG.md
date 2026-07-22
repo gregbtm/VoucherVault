@@ -1,4 +1,11 @@
-## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.106...v1.2.0) (2026-07-22)
+## [1.1.108](https://github.com/gregbtm/VoucherVault/compare/v1.1.107...v1.1.108) (2026-07-22)
+
+
+### Bug Fixes
+
+* commit missing notify migration 0006 (alter backend choices) ([cc21e0b](https://github.com/gregbtm/VoucherVault/commit/cc21e0bc3070d69639e34d78e3c35a2b27c791e3))
+
+## [1.1.107](https://github.com/gregbtm/VoucherVault/compare/v1.1.106...v1.1.107) (2026-07-22)
 
 
 ### Features
@@ -10,6 +17,4 @@
 ## [1.1.105](https://github.com/gregbtm/VoucherVault/compare/v1.1.104...v1.1.105) (2026-07-22)
 
 ## [1.1.104](https://github.com/gregbtm/VoucherVault/compare/v1.1.103...v1.1.104) (2026-07-22)
-
-## [1.1.103](https://github.com/gregbtm/VoucherVault/compare/v1.1.102...v1.1.103) (2026-07-22)
 
