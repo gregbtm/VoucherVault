@@ -287,7 +287,7 @@
   </div>
 </section>
 
-<script>
+<script nonce="{{ request.csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function () {
   // Backend-specific form section visibility
   const backendSelect = document.getElementById('{{ form.backend.id_for_label }}');
