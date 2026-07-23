@@ -850,7 +850,8 @@ body.dark-mode .error-alert {
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label" for="code_type">{% trans "Code Type" %} <span class="required">*</span></label>
-                <select class="modern-select" id="code_type" name="code_type" required>
+                <select class="modern-select" id="code_type" name="code_type" required
+                        data-vv-suggest-field="code_type" data-vv-suggest-url="{% url 'suggest_field_options' %}" data-vv-suggest-type-source="#type">
                   <option value="qrcode" {% if item.code_type == "qrcode" %}selected{% endif %}>QR Code</option>
                   <option value="none" {% if item.code_type == "none" %}selected{% endif %}>No Barcode (number only)</option>
                   <option value="ean13" {% if item.code_type == "ean13" %}selected{% endif %}>EAN-13</option>
@@ -944,7 +945,8 @@ body.dark-mode .error-alert {
 
             <div class="form-group" id="currency-field" {% if item.type == 'loyaltycard' or item.type == 'travelpass' or item.value_type != 'money' %}style="display:none;"{% endif %}>
               <label class="form-label" for="currency">{% trans "Currency" %}</label>
-              <select class="modern-select" id="currency" name="currency">
+              <select class="modern-select" id="currency" name="currency"
+                      data-vv-suggest-field="currency" data-vv-suggest-url="{% url 'suggest_field_options' %}" data-vv-suggest-type-source="#type">
                 {% for code, label in form.fields.currency.choices %}
                 <option value="{{ code }}" {% if item.currency == code %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}

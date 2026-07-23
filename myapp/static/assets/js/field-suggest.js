@@ -1,14 +1,14 @@
 /**
- * Progressive-enhancement "suggest from your recent items" button, for a
- * handful of item-form fields (issuer, logo slug, wallet, discount
- * applied - see the data-vv-suggest-field attribute on those fields in
- * create-item.html/edit-item.html). Replaces the old behavior of silently
- * auto-filling whatever an AI scan left blank: instead, a small lightbulb
- * button appears next to the field's label only while the field is empty,
- * and clicking it opens a popover of up to 5 ranked suggestions (backed by
- * views.suggest_field_options) to pick from explicitly - never a silent
- * fill. The button disappears the moment the field has any value, from
- * whatever source (typed, scanned, or picked from the popover).
+ * Progressive-enhancement "suggest from your recent items" button for
+ * item-form fields that carry data-vv-suggest-field (issuer, logo slug,
+ * wallet, discount applied, currency, code type). The button only appears
+ * while its field is empty; clicking opens a ranked-suggestion popover
+ * (backed by views.suggest_field_options). Context-aware: when opening the
+ * popover the current values of other filled fields are sent so suggestions
+ * from items sharing the same context (e.g. same issuer) rank first.
+ * Feedback loop: when a suggestion is accepted a hidden _sg_suggested_FIELD
+ * input is injected into the form; on save the server diffs accepted vs
+ * final value and records a ScanFieldCorrection if the user changed it.
  */
 
 function vvCloseAllSuggestPopovers(exceptWrapper) {
@@ -33,6 +33,36 @@ function vvEscapeHtml(str) {
 }
 
 const vvSuggestFieldSyncFns = [];
+
+// Collect the current values of all enhanced suggest fields except the one
+// being queried, so the server can boost suggestions from items sharing the
+// same context (e.g. same issuer when asking for logo_slug suggestions).
+function vvGatherFormContext(excludeFieldName) {
+  const ctx = {};
+  document.querySelectorAll('[data-vv-suggest-field]').forEach((el) => {
+    const name = el.dataset.vvSuggestField;
+    if (name === excludeFieldName) return;
+    const val = el.value ? el.value.trim() : '';
+    if (val) ctx[name] = val;
+  });
+  return ctx;
+}
+
+// Ensure a single hidden feedback input for fieldName exists in the same
+// form as field, and set (or clear) its value.
+function vvSetSuggestedInput(field, fieldName, value) {
+  const form = field.closest('form');
+  if (!form) return;
+  const inputName = `_sg_suggested_${fieldName}`;
+  let hidden = form.querySelector(`input[name="${inputName}"]`);
+  if (!hidden) {
+    hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = inputName;
+    form.appendChild(hidden);
+  }
+  hidden.value = value;
+}
 
 function vvEnhanceSuggestField(field) {
   if (field.dataset.vvSgEnhanced) return;
@@ -88,11 +118,20 @@ function vvEnhanceSuggestField(field) {
   }
 
   function syncVisibility() {
-    // A disabled field (e.g. Wallet, locked to "Travel Pass" for that item
-    // type) can't be filled at all - no point offering a suggestion for it.
-    const hasValue = !!field.value.trim() || field.disabled;
-    btn.hidden = hasValue;
-    if (hasValue) {
+    if (field.disabled) {
+      // A disabled field can't be changed - no point offering suggestions.
+      btn.hidden = true;
+      popover.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+      if (vvActiveSuggestReposition === positionPopover) vvActiveSuggestReposition = null;
+      return;
+    }
+    // Select fields always have a selected value, so show the button
+    // unconditionally - the suggestion can override a default choice.
+    // Text inputs hide the button once the user (or a scan) fills them.
+    const filledIn = field.tagName !== 'SELECT' && !!field.value.trim();
+    btn.hidden = filledIn;
+    if (filledIn) {
       popover.hidden = true;
       btn.setAttribute('aria-expanded', 'false');
       if (vvActiveSuggestReposition === positionPopover) vvActiveSuggestReposition = null;
@@ -115,6 +154,9 @@ function vvEnhanceSuggestField(field) {
         field.value = options[i].value;
         field.dispatchEvent(new Event('input', { bubbles: true }));
         field.dispatchEvent(new Event('change', { bubbles: true }));
+        // Record what was suggested so the server can diff it against what
+        // was ultimately saved and learn if the user changed their mind.
+        vvSetSuggestedInput(field, fieldName, options[i].value);
         popover.hidden = true;
         btn.setAttribute('aria-expanded', 'false');
         vvActiveSuggestReposition = null;
@@ -168,7 +210,9 @@ function vvEnhanceSuggestField(field) {
     titleEl.textContent = 'Loading…';
     optionsEl.innerHTML = '';
     positionPopover();
-    fetch(`${endpoint}?type=${encodeURIComponent(type)}&field=${encodeURIComponent(fieldName)}`)
+    const ctx = vvGatherFormContext(fieldName);
+    const ctxParam = Object.keys(ctx).length ? `&context=${encodeURIComponent(JSON.stringify(ctx))}` : '';
+    fetch(`${endpoint}?type=${encodeURIComponent(type)}&field=${encodeURIComponent(fieldName)}${ctxParam}`)
       .then((response) => (response.ok ? response.json() : { options: [] }))
       .then((data) => {
         cache = data.options || [];

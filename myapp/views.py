@@ -716,6 +716,47 @@ def _record_scan_learning(request, item):
     record_scan_corrections(request.user, snapshot, item)
 
 
+def _record_suggestion_feedback(request, item):
+    """
+    When a user accepts a field suggestion and then edits the value before
+    saving, that edit is signal: the suggestion was wrong for this context.
+    The form JS injects hidden _sg_suggested_FIELD inputs recording what
+    each suggestion popover filled; here we diff each against the final
+    saved value and write a ScanFieldCorrection row so the ranking can
+    self-correct over time. Best-effort: feedback must never block a save.
+    """
+    from .scan_learning import ScanFieldCorrection, LEARNABLE_FIELDS, _normalize, _saved_value
+    try:
+        for field in _SUGGESTABLE_FIELDS:
+            suggested_raw = request.POST.get(f'_sg_suggested_{field}')
+            if suggested_raw is None:
+                continue
+            suggested = _normalize(suggested_raw)
+            final = _saved_value(item, field) if field in LEARNABLE_FIELDS else _normalize(getattr(item, field, None))
+            if not final:
+                continue
+            if final.lower() == suggested.lower():
+                # User kept the suggestion - retire any old correction that mapped this value away
+                ScanFieldCorrection.objects.filter(
+                    user=request.user, field=field, ai_value__iexact=suggested,
+                ).delete()
+            else:
+                # User changed it - record that for this context the suggestion was wrong
+                correction, created = ScanFieldCorrection.objects.get_or_create(
+                    user=request.user, item_type=item.type, field=field, ai_value=suggested,
+                    defaults={'corrected_value': final},
+                )
+                if not created:
+                    if correction.corrected_value.lower() == final.lower():
+                        correction.times_seen += 1
+                    else:
+                        correction.corrected_value = final
+                        correction.times_seen = 1
+                    correction.save()
+    except Exception:
+        logger.warning('Failed to record suggestion feedback', exc_info=True)
+
+
 def _item_form_ctx(user):
     from notify.models import NotificationRule
     qs = NotificationRule.objects.filter(user=user, enabled=True)
@@ -773,6 +814,7 @@ def create_item(request):
 
             remember_balance_check_url(item.issuer, item.balance_check_url)
             _record_scan_learning(request, item)
+            _record_suggestion_feedback(request, item)
             notify_item_created(item)
             fire_user_webhooks(item.user, 'item_created', item)
             _log_wallet_activity(item.wallet, request.user, 'item_added', item=item)
@@ -857,6 +899,7 @@ def edit_item(request, item_uuid):
 
             remember_balance_check_url(item.issuer, item.balance_check_url)
             _record_scan_learning(request, item)
+            _record_suggestion_feedback(request, item)
             _queue_google_wallet_update(item)
             _log_wallet_activity(item.wallet, request.user, 'item_edited', item=item)
 
@@ -878,52 +921,80 @@ def lookup_merchant_balance_url(request):
     issuer = request.GET.get('issuer', '')
     return JsonResponse({'balance_check_url': get_cached_balance_check_url(issuer)})
 
-_SUGGESTABLE_FIELDS = {'issuer', 'logo_slug', 'wallet', 'discount_applied'}
+_SUGGESTABLE_FIELDS = {'issuer', 'logo_slug', 'wallet', 'discount_applied', 'currency', 'code_type'}
 
 
 @require_GET
 @login_required
 def suggest_field_options(request):
     """
-    Read-only AJAX helper backing the "suggest" button next to a handful
-    of item-form fields (see field-suggest.js): given an item type and one
-    of _SUGGESTABLE_FIELDS, returns up to 5 distinct values for that field
-    drawn from this user's own recent items of that type, ranked by how
-    often each value appears (ties broken by recency) so one odd one-off
-    item doesn't outrank an actual habit. Interactive by design - the
-    button that triggers this only ever appears next to a field the AI
-    scan (or the user) has left blank, and picking a suggestion is always
-    an explicit click, never a silent fill.
+    Read-only AJAX helper backing the "suggest" button next to item-form
+    fields (see field-suggest.js). Accepts an optional ?context=json blob
+    of other already-filled fields so suggestions from items sharing that
+    context (e.g. same issuer) can be ranked first. Falls back to
+    cross-type results when the type-specific pool has fewer than 3 hits.
     """
     field = request.GET.get('field', '')
     item_type = request.GET.get('type', '')
     if field not in _SUGGESTABLE_FIELDS:
         return JsonResponse({'options': []})
 
-    recent = list(
+    try:
+        context = json.loads(request.GET.get('context', '{}'))
+    except (ValueError, TypeError):
+        context = {}
+    context_issuer = (context.get('issuer') or '').strip().lower()
+
+    def _rank(items, base_index_offset=0):
+        ranked = {}
+        for index, item in enumerate(items):
+            if field == 'wallet':
+                if not item.wallet_id:
+                    continue
+                key = str(item.wallet_id)
+                label = item.wallet.name
+                raw = key
+            else:
+                raw = str(getattr(item, field) or '').strip()
+                if not raw:
+                    continue
+                key = raw.lower()
+                label = raw
+            context_match = bool(context_issuer and (item.issuer or '').strip().lower() == context_issuer)
+            entry = ranked.setdefault(key, {
+                'count': 0, 'index': index + base_index_offset,
+                'label': label, 'value': raw, 'context_match': False,
+            })
+            entry['count'] += 1
+            if context_match:
+                entry['context_match'] = True
+        return ranked
+
+    type_items = list(
         Item.objects.filter(user=request.user, type=item_type)
         .select_related('wallet')
         .order_by('-created_at')[:25]
     )
+    ranked = _rank(type_items)
 
-    ranked = {}
-    for index, item in enumerate(recent):
-        if field == 'wallet':
-            if not item.wallet_id:
-                continue
-            key = str(item.wallet_id)
-            label = item.wallet.name
-        else:
-            raw = (getattr(item, field) or '').strip()
-            if not raw:
-                continue
-            key = raw.lower()
-            label = raw
-        entry = ranked.setdefault(key, {'count': 0, 'index': index, 'label': label, 'value': key if field == 'wallet' else raw})
-        entry['count'] += 1
+    # Cross-type fallback when the type pool is thin (e.g. first item of this type)
+    if len(ranked) < 3 and item_type:
+        all_items = list(
+            Item.objects.filter(user=request.user)
+            .exclude(type=item_type)
+            .select_related('wallet')
+            .order_by('-created_at')[:25]
+        )
+        fallback = _rank(all_items, base_index_offset=25)
+        for key, entry in fallback.items():
+            if key not in ranked:
+                ranked[key] = entry
 
-    top = sorted(ranked.values(), key=lambda entry: (-entry['count'], entry['index']))[:5]
-    return JsonResponse({'options': [{'value': entry['value'], 'label': entry['label']} for entry in top]})
+    top = sorted(
+        ranked.values(),
+        key=lambda e: (not e['context_match'], -e['count'], e['index']),
+    )[:5]
+    return JsonResponse({'options': [{'value': e['value'], 'label': e['label']} for e in top]})
 
 @require_GET
 @login_required
