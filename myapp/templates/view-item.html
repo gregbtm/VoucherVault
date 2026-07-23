@@ -1732,12 +1732,14 @@ body.dark-mode .tilt-scan-enable-btn {
 
           <!-- Detail Fields -->
           <div class="detail-fields">
+            {% if item.type != 'travelpass' or item.issue_date != item.expiry_date %}
             <div class="detail-field">
               <div class="detail-field-label">
                 <i class="bi bi-calendar-plus"></i> {% trans "Issue Date" %}
               </div>
               <div class="detail-field-value">{{ item.issue_date|date:"M d, Y" }}</div>
             </div>
+            {% endif %}
             
             <div class="detail-field">
               <div class="detail-field-label">
@@ -1827,7 +1829,7 @@ body.dark-mode .tilt-scan-enable-btn {
             </div>
             {% endif %}
 
-            {% if item.order_id %}
+            {% if item.order_id and item.type == 'giftcard' or item.order_id and item.type == 'travelpass' %}
             <div class="detail-field">
               <div class="detail-field-label">
                 <i class="bi bi-receipt"></i> {% trans "Order ID" %}

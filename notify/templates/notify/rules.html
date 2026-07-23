@@ -310,7 +310,7 @@ document.addEventListener('DOMContentLoaded', function () {
     Object.entries(sections).forEach(([key, el]) => {
       if (el) el.style.display = key === selected ? 'block' : 'none';
     });
-    if (digestSection) digestSection.style.display = selected === 'firefly' ? 'none' : '';
+    if (digestSection) digestSection.style.display = (selected === 'firefly' || selected === 'webpush') ? 'none' : '';
   }
 
   if (backendSelect) {

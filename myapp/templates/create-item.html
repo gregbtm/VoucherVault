@@ -769,7 +769,7 @@ body.dark-mode .error-alert {
               <small class="form-text text-warning" id="ocr-confidence-warning" style="display:none;"></small>
             </div>
 
-            <div class="field-toggle" id="card-number-wrap">
+            <div class="field-toggle is-collapsed" id="card-number-wrap">
               <div class="form-group">
                 <label class="form-label" for="card_number" id="card-number-label">{% trans "Card / Member Number" %}</label>
                 <input type="text" class="modern-input" id="card_number" name="card_number"
@@ -778,7 +778,7 @@ body.dark-mode .error-alert {
               </div>
             </div>
 
-            <div id="travel-fields" class="field-toggle">
+            <div id="travel-fields" class="field-toggle is-collapsed">
               <div class="form-row">
                 <div class="form-group">
                   <label class="form-label" for="journey_origin">{% trans "Journey From" %}</label>
@@ -928,7 +928,7 @@ body.dark-mode .error-alert {
               </select>
             </div>
 
-            <div class="form-group" id="balance-check-field">
+            <div class="form-group" id="balance-check-field" style="display:none;">
               <label class="form-label" for="balance_check_url">{% trans "Balance / Validity Check Link" %}</label>
               <input type="url" class="modern-input" id="balance_check_url" name="balance_check_url"
                      placeholder="{% trans 'Balance/validity check page for this merchant' %}"
@@ -1108,7 +1108,7 @@ body.dark-mode .error-alert {
                         rows="3">{{ form.description.value|default_if_none:"" }}</textarea>
             </div>
 
-            <div class="field-toggle" id="order-id-wrap">
+            <div class="field-toggle is-collapsed" id="order-id-wrap">
               <div class="form-group">
                 <label class="form-label" for="order_id">{% trans "Order / Booking Reference" %}</label>
                 <input type="text" class="modern-input" id="order_id" name="order_id"
@@ -1116,7 +1116,7 @@ body.dark-mode .error-alert {
                        value='{{ form.order_id.value|default_if_none:"" }}'>
               </div>
             </div>
-            <div class="field-toggle" id="discount-applied-wrap">
+            <div class="field-toggle is-collapsed" id="discount-applied-wrap">
               <div class="form-group">
                 <label class="form-label" for="discount_applied">{% trans "Discount / Railcard Applied" %}</label>
                 <input type="text" class="modern-input" id="discount_applied" name="discount_applied"
