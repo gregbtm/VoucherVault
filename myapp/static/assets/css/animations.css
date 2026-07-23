@@ -85,6 +85,41 @@ body.vv-page-leaving {
   transition: opacity 0.12s ease;
 }
 
+/* Merchant health check badge: a gentle breathe while the API call is in
+   flight, so "Checking…" reads as live rather than frozen. */
+@keyframes vv-breathe {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}
+.ch-loading {
+  animation: vv-breathe 1.2s ease-in-out infinite;
+}
+
+/* Merchant health rows are interactive — give them the same lift affordance
+   that item cards and next-up widgets already have. */
+.mh-item {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.mh-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+body.dark-mode .mh-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+/* Analytics KPI cards: subtle lift on hover so they feel interactive. */
+.kpi-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+body.dark-mode .kpi-card:hover {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
 /* One switch kills the lot: OS-level "reduce motion" disables every
    animation and transition in the app, ours and Bootstrap's alike.
    (animations.js independently refuses to start entrance animations,

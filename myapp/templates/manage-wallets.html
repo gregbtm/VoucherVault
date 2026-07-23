@@ -5,14 +5,18 @@
 <div class="pagetitle">
   <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
     <h1>{% trans "Wallets" %}</h1>
-    <div class="d-flex gap-2 mt-1">
-      <a href="{% url 'view_doc' 'google-wallet' %}" class="btn btn-outline-secondary btn-sm help-doc-link"
-         data-doc-url="{% url 'view_doc' 'google-wallet' %}" title="{% trans 'Google Wallet export guide' %}">
-        <i class="bi bi-question-circle me-1"></i>{% trans "Google Wallet" %}
+    <div class="d-flex gap-2 mt-1 flex-wrap">
+      <a href="{% url 'view_doc' 'wallets-tags' %}" class="btn btn-outline-secondary btn-sm help-link"
+         data-doc-url="{% url 'view_doc' 'wallets-tags' %}" title="{% trans 'Wallets & tags guide' %}">
+        <i class="bi bi-question-circle me-1"></i>{% trans "Guide" %}
       </a>
-      <a href="{% url 'view_doc' 'apple-wallet' %}" class="btn btn-outline-secondary btn-sm help-doc-link"
+      <a href="{% url 'view_doc' 'google-wallet' %}" class="btn btn-outline-secondary btn-sm help-link"
+         data-doc-url="{% url 'view_doc' 'google-wallet' %}" title="{% trans 'Google Wallet export guide' %}">
+        <i class="bi bi-google me-1"></i>{% trans "Google Wallet" %}
+      </a>
+      <a href="{% url 'view_doc' 'apple-wallet' %}" class="btn btn-outline-secondary btn-sm help-link"
          data-doc-url="{% url 'view_doc' 'apple-wallet' %}" title="{% trans 'Apple Wallet export guide' %}">
-        <i class="bi bi-question-circle me-1"></i>{% trans "Apple Wallet" %}
+        <i class="bi bi-apple me-1"></i>{% trans "Apple Wallet" %}
       </a>
     </div>
   </div>
@@ -88,9 +92,9 @@
 
           <form method="POST" action="{% url 'share_wallet' wallet_id=editing_wallet.id %}" class="mb-3">
             {% csrf_token %}
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 flex-wrap">
               {{ share_form.username }}
-              <select name="role" class="form-select" style="max-width:110px;">
+              <select name="role" class="form-select" style="max-width:110px;min-width:90px;">
                 <option value="editor">{% trans "Editor" %}</option>
                 <option value="viewer">{% trans "Viewer" %}</option>
               </select>

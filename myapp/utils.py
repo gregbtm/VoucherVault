@@ -151,7 +151,7 @@ _CH_BAD_STATUSES = frozenset({
 })
 
 _CH_STRIP = re.compile(
-    r'\b(ltd\.?|limited|plc|llp|lp|inc\.?|corp\.?|corporation|holdings?|group|uk)\b',
+    r'\b(ltd\.?|limited|plc|llp|inc\.?|corp\.?|corporation|holdings?|group|uk)\b',
     re.IGNORECASE,
 )
 
@@ -183,11 +183,14 @@ def check_companies_house_status(issuer_name: str, api_key: str) -> dict | None:
     import base64 as _b64
     query = issuer_name.strip()
     query_words = _ch_words(query)
+    # Empty after stripping suffixes (e.g. "Group Holdings UK") — no reliable match possible
+    if not query_words:
+        return None
     is_single_word = len(query_words) <= 1
 
     url = (
         f"https://api.company-information.service.gov.uk/search/companies"
-        f"?q={urllib.request.quote(query)}&items_per_page=10"
+        f"?q={urllib.request.quote(query)}&items_per_page=8"
     )
     credentials = _b64.b64encode(f"{api_key}:".encode()).decode()
     req = urllib.request.Request(url, headers={"Authorization": f"Basic {credentials}"})
