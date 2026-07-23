@@ -36,6 +36,7 @@ DOCS = {
     'oidc-setup':         ('OIDC / PocketID SSO setup', 'OIDC_SETUP.md'),
     'security-settings':  ('Security settings & hardening', 'SECURITY_SETTINGS.md'),
     'field-map-doc':      ('Field map & suggestion system', 'FIELD_MAP.md'),
+    'gift-card-health':   ('Gift Card Health & Merchant Alerts', 'GIFT_CARD_HEALTH.md'),
 }
 
 # Categories for the Help Center index page.
@@ -81,6 +82,7 @@ CATEGORIES = [
     ]),
     ('Reference', 'bi-layout-text-sidebar-reverse', [
         ('field-map-doc',     'Every form field, when it appears, and which ones have context-aware suggestion buttons'),
+        ('gift-card-health',  'Inactivity reminders, Companies House merchant health alerts, and the Developer Hub'),
     ]),
 ]
 

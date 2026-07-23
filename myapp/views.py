@@ -42,7 +42,7 @@ from .merchant_logos import fetch_merchant_logo, get_cached_balance_check_url, g
 from .nearby_places import find_nearby_issuer_matches, nearby_places_enabled
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .update_check import _is_newer, check_for_update, check_upstream_version
-from .help_docs import render_doc
+from .help_docs import render_doc, CATEGORIES, TOOLS
 from .public_share import is_link_preview_bot, pin_attempt_rate_limited, view_rate_limited
 from .tasks import extract_document_text_task, fetch_merchant_logo_task
 from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
@@ -1710,7 +1710,7 @@ def _integration_status(config):
 # All docs are readable by any logged-in user — they are reference guides, not
 # admin actions.  The distinction below is retained only to avoid breaking
 # existing call sites; in practice the Help Center exposes every slug.
-from .help_docs import CATEGORIES, DOCS, TOOLS
+from .help_docs import CATEGORIES, DOCS, TOOLS  # noqa: F811 — re-import keeps module symbol available here
 _SELF_SERVICE_DOCS = set(DOCS.keys())
 
 
@@ -2537,6 +2537,227 @@ def api_access(request):
     return render(request, 'api_access.html', {
         'token': token,
         'revealed_token': revealed_token,
+    })
+
+
+@login_required
+def developer_hub(request):
+    """
+    Unified developer hub: API token management, outbound webhooks, Companies House
+    API key testing, merchant health status monitor, logo.dev connectivity, and
+    a REST API quick-reference.
+    """
+    from .utils import check_companies_house_status, _CH_BAD_STATUSES
+
+    # Token management (mirrors api_access view)
+    token = Token.objects.filter(user=request.user).first()
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action in ('generate', 'regenerate'):
+            if token:
+                token.delete()
+            token = Token.objects.create(user=request.user)
+            request.session['dev_hub_just_generated_token'] = token.key
+            messages.success(
+                request,
+                _('API token regenerated — update anywhere the old one was used.')
+                if action == 'regenerate' else _('API token generated.')
+            )
+        elif action == 'revoke' and token:
+            token.delete()
+            messages.success(request, _('API token revoked.'))
+        return redirect('developer_hub')
+
+    revealed_token = request.session.pop('dev_hub_just_generated_token', None)
+
+    # Webhook list (mirrors manage_webhooks)
+    hooks = UserWebhook.objects.filter(user=request.user).order_by('-created_at')
+
+    # Unique active issuers for merchant health monitor
+    issuers = (
+        Item.objects.filter(user=request.user, is_used=False, is_archived=False)
+        .exclude(issuer='')
+        .values_list('issuer', flat=True)
+        .distinct()
+        .order_by('issuer')
+    )
+
+    cfg = SiteConfiguration.load()
+    ch_key_set = bool(cfg.companies_house_api_key)
+    logo_dev_key_set = bool(getattr(cfg, 'logo_dev_api_key', ''))
+
+    return render(request, 'developer_hub.html', {
+        'token': token,
+        'revealed_token': revealed_token,
+        'hooks': hooks,
+        'event_choices': UserWebhook.EVENT_CHOICES,
+        'issuers': list(issuers),
+        'ch_key_set': ch_key_set,
+        'logo_dev_key_set': logo_dev_key_set,
+        'ch_bad_statuses': sorted(_CH_BAD_STATUSES),
+    })
+
+
+@require_POST
+@login_required
+def developer_hub_webhook_create(request):
+    """Create a webhook from the developer hub."""
+    data, errors = _WebhookForm.from_post(request.POST)
+    if errors:
+        for msg in errors.values():
+            messages.error(request, msg)
+    else:
+        UserWebhook.objects.create(user=request.user, **data)
+        messages.success(request, _('Webhook created.'))
+    return redirect('developer_hub')
+
+
+@require_POST
+@login_required
+def developer_hub_webhook_edit(request, webhook_id):
+    """Edit a webhook from the developer hub."""
+    hook = get_object_or_404(UserWebhook, id=webhook_id, user=request.user)
+    data, errors = _WebhookForm.from_post(request.POST)
+    if errors:
+        for msg in errors.values():
+            messages.error(request, msg)
+    else:
+        for k, v in data.items():
+            setattr(hook, k, v)
+        hook.save()
+        messages.success(request, _('Webhook updated.'))
+    return redirect('developer_hub')
+
+
+@require_POST
+@login_required
+def developer_hub_webhook_delete(request, webhook_id):
+    """Delete a webhook from the developer hub."""
+    hook = get_object_or_404(UserWebhook, id=webhook_id, user=request.user)
+    hook.delete()
+    messages.success(request, _('Webhook deleted.'))
+    return redirect('developer_hub')
+
+
+@require_POST
+@login_required
+def developer_hub_webhook_test(request, webhook_id):
+    """Send a test delivery from the developer hub."""
+    hook = get_object_or_404(UserWebhook, id=webhook_id, user=request.user)
+    import hmac as _hmac, hashlib as _hashlib, requests as _rq
+    payload = json.dumps({
+        'event': 'test',
+        'message': 'VoucherVault test webhook delivery',
+        'webhook_id': hook.id,
+    }).encode()
+    headers = {'Content-Type': 'application/json', 'X-VoucherVault-Event': 'test'}
+    if hook.secret:
+        sig = _hmac.new(hook.secret.encode(), payload, _hashlib.sha256).hexdigest()
+        headers['X-VoucherVault-Signature'] = f"sha256={sig}"
+    try:
+        resp = _rq.post(hook.url, data=payload, headers=headers, timeout=10)
+        if resp.ok:
+            messages.success(request, _('Test delivery succeeded (HTTP %(status)s).') % {'status': resp.status_code})
+        else:
+            messages.warning(request, _('Test delivered but got HTTP %(status)s.') % {'status': resp.status_code})
+    except Exception as exc:
+        messages.error(request, _('Test delivery failed: %(err)s') % {'err': str(exc)})
+    return redirect('developer_hub')
+
+
+@require_POST
+@login_required
+def test_companies_house_key(request):
+    """
+    AJAX endpoint: test the configured Companies House API key by doing a live
+    lookup for 'Tesco PLC' (a stable, well-known company). Returns JSON with
+    ok/error and detail.
+    """
+    from .utils import check_companies_house_status
+    cfg = SiteConfiguration.load()
+    api_key = cfg.companies_house_api_key
+    if not api_key:
+        return JsonResponse({'ok': False, 'error': 'No Companies House API key is configured. Add one in Admin Tools → Site Settings.'})
+
+    result = check_companies_house_status('Tesco', api_key)
+    if result is None:
+        return JsonResponse({
+            'ok': False,
+            'error': 'Key appears invalid or the Companies House API is unreachable. Check your key at developer.company-information.service.gov.uk',
+        })
+
+    return JsonResponse({
+        'ok': True,
+        'detail': f"Connected — found {result['company_name']} (#{result['company_number']}, status: {result['company_status']})",
+    })
+
+
+@require_POST
+@login_required
+def test_logo_dev_key(request):
+    """
+    AJAX endpoint: test the configured logo.dev API key by fetching a known
+    logo (tesco.com). Returns JSON with ok/error and detail.
+    """
+    cfg = SiteConfiguration.load()
+    api_key = getattr(cfg, 'logo_dev_api_key', '')
+    if not api_key:
+        return JsonResponse({'ok': False, 'error': 'No logo.dev API key configured. Add one in Admin Tools → Site Settings.'})
+
+    try:
+        import requests as _rq
+        resp = _rq.get(
+            'https://img.logo.dev/tesco.com',
+            params={'token': api_key, 'size': '40', 'format': 'png'},
+            timeout=5,
+        )
+        if resp.ok and resp.headers.get('content-type', '').startswith('image/'):
+            return JsonResponse({'ok': True, 'detail': f'Connected — logo.dev returned {resp.status_code} ({len(resp.content)} bytes)'})
+        return JsonResponse({'ok': False, 'error': f'logo.dev returned HTTP {resp.status_code}. Check your API key.'})
+    except Exception as exc:
+        return JsonResponse({'ok': False, 'error': f'Request failed: {exc}'})
+
+
+@require_POST
+@login_required
+def check_merchant_health_status(request):
+    """
+    AJAX endpoint: look up Companies House status for a single issuer name
+    (passed as POST param 'issuer'). Returns JSON with company data or an error.
+    """
+    from .utils import check_companies_house_status, _CH_BAD_STATUSES
+    issuer = (request.POST.get('issuer') or '').strip()
+    if not issuer:
+        return JsonResponse({'ok': False, 'error': 'No issuer name provided.'})
+
+    cfg = SiteConfiguration.load()
+    api_key = cfg.companies_house_api_key
+    if not api_key:
+        return JsonResponse({'ok': False, 'error': 'No Companies House API key configured.'})
+
+    result = check_companies_house_status(issuer, api_key)
+    if result is None:
+        return JsonResponse({
+            'ok': True,
+            'found': False,
+            'issuer': issuer,
+            'detail': f'No confident match found on Companies House for "{issuer}" — may trade under a different registered name.',
+        })
+
+    bad = result['company_status'] in _CH_BAD_STATUSES
+    return JsonResponse({
+        'ok': True,
+        'found': True,
+        'issuer': issuer,
+        'company_name': result['company_name'],
+        'company_number': result['company_number'],
+        'company_status': result['company_status'],
+        'is_bad': bad,
+        'detail': (
+            f"⚠️ {result['company_name']} (#{result['company_number']}) is currently listed as '{result['company_status']}'"
+            if bad else
+            f"✅ {result['company_name']} (#{result['company_number']}) — status: {result['company_status']}"
+        ),
     })
 
 
