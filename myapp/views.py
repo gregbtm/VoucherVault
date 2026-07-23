@@ -2586,6 +2586,26 @@ def developer_hub(request):
     ch_key_set = bool(cfg.companies_house_api_key)
     logo_dev_key_set = bool(getattr(cfg, 'logo_dev_api_key', ''))
 
+    # OCR integration status
+    ocr_backend = cfg.ocr_backend  # 'none', 'anthropic', 'openai'
+    ocr_configured = (
+        (ocr_backend == 'anthropic' and bool(cfg.anthropic_api_key)) or
+        (ocr_backend == 'openai' and bool(cfg.openai_api_key))
+    )
+
+    # User-level integrations
+    prefs = UserPreference.objects.filter(user=request.user).first()
+    fixer_key_set = bool(prefs and prefs.fixer_api_key)
+
+    from dms.models import DMSProvider
+    dms_providers = list(DMSProvider.objects.filter(user=request.user, enabled=True).values('name', 'provider'))
+
+    from notify.models import NotificationRule
+    firefly_rules = list(
+        NotificationRule.objects.filter(user=request.user, backend='firefly', enabled=True)
+        .values_list('name', flat=True)
+    )
+
     return render(request, 'developer_hub.html', {
         'token': token,
         'revealed_token': revealed_token,
@@ -2595,6 +2615,13 @@ def developer_hub(request):
         'ch_key_set': ch_key_set,
         'logo_dev_key_set': logo_dev_key_set,
         'ch_bad_statuses': sorted(_CH_BAD_STATUSES),
+        'ocr_backend': ocr_backend,
+        'ocr_configured': ocr_configured,
+        'fixer_key_set': fixer_key_set,
+        'dms_providers': dms_providers,
+        'firefly_rules': firefly_rules,
+        'ntfy_server': cfg.ntfy_default_server or 'https://ntfy.sh',
+        'portainer_configured': bool(cfg.portainer_webhook_url),
     })
 
 
@@ -2759,6 +2786,88 @@ def check_merchant_health_status(request):
             f"✅ {result['company_name']} (#{result['company_number']}) — status: {result['company_status']}"
         ),
     })
+
+
+@require_POST
+@login_required
+def test_fixer_key(request):
+    """
+    AJAX: test the calling user's Fixer.io API key by fetching the latest rates.
+    Returns JSON with ok/error and detail.
+    """
+    prefs = UserPreference.objects.filter(user=request.user).first()
+    api_key = prefs.fixer_api_key if prefs else None
+    if not api_key:
+        return JsonResponse({
+            'ok': False,
+            'error': 'No Fixer.io API key configured. Add one in User Preferences → Currency Settings.',
+        })
+    rates = get_fixer_rates(api_key)
+    if rates is None:
+        return JsonResponse({
+            'ok': False,
+            'error': 'Fixer.io returned an error. Check your key at fixer.io/dashboard.',
+        })
+    sample = ', '.join(f'{k}={v}' for k, v in list(rates.items())[:4])
+    return JsonResponse({'ok': True, 'detail': f'Connected — {len(rates)} rates returned. Sample: {sample}'})
+
+
+@require_POST
+@login_required
+def test_ocr_connectivity(request):
+    """
+    AJAX: test the configured OCR backend (Anthropic or OpenAI) with a minimal
+    API call. Returns JSON with ok/error and detail.
+    """
+    cfg = SiteConfiguration.load()
+    backend = cfg.ocr_backend
+    if backend == 'none' or not backend:
+        return JsonResponse({'ok': False, 'error': 'OCR backend is set to "None". Configure it in Site Settings → Scan with AI.'})
+
+    if backend == 'anthropic':
+        api_key = cfg.anthropic_api_key
+        if not api_key:
+            return JsonResponse({'ok': False, 'error': 'No Anthropic API key configured. Add one in Site Settings → Scan with AI.'})
+        try:
+            import requests as _rq
+            resp = _rq.post(
+                'https://api.anthropic.com/v1/messages',
+                headers={
+                    'x-api-key': api_key,
+                    'anthropic-version': '2023-06-01',
+                    'content-type': 'application/json',
+                },
+                json={'model': cfg.anthropic_ocr_model or 'claude-haiku-4-5-20251001',
+                      'max_tokens': 1,
+                      'messages': [{'role': 'user', 'content': 'hi'}]},
+                timeout=10,
+            )
+            if resp.ok:
+                return JsonResponse({'ok': True, 'detail': f'Anthropic API connected (model: {cfg.anthropic_ocr_model or "claude-haiku-4-5-20251001"})'})
+            data = resp.json() if resp.headers.get('content-type', '').startswith('application/json') else {}
+            return JsonResponse({'ok': False, 'error': f'Anthropic returned HTTP {resp.status_code}: {data.get("error", {}).get("message", resp.text[:120])}'})
+        except Exception as exc:
+            return JsonResponse({'ok': False, 'error': f'Request failed: {exc}'})
+
+    if backend == 'openai':
+        api_key = cfg.openai_api_key
+        if not api_key:
+            return JsonResponse({'ok': False, 'error': 'No OpenAI API key configured. Add one in Site Settings → Scan with AI.'})
+        try:
+            import requests as _rq
+            resp = _rq.get(
+                'https://api.openai.com/v1/models',
+                headers={'Authorization': f'Bearer {api_key}'},
+                timeout=10,
+            )
+            if resp.ok:
+                return JsonResponse({'ok': True, 'detail': f'OpenAI API connected (model: {cfg.openai_ocr_model or "gpt-4o-mini"})'})
+            data = resp.json() if resp.headers.get('content-type', '').startswith('application/json') else {}
+            return JsonResponse({'ok': False, 'error': f'OpenAI returned HTTP {resp.status_code}: {data.get("error", {}).get("message", resp.text[:120])}'})
+        except Exception as exc:
+            return JsonResponse({'ok': False, 'error': f'Request failed: {exc}'})
+
+    return JsonResponse({'ok': False, 'error': f'Unknown OCR backend: {backend}'})
 
 
 @require_POST

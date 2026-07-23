@@ -65,20 +65,25 @@
 /* Connectivity test cards */
 .conn-card {
   border: 1px solid var(--bs-border-color); border-radius: 0.5rem;
-  padding: 1rem 1.1rem; display: flex; align-items: flex-start; gap: 0.75rem;
+  padding: 0.85rem 1rem; display: flex; align-items: flex-start; gap: 0.75rem;
 }
-.conn-card-icon { font-size: 1.4rem; flex-shrink: 0; margin-top: 0.1rem; }
-.conn-status { font-size: 0.8rem; margin-top: 0.4rem; }
+.conn-card-icon { font-size: 1.3rem; flex-shrink: 0; margin-top: 0.1rem; }
+.conn-status { font-size: 0.78rem; margin-top: 0.35rem; }
 .conn-ok  { color: #2e7d32; }
 .conn-err { color: #c62828; }
 [data-bs-theme="dark"] .conn-ok  { color: #81c784; }
 [data-bs-theme="dark"] .conn-err { color: #ef9a9a; }
+.conn-group-label {
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--bs-secondary-color);
+  margin: 0.75rem 0 0.35rem;
+}
 
 /* Quick ref table */
-.api-ref-table td:first-child { font-family: monospace; font-size: 0.82rem; white-space: nowrap; }
+.api-ref-table td:first-child { font-family: monospace; font-size: 0.8rem; white-space: nowrap; }
 .method-badge {
-  font-size: 0.65rem; font-weight: 700; padding: 0.15em 0.4em;
-  border-radius: 0.25em; text-transform: uppercase;
+  font-size: 0.62rem; font-weight: 700; padding: 0.15em 0.4em;
+  border-radius: 0.25em; text-transform: uppercase; white-space: nowrap;
 }
 .method-get  { background: #e8f5e9; color: #2e7d32; }
 .method-post { background: #e3f2fd; color: #1565c0; }
@@ -93,6 +98,22 @@
 .wh-events-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.25rem;
 }
+
+/* Integration status row */
+.int-row {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.45rem 0; border-bottom: 1px solid var(--bs-border-color);
+  font-size: 0.85rem;
+}
+.int-row:last-child { border-bottom: none; }
+.int-row-icon { width: 1.5rem; text-align: center; font-size: 1rem; flex-shrink: 0; }
+.int-row-label { flex: 1; }
+.int-row-status { font-size: 0.72rem; }
+.int-ok   { color: #2e7d32; }
+.int-warn { color: #e65100; }
+.int-off  { color: var(--bs-secondary-color); }
+[data-bs-theme="dark"] .int-ok   { color: #81c784; }
+[data-bs-theme="dark"] .int-warn { color: #ffcc80; }
 </style>
 
 <div class="pagetitle">
@@ -444,16 +465,19 @@ print(resp.json())
   <!-- ── RIGHT COLUMN ── -->
   <div class="col-12 col-lg-5">
 
-    <!-- ④ Connectivity Tests ─────────────────────── -->
+    <!-- ④ Integration Status ─────────────────────── -->
     <div class="card dev-section">
       <div class="card-body">
         <div class="dev-section-header">
           <span class="dev-section-icon" style="background:#e8f5e9;color:#2e7d32;">
             <i class="bi bi-wifi"></i>
           </span>
-          <h4>{% trans "API Connectivity" %}</h4>
+          <h4>{% trans "Integration Status & Tests" %}</h4>
         </div>
-        <p class="text-muted small mb-3">{% trans "Test external API keys with a live request. Results are not stored." %}</p>
+        <p class="text-muted small mb-3">{% trans "Live connectivity tests for every external integration. Keys are managed in their respective settings pages — this panel shows status only." %}</p>
+
+        <!-- ─ Site integrations ─ -->
+        <div class="conn-group-label">{% trans "Site integrations" %} <span class="text-muted fw-normal">({% trans "configured by admins" %})</span></div>
 
         <!-- Companies House -->
         <div class="conn-card mb-2">
@@ -462,17 +486,16 @@ print(resp.json())
             <div class="fw-semibold small">{% trans "Companies House" %}</div>
             <div class="text-muted" style="font-size:0.78rem;">
               {% if ch_key_set %}
-                {% trans "Key is configured" %} ·
-                <a href="https://developer.company-information.service.gov.uk/" target="_blank" rel="noopener" class="text-muted">
-                  developer.company-information.service.gov.uk
-                </a>
+                <span class="int-ok"><i class="bi bi-check-circle me-1"></i>{% trans "Key configured" %}</span> ·
+                <a href="{% url 'site_settings' %}" class="text-muted small">{% trans "Site Settings" %}</a>
               {% else %}
-                <span class="text-warning">{% trans "No key configured" %}</span>
+                <span class="int-warn"><i class="bi bi-exclamation-circle me-1"></i>{% trans "No key — Merchant Health disabled" %}</span>
+                {% if request.user.is_superuser %}· <a href="{% url 'site_settings' %}" class="text-muted small">{% trans "Configure" %}</a>{% endif %}
               {% endif %}
             </div>
             <div class="conn-status" id="ch-status"></div>
           </div>
-          <button type="button" class="btn btn-sm btn-outline-secondary" id="ch-test-btn"
+          <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="ch-test-btn"
                   {% if not ch_key_set %}disabled{% endif %}>
             {% trans "Test" %}
           </button>
@@ -482,50 +505,179 @@ print(resp.json())
         <div class="conn-card mb-2">
           <div class="conn-card-icon">🖼️</div>
           <div class="flex-grow-1">
-            <div class="fw-semibold small">{% trans "logo.dev" %}</div>
+            <div class="fw-semibold small">{% trans "logo.dev — merchant logos" %}</div>
             <div class="text-muted" style="font-size:0.78rem;">
               {% if logo_dev_key_set %}
-                {% trans "Key is configured" %} ·
-                <a href="https://logo.dev" target="_blank" rel="noopener" class="text-muted">logo.dev</a>
+                <span class="int-ok"><i class="bi bi-check-circle me-1"></i>{% trans "Key configured" %}</span> ·
+                <a href="{% url 'site_settings' %}" class="text-muted small">{% trans "Site Settings" %}</a>
               {% else %}
-                <span class="text-warning">{% trans "No key configured" %}</span>
+                <span class="int-off"><i class="bi bi-dash-circle me-1"></i>{% trans "No key — using fallback logos" %}</span>
+                {% if request.user.is_superuser %}· <a href="{% url 'site_settings' %}" class="text-muted small">{% trans "Configure" %}</a>{% endif %}
               {% endif %}
             </div>
             <div class="conn-status" id="logo-dev-status"></div>
           </div>
-          <button type="button" class="btn btn-sm btn-outline-secondary" id="logo-dev-test-btn"
+          <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="logo-dev-test-btn"
                   {% if not logo_dev_key_set %}disabled{% endif %}>
             {% trans "Test" %}
           </button>
         </div>
 
-        <!-- VoucherVault API (self) -->
-        <div class="conn-card">
+        <!-- OCR -->
+        <div class="conn-card mb-2">
+          <div class="conn-card-icon">🔬</div>
+          <div class="flex-grow-1">
+            <div class="fw-semibold small">{% trans "Scan with AI — OCR" %}</div>
+            <div class="text-muted" style="font-size:0.78rem;">
+              {% if ocr_backend == 'none' or not ocr_backend %}
+                <span class="int-off"><i class="bi bi-dash-circle me-1"></i>{% trans "Backend: None" %}</span>
+                {% if request.user.is_superuser %}· <a href="{% url 'site_settings' %}" class="text-muted small">{% trans "Configure" %}</a>{% endif %}
+              {% elif ocr_configured %}
+                <span class="int-ok"><i class="bi bi-check-circle me-1"></i>
+                  {% if ocr_backend == 'anthropic' %}{% trans "Anthropic Claude" %}{% else %}{% trans "OpenAI" %}{% endif %}
+                  — {% trans "key configured" %}</span> ·
+                <a href="{% url 'site_settings' %}" class="text-muted small">{% trans "Site Settings" %}</a>
+              {% else %}
+                <span class="int-warn"><i class="bi bi-exclamation-circle me-1"></i>
+                  {% if ocr_backend == 'anthropic' %}{% trans "Anthropic backend selected" %}{% else %}{% trans "OpenAI backend selected" %}{% endif %}
+                  — {% trans "API key missing" %}</span>
+                {% if request.user.is_superuser %}· <a href="{% url 'site_settings' %}" class="text-muted small">{% trans "Configure" %}</a>{% endif %}
+              {% endif %}
+            </div>
+            <div class="conn-status" id="ocr-status"></div>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="ocr-test-btn"
+                  {% if not ocr_configured %}disabled{% endif %}>
+            {% trans "Test" %}
+          </button>
+        </div>
+
+        <!-- ntfy -->
+        <div class="conn-card mb-2">
+          <div class="conn-card-icon">🔔</div>
+          <div class="flex-grow-1">
+            <div class="fw-semibold small">{% trans "ntfy — push notifications" %}</div>
+            <div class="text-muted" style="font-size:0.78rem;">
+              <span class="int-ok"><i class="bi bi-check-circle me-1"></i>{% trans "Server" %}: {{ ntfy_server }}</span> ·
+              <a href="{% url 'site_settings' %}" class="text-muted small">{% trans "Site Settings" %}</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Portainer -->
+        <div class="conn-card mb-2">
+          <div class="conn-card-icon">🐋</div>
+          <div class="flex-grow-1">
+            <div class="fw-semibold small">{% trans "Portainer — auto-redeploy" %}</div>
+            <div class="text-muted" style="font-size:0.78rem;">
+              {% if portainer_configured %}
+                <span class="int-ok"><i class="bi bi-check-circle me-1"></i>{% trans "Webhook configured" %}</span> ·
+                <a href="{% url 'site_settings' %}" class="text-muted small">{% trans "Site Settings" %}</a>
+              {% else %}
+                <span class="int-off"><i class="bi bi-dash-circle me-1"></i>{% trans "Not configured" %}</span>
+                {% if request.user.is_superuser %}· <a href="{% url 'site_settings' %}" class="text-muted small">{% trans "Configure" %}</a>{% endif %}
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- ─ Your integrations ─ -->
+        <div class="conn-group-label mt-3">{% trans "Your integrations" %} <span class="text-muted fw-normal">({% trans "per-user" %})</span></div>
+
+        <!-- VoucherVault API self-test -->
+        <div class="conn-card mb-2">
           <div class="conn-card-icon">🔑</div>
           <div class="flex-grow-1">
             <div class="fw-semibold small">{% trans "VoucherVault REST API" %}</div>
             <div class="text-muted" style="font-size:0.78rem;">
               {{ request.scheme }}://{{ request.get_host }}/api/v1/
+              {% if token %}
+                · <span class="int-ok"><i class="bi bi-check-circle me-1"></i>{% trans "Token active" %}</span>
+              {% else %}
+                · <span class="int-warn"><i class="bi bi-exclamation-circle me-1"></i>{% trans "No token" %}</span>
+              {% endif %}
             </div>
             <div class="conn-status" id="vv-api-status"></div>
           </div>
-          <button type="button" class="btn btn-sm btn-outline-secondary" id="vv-api-test-btn"
-                  {% if not token %}disabled title="Generate an API token first"{% endif %}>
+          <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="vv-api-test-btn"
+                  {% if not token %}disabled title="{% trans 'Generate an API token first' %}"{% endif %}>
             {% trans "Test" %}
           </button>
+        </div>
+
+        <!-- Fixer.io -->
+        <div class="conn-card mb-2">
+          <div class="conn-card-icon">💱</div>
+          <div class="flex-grow-1">
+            <div class="fw-semibold small">{% trans "Fixer.io — currency rates" %}</div>
+            <div class="text-muted" style="font-size:0.78rem;">
+              {% if fixer_key_set %}
+                <span class="int-ok"><i class="bi bi-check-circle me-1"></i>{% trans "Key configured" %}</span> ·
+                <a href="{% url 'update_user_preferences' %}" class="text-muted small">{% trans "Preferences" %}</a>
+              {% else %}
+                <span class="int-off"><i class="bi bi-dash-circle me-1"></i>{% trans "No key — manual rates only" %}</span> ·
+                <a href="{% url 'update_user_preferences' %}" class="text-muted small">{% trans "Preferences" %}</a>
+              {% endif %}
+            </div>
+            <div class="conn-status" id="fixer-status"></div>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="fixer-test-btn"
+                  {% if not fixer_key_set %}disabled{% endif %}>
+            {% trans "Test" %}
+          </button>
+        </div>
+
+        <!-- Firefly III -->
+        <div class="conn-card mb-2">
+          <div class="conn-card-icon">🔥</div>
+          <div class="flex-grow-1">
+            <div class="fw-semibold small">{% trans "Firefly III — spend tracking" %}</div>
+            <div class="text-muted" style="font-size:0.78rem;">
+              {% if firefly_rules %}
+                <span class="int-ok"><i class="bi bi-check-circle me-1"></i>
+                  {{ firefly_rules|length }} {% trans "active rule" %}{% if firefly_rules|length != 1 %}{% trans "s" %}{% endif %}:
+                  {{ firefly_rules|join:", " }}</span> ·
+                <a href="{% url 'manage_notification_rules' %}" class="text-muted small">{% trans "Notification Rules" %}</a>
+              {% else %}
+                <span class="int-off"><i class="bi bi-dash-circle me-1"></i>{% trans "No Firefly rules configured" %}</span> ·
+                <a href="{% url 'manage_notification_rules' %}" class="text-muted small">{% trans "Configure" %}</a>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- DMS Providers -->
+        <div class="conn-card">
+          <div class="conn-card-icon">📁</div>
+          <div class="flex-grow-1">
+            <div class="fw-semibold small">{% trans "Document Archive (DMS)" %}</div>
+            <div class="text-muted" style="font-size:0.78rem;">
+              {% if dms_providers %}
+                <span class="int-ok"><i class="bi bi-check-circle me-1"></i>
+                  {{ dms_providers|length }} {% trans "provider" %}{% if dms_providers|length != 1 %}{% trans "s" %}{% endif %}:
+                  {% for p in dms_providers %}{{ p.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span> ·
+                <a href="{% url 'view_doc' 'DMS_SETUP' %}" class="help-link text-muted small"
+                   data-doc-url="{% url 'view_doc' 'DMS_SETUP' %}">{% trans "Guide" %}</a>
+              {% else %}
+                <span class="int-off"><i class="bi bi-dash-circle me-1"></i>{% trans "No DMS providers" %}</span> ·
+                <a href="{% url 'view_doc' 'DMS_SETUP' %}" class="help-link text-muted small"
+                   data-doc-url="{% url 'view_doc' 'DMS_SETUP' %}">{% trans "Setup guide" %}</a>
+              {% endif %}
+            </div>
+          </div>
         </div>
 
       </div>
     </div>
 
-    <!-- ⑤ REST API Quick Reference ──────────────── -->
+    <!-- ⑤ REST API Reference ─────────────────────── -->
     <div class="card dev-section">
       <div class="card-body">
         <div class="dev-section-header">
           <span class="dev-section-icon" style="background:#ede7f6;color:#5e35b1;">
             <i class="bi bi-book"></i>
           </span>
-          <h4>{% trans "API Quick Reference" %}</h4>
+          <h4>{% trans "REST API Reference" %}</h4>
         </div>
 
         <div class="mb-2">
@@ -545,71 +697,61 @@ print(resp.json())
               <th>{% trans "Purpose" %}</th>
             </tr></thead>
             <tbody>
+              <tr><td colspan="3" class="text-muted small fw-semibold pt-2 pb-0" style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;">{% trans "Vault Items" %}</td></tr>
               <tr><td>/items/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-post">POST</span></td><td class="small">{% trans "List / create items" %}</td></tr>
               <tr><td>/items/{id}/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-patch">PATCH</span> <span class="method-badge method-del">DEL</span></td><td class="small">{% trans "Detail / update / delete" %}</td></tr>
               <tr><td>/items/{id}/pkpass/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "Download Apple Wallet pass" %}</td></tr>
+              <tr><td>/items/{id}/notification-barcode/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "Barcode PNG for notifications" %}</td></tr>
+              <tr><td>/items/{id}/documents/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-post">POST</span></td><td class="small">{% trans "Attached documents" %}</td></tr>
+              <tr><td>/items/{id}/documents/{doc}/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-del">DEL</span></td><td class="small">{% trans "Document detail / delete" %}</td></tr>
+              <tr><td colspan="3" class="text-muted small fw-semibold pt-2 pb-0" style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;">{% trans "Balance & Transactions" %}</td></tr>
+              <tr><td>/transactions/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-post">POST</span></td><td class="small">{% trans "List / log transactions" %}</td></tr>
+              <tr><td>/transactions/{id}/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-patch">PATCH</span> <span class="method-badge method-del">DEL</span></td><td class="small">{% trans "Transaction detail" %}</td></tr>
+              <tr><td colspan="3" class="text-muted small fw-semibold pt-2 pb-0" style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;">{% trans "Organisation" %}</td></tr>
               <tr><td>/wallets/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-post">POST</span></td><td class="small">{% trans "List / create wallets" %}</td></tr>
+              <tr><td>/wallets/{id}/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-patch">PATCH</span> <span class="method-badge method-del">DEL</span></td><td class="small">{% trans "Wallet detail" %}</td></tr>
+              <tr><td>/wallet-memberships/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "Shared wallet memberships" %}</td></tr>
+              <tr><td>/wallet-activity/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "Cross-wallet activity feed" %}</td></tr>
               <tr><td>/tags/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-post">POST</span></td><td class="small">{% trans "List / create tags" %}</td></tr>
-              <tr><td>/notifications/rules/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-post">POST</span></td><td class="small">{% trans "Notification rules" %}</td></tr>
-              <tr><td>/notifications/log/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "Notification history" %}</td></tr>
-              <tr><td>/stats/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "Vault statistics" %}</td></tr>
-              <tr><td>/auth/token/</td><td><span class="method-badge method-post">POST</span></td><td class="small">{% trans "Obtain token (username+password)" %}</td></tr>
+              <tr><td>/tags/{id}/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-patch">PATCH</span> <span class="method-badge method-del">DEL</span></td><td class="small">{% trans "Tag detail" %}</td></tr>
+              <tr><td colspan="3" class="text-muted small fw-semibold pt-2 pb-0" style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;">{% trans "Notifications" %}</td></tr>
+              <tr><td>/notifications/rules/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-post">POST</span></td><td class="small">{% trans "List / create notification rules" %}</td></tr>
+              <tr><td>/notifications/rules/{id}/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-patch">PATCH</span> <span class="method-badge method-del">DEL</span></td><td class="small">{% trans "Rule detail" %}</td></tr>
+              <tr><td>/notifications/log/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "Notification delivery history" %}</td></tr>
+              <tr><td colspan="3" class="text-muted small fw-semibold pt-2 pb-0" style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;">{% trans "Imports & Exports" %}</td></tr>
+              <tr><td>/imports/jobs/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "Import job history" %}</td></tr>
+              <tr><td>/imports/upload/</td><td><span class="method-badge method-post">POST</span></td><td class="small">{% trans "Upload CSV / JSON / zip for import" %}</td></tr>
+              <tr><td>/imports/preview/</td><td><span class="method-badge method-post">POST</span></td><td class="small">{% trans "Preview parsed rows before import" %}</td></tr>
+              <tr><td>/imports/pkpass/</td><td><span class="method-badge method-post">POST</span></td><td class="small">{% trans "Import from Apple Wallet .pkpass" %}</td></tr>
+              <tr><td>/imports/rail-ticket/</td><td><span class="method-badge method-post">POST</span></td><td class="small">{% trans "Import UK rail eTicket PDF" %}</td></tr>
+              <tr><td>/imports/rail-ticket/batch/</td><td><span class="method-badge method-post">POST</span></td><td class="small">{% trans "Batch ingest multiple rail tickets" %}</td></tr>
+              <tr><td>/imports/gift-card-email/</td><td><span class="method-badge method-post">POST</span></td><td class="small">{% trans "Import gift card from email HTML" %}</td></tr>
+              <tr><td>/exports/csv/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "Export vault as CSV" %}</td></tr>
+              <tr><td>/exports/json/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "Export vault as JSON" %}</td></tr>
+              <tr><td>/exports/full-backup/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "Download full backup zip" %}</td></tr>
+              <tr><td>/imports/full-backup/</td><td><span class="method-badge method-post">POST</span></td><td class="small">{% trans "Restore from backup zip" %}</td></tr>
+              <tr><td colspan="3" class="text-muted small fw-semibold pt-2 pb-0" style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;">{% trans "Merchants & OCR" %}</td></tr>
+              <tr><td>/merchants/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "Cached merchant logo index" %}</td></tr>
+              <tr><td>/merchants/{id}/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "Merchant logo detail" %}</td></tr>
+              <tr><td>/ocr/extract/</td><td><span class="method-badge method-post">POST</span></td><td class="small">{% trans "Extract fields from uploaded image/PDF" %}</td></tr>
+              <tr><td colspan="3" class="text-muted small fw-semibold pt-2 pb-0" style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;">{% trans "Webhooks & DMS" %}</td></tr>
+              <tr><td>/webhooks/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-post">POST</span></td><td class="small">{% trans "List / create outbound webhooks" %}</td></tr>
+              <tr><td>/webhooks/{id}/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-patch">PATCH</span> <span class="method-badge method-del">DEL</span></td><td class="small">{% trans "Webhook detail" %}</td></tr>
+              <tr><td>/dms/providers/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-post">POST</span></td><td class="small">{% trans "DMS provider config (Paperless, etc.)" %}</td></tr>
+              <tr><td>/dms/providers/{id}/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-patch">PATCH</span> <span class="method-badge method-del">DEL</span></td><td class="small">{% trans "DMS provider detail" %}</td></tr>
+              <tr><td>/dms/sync-logs/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "DMS sync history" %}</td></tr>
+              <tr><td colspan="3" class="text-muted small fw-semibold pt-2 pb-0" style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;">{% trans "Analytics & Account" %}</td></tr>
+              <tr><td>/analytics/summary/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "Vault spend & expiry summary" %}</td></tr>
+              <tr><td>/analytics/expiry-timeline/</td><td><span class="method-badge method-get">GET</span></td><td class="small">{% trans "Items expiring by month" %}</td></tr>
+              <tr><td>/preferences/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-patch">PATCH</span></td><td class="small">{% trans "User preferences" %}</td></tr>
+              <tr><td>/profile/</td><td><span class="method-badge method-get">GET</span> <span class="method-badge method-patch">PATCH</span></td><td class="small">{% trans "User profile" %}</td></tr>
+              <tr><td>/auth/token/</td><td><span class="method-badge method-post">POST</span></td><td class="small">{% trans "Obtain token (username + password)" %}</td></tr>
             </tbody>
           </table>
         </div>
         <a href="/api/v1/docs/" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary mt-2 w-100">
           <i class="bi bi-box-arrow-up-right me-1"></i>{% trans "Full Swagger / OpenAPI Docs" %}
         </a>
-      </div>
-    </div>
-
-    <!-- ⑥ Gift Card Health Explainer ─────────────── -->
-    <div class="card dev-section">
-      <div class="card-body">
-        <div class="dev-section-header">
-          <span class="dev-section-icon" style="background:#e0f7fa;color:#00838f;">
-            <i class="bi bi-gift"></i>
-          </span>
-          <h4>{% trans "Gift Card Health" %}</h4>
-          <a href="{% url 'view_doc' 'gift-card-health' %}" class="btn btn-outline-secondary btn-sm ms-auto help-link"
-             data-doc-url="{% url 'view_doc' 'gift-card-health' %}">
-            <i class="bi bi-question-circle me-1"></i>{% trans "Guide" %}
-          </a>
-        </div>
-
-        <div class="d-flex flex-column gap-2">
-          <div class="d-flex gap-2 align-items-start">
-            <i class="bi bi-bell text-warning mt-1 flex-shrink-0"></i>
-            <div>
-              <div class="small fw-semibold">{% trans "Inactivity Reminders" %}</div>
-              <div class="text-muted" style="font-size:0.8rem;">
-                {% trans "VoucherVault checks for gift cards not used in a configurable period (default: 90 days) and fires an 'Unused Gift Card Reminder' notification to rules subscribed to that event." %}
-              </div>
-            </div>
-          </div>
-          <div class="d-flex gap-2 align-items-start">
-            <i class="bi bi-building text-info mt-1 flex-shrink-0"></i>
-            <div>
-              <div class="small fw-semibold">{% trans "Merchant Health Alerts" %}</div>
-              <div class="text-muted" style="font-size:0.8rem;">
-                {% trans "A weekly background task checks every active issuer against the Companies House register. If a company enters administration, liquidation, or dissolution, a 'Merchant Health Alert' notification fires so you can spend your balance before it's lost." %}
-              </div>
-            </div>
-          </div>
-          <div class="d-flex gap-2 align-items-start">
-            <i class="bi bi-key text-secondary mt-1 flex-shrink-0"></i>
-            <div>
-              <div class="small fw-semibold">{% trans "Getting a free API key" %}</div>
-              <div class="text-muted" style="font-size:0.8rem;">
-                {% trans "Register at" %}
-                <a href="https://developer.company-information.service.gov.uk/" target="_blank" rel="noopener">
-                  developer.company-information.service.gov.uk
-                </a>
-                {% trans "— free accounts allow 600 requests/min, more than enough for the weekly health check on a typical vault." %}
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -679,7 +821,7 @@ print(resp.json())
     .filter(function (c) { return c.startsWith('csrftoken='); })
     .map(function (c) { return c.split('=')[1]; })[0] || '';
 
-  function runConnTest(btnId, statusId, url, extraData) {
+  function runConnTest(btnId, statusId, url) {
     var btn    = document.getElementById(btnId);
     var status = document.getElementById(statusId);
     if (!btn || btn.disabled) return;
@@ -687,8 +829,7 @@ print(resp.json())
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
     status.innerHTML = '<span class="text-muted">{% trans "Testing…" %}</span>';
 
-    var body = new URLSearchParams(Object.assign({'csrfmiddlewaretoken': CSRF}, extraData || {}));
-    fetch(url, {method: 'POST', body: body, credentials: 'same-origin'})
+    fetch(url, {method: 'POST', body: new URLSearchParams({csrfmiddlewaretoken: CSRF}), credentials: 'same-origin'})
       .then(function (r) { return r.json(); })
       .then(function (data) {
         status.innerHTML = data.ok
@@ -707,11 +848,17 @@ print(resp.json())
   document.getElementById('ch-test-btn')?.addEventListener('click', function () {
     runConnTest('ch-test-btn', 'ch-status', '{% url "test_companies_house_key" %}');
   });
-
   document.getElementById('logo-dev-test-btn')?.addEventListener('click', function () {
     runConnTest('logo-dev-test-btn', 'logo-dev-status', '{% url "test_logo_dev_key" %}');
   });
+  document.getElementById('ocr-test-btn')?.addEventListener('click', function () {
+    runConnTest('ocr-test-btn', 'ocr-status', '{% url "test_ocr_connectivity" %}');
+  });
+  document.getElementById('fixer-test-btn')?.addEventListener('click', function () {
+    runConnTest('fixer-test-btn', 'fixer-status', '{% url "test_fixer_key" %}');
+  });
 
+  /* VoucherVault API self-test uses session auth (no token needed in header) */
   document.getElementById('vv-api-test-btn')?.addEventListener('click', function () {
     var btn    = document.getElementById('vv-api-test-btn');
     var status = document.getElementById('vv-api-status');
