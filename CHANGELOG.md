@@ -1,3 +1,12 @@
+## [1.1.112](https://github.com/gregbtm/VoucherVault/compare/v1.1.111...v1.1.112) (2026-07-23)
+
+
+### Bug Fixes
+
+* connectivity test CSRF, code-block copy overlap, CH key type hint ([#150](https://github.com/gregbtm/VoucherVault/issues/150)) ([d20fd81](https://github.com/gregbtm/VoucherVault/commit/d20fd818620fd7d9383cdc1a76ca2fff8e2befe6))
+
+## [1.1.111](https://github.com/gregbtm/VoucherVault/compare/v1.1.110...v1.1.111) (2026-07-23)
+
 ## [1.1.110](https://github.com/gregbtm/VoucherVault/compare/v1.1.109...v1.1.110) (2026-07-23)
 
 
@@ -18,13 +27,4 @@
 ### Bug Fixes
 
 * commit missing notify migration 0006 (alter backend choices) ([cc21e0b](https://github.com/gregbtm/VoucherVault/commit/cc21e0bc3070d69639e34d78e3c35a2b27c791e3))
-
-## [1.1.107](https://github.com/gregbtm/VoucherVault/compare/v1.1.106...v1.1.107) (2026-07-22)
-
-
-### Features
-
-* multi-page PDF splitting — one item per ticket leg, linked as a journey ([0e9af43](https://github.com/gregbtm/VoucherVault/commit/0e9af43747bcf86848030864e9457f04aa8d43f5))
-
-## [1.1.106](https://github.com/gregbtm/VoucherVault/compare/v1.1.105...v1.1.106) (2026-07-22)
 
