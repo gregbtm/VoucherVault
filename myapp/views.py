@@ -2772,6 +2772,7 @@ def check_merchant_health_status(request):
         })
 
     bad = result['company_status'] in _CH_BAD_STATUSES
+    confidence = result.get('confidence', 'low')
     return JsonResponse({
         'ok': True,
         'found': True,
@@ -2780,6 +2781,7 @@ def check_merchant_health_status(request):
         'company_number': result['company_number'],
         'company_status': result['company_status'],
         'is_bad': bad,
+        'confidence': confidence,
         'detail': (
             f"⚠️ {result['company_name']} (#{result['company_number']}) is currently listed as '{result['company_status']}'"
             if bad else
@@ -2808,8 +2810,7 @@ def test_fixer_key(request):
             'ok': False,
             'error': 'Fixer.io returned an error. Check your key at fixer.io/dashboard.',
         })
-    sample = ', '.join(f'{k}={v}' for k, v in list(rates.items())[:4])
-    return JsonResponse({'ok': True, 'detail': f'Connected — {len(rates)} rates returned. Sample: {sample}'})
+    return JsonResponse({'ok': True, 'detail': f'Connected — {len(rates)} exchange rates loaded.'})
 
 
 @require_POST
