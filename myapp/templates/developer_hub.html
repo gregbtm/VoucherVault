@@ -42,7 +42,7 @@
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.8rem; background: var(--bs-tertiary-bg, #f8f9fa);
   border: 1px solid var(--bs-border-color); border-radius: 0.5rem;
-  padding: 0.75rem 1rem; white-space: pre-wrap; word-break: break-all;
+  padding: 0.75rem 3rem 0.75rem 1rem; white-space: pre-wrap; word-break: break-all;
   position: relative;
 }
 [data-bs-theme="dark"] .code-block { background: #1e1e2e; }
@@ -820,10 +820,7 @@ print(resp.json())
   });
 
   /* ── Connectivity tests ───────────────────────── */
-  var CSRF = document.cookie.split(';')
-    .map(function (c) { return c.trim(); })
-    .filter(function (c) { return c.startsWith('csrftoken='); })
-    .map(function (c) { return c.split('=')[1]; })[0] || '';
+  var CSRF = '{{ csrf_token }}';
 
   function runConnTest(btnId, statusId, url) {
     var btn    = document.getElementById(btnId);

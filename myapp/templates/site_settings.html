@@ -97,7 +97,7 @@
                 <div class="col-md-8 mb-3">
                   <label for="{{ form.companies_house_api_key.id_for_label }}" class="form-label">{% trans "Companies House API key" %}</label>
                   {{ form.companies_house_api_key }}
-                  <small class="form-text text-muted">{% if config.companies_house_api_key %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %} {% trans "Free key at" %} <a href="https://developer.company-information.service.gov.uk/" target="_blank" rel="noopener">developer.company-information.service.gov.uk</a>. {% trans "Required for Merchant Health Alert notifications." %}</small>
+                  <small class="form-text text-muted">{% if config.companies_house_api_key %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %} {% trans "Use a" %} <strong>{% trans "REST API" %}</strong> {% trans "key (not Streaming API) from" %} <a href="https://developer.company-information.service.gov.uk/" target="_blank" rel="noopener">developer.company-information.service.gov.uk</a>. {% trans "Required for Merchant Health Alert notifications." %}</small>
                 </div>
               </div>
             </div>
