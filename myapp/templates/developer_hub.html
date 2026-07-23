@@ -11,8 +11,9 @@
   display: flex; align-items: center; gap: 0.6rem;
   margin-bottom: 1rem; padding-bottom: 0.5rem;
   border-bottom: 2px solid var(--bs-border-color);
+  flex-wrap: nowrap;
 }
-.dev-section-header h4 { margin: 0; font-size: 1rem; font-weight: 700; }
+.dev-section-header h4 { margin: 0; font-size: 0.95rem; font-weight: 700; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dev-section-icon {
   width: 2rem; height: 2rem; border-radius: 0.45rem;
   display: flex; align-items: center; justify-content: center;
@@ -52,15 +53,30 @@
 }
 
 /* Status pills for merchant health */
-.ch-status-badge { font-size: 0.72rem; font-weight: 600; padding: 0.2em 0.5em; border-radius: 0.3em; }
-.ch-ok     { background: #e8f5e9; color: #2e7d32; }
-.ch-bad    { background: #ffebee; color: #c62828; }
-.ch-unknown{ background: #f5f5f5; color: #616161; }
-.ch-loading{ background: #e3f2fd; color: #1565c0; }
-[data-bs-theme="dark"] .ch-ok     { background: #1a3320; color: #81c784; }
-[data-bs-theme="dark"] .ch-bad    { background: #3d1010; color: #ef9a9a; }
-[data-bs-theme="dark"] .ch-unknown{ background: #2a2a2a; color: #9e9e9e; }
-[data-bs-theme="dark"] .ch-loading{ background: #0d2a3d; color: #64b5f6; }
+.ch-status-badge { font-size: 0.72rem; font-weight: 600; padding: 0.2em 0.55em; border-radius: 0.3em; white-space: nowrap; }
+.ch-ok        { background: #e8f5e9; color: #2e7d32; }
+.ch-uncertain { background: #fff8e1; color: #e65100; }
+.ch-bad       { background: #ffebee; color: #c62828; }
+.ch-unknown   { background: #f5f5f5; color: #616161; }
+.ch-loading   { background: #e3f2fd; color: #1565c0; }
+[data-bs-theme="dark"] .ch-ok        { background: #1a3320; color: #81c784; }
+[data-bs-theme="dark"] .ch-uncertain { background: #2a1800; color: #ffcc80; }
+[data-bs-theme="dark"] .ch-bad       { background: #3d1010; color: #ef9a9a; }
+[data-bs-theme="dark"] .ch-unknown   { background: #2a2a2a; color: #9e9e9e; }
+[data-bs-theme="dark"] .ch-loading   { background: #0d2a3d; color: #64b5f6; }
+
+/* Merchant health card list */
+.mh-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.mh-item {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--bs-border-color); border-radius: 0.45rem;
+  background: var(--bs-body-bg);
+}
+.mh-item-info { flex: 1; min-width: 0; }
+.mh-issuer { font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mh-name   { font-size: 0.75rem; color: var(--bs-secondary-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mh-actions { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
 
 /* Connectivity test cards */
 .conn-card {
@@ -417,38 +433,29 @@ print(resp.json())
         </p>
 
         {% if issuers %}
-        <div class="d-flex gap-2 mb-3 flex-wrap">
+        <div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
           <button type="button" class="btn btn-sm btn-outline-primary" id="check-all-btn">
             <i class="bi bi-search me-1"></i>{% trans "Check All" %}
           </button>
-          <span class="text-muted small align-self-center" id="check-all-status"></span>
+          <span class="text-muted small" id="check-all-status"></span>
         </div>
-        <div class="table-responsive">
-          <table class="table table-sm table-hover align-middle mb-0" id="merchant-health-table">
-            <thead>
-              <tr>
-                <th>{% trans "Issuer" %}</th>
-                <th>{% trans "Registered Name" %}</th>
-                <th>{% trans "Status" %}</th>
-                <th class="text-end">{% trans "Action" %}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for issuer in issuers %}
-              <tr data-issuer="{{ issuer }}" id="mh-row-{{ forloop.counter }}">
-                <td class="fw-semibold small">{{ issuer }}</td>
-                <td class="text-muted small mh-name">—</td>
-                <td><span class="ch-status-badge ch-unknown mh-status-badge">{% trans "Not checked" %}</span></td>
-                <td class="text-end">
-                  <button type="button" class="btn btn-sm btn-outline-secondary mh-check-btn"
-                          data-issuer="{{ issuer }}" data-row="mh-row-{{ forloop.counter }}">
-                    <i class="bi bi-search"></i>
-                  </button>
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+        <div class="mh-list">
+          {% for issuer in issuers %}
+          <div class="mh-item" id="mh-row-{{ forloop.counter }}" data-issuer="{{ issuer }}">
+            <div class="mh-item-info">
+              <div class="mh-issuer fw-semibold">{{ issuer }}</div>
+              <div class="mh-name">—</div>
+            </div>
+            <div class="mh-actions">
+              <span class="ch-status-badge ch-unknown mh-status-badge">{% trans "Not checked" %}</span>
+              <button type="button" class="btn btn-sm btn-outline-secondary mh-check-btn"
+                      data-issuer="{{ issuer }}" data-row="mh-row-{{ forloop.counter }}"
+                      title="{% trans 'Check on Companies House' %}">
+                <i class="bi bi-search"></i>
+              </button>
+            </div>
+          </div>
+          {% endfor %}
         </div>
         {% else %}
         <div class="text-center text-muted py-4">
@@ -917,10 +924,18 @@ print(resp.json())
         if (!data.found) {
           badge.className = 'ch-status-badge ch-unknown mh-status-badge';
           badge.textContent = '{% trans "No CH match" %}';
-          if (nameEl) nameEl.textContent = '?';
+          if (nameEl) nameEl.textContent = '—';
           return;
         }
-        badge.className = 'ch-status-badge ' + (data.is_bad ? 'ch-bad' : 'ch-ok') + ' mh-status-badge';
+        var badgeClass;
+        if (data.is_bad) {
+          badgeClass = 'ch-bad';
+        } else if (data.confidence === 'low') {
+          badgeClass = 'ch-uncertain';
+        } else {
+          badgeClass = 'ch-ok';
+        }
+        badge.className = 'ch-status-badge ' + badgeClass + ' mh-status-badge';
         badge.textContent = data.company_status;
         if (nameEl) nameEl.textContent = data.company_name || '—';
       })
@@ -943,7 +958,7 @@ print(resp.json())
   var checkAllStatus = document.getElementById('check-all-status');
   if (checkAllBtn) {
     checkAllBtn.addEventListener('click', function () {
-      var rows = Array.from(document.querySelectorAll('#merchant-health-table tbody tr'));
+      var rows = Array.from(document.querySelectorAll('.mh-item[data-issuer]'));
       if (!rows.length) return;
       checkAllBtn.disabled = true;
       var done = 0;

@@ -5,6 +5,7 @@ import json
 import logging
 import io
 import base64
+import re
 import qrcode
 import treepoem
 
@@ -149,24 +150,45 @@ _CH_BAD_STATUSES = frozenset({
     'converted-closed', 'voluntary-arrangement',
 })
 
+_CH_STRIP = re.compile(
+    r'\b(ltd\.?|limited|plc|llp|lp|inc\.?|corp\.?|corporation|holdings?|group|uk)\b',
+    re.IGNORECASE,
+)
+
+
+def _ch_norm(name: str) -> str:
+    """Lowercase, strip common company suffixes, collapse punctuation to spaces."""
+    name = _CH_STRIP.sub(' ', name.lower())
+    return ' '.join(re.sub(r'[^\w\s]', ' ', name).split())
+
+
+def _ch_words(name: str) -> frozenset:
+    """Return meaningful words (≥3 chars) from a normalised company name."""
+    return frozenset(w for w in _ch_norm(name).split() if len(w) >= 3)
+
 
 def check_companies_house_status(issuer_name: str, api_key: str) -> dict | None:
     """
     Look up issuer_name in Companies House and return a dict:
-        {'company_name': ..., 'company_status': ..., 'company_number': ...}
-    or None if no confident match is found or the request fails.
+        {'company_name': ..., 'company_status': ..., 'company_number': ..., 'confidence': 'high'|'low'}
+    or None if no plausible match is found or the request fails.
 
-    A match is accepted when the issuer name appears (case-insensitively) in
-    the top search result's company name, or vice versa — conservative to
-    avoid false positives from common words.  Only the first result is
-    checked; Companies House returns results ranked by relevance.
+    Checks the top 8 results using word-overlap scoring to handle multi-word brand
+    names and avoid single-word false positives.  Single-word queries always return
+    'low' confidence; multi-word queries are 'high' at ≥67% Jaccard overlap.
     """
     if not api_key or not issuer_name:
         return None
 
     import base64 as _b64
     query = issuer_name.strip()
-    url = f"https://api.company-information.service.gov.uk/search/companies?q={urllib.request.quote(query)}&items_per_page=5"
+    query_words = _ch_words(query)
+    is_single_word = len(query_words) <= 1
+
+    url = (
+        f"https://api.company-information.service.gov.uk/search/companies"
+        f"?q={urllib.request.quote(query)}&items_per_page=10"
+    )
     credentials = _b64.b64encode(f"{api_key}:".encode()).decode()
     req = urllib.request.Request(url, headers={"Authorization": f"Basic {credentials}"})
     try:
@@ -180,18 +202,40 @@ def check_companies_house_status(issuer_name: str, api_key: str) -> dict | None:
     if not items:
         return None
 
-    best = items[0]
-    ch_name = (best.get('title') or best.get('company_name') or '').lower()
-    query_lower = query.lower()
+    best_item = None
+    best_score = 0.0
+    best_confidence = 'low'
 
-    # Accept if either name contains the other (simple containment check)
-    if query_lower not in ch_name and ch_name not in query_lower:
+    for item in items[:8]:
+        ch_name = (item.get('title') or item.get('company_name') or '').strip()
+        if not ch_name:
+            continue
+
+        if is_single_word:
+            q_lower = query.lower()
+            if q_lower in ch_name.lower() or ch_name.lower() in q_lower:
+                best_item = item
+                best_confidence = 'low'
+                break
+            continue
+
+        ch_words = _ch_words(ch_name)
+        if not query_words or not ch_words:
+            continue
+        overlap = len(query_words & ch_words) / len(query_words | ch_words)
+        if overlap >= 0.45 and overlap > best_score:
+            best_score = overlap
+            best_item = item
+            best_confidence = 'high' if overlap >= 0.67 else 'low'
+
+    if best_item is None:
         return None
 
     return {
-        'company_name': best.get('title') or best.get('company_name'),
-        'company_status': (best.get('company_status') or 'unknown').lower(),
-        'company_number': best.get('company_number'),
+        'company_name': best_item.get('title') or best_item.get('company_name'),
+        'company_status': (best_item.get('company_status') or 'unknown').lower(),
+        'company_number': best_item.get('company_number'),
+        'confidence': best_confidence,
     }
 
 
