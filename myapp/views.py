@@ -4055,7 +4055,13 @@ def manage_invites(request):
 
 
 def accept_invite(request, token):
-    """Public (unauthenticated) registration page for invite-link recipients."""
+    """Public (unauthenticated) registration page for invite-link recipients.
+
+    When OIDC is the active auth method the password form is skipped entirely:
+    the invite token is stashed in the session and the user is sent straight
+    through to the OIDC provider.  After a successful OIDC login they land at
+    invite_complete which consumes the token and welcomes them.
+    """
     try:
         invite = InviteLink.objects.get(token=token)
     except InviteLink.DoesNotExist:
@@ -4066,6 +4072,13 @@ def accept_invite(request, token):
         messages.error(request, _('This invite link has expired or already been used.'))
         return redirect('login')
 
+    # OIDC path: stash the token and send the user through the provider.
+    if settings.OIDC_ENABLED:
+        request.session['pending_invite_token'] = str(token)
+        complete_url = reverse('invite_complete')
+        return redirect(f"{reverse('oidc_authentication_init')}?next={complete_url}")
+
+    # Password-based registration path (used when OIDC is not configured).
     if request.method == 'POST':
         username = request.POST.get('username', '').strip()
         password = request.POST.get('password', '')
@@ -4100,6 +4113,27 @@ def accept_invite(request, token):
         return redirect('show_items')
 
     return render(request, 'invite_accept.html', {'invite': invite})
+
+
+@login_required
+def invite_complete(request):
+    """Landing view after an OIDC-invite flow.
+
+    The user has just authenticated via the OIDC provider.  We consume any
+    pending invite token stored in their session and redirect home.
+    """
+    token_str = request.session.pop('pending_invite_token', None)
+    if token_str:
+        try:
+            invite = InviteLink.objects.get(token=token_str)
+            if invite.is_valid():
+                invite.used_at = timezone.now()
+                invite.used_by = request.user
+                invite.save(update_fields=['used_at', 'used_by'])
+                messages.success(request, _('Welcome to VoucherVault Plus+! Your account is all set.'))
+        except InviteLink.DoesNotExist:
+            pass
+    return redirect('show_items')
 
 
 # ── Site users panel (superuser) ──────────────────────────────────────────────

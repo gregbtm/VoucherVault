@@ -6268,6 +6268,85 @@ class AcceptInviteViewTests(TestCase):
         self.assertEqual(resp.status_code, 302)
 
 
+class AcceptInviteOIDCTests(TestCase):
+    """Tests for the OIDC-redirect path of accept_invite and invite_complete."""
+
+    _OIDC_INIT_URL = '/oidc/authenticate/'
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin_oidc', 'o@e.com', 'Pw123456!')
+        from myapp.models import InviteLink
+        self.invite = InviteLink.objects.create(created_by=self.admin)
+
+    def _stub_reverse(self, name, *args, **kwargs):
+        """Intercept reverse() for OIDC URL names not registered in the test URLconf."""
+        if name == 'oidc_authentication_init':
+            return self._OIDC_INIT_URL
+        from django.urls import reverse as real_reverse
+        return real_reverse(name, *args, **kwargs)
+
+    @override_settings(OIDC_ENABLED=True)
+    def test_oidc_path_stores_token_in_session(self):
+        with patch('myapp.views.reverse', side_effect=self._stub_reverse):
+            resp = self.client.get(reverse('accept_invite', args=[str(self.invite.token)]))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('pending_invite_token', self.client.session)
+        self.assertEqual(self.client.session['pending_invite_token'], str(self.invite.token))
+
+    @override_settings(OIDC_ENABLED=True)
+    def test_oidc_path_redirects_to_oidc_init(self):
+        with patch('myapp.views.reverse', side_effect=self._stub_reverse):
+            resp = self.client.get(reverse('accept_invite', args=[str(self.invite.token)]))
+        self.assertIn(self._OIDC_INIT_URL, resp['Location'])
+
+    @override_settings(OIDC_ENABLED=True)
+    def test_oidc_path_includes_next_param(self):
+        with patch('myapp.views.reverse', side_effect=self._stub_reverse):
+            resp = self.client.get(reverse('accept_invite', args=[str(self.invite.token)]))
+        self.assertIn(reverse('invite_complete'), resp['Location'])
+
+    @override_settings(OIDC_ENABLED=False)
+    def test_non_oidc_path_shows_password_form(self):
+        resp = self.client.get(reverse('accept_invite', args=[str(self.invite.token)]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Create')
+
+    def test_invite_complete_consumes_valid_token(self):
+        user = User.objects.create_user('oidc_newuser', 'on@e.com', 'Pw123456!')
+        self.client.force_login(user)
+        session = self.client.session
+        session['pending_invite_token'] = str(self.invite.token)
+        session.save()
+
+        resp = self.client.get(reverse('invite_complete'))
+        self.assertRedirects(resp, reverse('show_items'), fetch_redirect_response=False)
+        self.invite.refresh_from_db()
+        self.assertIsNotNone(self.invite.used_at)
+        self.assertEqual(self.invite.used_by, user)
+        self.assertNotIn('pending_invite_token', self.client.session)
+
+    def test_invite_complete_no_session_token_redirects(self):
+        user = User.objects.create_user('oidc_noinvite', 'ni@e.com', 'Pw123456!')
+        self.client.force_login(user)
+        resp = self.client.get(reverse('invite_complete'))
+        self.assertRedirects(resp, reverse('show_items'), fetch_redirect_response=False)
+
+    def test_invite_complete_invalid_token_redirects(self):
+        user = User.objects.create_user('oidc_badtoken', 'bt@e.com', 'Pw123456!')
+        self.client.force_login(user)
+        session = self.client.session
+        session['pending_invite_token'] = str(uuid.uuid4())
+        session.save()
+
+        resp = self.client.get(reverse('invite_complete'))
+        self.assertRedirects(resp, reverse('show_items'), fetch_redirect_response=False)
+
+    def test_invite_complete_requires_login(self):
+        resp = self.client.get(reverse('invite_complete'))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('login', resp['Location'])
+
+
 class ManageUsersViewTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser('admin_mu', 'e@e.com', 'Pw123456!')
