@@ -979,7 +979,7 @@ body.dark-mode .error-alert {
             </div>
             {% if not has_firefly_rule %}
             <p class="text-muted small mb-2" id="firefly-hint">
-              <i class="bi bi-bank me-1"></i>{% trans "Sync spend to Firefly III — " %}<a href="#" onclick="window.openHelpDoc('firefly'); return false;">{% trans "set up the Firefly III integration" %}</a>{% trans " to enable this field." %}
+              <i class="bi bi-bank me-1"></i>{% trans "Sync spend to Firefly III — " %}<a href="#" onclick="window.openHelpDoc('{% url "view_doc" "firefly" %}'); return false;">{% trans "set up the Firefly III integration" %}</a>{% trans " to enable this field." %}
             </p>
             {% endif %}
           </div>

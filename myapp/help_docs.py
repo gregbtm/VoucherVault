@@ -91,6 +91,8 @@ CATEGORIES = [
 TOOLS = [
     ('field_map', 'bi-layout-text-sidebar-reverse', 'Interactive Field Map',
      'Filter, search, and explore every item form field and the suggestion system — with the type visibility matrix'),
+    ('developer_hub', 'bi-terminal', 'Developer Hub',
+     'API tokens, outbound webhooks, integration connectivity tests, merchant health, and the full REST API reference'),
 ]
 
 

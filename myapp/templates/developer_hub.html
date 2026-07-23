@@ -527,7 +527,7 @@ print(resp.json())
         <div class="conn-card mb-2">
           <div class="conn-card-icon">🔬</div>
           <div class="flex-grow-1">
-            <div class="fw-semibold small">{% trans "Scan with AI — OCR" %}</div>
+            <div class="fw-semibold small">{% trans "Scan with AI — OCR" %} <a href="{% url 'view_doc' 'ocr' %}" class="help-link text-muted" data-doc-url="{% url 'view_doc' 'ocr' %}" title="{% trans 'OCR setup guide' %}" style="font-size:0.8em;"><i class="bi bi-question-circle"></i></a></div>
             <div class="text-muted" style="font-size:0.78rem;">
               {% if ocr_backend == 'none' or not ocr_backend %}
                 <span class="int-off"><i class="bi bi-dash-circle me-1"></i>{% trans "Backend: None" %}</span>
@@ -556,7 +556,7 @@ print(resp.json())
         <div class="conn-card mb-2">
           <div class="conn-card-icon">🔔</div>
           <div class="flex-grow-1">
-            <div class="fw-semibold small">{% trans "ntfy — push notifications" %}</div>
+            <div class="fw-semibold small">{% trans "ntfy — push notifications" %} <a href="{% url 'view_doc' 'notifications' %}" class="help-link text-muted" data-doc-url="{% url 'view_doc' 'notifications' %}" title="{% trans 'Notifications guide' %}" style="font-size:0.8em;"><i class="bi bi-question-circle"></i></a></div>
             <div class="text-muted" style="font-size:0.78rem;">
               <span class="int-ok"><i class="bi bi-check-circle me-1"></i>{% trans "Server" %}: {{ ntfy_server }}</span> ·
               <a href="{% url 'site_settings' %}" class="text-muted small">{% trans "Site Settings" %}</a>
@@ -568,7 +568,7 @@ print(resp.json())
         <div class="conn-card mb-2">
           <div class="conn-card-icon">🐋</div>
           <div class="flex-grow-1">
-            <div class="fw-semibold small">{% trans "Portainer — auto-redeploy" %}</div>
+            <div class="fw-semibold small">{% trans "Portainer — auto-redeploy" %} <a href="{% url 'view_doc' 'auto-deploy' %}" class="help-link text-muted" data-doc-url="{% url 'view_doc' 'auto-deploy' %}" title="{% trans 'Auto-deploy guide' %}" style="font-size:0.8em;"><i class="bi bi-question-circle"></i></a></div>
             <div class="text-muted" style="font-size:0.78rem;">
               {% if portainer_configured %}
                 <span class="int-ok"><i class="bi bi-check-circle me-1"></i>{% trans "Webhook configured" %}</span> ·
@@ -631,7 +631,7 @@ print(resp.json())
         <div class="conn-card mb-2">
           <div class="conn-card-icon">🔥</div>
           <div class="flex-grow-1">
-            <div class="fw-semibold small">{% trans "Firefly III — spend tracking" %}</div>
+            <div class="fw-semibold small">{% trans "Firefly III — spend tracking" %} <a href="{% url 'view_doc' 'firefly' %}" class="help-link text-muted" data-doc-url="{% url 'view_doc' 'firefly' %}" title="{% trans 'Firefly III setup guide' %}" style="font-size:0.8em;"><i class="bi bi-question-circle"></i></a></div>
             <div class="text-muted" style="font-size:0.78rem;">
               {% if firefly_rules %}
                 <span class="int-ok"><i class="bi bi-check-circle me-1"></i>
@@ -678,6 +678,10 @@ print(resp.json())
             <i class="bi bi-book"></i>
           </span>
           <h4>{% trans "REST API Reference" %}</h4>
+          <a href="{% url 'view_doc' 'api-access' %}" class="btn btn-outline-secondary btn-sm ms-auto help-link"
+             data-doc-url="{% url 'view_doc' 'api-access' %}">
+            <i class="bi bi-question-circle me-1"></i>{% trans "API Guide" %}
+          </a>
         </div>
 
         <div class="mb-2">
