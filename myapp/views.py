@@ -4065,7 +4065,6 @@ def manage_invites(request):
 def _handle_provision_invite(request):
     """Create a PocketID user + VoucherVault invite and surface a chain URL."""
     from .pocket_id import PocketIDClient, PocketIDError
-    from django.core.mail import send_mail
     from django.template.loader import render_to_string
 
     email = request.POST.get('email', '').strip()
@@ -4128,19 +4127,23 @@ def _handle_provision_invite(request):
     email_sent = False
     if email:
         try:
-            body = render_to_string('email/invite_oidc.txt', {
+            ctx = {
                 'chain_url': chain_url,
                 'invite_url': invite_url,
                 'pocket_id_url': config.pocket_id_url,
                 'first_name': first_name,
-            })
-            send_mail(
-                subject=str(_('You\'re invited to VoucherVault Plus+')),
-                message=body,
+            }
+            text_body = render_to_string('email/invite_oidc.txt', ctx)
+            html_body = render_to_string('email/invite_oidc.html', ctx)
+            from django.core.mail import EmailMultiAlternatives
+            msg = EmailMultiAlternatives(
+                subject=str(_("You're invited to VoucherVault Plus+")),
+                body=text_body,
                 from_email=None,
-                recipient_list=[email],
-                fail_silently=False,
+                to=[email],
             )
+            msg.attach_alternative(html_body, 'text/html')
+            msg.send()
             email_sent = True
         except Exception:
             pass
