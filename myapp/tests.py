@@ -6347,6 +6347,193 @@ class AcceptInviteOIDCTests(TestCase):
         self.assertIn('login', resp['Location'])
 
 
+class PocketIDClientTests(TestCase):
+    """Unit tests for PocketIDClient — all HTTP calls are mocked."""
+
+    def _make_client(self):
+        from myapp.pocket_id import PocketIDClient
+        return PocketIDClient('https://id.example.com', 'test-key')
+
+    # ---- ping ----
+
+    def test_ping_ok(self):
+        with patch('myapp.pocket_id.requests.get') as mock_get:
+            mock_get.return_value.status_code = 200
+            ok, msg = self._make_client().ping()
+        self.assertTrue(ok)
+        self.assertEqual(msg, 'Connected')
+
+    def test_ping_bad_key(self):
+        with patch('myapp.pocket_id.requests.get') as mock_get:
+            mock_get.return_value.status_code = 401
+            ok, msg = self._make_client().ping()
+        self.assertFalse(ok)
+        self.assertIn('401', msg)
+
+    def test_ping_timeout(self):
+        import requests as req_lib
+        with patch('myapp.pocket_id.requests.get', side_effect=req_lib.Timeout):
+            ok, msg = self._make_client().ping()
+        self.assertFalse(ok)
+        self.assertIn('timed out', msg)
+
+    # ---- create_user ----
+
+    def test_create_user_success(self):
+        with patch('myapp.pocket_id.requests.post') as mock_post:
+            mock_post.return_value.status_code = 201
+            mock_post.return_value.json.return_value = {'id': 'abc123', 'username': 'alice'}
+            mock_post.return_value.raise_for_status = lambda: None
+            result = self._make_client().create_user('alice', 'alice@example.com', 'Alice', 'Smith')
+        self.assertEqual(result['id'], 'abc123')
+
+    def test_create_user_http_error_raises(self):
+        import requests as req_lib
+        from myapp.pocket_id import PocketIDError
+        resp = MagicMock()
+        resp.status_code = 409
+        resp.json.return_value = {'error': 'username taken'}
+        http_exc = req_lib.HTTPError(response=resp)
+        with patch('myapp.pocket_id.requests.post') as mock_post:
+            mock_post.return_value.raise_for_status.side_effect = http_exc
+            with self.assertRaises(PocketIDError) as ctx:
+                self._make_client().create_user('alice')
+        self.assertIn('409', str(ctx.exception))
+
+    # ---- get_ota_token ----
+
+    def test_get_ota_token_token_key(self):
+        with patch('myapp.pocket_id.requests.post') as mock_post:
+            mock_post.return_value.status_code = 200
+            mock_post.return_value.json.return_value = {'token': 'mytoken'}
+            mock_post.return_value.raise_for_status = lambda: None
+            token = self._make_client().get_ota_token('user-id-1')
+        self.assertEqual(token, 'mytoken')
+
+    def test_get_ota_token_nested_dict(self):
+        with patch('myapp.pocket_id.requests.post') as mock_post:
+            mock_post.return_value.status_code = 200
+            mock_post.return_value.json.return_value = {'token': {'token': 'nested-tok'}}
+            mock_post.return_value.raise_for_status = lambda: None
+            token = self._make_client().get_ota_token('uid')
+        self.assertEqual(token, 'nested-tok')
+
+    def test_get_ota_token_unexpected_shape_raises(self):
+        from myapp.pocket_id import PocketIDError
+        with patch('myapp.pocket_id.requests.post') as mock_post:
+            mock_post.return_value.status_code = 200
+            mock_post.return_value.json.return_value = {'something_else': 'x'}
+            mock_post.return_value.raise_for_status = lambda: None
+            with self.assertRaises(PocketIDError):
+                self._make_client().get_ota_token('uid')
+
+
+class ProvisionInviteViewTests(TestCase):
+    """Tests for the manage_invites 'provision' action and check_pocket_id AJAX view."""
+
+    # Patch paths: PocketIDClient is imported locally inside the view functions,
+    # so we patch at the source module (myapp.pocket_id), not at myapp.views.
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin_prov', 'a@e.com', 'Pw123456!')
+        self.client.login(username='admin_prov', password='Pw123456!')
+        from myapp.models import SiteConfiguration
+        self.config = SiteConfiguration.load()
+        self.config.pocket_id_url = 'https://id.example.com'
+        self.config.pocket_id_api_key = 'test-key'
+        self.config.save()
+
+    def test_provision_creates_invite_and_stores_chain_url(self):
+        with patch('myapp.pocket_id.PocketIDClient') as MockClient:
+            inst = MockClient.return_value
+            inst.create_user.return_value = {'id': 'uid-1'}
+            inst.get_ota_token.return_value = 'ota-tok'
+            with patch('django.core.mail.send_mail'):
+                resp = self.client.post(reverse('manage_invites'), {
+                    'action': 'provision',
+                    'email': 'partner@example.com',
+                    'first_name': 'Bob',
+                    'last_name': 'Jones',
+                    'note': 'test partner',
+                })
+        self.assertRedirects(resp, reverse('manage_invites'), fetch_redirect_response=False)
+        from myapp.models import InviteLink
+        invite = InviteLink.objects.filter(pocket_id_user_id='uid-1').first()
+        self.assertIsNotNone(invite)
+        self.assertEqual(invite.note, 'Bob')
+
+    def test_provision_sets_last_provision_session_key(self):
+        with patch('myapp.pocket_id.PocketIDClient') as MockClient:
+            inst = MockClient.return_value
+            inst.create_user.return_value = {'id': 'uid-2'}
+            inst.get_ota_token.return_value = 'ota-tok-2'
+            with patch('django.core.mail.send_mail'):
+                self.client.post(reverse('manage_invites'), {
+                    'action': 'provision',
+                    'email': 'x@example.com',
+                    'first_name': 'Test',
+                    'last_name': '',
+                    'note': '',
+                })
+        # Follow the redirect so the session key is consumed on the GET.
+        resp = self.client.get(reverse('manage_invites'))
+        self.assertContains(resp, 'ota-tok-2')
+
+    def test_provision_no_credentials_shows_error(self):
+        from myapp.models import SiteConfiguration
+        cfg = SiteConfiguration.load()
+        cfg.pocket_id_url = ''
+        cfg.pocket_id_api_key = ''
+        cfg.save()
+        resp = self.client.post(reverse('manage_invites'), {
+            'action': 'provision',
+            'email': 'y@example.com',
+        })
+        self.assertRedirects(resp, reverse('manage_invites'), fetch_redirect_response=False)
+        resp2 = self.client.get(reverse('manage_invites'))
+        self.assertContains(resp2, 'PocketID')
+
+    def test_provision_pocket_id_error_shows_message(self):
+        from myapp.pocket_id import PocketIDError
+        with patch('myapp.pocket_id.PocketIDClient') as MockClient:
+            inst = MockClient.return_value
+            inst.create_user.side_effect = PocketIDError('username taken')
+            resp = self.client.post(reverse('manage_invites'), {
+                'action': 'provision',
+                'email': 'z@example.com',
+                'first_name': 'Err',
+                'last_name': '',
+                'note': '',
+            })
+        self.assertRedirects(resp, reverse('manage_invites'), fetch_redirect_response=False)
+
+    def test_check_pocket_id_ok(self):
+        with patch('myapp.pocket_id.PocketIDClient') as MockClient:
+            inst = MockClient.return_value
+            inst.ping.return_value = (True, 'Connected')
+            resp = self.client.get(reverse('check_pocket_id'))
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['message'], 'Connected')
+
+    def test_check_pocket_id_non_superuser_forbidden(self):
+        regular = User.objects.create_user('reg_cp', 'r@e.com', 'Pw123456!')
+        self.client.logout()
+        self.client.login(username='reg_cp', password='Pw123456!')
+        resp = self.client.get(reverse('check_pocket_id'))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_check_pocket_id_not_configured(self):
+        from myapp.models import SiteConfiguration
+        cfg = SiteConfiguration.load()
+        cfg.pocket_id_url = ''
+        cfg.save()
+        resp = self.client.get(reverse('check_pocket_id'))
+        data = resp.json()
+        self.assertFalse(data['ok'])
+
+
 class ManageUsersViewTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser('admin_mu', 'e@e.com', 'Pw123456!')

@@ -4044,14 +4044,135 @@ def manage_invites(request):
                 note=note,
             )
             messages.success(request, _('Invite link created.'))
+        elif action == 'provision':
+            _handle_provision_invite(request)
         elif action == 'revoke':
             token = request.POST.get('token', '')
             InviteLink.objects.filter(token=token, revoked=False, used_at__isnull=True).update(revoked=True)
             messages.success(request, _('Invite link revoked.'))
         return redirect('manage_invites')
 
+    config = SiteConfiguration.load()
+    last_provision = request.session.pop('last_provision', None)
     invites = InviteLink.objects.select_related('created_by', 'used_by').all()
-    return render(request, 'manage_invites.html', {'invites': invites})
+    return render(request, 'manage_invites.html', {
+        'invites': invites,
+        'pocket_id_configured': bool(config.pocket_id_url and config.pocket_id_api_key),
+        'last_provision': last_provision,
+    })
+
+
+def _handle_provision_invite(request):
+    """Create a PocketID user + VoucherVault invite and surface a chain URL."""
+    from .pocket_id import PocketIDClient, PocketIDError
+    from django.template.loader import render_to_string
+
+    email = request.POST.get('email', '').strip()
+    first_name = request.POST.get('first_name', '').strip()
+    last_name = request.POST.get('last_name', '').strip()
+
+    if not email and not first_name:
+        messages.error(request, _('Provide at least an email or first name to provision.'))
+        return
+
+    config = SiteConfiguration.load()
+    if not config.pocket_id_url or not config.pocket_id_api_key:
+        messages.error(request, _('PocketID URL and API key must be configured in Site Settings.'))
+        return
+
+    # Derive a username from the email local part or first name, lowercased.
+    if email:
+        username_base = email.split('@')[0].lower()
+    else:
+        username_base = (first_name + last_name).lower().replace(' ', '')
+    username = username_base or 'vvuser'
+
+    client = PocketIDClient(config.pocket_id_url, config.pocket_id_api_key)
+    try:
+        user_data = client.create_user(username, email, first_name, last_name)
+        pocket_id_user_id = user_data.get('id', '')
+        ota_token = client.get_ota_token(pocket_id_user_id) if pocket_id_user_id else ''
+    except PocketIDError as exc:
+        messages.error(request, str(_('PocketID error: ')) + str(exc))
+        return
+
+    # Create the VoucherVault invite link.
+    expiry = None
+    if config.invite_expiry_days:
+        expiry = timezone.now() + dt.timedelta(days=config.invite_expiry_days)
+    note = (first_name or email or 'OIDC invite')[:255]
+    invite = InviteLink.objects.create(
+        created_by=request.user,
+        expires_at=expiry,
+        note=note,
+        pocket_id_user_id=pocket_id_user_id,
+    )
+
+    invite_url = request.build_absolute_uri(
+        reverse('accept_invite', args=[str(invite.token)])
+    )
+
+    # Build the chain URL.  PocketID's login page accepts ?redirect= and the
+    # one-time-access frontend page likely does too — we try the OTA path
+    # first, which lets a brand-new user authenticate without a passkey.
+    if ota_token:
+        chain_url = (
+            f"{config.pocket_id_url.rstrip('/')}/one-time-access/{ota_token}"
+            f"?redirect={invite_url}"
+        )
+    else:
+        chain_url = invite_url
+
+    # Attempt to send a welcome email if SMTP is configured.
+    email_sent = False
+    if email:
+        try:
+            ctx = {
+                'chain_url': chain_url,
+                'invite_url': invite_url,
+                'pocket_id_url': config.pocket_id_url,
+                'first_name': first_name,
+            }
+            text_body = render_to_string('email/invite_oidc.txt', ctx)
+            html_body = render_to_string('email/invite_oidc.html', ctx)
+            from django.core.mail import EmailMultiAlternatives
+            msg = EmailMultiAlternatives(
+                subject=str(_("You're invited to VoucherVault Plus+")),
+                body=text_body,
+                from_email=None,
+                to=[email],
+            )
+            msg.attach_alternative(html_body, 'text/html')
+            msg.send()
+            email_sent = True
+        except Exception:
+            pass
+
+    request.session['last_provision'] = {
+        'chain_url': chain_url,
+        'invite_url': invite_url,
+        'email': email,
+        'email_sent': email_sent,
+        'has_ota': bool(ota_token),
+    }
+    if email_sent:
+        messages.success(request, _('PocketID user created and invite email sent to %(email)s.') % {'email': email})
+    else:
+        messages.success(request, _('PocketID user created. Copy the onboarding link below and send it to your partner.'))
+
+
+@login_required
+def check_pocket_id(request):
+    """AJAX: test PocketID connectivity using current Site Settings."""
+    if not request.user.is_superuser:
+        return JsonResponse({'ok': False, 'message': 'Forbidden'}, status=403)
+    from .pocket_id import PocketIDClient
+    config = SiteConfiguration.load()
+    if not config.pocket_id_url or not config.pocket_id_api_key:
+        return JsonResponse({'ok': False, 'message': 'PocketID URL or API key not configured.'})
+    client = PocketIDClient(config.pocket_id_url, config.pocket_id_api_key)
+    ok, message = client.ping()
+    return JsonResponse({'ok': ok, 'message': message})
 
 
 def accept_invite(request, token):

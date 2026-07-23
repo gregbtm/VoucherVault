@@ -3,6 +3,8 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from django.template.loader import render_to_string
+
 from .base import NotificationBackend
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,7 @@ class EmailBackend(NotificationBackend):
         from_addr = (self.config.get('from_address') or user).strip()
         to_addrs = [a.strip() for a in to_raw.split(',') if a.strip()]
 
+        # Plain-text fallback
         body_lines = [message]
         if item:
             body_lines += [
@@ -46,17 +49,29 @@ class EmailBackend(NotificationBackend):
             ]
             if item.expiry_date:
                 body_lines.append(f'Expires:  {item.expiry_date}')
+        plain_text = '\n'.join(body_lines)
+
+        # HTML body via branded template
+        try:
+            html_body = render_to_string('email/notification.html', {
+                'title': title,
+                'message': message,
+                'item': item,
+            })
+        except Exception:
+            html_body = None
 
         msg = MIMEMultipart('alternative')
         msg['Subject'] = title
         msg['From'] = from_addr
         msg['To'] = ', '.join(to_addrs)
-        msg.attach(MIMEText('\n'.join(body_lines), 'plain', 'utf-8'))
+        msg.attach(MIMEText(plain_text, 'plain', 'utf-8'))
+        if html_body:
+            msg.attach(MIMEText(html_body, 'html', 'utf-8'))
 
         try:
             if use_ssl:
-                smtp_cls = smtplib.SMTP_SSL
-                conn = smtp_cls(host, port, timeout=15)
+                conn = smtplib.SMTP_SSL(host, port, timeout=15)
             else:
                 conn = smtplib.SMTP(host, port, timeout=15)
                 if use_tls:

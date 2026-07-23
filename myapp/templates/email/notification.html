@@ -1,0 +1,60 @@
+{% extends "email/base_email.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block preheader_text %}{{ title }}{% if item %} — {{ item.name }}{% endif %}{% endblock %}
+
+{% block header_tagline %}<p style="margin:0;font-size:12px;color:#94a3b8;letter-spacing:0.2px;">{% trans "Notification" %}</p>{% endblock %}
+
+{% block card_content %}
+  <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#0f172a;letter-spacing:-0.3px;">{{ title }}</h1>
+  <p style="margin:0 0 24px;font-size:15px;color:#475569;line-height:1.6;">{{ message }}</p>
+
+  {% if item %}
+  <!-- Item card -->
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:24px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+    <tr>
+      <td style="padding:16px 20px;border-bottom:1px solid #f1f5f9;">
+        <p style="margin:0 0 2px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;">{{ item.get_type_display }}</p>
+        <p style="margin:0;font-size:17px;font-weight:700;color:#0f172a;">{{ item.name }}</p>
+        {% if item.issuer %}<p style="margin:4px 0 0;font-size:13px;color:#64748b;">{{ item.issuer }}</p>{% endif %}
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:14px 20px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+          <tr>
+            {% if item.value %}
+            <td style="padding-right:24px;">
+              <p style="margin:0 0 2px;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;">{% trans "Value" %}</p>
+              <p style="margin:0;font-size:15px;font-weight:600;color:#1e293b;">{{ item.value }} {{ item.currency }}</p>
+            </td>
+            {% endif %}
+            {% if item.expiry_date %}
+            <td>
+              <p style="margin:0 0 2px;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;">{% trans "Expires" %}</p>
+              <p style="margin:0;font-size:15px;font-weight:600;color:{% if item.is_expired %}#ef4444{% else %}#d97706{% endif %};">{{ item.expiry_date }}</p>
+            </td>
+            {% endif %}
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+  {% endif %}
+
+  {% if cta_url and cta_label %}
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td align="left">
+        <a href="{{ cta_url }}" style="display:inline-block;background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:11px 28px;border-radius:7px;">
+          {{ cta_label }}
+        </a>
+      </td>
+    </tr>
+  </table>
+  {% endif %}
+{% endblock %}
+
+{% block footer_line_2 %}{% trans "You're receiving this because a notification rule in VoucherVault matched this item." %}{% endblock %}

@@ -395,6 +395,29 @@
             </div>
 
             <div class="settings-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-key me-2"></i>{% trans "PocketID Admin API" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Optional: configure the PocketID admin API so you can provision new OIDC users and generate one-click onboarding links directly from the Manage Invites page.' %}"></i></h6>
+              <p class="text-muted small mb-3">{% trans "When configured, the Manage Invites page gains a 'Provision & Invite via PocketID' form. Fill in the partner's details, and VoucherVault creates a PocketID account and generates a single link that sets up their passkey and drops them straight into the invite acceptance flow." %}</p>
+              <div class="row">
+                <div class="col-12 mb-3">
+                  <label for="{{ form.pocket_id_url.id_for_label }}" class="form-label">{% trans "PocketID base URL" %}</label>
+                  {{ form.pocket_id_url }}
+                  <div class="form-text">{% trans "e.g. https://id.example.com — no trailing slash." %}</div>
+                </div>
+                <div class="col-12 mb-3">
+                  <label for="{{ form.pocket_id_api_key.id_for_label }}" class="form-label">{% trans "Admin API key" %}</label>
+                  {{ form.pocket_id_api_key }}
+                  <div class="form-text">{% if config.pocket_id_api_key %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %} {% trans "Generate one in PocketID → Admin → API Keys." %}</div>
+                </div>
+                <div class="col-12">
+                  <button type="button" id="test-pocket-id-btn" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-plug me-1"></i> {% trans "Test connection" %}
+                  </button>
+                  <span id="pocket-id-status" class="ms-2 small"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-shield-exclamation me-2"></i>{% trans "Security Alerts" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Send an ntfy alert when a failed-login spike is detected. Uses the Default ntfy Server configured above.' %}"></i><a href="{% url 'view_doc' 'security-settings' %}" data-doc-url="{% url 'view_doc' 'security-settings' %}" class="help-link" title="{% trans 'Security guide' %}"><i class="bi bi-question-circle"></i></a></h6>
               <div class="row">
                 <div class="col-md-6 mb-3">
@@ -1002,6 +1025,32 @@ document.addEventListener('DOMContentLoaded', function () {
         .catch(function () {
           window.setButtonLoading(checkUpstreamBtn, false);
           window.showToast('{% trans "Check failed - could not reach the server." %}', 'danger');
+        });
+    });
+  }
+
+  // PocketID test-connection button
+  var pocketIdBtn = document.getElementById('test-pocket-id-btn');
+  if (pocketIdBtn) {
+    pocketIdBtn.addEventListener('click', function () {
+      var statusEl = document.getElementById('pocket-id-status');
+      window.setButtonLoading(pocketIdBtn, true);
+      statusEl.textContent = '';
+      fetch('{% url "check_pocket_id" %}', {
+        headers: {'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '', 'X-Requested-With': 'XMLHttpRequest'},
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          window.setButtonLoading(pocketIdBtn, false);
+          if (data.ok) {
+            statusEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>' + data.message + '</span>';
+          } else {
+            statusEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>' + data.message + '</span>';
+          }
+        })
+        .catch(function () {
+          window.setButtonLoading(pocketIdBtn, false);
+          statusEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>{% trans "Request failed" %}</span>';
         });
     });
   }

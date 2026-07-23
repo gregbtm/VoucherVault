@@ -741,6 +741,10 @@ class InviteLink(models.Model):
     )
     revoked = models.BooleanField(default=False)
     note = models.CharField(max_length=255, blank=True, default='')
+    pocket_id_user_id = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="PocketID user ID created during OIDC provisioning. Blank for manually-created invites.",
+    )
 
     class Meta:
         ordering = ['-created_at']
@@ -1087,6 +1091,18 @@ class SiteConfiguration(models.Model):
         help_text="How many days a generated invite link stays valid. 0 means it never expires.",
     )
 
+    # ---- PocketID admin API (for OIDC invite provisioning) ----
+    pocket_id_url = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="Base URL of your PocketID instance (e.g. https://id.example.com). "
+                  "When set, invite creation can auto-provision a PocketID user and "
+                  "generate a one-click onboarding link.",
+    )
+    pocket_id_api_key = models.CharField(
+        max_length=500, blank=True, default='',
+        help_text="PocketID admin API key (X-API-KEY). Generate one in PocketID → Admin → API Keys.",
+    )
+
     # ---- OIDC / PocketID integration ----
     oidc_discovery_url = models.CharField(
         max_length=500, blank=True, default='',
@@ -1176,7 +1192,7 @@ class SiteConfiguration(models.Model):
     SECRET_FIELDS = (
         'webpush_vapid_private_key', 'anthropic_api_key', 'openai_api_key',
         'pkpass_cert_password', 'logo_dev_api_key', 'companies_house_api_key',
-        'oidc_client_secret',
+        'oidc_client_secret', 'pocket_id_api_key',
     )
 
     class Meta:

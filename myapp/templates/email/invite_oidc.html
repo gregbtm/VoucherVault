@@ -1,0 +1,75 @@
+{% extends "email/base_email.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "You're invited to VoucherVault Plus+" %}{% endblock %}
+
+{% block preheader_text %}{% if first_name %}{% blocktrans with first_name=first_name %}Hi {{ first_name }}, you've been invited to VoucherVault Plus+.{% endblocktrans %}{% else %}{% trans "You've been invited to VoucherVault Plus+." %}{% endif %}{% endblock %}
+
+{% block card_content %}
+  <h1 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#0f172a;letter-spacing:-0.4px;">
+    {% if first_name %}{% blocktrans with first_name=first_name %}Hi {{ first_name }} 👋{% endblocktrans %}{% else %}{% trans "You're invited 👋" %}{% endif %}
+  </h1>
+  <p style="margin:0 0 28px;font-size:16px;color:#475569;line-height:1.6;">
+    {% blocktrans %}You've been invited to join <strong>VoucherVault Plus+</strong> — the place to manage all your gift cards, vouchers, loyalty cards, and travel passes.{% endblocktrans %}
+  </p>
+
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:28px;">
+    <tr><td style="border-top:1px solid #f1f5f9;height:1px;font-size:0;line-height:0;">&nbsp;</td></tr>
+  </table>
+
+  <!-- Step 1 -->
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:20px;">
+    <tr>
+      <td valign="top" width="36" style="padding-top:2px;">
+        <div style="width:28px;height:28px;background:#eef2ff;border-radius:50%;text-align:center;line-height:28px;font-size:13px;font-weight:700;color:#6366f1;">1</div>
+      </td>
+      <td valign="top" style="padding-left:14px;">
+        <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#1e293b;">{% trans "Set up your passkey" %}</p>
+        <p style="margin:0;font-size:14px;color:#64748b;line-height:1.5;">{% trans "The link below opens PocketID where you'll create a passkey — your secure, passwordless login. It only takes a moment." %}</p>
+      </td>
+    </tr>
+  </table>
+
+  <!-- Step 2 -->
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:32px;">
+    <tr>
+      <td valign="top" width="36" style="padding-top:2px;">
+        <div style="width:28px;height:28px;background:#eef2ff;border-radius:50%;text-align:center;line-height:28px;font-size:13px;font-weight:700;color:#6366f1;">2</div>
+      </td>
+      <td valign="top" style="padding-left:14px;">
+        <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#1e293b;">{% trans "Land in VoucherVault automatically" %}</p>
+        <p style="margin:0;font-size:14px;color:#64748b;line-height:1.5;">{% trans "After the passkey step you'll be dropped straight into your new account — no extra forms, no passwords to remember." %}</p>
+      </td>
+    </tr>
+  </table>
+
+  <!-- CTA -->
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:20px;">
+    <tr>
+      <td align="center">
+        <a href="{{ chain_url }}" style="display:inline-block;background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;padding:15px 44px;border-radius:8px;letter-spacing:0.1px;box-shadow:0 4px 14px rgba(99,102,241,0.35);">
+          {% trans "Get Started →" %}
+        </a>
+      </td>
+    </tr>
+  </table>
+  <p style="margin:0 0 28px;font-size:12px;color:#94a3b8;text-align:center;">{% trans "This link can only be used once." %}</p>
+
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:20px;">
+    <tr><td style="border-top:1px solid #f1f5f9;height:1px;font-size:0;line-height:0;">&nbsp;</td></tr>
+  </table>
+
+  <!-- Fallback -->
+  <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.8px;">{% trans "Direct invite link (fallback)" %}</p>
+  <p style="margin:0 0 10px;font-size:13px;color:#64748b;line-height:1.5;">{% trans "Use this if the button above has already been used. You'll be asked to sign in with PocketID first." %}</p>
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 14px;">
+        <a href="{{ invite_url }}" style="font-size:12px;color:#6366f1;text-decoration:none;word-break:break-all;font-family:SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace;">{{ invite_url }}</a>
+      </td>
+    </tr>
+  </table>
+{% endblock %}
+
+{% block footer_line_1 %}{% trans "Your login provider:" %} <a href="{{ pocket_id_url }}" style="color:#6366f1;text-decoration:none;">{{ pocket_id_url }}</a>{% endblock %}
+{% block footer_line_2 %}{% trans "Not expecting this? You can safely ignore it — no account will be created unless you click the link." %}{% endblock %}
