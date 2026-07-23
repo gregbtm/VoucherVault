@@ -1,3 +1,4 @@
+import apprise
 import base64
 import os
 import json
@@ -542,9 +543,10 @@ def view_item(request, item_uuid):
     # True only for the item's creator: gates owner-only actions like
     # individually sharing (ItemShare) or duplicating the item.
     is_owner = item.user == request.user
-    # True for the creator and for wallet collaborators: gates edit/delete/
-    # add-transaction actions, which a shared wallet grants read/write for.
-    can_edit = is_owner or has_wallet_access(item.wallet, request.user)
+    # True for the creator and for EDITOR-role wallet collaborators: gates
+    # edit/delete/add-transaction actions. Uses role-aware check so VIEWER
+    # members cannot write.
+    can_edit = _check_item_edit_permission(item, request.user)
 
     if request.method == 'GET':
         Item.objects.filter(pk=item.pk).update(last_used_at=timezone.now())
@@ -1126,9 +1128,9 @@ def delete_item(request, item_uuid):
 def delete_transaction(request, transaction_id):
     transaction = get_object_or_404(Transaction, id=transaction_id)
     item = transaction.item
-    # Delete the transaction
+    if not _check_item_edit_permission(item, request.user):
+        return HttpResponse("Forbidden", status=403)
     transaction.delete()
-
     return redirect('view_item', item_uuid=item.id)
 
 @require_POST
@@ -1274,6 +1276,8 @@ def upload_document(request, item_uuid):
     item = get_object_or_404(Item, id=item_uuid)
     if not has_item_access(item, request.user):
         return HttpResponse("Unauthorized", status=403)
+    if not _check_item_edit_permission(item, request.user):
+        return HttpResponse("Forbidden", status=403)
 
     form = DocumentForm(request.POST, request.FILES)
     if form.is_valid():
@@ -1310,6 +1314,8 @@ def delete_document(request, document_id):
     item = document.item
     if not has_item_access(item, request.user):
         return HttpResponse("Unauthorized", status=403)
+    if not _check_item_edit_permission(item, request.user):
+        return HttpResponse("Forbidden", status=403)
 
     if document.file and os.path.isfile(document.file.path):
         os.remove(document.file.path)
@@ -1322,6 +1328,8 @@ def delete_document(request, document_id):
 @login_required
 def toggle_item_status(request, item_id):
     item = get_object_or_404(Item, id=item_id)
+    if not has_item_access(item, request.user):
+        raise Http404
     if not _check_item_edit_permission(item, request.user):
         return HttpResponse("Forbidden", status=403)
     desc_txt = _('Marked as used, removing remaining value')
@@ -1801,7 +1809,7 @@ def share_item_view(request, item_id):
         selected_users = request.POST.getlist('shared_users')
         if selected_users:
             for user_id in selected_users:
-                recipient = User.objects.get(id=user_id)
+                recipient = get_object_or_404(User, id=user_id)
                 _share, created = ItemShare.objects.get_or_create(item=item, shared_with_user=recipient, shared_by=request.user)
                 if created:
                     notify_item_shared(item, recipient.username)
@@ -2965,7 +2973,9 @@ def analytics(request):
             for r in value_by_type
         ]),
         'top_issuers': top_issuers,
-        'top_issuers_json': json.dumps([{'name': r['issuer'], 'count': r['count']} for r in top_issuers]),
+        'top_issuers_json': json.dumps(
+            [{'name': r['issuer'], 'count': r['count']} for r in top_issuers]
+        ).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026'),
         'currency_breakdown': currency_breakdown,
         'wallet_budgets': wallet_budgets,
     }
@@ -3426,7 +3436,7 @@ def gdpr_data_export(request):
                 {'username': s.shared_with_user.username, 'shared_at': str(s.shared_at)}
                 for s in item.shares.all()
             ],
-            'created_at': str(item.issue_date),
+            'created_at': str(item.created_at) if item.created_at else None,
             'last_used_at': str(item.last_used_at) if item.last_used_at else None,
         })
 

@@ -37,6 +37,19 @@
             {% csrf_token %}
 
             {% for field in form %}
+            {% if field.html_name == 'auto_assign_issuer_match' %}
+            <details class="mb-3">
+              <summary class="form-label text-muted" style="cursor:pointer;user-select:none;">
+                <i class="bi bi-chevron-right me-1" style="font-size:.75em;transition:transform .15s;"></i>{% trans "Advanced" %}
+              </summary>
+              <div class="mt-2">
+                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                {{ field }}
+                {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
+                {% if field.help_text %}<small class="form-text text-muted">{{ field.help_text }}</small>{% endif %}
+              </div>
+            </details>
+            {% else %}
             <div class="mb-3">
               <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
               {{ field }}
@@ -47,7 +60,14 @@
               <small class="form-text text-muted">{{ field.help_text }}</small>
               {% endif %}
             </div>
+            {% endif %}
             {% endfor %}
+
+            {% if not editing_wallet %}
+            <p class="text-muted small mb-3">
+              <i class="bi bi-person-plus me-1"></i>{% trans "You can invite collaborators after saving." %}
+            </p>
+            {% endif %}
 
             <button type="submit" class="btn btn-primary">
               <i class="bi bi-check-circle me-1"></i>

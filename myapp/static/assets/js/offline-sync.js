@@ -570,7 +570,7 @@ class OfflineSyncManager {
                         type: options.action || 'unknown',
                         method: options.method || 'GET',
                         url: url,
-                        data: options.body ? JSON.parse(options.body) : null
+                        data: (options.body && typeof options.body === 'string') ? JSON.parse(options.body) : null
                     });
                     
                     // Return cached data if available

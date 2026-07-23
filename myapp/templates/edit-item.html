@@ -795,7 +795,7 @@ body.dark-mode .error-alert {
               <small class="form-text text-warning" id="ocr-confidence-warning" style="display:none;"></small>
             </div>
 
-            <div class="field-toggle" id="card-number-wrap">
+            <div class="field-toggle {% if item.type != 'giftcard' and item.type != 'loyaltycard' %}is-collapsed{% endif %}" id="card-number-wrap">
               <div class="form-group">
                 <label class="form-label" for="card_number" id="card-number-label">{% trans "Card / Member Number" %}</label>
                 <input type="text" class="modern-input" id="card_number" name="card_number"
@@ -804,7 +804,7 @@ body.dark-mode .error-alert {
               </div>
             </div>
 
-            <div id="travel-fields" class="field-toggle">
+            <div id="travel-fields" class="field-toggle {% if item.type != 'travelpass' %}is-collapsed{% endif %}">
               <div class="form-row">
                 <div class="form-group">
                   <label class="form-label" for="journey_origin">{% trans "Journey From" %}</label>
@@ -942,7 +942,7 @@ body.dark-mode .error-alert {
               <input type="hidden" id="ai_scan_snapshot" name="ai_scan_snapshot" value="">
             </div>
 
-            <div class="form-group" id="currency-field">
+            <div class="form-group" id="currency-field" {% if item.type == 'loyaltycard' or item.type == 'travelpass' or item.value_type != 'money' %}style="display:none;"{% endif %}>
               <label class="form-label" for="currency">{% trans "Currency" %}</label>
               <select class="modern-select" id="currency" name="currency">
                 {% for code, label in form.fields.currency.choices %}
@@ -951,7 +951,7 @@ body.dark-mode .error-alert {
               </select>
             </div>
 
-            <div class="form-group" id="balance-check-field">
+            <div class="form-group" id="balance-check-field" {% if item.type != 'giftcard' %}style="display:none;"{% endif %}>
               <label class="form-label" for="balance_check_url">{% trans "Balance / Validity Check Link" %}</label>
               <input type="url" class="modern-input" id="balance_check_url" name="balance_check_url"
                      placeholder="{% trans 'Balance/validity check page for this merchant' %}"
@@ -995,7 +995,7 @@ body.dark-mode .error-alert {
                 </div>
                 <small class="form-text text-muted">{% trans "When the Firefly III notification backend fires, it posts a withdrawal to this account. Use the button to auto-create the account." %}</small>
               </div>
-              <div class="form-group mt-2">
+              <div class="form-group mt-2" id="firefly-rule-wrap" style="display:none">
                 <label class="form-label" for="firefly_rule">{% trans "Firefly III Rule (override)" %}</label>
                 <select class="modern-select" id="firefly_rule" name="firefly_rule">
                   <option value="">{% trans "Use wallet / global rule (default)" %}</option>
@@ -1096,19 +1096,34 @@ body.dark-mode .error-alert {
               </div>
             </div>
 
-            {% if has_notification_rule %}
             <div class="form-group">
-              <label class="form-label" for="notify_days_before">{% trans "Notify Me Before Expiry" %}</label>
-              <input type="number" class="modern-input" id="notify_days_before" name="notify_days_before"
-                     placeholder="{% trans 'Use global default' %}" min="0"
-                     value="{{ item.notify_days_before|default_if_none:'' }}">
-              <small class="form-text text-muted">{% trans "Days before expiry to notify, overriding the global default. Leave blank to use the global setting." %}</small>
+              <div class="d-flex align-items-center gap-2">
+                <input type="checkbox" class="form-check-input" id="notifications_muted" name="notifications_muted"
+                       {% if item.notifications_muted %}checked{% endif %}>
+                <label class="form-label mb-0" for="notifications_muted">{% trans "Mute All Notifications" %}</label>
+              </div>
+              <small class="form-text text-muted">{% trans "Suppress all expiry and renewal alerts for this item." %}</small>
             </div>
-            {% else %}
-            <p class="text-muted small mb-2">
-              <i class="bi bi-bell-slash me-1"></i>{% trans "No expiry notifications — " %}<a href="{% url 'manage_notification_rules' %}">{% trans "set up a notification rule" %}</a>{% trans " to enable this field." %}
-            </p>
-            {% endif %}
+            <div id="notify-threshold-section">
+              {% if has_notification_rule %}
+              <div class="form-group">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                  <input type="checkbox" class="form-check-input" id="override_notify_threshold">
+                  <label class="form-label mb-0" for="override_notify_threshold">{% trans "Override expiry threshold" %}</label>
+                </div>
+                <div id="notify-days-wrap" style="display:none">
+                  <input type="number" class="modern-input" id="notify_days_before" name="notify_days_before"
+                         placeholder="{% trans 'Days before expiry' %}" min="0"
+                         value="{{ item.notify_days_before|default_if_none:'' }}">
+                  <small class="form-text text-muted">{% trans "Overrides the global notification threshold for this item only." %}</small>
+                </div>
+              </div>
+              {% else %}
+              <p class="text-muted small mb-2">
+                <i class="bi bi-bell-slash me-1"></i>{% trans "No expiry notifications — " %}<a href="{% url 'manage_notification_rules' %}">{% trans "set up a notification rule" %}</a>{% trans " to enable this field." %}
+              </p>
+              {% endif %}
+            </div>
           </div>
 
           <!-- Additional Info Section -->
@@ -1125,7 +1140,7 @@ body.dark-mode .error-alert {
                         rows="3">{{ item.description }}</textarea>
             </div>
 
-            <div class="field-toggle" id="order-id-wrap">
+            <div class="field-toggle {% if item.type != 'giftcard' and item.type != 'travelpass' %}is-collapsed{% endif %}" id="order-id-wrap">
               <div class="form-group">
                 <label class="form-label" for="order_id">{% trans "Order / Booking Reference" %}</label>
                 <input type="text" class="modern-input" id="order_id" name="order_id"
@@ -1134,7 +1149,7 @@ body.dark-mode .error-alert {
               </div>
             </div>
 
-            <div class="field-toggle" id="discount-applied-wrap">
+            <div class="field-toggle {% if item.type != 'travelpass' %}is-collapsed{% endif %}" id="discount-applied-wrap">
               <div class="form-group">
                 <label class="form-label" for="discount_applied">{% trans "Discount / Railcard Applied" %}</label>
                 <input type="text" class="modern-input" id="discount_applied" name="discount_applied"
@@ -1227,6 +1242,42 @@ function handleSubmitButton() {
       fields.style.display = this.checked ? '' : 'none';
     });
   }
+})();
+
+(function () {
+  const mutedCb = document.getElementById('notifications_muted');
+  const thresholdSection = document.getElementById('notify-threshold-section');
+  const overrideCb = document.getElementById('override_notify_threshold');
+  const notifyDaysWrap = document.getElementById('notify-days-wrap');
+  const notifyDaysInput = document.getElementById('notify_days_before');
+
+  function syncMuted() {
+    if (thresholdSection) thresholdSection.style.display = mutedCb && mutedCb.checked ? 'none' : '';
+  }
+  function syncOverride() {
+    if (notifyDaysWrap) notifyDaysWrap.style.display = overrideCb && overrideCb.checked ? '' : 'none';
+    if (overrideCb && !overrideCb.checked && notifyDaysInput) notifyDaysInput.value = '';
+  }
+
+  if (mutedCb) mutedCb.addEventListener('change', syncMuted);
+  if (overrideCb) overrideCb.addEventListener('change', syncOverride);
+
+  // On load: expand override section if notify_days_before already has a value
+  if (overrideCb && notifyDaysInput && notifyDaysInput.value.trim() !== '') {
+    overrideCb.checked = true;
+    if (notifyDaysWrap) notifyDaysWrap.style.display = '';
+  }
+  syncMuted();
+})();
+
+(function () {
+  const accountIdField = document.getElementById('firefly_account_id');
+  const ruleWrap = document.getElementById('firefly-rule-wrap');
+  function syncFireflyRule() {
+    if (ruleWrap) ruleWrap.style.display = accountIdField && accountIdField.value.trim() ? '' : 'none';
+  }
+  if (accountIdField) accountIdField.addEventListener('input', syncFireflyRule);
+  syncFireflyRule();
 })();
 
 function resetTileColor() {

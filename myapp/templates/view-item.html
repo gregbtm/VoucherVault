@@ -1732,12 +1732,14 @@ body.dark-mode .tilt-scan-enable-btn {
 
           <!-- Detail Fields -->
           <div class="detail-fields">
+            {% if item.type != 'travelpass' or item.issue_date != item.expiry_date %}
             <div class="detail-field">
               <div class="detail-field-label">
                 <i class="bi bi-calendar-plus"></i> {% trans "Issue Date" %}
               </div>
               <div class="detail-field-value">{{ item.issue_date|date:"M d, Y" }}</div>
             </div>
+            {% endif %}
             
             <div class="detail-field">
               <div class="detail-field-label">
@@ -1766,14 +1768,14 @@ body.dark-mode .tilt-scan-enable-btn {
                 <span id="balance-text">{{ total_value|floatformat:1 }}x</span>
                 {% else %}
                 <span id="balance-text">{{ total_value|floatformat:2 }} {{ item.currency }}</span>
-                {% if can_edit and item.value_type == "fixed" %}
+                {% if can_edit and item.value_type == "money" %}
                 <button class="btn btn-link btn-sm p-0 ms-1 text-muted" id="edit-balance-btn" title="{% trans 'Edit balance' %}" style="vertical-align:baseline;font-size:0.8em;">
                   <i class="bi bi-pencil"></i>
                 </button>
                 {% endif %}
                 {% endif %}
               </div>
-              {% if can_edit and item.value_type == "fixed" and item.type != "loyaltycard" and item.type != "travelpass" %}
+              {% if can_edit and item.value_type == "money" and item.type != "loyaltycard" and item.type != "travelpass" %}
               <div id="balance-edit-form" class="mt-2" style="display:none;">
                 <div class="input-group input-group-sm" style="max-width:280px;">
                   <input type="number" id="balance-new-value" class="form-control" step="0.01" min="0"
@@ -1827,7 +1829,7 @@ body.dark-mode .tilt-scan-enable-btn {
             </div>
             {% endif %}
 
-            {% if item.order_id %}
+            {% if item.order_id and item.type == 'giftcard' or item.order_id and item.type == 'travelpass' %}
             <div class="detail-field">
               <div class="detail-field-label">
                 <i class="bi bi-receipt"></i> {% trans "Order ID" %}
@@ -1836,7 +1838,7 @@ body.dark-mode .tilt-scan-enable-btn {
             </div>
             {% endif %}
 
-            {% if item.discount_applied %}
+            {% if item.discount_applied and item.type == 'travelpass' %}
             <div class="detail-field">
               <div class="detail-field-label">
                 <i class="bi bi-tag"></i> {% trans "Discount Applied" %}
@@ -1845,7 +1847,7 @@ body.dark-mode .tilt-scan-enable-btn {
             </div>
             {% endif %}
 
-            {% if item.seat_number %}
+            {% if item.seat_number and item.type == 'travelpass' %}
             <div class="detail-field">
               <div class="detail-field-label">
                 <i class="bi bi-train-front"></i> {% trans "Seat / Coach" %}
@@ -1854,7 +1856,7 @@ body.dark-mode .tilt-scan-enable-btn {
             </div>
             {% endif %}
 
-            {% if item.initial_value %}
+            {% if item.initial_value and item.type == 'giftcard' or item.initial_value and item.type == 'voucher' %}
             <div class="detail-field">
               <div class="detail-field-label">
                 <i class="bi bi-cash"></i> {% trans "Face Value" %}
@@ -1863,7 +1865,7 @@ body.dark-mode .tilt-scan-enable-btn {
             </div>
             {% endif %}
 
-            {% if item.minimum_spend %}
+            {% if item.minimum_spend and item.type == 'voucher' or item.minimum_spend and item.type == 'coupon' %}
             <div class="detail-field">
               <div class="detail-field-label">
                 <i class="bi bi-basket"></i> {% trans "Minimum Spend" %}
@@ -1872,7 +1874,7 @@ body.dark-mode .tilt-scan-enable-btn {
             </div>
             {% endif %}
 
-            {% if item.points_balance %}
+            {% if item.points_balance and item.type == 'loyaltycard' %}
             <div class="detail-field">
               <div class="detail-field-label">
                 <i class="bi bi-stars"></i> {% trans "Points Balance" %}
@@ -1881,7 +1883,7 @@ body.dark-mode .tilt-scan-enable-btn {
             </div>
             {% endif %}
 
-            {% if item.membership_tier %}
+            {% if item.membership_tier and item.type == 'loyaltycard' %}
             <div class="detail-field">
               <div class="detail-field-label">
                 <i class="bi bi-award"></i> {% trans "Membership Tier" %}
