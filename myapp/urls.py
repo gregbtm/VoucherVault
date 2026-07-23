@@ -113,6 +113,7 @@ urlpatterns = (
     path('user/security/totp/regenerate-backup-codes/', views.regenerate_totp_backup_codes, name='regenerate_totp_backup_codes'),
     # Invite links
     path('admin-tools/invites/', views.manage_invites, name='manage_invites'),
+    path('admin-tools/check-pocket-id/', views.check_pocket_id, name='check_pocket_id'),
     path('invite/complete/', views.invite_complete, name='invite_complete'),
     path('invite/<uuid:token>/', views.accept_invite, name='accept_invite'),
     # Users panel (superuser)

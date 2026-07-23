@@ -15,9 +15,10 @@
 
 <section class="section">
   <div class="row">
+
     <div class="col-lg-6">
 
-      <!-- Create invite -->
+      <!-- Standard invite -->
       <div class="card mb-4">
         <div class="card-body">
           <h5 class="card-title"><i class="bi bi-envelope-plus me-1"></i> {% trans "Create Invite Link" %}</h5>
@@ -35,7 +36,78 @@
         </div>
       </div>
 
+      {% if pocket_id_configured %}
+      <!-- PocketID Provision & Invite -->
+      <div class="card mb-4 border-primary">
+        <div class="card-body">
+          <h5 class="card-title text-primary"><i class="bi bi-person-plus-fill me-1"></i> {% trans "Provision & Invite via PocketID" %}</h5>
+          <p class="text-muted small mb-3">{% trans "Creates a PocketID account and generates a one-click onboarding link. The partner clicks it once — passkey setup happens in PocketID, then they land straight in VoucherVault." %}</p>
+          <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="provision">
+            <div class="row g-2 mb-3">
+              <div class="col-12">
+                <input type="email" name="email" class="form-control" placeholder="{% trans 'Email address (optional)' %}" maxlength="254">
+              </div>
+              <div class="col-6">
+                <input type="text" name="first_name" class="form-control" placeholder="{% trans 'First name' %}" maxlength="150">
+              </div>
+              <div class="col-6">
+                <input type="text" name="last_name" class="form-control" placeholder="{% trans 'Last name' %}" maxlength="150">
+              </div>
+              <div class="col-12">
+                <input type="text" name="note" class="form-control" placeholder="{% trans 'Note (optional)' %}" maxlength="255">
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">
+              <i class="bi bi-magic me-1"></i> {% trans "Create Account & Generate Link" %}
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+
     </div>
+
+    {% if last_provision %}
+    <div class="col-lg-6">
+      <!-- Provision result -->
+      <div class="card mb-4 border-success">
+        <div class="card-body">
+          <h5 class="card-title text-success"><i class="bi bi-check-circle me-1"></i> {% trans "Onboarding Link Ready" %}</h5>
+          {% if last_provision.email %}
+          <p class="small text-muted mb-2">{% blocktrans with email=last_provision.email %}For: {{ email }}{% endblocktrans %}
+            {% if last_provision.email_sent %} <span class="badge bg-success ms-1">{% trans "Email sent" %}</span>{% endif %}
+          </p>
+          {% endif %}
+
+          {% if last_provision.has_ota %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">{% trans "One-click onboarding link" %} <span class="badge bg-primary ms-1">{% trans "Recommended" %}</span></label>
+            <p class="text-muted small mb-1">{% trans "Partner clicks once: sets up their passkey in PocketID, then lands in VoucherVault automatically." %}</p>
+            <div class="input-group input-group-sm">
+              <input type="text" id="chain-url-field" class="form-control font-monospace" value="{{ last_provision.chain_url }}" readonly>
+              <button class="btn btn-outline-secondary" type="button" onclick="copyField('chain-url-field', this)">
+                <i class="bi bi-clipboard"></i>
+              </button>
+            </div>
+          </div>
+          {% endif %}
+
+          <div class="mb-2">
+            <label class="form-label fw-semibold small">{% trans "Direct invite link" %} <span class="text-muted">({% trans "fallback" %})</span></label>
+            <p class="text-muted small mb-1">{% trans "Use this if the one-click link has expired or the partner already has a PocketID account." %}</p>
+            <div class="input-group input-group-sm">
+              <input type="text" id="invite-url-field" class="form-control font-monospace" value="{{ last_provision.invite_url }}" readonly>
+              <button class="btn btn-outline-secondary" type="button" onclick="copyField('invite-url-field', this)">
+                <i class="bi bi-clipboard"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
 
     <div class="col-lg-12">
       <!-- Invite list -->
@@ -53,6 +125,7 @@
                   <th>{% trans "Created" %}</th>
                   <th>{% trans "Expires" %}</th>
                   <th>{% trans "Status" %}</th>
+                  <th>{% trans "PocketID" %}</th>
                   <th></th>
                 </tr>
               </thead>
@@ -81,6 +154,13 @@
                     <span class="badge bg-success">{% trans "Active" %}</span>
                     {% endif %}
                   </td>
+                  <td class="small">
+                    {% if inv.pocket_id_user_id %}
+                    <span class="text-primary" title="{{ inv.pocket_id_user_id }}"><i class="bi bi-person-check"></i> {% trans "Provisioned" %}</span>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
                   <td>
                     {% if inv.is_valid %}
                     <form method="POST" class="d-inline">
@@ -105,4 +185,15 @@
 
   </div>
 </section>
+
+<script nonce="{{ request.csp_nonce }}">
+function copyField(fieldId, btn) {
+  var field = document.getElementById(fieldId);
+  navigator.clipboard.writeText(field.value).then(function () {
+    var orig = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-check"></i>';
+    setTimeout(function () { btn.innerHTML = orig; }, 1500);
+  });
+}
+</script>
 {% endblock %}
