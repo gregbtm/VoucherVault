@@ -639,6 +639,97 @@ class SuggestFieldOptionsTests(TestCase):
         response = self.client.get(reverse('suggest_field_options'), {'type': 'giftcard', 'field': 'issuer'})
         self.assertNotEqual(response.status_code, 200)
 
+    def test_currency_and_code_type_in_allowlist(self):
+        for field in ('currency', 'code_type'):
+            Item.objects.create(
+                type='giftcard', name=f'Item {field}', issuer='Tesco',
+                redeem_code=f'CODE{field}', expiry_date=date.today(),
+                value=Decimal('1.00'), currency='GBP', code_type='qrcode', user=self.user,
+            )
+            response = self.client.get(
+                reverse('suggest_field_options'), {'type': 'giftcard', 'field': field},
+            )
+            self.assertEqual(response.status_code, 200)
+            options = response.json()['options']
+            self.assertGreater(len(options), 0)
+
+    def test_context_boosts_matching_issuer(self):
+        # Two items with different issuers; context_issuer matches one.
+        import json as _json
+        Item.objects.create(
+            type='giftcard', name='Match', issuer='Tesco', redeem_code='T1',
+            expiry_date=date.today(), value=Decimal('1.00'), currency='GBP',
+            logo_slug='tesco', user=self.user,
+        )
+        Item.objects.create(
+            type='giftcard', name='Other', issuer='Amazon', redeem_code='A1',
+            expiry_date=date.today(), value=Decimal('1.00'), currency='GBP',
+            logo_slug='amazon', user=self.user,
+        )
+        ctx = _json.dumps({'issuer': 'Tesco'})
+        response = self.client.get(
+            reverse('suggest_field_options'),
+            {'type': 'giftcard', 'field': 'logo_slug', 'context': ctx},
+        )
+        options = response.json()['options']
+        # The Tesco logo slug should rank first because the context issuer matches.
+        self.assertEqual(options[0]['value'], 'tesco')
+
+    def test_cross_type_fallback_when_type_pool_is_thin(self):
+        # Only 2 distinct issuer values for giftcard; fallback from other types fills the gap.
+        Item.objects.create(
+            type='giftcard', name='GC1', issuer='Issuer A', redeem_code='GCA',
+            expiry_date=date.today(), value=Decimal('1.00'), currency='GBP', user=self.user,
+        )
+        for i in range(3):
+            Item.objects.create(
+                type='coupon', name=f'CP{i}', issuer=f'Coupon Issuer {i}', redeem_code=f'CP{i}',
+                expiry_date=date.today(), value=Decimal('1.00'), currency='GBP', user=self.user,
+            )
+        response = self.client.get(
+            reverse('suggest_field_options'), {'type': 'giftcard', 'field': 'issuer'},
+        )
+        options = response.json()['options']
+        # Should include both the type-specific result and fallback results.
+        self.assertGreater(len(options), 1)
+
+    def _post_item(self, extra):
+        data = {
+            'type': 'giftcard', 'name': 'Test Card', 'issuer': 'Issuer',
+            'redeem_code': 'CODE99', 'value': '10.00', 'currency': 'GBP',
+            'code_type': 'qrcode', 'value_type': 'money',
+            'issue_date': date.today().isoformat(),
+        }
+        data.update(extra)
+        return self.client.post(reverse('create_item'), data)
+
+    def test_suggestion_feedback_recorded_on_item_save(self):
+        # User accepts "Amazon" suggestion then changes issuer to "Tesco" before saving.
+        from myapp.models import ScanFieldCorrection
+        response = self._post_item({
+            'issuer': 'Tesco', '_sg_suggested_issuer': 'Amazon', 'redeem_code': 'FEEDBACK1',
+        })
+        self.assertEqual(response.status_code, 302)
+        correction = ScanFieldCorrection.objects.filter(
+            user=self.user, field='issuer', ai_value='Amazon', corrected_value='Tesco',
+        ).first()
+        self.assertIsNotNone(correction)
+
+    def test_suggestion_accepted_and_kept_clears_stale_correction(self):
+        # Old correction maps "Tesco" away; user keeps the Tesco suggestion → retire it.
+        from myapp.models import ScanFieldCorrection
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', field='issuer',
+            ai_value='Tesco', corrected_value='Sainsburys',
+        )
+        response = self._post_item({
+            'issuer': 'Tesco', '_sg_suggested_issuer': 'Tesco', 'redeem_code': 'KEPT1',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            ScanFieldCorrection.objects.filter(user=self.user, field='issuer', ai_value='Tesco').exists()
+        )
+
 
 class AnimationAssetsTests(TestCase):
     """

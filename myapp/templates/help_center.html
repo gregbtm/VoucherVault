@@ -81,6 +81,47 @@
   {% endwith %}
   {% endfor %}
 
+  {% if tools %}
+  <!-- Interactive tools section — open as full pages, not modals -->
+  <div class="help-category mb-5" data-category="Interactive Tools">
+    <div class="d-flex align-items-center gap-2 mb-3">
+      <span class="help-cat-icon" style="background:#e8f5e9;color:#2e7d32;">
+        <i class="bi bi-tools"></i>
+      </span>
+      <h5 class="help-category-title mb-0">
+        {% trans "Interactive Tools" %}
+        <span class="badge rounded-pill ms-1 help-cat-count" style="background:#e8f5e9;color:#2e7d32;font-size:0.65rem;font-weight:600;">{{ tools|length }}</span>
+      </h5>
+    </div>
+    <div class="row g-3">
+      {% for url_name, icon, title, description in tools %}
+      <div class="col-12 col-sm-6 col-lg-4 help-card-wrapper"
+           data-title="{{ title|lower }} {{ description|lower }}"
+           data-category="interactive tools">
+        <a href="{% url url_name %}" class="text-decoration-none">
+          <div class="card h-100 help-tool-card" style="border:1px solid var(--bs-border-color);border-left:3px solid #2e7d32;transition:box-shadow 0.15s ease;">
+            <div class="card-body help-card-body">
+              <div class="d-flex align-items-center gap-2">
+                <div class="help-card-icon-wrap flex-shrink-0" style="background:#e8f5e9;color:#2e7d32;width:2rem;height:2rem;border-radius:0.45rem;display:flex;align-items:center;justify-content:center;font-size:0.9rem;">
+                  <i class="bi {{ icon }}"></i>
+                </div>
+                <div class="flex-grow-1 min-w-0">
+                  <div class="fw-semibold help-doc-title">{{ title }}</div>
+                  <div class="text-secondary" style="font-size:0.78rem;">{{ description }}</div>
+                </div>
+              </div>
+            </div>
+            <div class="card-footer" style="font-size:0.78rem;font-weight:500;padding:0.35rem 0.75rem;border-top:1px solid var(--bs-border-color);background:transparent;color:#2e7d32;">
+              <i class="bi bi-box-arrow-up-right me-1"></i>{% trans "Open tool" %}
+            </div>
+          </div>
+        </a>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Empty state for search -->
   <div id="help-no-results" class="text-center py-5 d-none">
     <i class="bi bi-search fs-1 text-secondary opacity-50"></i>
@@ -155,7 +196,6 @@
 
 .help-doc-card:hover, .help-doc-card:focus {
   box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
-  transform: translateY(-2px);
   outline: none;
 }
 .help-doc-title { font-size: 0.9rem; line-height: 1.4; margin-bottom: 0.2rem; }
@@ -198,6 +238,13 @@
 [data-bs-theme="dark"] .cat-badge-4 { background: #3d2e00; color: #ffd54f; }
 [data-bs-theme="dark"] .cat-badge-5 { background: #2a1a4a; color: #b39ddb; }
 [data-bs-theme="dark"] .cat-badge-6 { background: #002d33; color: #4dd0e1; }
+
+/* Tool cards */
+.help-tool-card:hover, .help-tool-card:focus-within {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+}
+[data-bs-theme="dark"] .help-tool-card .help-card-icon-wrap { background: #1a3320 !important; color: #81c784 !important; }
+[data-bs-theme="dark"] .help-tool-card .card-footer { color: #81c784 !important; }
 
 /* Search input */
 #help-search { border-left: none; }

@@ -35,6 +35,8 @@ DOCS = {
     'wallets-tags':       ('Wallets & tags', 'WALLETS_AND_TAGS.md'),
     'oidc-setup':         ('OIDC / PocketID SSO setup', 'OIDC_SETUP.md'),
     'security-settings':  ('Security settings & hardening', 'SECURITY_SETTINGS.md'),
+    'field-map-doc':      ('Field map & suggestion system', 'FIELD_MAP.md'),
+    'gift-card-health':   ('Gift Card Health & Merchant Alerts', 'GIFT_CARD_HEALTH.md'),
 }
 
 # Categories for the Help Center index page.
@@ -78,6 +80,19 @@ CATEGORIES = [
         ('oidc-setup',        'Set up PocketID or any OIDC provider for single sign-on'),
         ('security-settings', 'Login spike alerts, API token expiry, CSP, and system-check warnings'),
     ]),
+    ('Reference', 'bi-layout-text-sidebar-reverse', [
+        ('field-map-doc',     'Every form field, when it appears, and which ones have context-aware suggestion buttons'),
+        ('gift-card-health',  'Inactivity reminders, Companies House merchant health alerts, and the Developer Hub'),
+    ]),
+]
+
+# Interactive tools — these open as standalone pages, not as help-doc modals.
+# Each entry: (url_name, icon, title, description)
+TOOLS = [
+    ('field_map', 'bi-layout-text-sidebar-reverse', 'Interactive Field Map',
+     'Filter, search, and explore every item form field and the suggestion system — with the type visibility matrix'),
+    ('developer_hub', 'bi-terminal', 'Developer Hub',
+     'API tokens, outbound webhooks, integration connectivity tests, merchant health, and the full REST API reference'),
 ]
 
 

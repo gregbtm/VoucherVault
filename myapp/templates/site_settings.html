@@ -60,7 +60,7 @@
             <div class="settings-group-label"><i class="bi bi-bell me-1"></i> {% trans "Notifications & Expiry" %}</div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-clock-history me-2"></i>{% trans "Expiry & Notifications" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'How many days before an item expires the first and final expiry notifications fire, unless an item sets its own override.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-clock-history me-2"></i>{% trans "Expiry & Notifications" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'How many days before an item expires the first and final expiry notifications fire, unless an item sets its own override.' %}"></i><a href="{% url 'view_doc' 'notifications' %}" data-doc-url="{% url 'view_doc' 'notifications' %}" class="help-link ms-1" title="{% trans 'Notification rules & expiry alerts guide' %}"><i class="bi bi-question-circle"></i></a></h6>
               <div class="row">
                 <div class="col-md-4 mb-3">
                   <label for="{{ form.expiry_threshold_days.id_for_label }}" class="form-label">{% trans "Expiry warning threshold (days)" %}</label>
@@ -85,8 +85,8 @@
               </div>
             </div>
 
-            <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-gift me-2"></i>{% trans "Gift Card Health" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Inactivity reminders and merchant health alerts for gift cards and other value items.' %}"></i></h6>
+            <div class="settings-section" id="gift-card-health">
+              <h6 class="text-muted mb-3"><i class="bi bi-gift me-2"></i>{% trans "Gift Card Health" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Inactivity reminders and merchant health alerts for gift cards and other value items.' %}"></i><a href="{% url 'view_doc' 'gift-card-health' %}" data-doc-url="{% url 'view_doc' 'gift-card-health' %}" class="help-link" title="{% trans 'Gift Card Health guide' %}"><i class="bi bi-question-circle"></i></a></h6>
               <div class="row">
                 <div class="col-md-4 mb-3">
                   <label for="{{ form.inactivity_threshold_days.id_for_label }}" class="form-label">{% trans "Inactivity reminder threshold (days)" %}</label>
@@ -103,7 +103,7 @@
             </div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-broadcast me-2"></i>{% trans "Web Push" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Lets users receive expiry notifications as native browser/phone push messages. Requires a one-off VAPID key pair.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-broadcast me-2"></i>{% trans "Web Push" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Lets users receive expiry notifications as native browser/phone push messages. Requires a one-off VAPID key pair.' %}"></i><a href="{% url 'view_doc' 'pwa-offline' %}" data-doc-url="{% url 'view_doc' 'pwa-offline' %}" class="help-link ms-1" title="{% trans 'PWA install & offline mode guide' %}"><i class="bi bi-question-circle"></i></a></h6>
               <p class="text-muted small">{% trans "Generate a key pair with" %} <code>docker compose exec app python manage.py generate_vapid_keys</code></p>
               <div class="row">
                 <div class="col-md-4 mb-3">

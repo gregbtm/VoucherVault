@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>VoucherVault Field Map</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d2a;
+  --surface2: #20243a;
+  --border: #2a2e48;
+  --text: #e2e4f0;
+  --muted: #7e85a8;
+  --accent: #6366f1;
+  --always: #3b82f6;
+  --conditional: #f59e0b;
+  --driver: #10b981;
+  --proposed: #a855f7;
+  --hover: #252942;
+  --mono: 'Cascadia Code','Fira Code','SF Mono','Monaco',ui-monospace,monospace;
+  --sans: -apple-system,'Segoe UI',system-ui,sans-serif;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f0f2f9;
+    --surface: #ffffff;
+    --surface2: #f5f6fc;
+    --border: #d8dce8;
+    --text: #1a1d2a;
+    --muted: #6b728e;
+    --hover: #eef0f8;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f0f2f9;
+  --surface: #ffffff;
+  --surface2: #f5f6fc;
+  --border: #d8dce8;
+  --text: #1a1d2a;
+  --muted: #6b728e;
+  --hover: #eef0f8;
+}
+:root[data-theme="dark"] {
+  --bg: #0f1117;
+  --surface: #1a1d2a;
+  --surface2: #20243a;
+  --border: #2a2e48;
+  --text: #e2e4f0;
+  --muted: #7e85a8;
+  --hover: #252942;
+}
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; font-size: 13px; }
+a { color: var(--accent); text-decoration: none; }
+
+/* Layout */
+.app { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: 48px 1fr; min-height: 100vh; }
+.topbar { grid-column: 1/-1; display: flex; align-items: center; gap: 12px; padding: 0 16px;
+  border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 100; }
+.topbar-title { font-weight: 700; font-size: 14px; color: var(--text); letter-spacing: -0.01em; white-space: nowrap; }
+.topbar-title span { color: var(--accent); }
+.topbar-sep { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+.search-wrap { display: flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 10px; flex: 1; max-width: 280px; }
+.search-wrap svg { color: var(--muted); flex-shrink: 0; }
+.search-wrap input { background: none; border: none; outline: none; color: var(--text); font-family: var(--sans); font-size: 12px; width: 100%; }
+.search-wrap input::placeholder { color: var(--muted); }
+.filter-chips { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 4px; font-size: 11px;
+  font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.12s; user-select: none; }
+.chip.all { border-color: var(--border); color: var(--muted); }
+.chip.all.active { background: var(--surface2); border-color: var(--accent); color: var(--text); }
+.chip.driver { border-color: var(--driver); color: var(--driver); }
+.chip.driver.active { background: #0d2e21; }
+.chip.always { border-color: var(--always); color: var(--always); }
+.chip.always.active { background: #0d1e35; }
+.chip.conditional { border-color: var(--conditional); color: var(--conditional); }
+.chip.conditional.active { background: #2e1e00; }
+.chip.proposed { border-color: var(--proposed); color: var(--proposed); }
+.chip.proposed.active { background: #1e0a3a; }
+.count-summary { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.theme-toggle { padding: 4px 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px;
+  cursor: pointer; font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+/* Sidebar */
+.sidebar { background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto;
+  position: sticky; top: 48px; height: calc(100vh - 48px); }
+.sidebar-section { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.sidebar-label { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted); padding: 6px 12px 2px; }
+.page-btn { display: flex; align-items: center; gap: 8px; padding: 6px 12px; cursor: pointer;
+  border-left: 2px solid transparent; transition: all 0.1s; width: 100%; background: none; border-right: none;
+  border-top: none; border-bottom: none; text-align: left; }
+.page-btn:hover { background: var(--hover); }
+.page-btn.active { border-left-color: var(--accent); background: var(--hover); }
+.page-btn .icon { font-size: 14px; width: 18px; text-align: center; flex-shrink: 0; }
+.page-btn .label { font-size: 12px; font-weight: 500; color: var(--text); flex: 1; }
+.page-btn.active .label { color: var(--accent); }
+.page-btn .cnt { font-size: 10px; color: var(--muted); background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 0 6px; min-width: 22px; text-align: center; }
+.sidebar-stats { padding: 8px 12px; }
+.stat-row { display: flex; align-items: center; justify-content: space-between; padding: 2px 0; }
+.stat-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.stat-lbl { font-size: 10px; color: var(--muted); }
+.stat-val { font-size: 10px; color: var(--muted); font-weight: 600; }
+
+/* Main */
+.main { overflow-y: auto; padding: 0; }
+.page-section { display: none; padding: 16px; }
+.page-section.visible { display: block; }
+.page-header { margin-bottom: 16px; }
+.page-header h2 { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+.page-header p { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.page-header .file-ref { font-family: var(--mono); font-size: 10px; color: var(--muted);
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; display: inline-block; margin-top: 6px; }
+
+/* Field section */
+.field-group { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+.group-header { display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--surface2);
+  border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; }
+.group-header h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); flex: 1; }
+.group-count { font-size: 10px; color: var(--muted); }
+.group-chevron { font-size: 10px; color: var(--muted); transition: transform 0.15s; }
+.field-group.collapsed .group-chevron { transform: rotate(-90deg); }
+.field-group.collapsed .field-table { display: none; }
+
+.field-table { width: 100%; border-collapse: collapse; }
+.field-table th { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--muted); padding: 6px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+.field-row { border-bottom: 1px solid var(--border); transition: background 0.08s; }
+.field-row:last-child { border-bottom: none; }
+.field-row:hover { background: var(--hover); }
+.field-row.hidden-by-filter { display: none; }
+.field-row td { padding: 7px 14px; vertical-align: top; }
+.field-name { font-family: var(--mono); font-size: 11.5px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.field-id { font-family: var(--mono); font-size: 9.5px; color: var(--muted); margin-top: 1px; }
+.field-type { display: inline-flex; align-items: center; font-family: var(--mono); font-size: 10px;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 1px 6px; white-space: nowrap; color: var(--muted); }
+.field-purpose { font-size: 12px; color: var(--text); line-height: 1.5; }
+.field-condition { font-size: 11px; color: var(--muted); margin-top: 3px; font-style: italic; }
+.field-proposed { font-size: 11px; color: var(--proposed); margin-top: 4px; }
+.field-proposed::before { content: '⚡ Proposed: '; font-weight: 600; }
+
+/* Status badges */
+.badge { display: inline-flex; align-items: center; font-size: 9.5px; font-weight: 700; padding: 2px 7px;
+  border-radius: 3px; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
+.badge-driver { background: #0d2e21; color: var(--driver); border: 1px solid #1a5c3e; }
+.badge-always { background: #0d1e35; color: var(--always); border: 1px solid #1a3a6e; }
+.badge-conditional { background: #2e1e00; color: var(--conditional); border: 1px solid #5c3a00; }
+.badge-proposed { background: #1e0a3a; color: var(--proposed); border: 1px solid #5a1a8e; }
+
+/* Proposed row highlight */
+.field-row[data-status="proposed"] { border-left: 2px solid var(--proposed); }
+.field-row[data-status="driver"] { border-left: 2px solid var(--driver); }
+.field-row[data-status="conditional"] { border-left: 2px solid var(--conditional); }
+
+/* Dependency indicator */
+.dep-tag { display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 9.5px;
+  color: var(--muted); background: var(--surface2); border: 1px solid var(--border); border-radius: 3px;
+  padding: 1px 6px; margin-top: 3px; }
+.dep-tag::before { content: '→'; color: var(--muted); }
+
+/* Matrix table (item type matrix) */
+.matrix-wrap { overflow-x: auto; }
+.matrix-table { border-collapse: collapse; font-size: 11px; width: 100%; }
+.matrix-table th { background: var(--surface2); padding: 6px 10px; border: 1px solid var(--border);
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); white-space: nowrap; }
+.matrix-table th:first-child { text-align: left; min-width: 160px; }
+.matrix-table td { padding: 5px 10px; border: 1px solid var(--border); text-align: center; font-family: var(--mono); font-size: 11px; }
+.matrix-table td:first-child { text-align: left; color: var(--text); font-size: 11px; }
+.cell-show { color: var(--driver); font-weight: 700; }
+.cell-hide { color: var(--border); }
+.cell-mod { color: var(--conditional); font-weight: 600; }
+
+/* Empty state */
+.empty-state { text-align: center; padding: 48px 16px; color: var(--muted); }
+.empty-state p { margin-top: 8px; font-size: 12px; }
+
+/* No results */
+#no-results { display: none; text-align: center; padding: 32px; color: var(--muted); }
+
+/* Suggest indicator */
+.badge-suggest { background: #2a1e00; color: #fcd34d; border: 1px solid #78570a; }
+.suggest-tag { font-size: 10.5px; color: #d97706; margin-top: 4px; }
+.suggest-tag::before { content: '💡 '; }
+:root[data-theme="light"] .suggest-tag { color: #b45309; }
+@media (prefers-color-scheme: light) { .suggest-tag { color: #b45309; } }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+<!-- Top bar -->
+<header class="topbar">
+  <div class="topbar-title">VoucherVault <span>Field Map</span></div>
+  <div class="topbar-sep"></div>
+  <div class="search-wrap">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <input type="search" id="search" placeholder="Search fields…" autocomplete="off">
+  </div>
+  <div class="filter-chips">
+    <span class="chip all active" data-filter="all">All</span>
+    <span class="chip driver" data-filter="driver">Driver</span>
+    <span class="chip always" data-filter="always">Always shown</span>
+    <span class="chip conditional" data-filter="conditional">Conditional</span>
+    <span class="chip proposed" data-filter="proposed">⚡ Proposed</span>
+  </div>
+  <div class="count-summary" id="count-summary"></div>
+  <button class="theme-toggle" id="theme-toggle">☀ Light</button>
+</header>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-label">Forms</div>
+    <button class="page-btn active" data-page="item">
+      <span class="icon">🎫</span>
+      <span class="label">Item Form</span>
+      <span class="cnt" id="cnt-item"></span>
+    </button>
+    <button class="page-btn" data-page="settings">
+      <span class="icon">⚙️</span>
+      <span class="label">Site Settings</span>
+      <span class="cnt" id="cnt-settings"></span>
+    </button>
+    <button class="page-btn" data-page="prefs">
+      <span class="icon">👤</span>
+      <span class="label">Preferences</span>
+      <span class="cnt" id="cnt-prefs"></span>
+    </button>
+    <button class="page-btn" data-page="rules">
+      <span class="icon">🔔</span>
+      <span class="label">Notify Rules</span>
+      <span class="cnt" id="cnt-rules"></span>
+    </button>
+    <button class="page-btn" data-page="webhooks">
+      <span class="icon">🔗</span>
+      <span class="label">Webhooks</span>
+      <span class="cnt" id="cnt-webhooks"></span>
+    </button>
+    <button class="page-btn" data-page="dms">
+      <span class="icon">📁</span>
+      <span class="label">DMS Provider</span>
+      <span class="cnt" id="cnt-dms"></span>
+    </button>
+    <button class="page-btn" data-page="wallet">
+      <span class="icon">👛</span>
+      <span class="label">Wallet</span>
+      <span class="cnt" id="cnt-wallet"></span>
+    </button>
+    <button class="page-btn" data-page="misc">
+      <span class="icon">🏷️</span>
+      <span class="label">Tags / Import</span>
+      <span class="cnt" id="cnt-misc"></span>
+    </button>
+  </div>
+  <div class="sidebar-section sidebar-stats">
+    <div class="sidebar-label" style="padding:0 0 6px">Legend</div>
+    <div class="stat-row"><span class="stat-dot" style="background:var(--driver)"></span><span class="stat-lbl">Driver — controls other fields</span></div>
+    <div class="stat-row"><span class="stat-dot" style="background:var(--always)"></span><span class="stat-lbl">Always shown</span></div>
+    <div class="stat-row"><span class="stat-dot" style="background:var(--conditional)"></span><span class="stat-lbl">Currently conditional</span></div>
+    <div class="stat-row" style="margin-top:4px"><span class="stat-dot" style="background:var(--proposed)"></span><span class="stat-lbl">⚡ Proposed — not yet built</span></div>
+    <div class="stat-row" style="margin-top:4px"><span class="stat-dot" style="background:#d97706"></span><span class="stat-lbl">💡 Has suggestion button</span></div>
+  </div>
+</nav>
+
+<!-- Main content -->
+<main class="main" id="main">
+
+<!-- ───────────── ITEM FORM ───────────── -->
+<div class="page-section visible" id="page-item">
+  <div class="page-header">
+    <h2>Item Form</h2>
+    <p>The most complex form in the app. 42 fields across create and edit flows, heavily driven by item type.
+    6 fields carry a 💡 <strong>context-aware suggestion button</strong> (issuer, logo slug, wallet, discount applied, currency, code type).
+    Suggestions are ranked by recency/frequency, boosted when sibling fields share the same context (e.g. same issuer),
+    with automatic cross-type fallback when fewer than 3 suggestions exist for the selected type.
+    Accepted suggestions later changed before saving record a <code>ScanFieldCorrection</code> row to self-improve future rankings.</p>
+    <span class="file-ref">create-item.html / edit-item.html · ItemForm (myapp/forms.py) · field-suggest.js · views.suggest_field_options</span>
+  </div>
+
+  <!-- Type matrix -->
+  <div class="field-group" id="grp-item-matrix">
+    <div class="group-header" onclick="toggleGroup(this)">
+      <h3>Type Visibility Matrix</h3>
+      <span class="group-count">shows which fields appear per item type</span>
+      <span class="group-chevron">▾</span>
+    </div>
+    <div style="padding:12px 14px; overflow-x:auto;">
+      <table class="matrix-table">
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Gift Card</th>
+            <th>Voucher</th>
+            <th>Coupon</th>
+            <th>Loyalty Card</th>
+            <th>Travel Pass</th>
+          </tr>
+        </thead>
+        <tbody id="matrix-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="item-groups"></div>
+  <div id="no-results" class="empty-state">
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".4"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <p>No fields match your filter.</p>
+  </div>
+</div>
+
+<!-- ───────────── SITE SETTINGS ───────────── -->
+<div class="page-section" id="page-settings">
+  <div class="page-header">
+    <h2>Site Settings</h2>
+    <p>Admin-only configuration. Autosaved via AJAX. OCR backend selection already drives field visibility.</p>
+    <span class="file-ref">site_settings.html · SiteConfigurationForm (myapp/forms.py)</span>
+  </div>
+  <div id="settings-groups"></div>
+</div>
+
+<!-- ───────────── PREFERENCES ───────────── -->
+<div class="page-section" id="page-prefs">
+  <div class="page-header">
+    <h2>User Preferences</h2>
+    <p>Per-user settings. Several widget sub-fields currently always visible but meaningless unless their parent is enabled — good candidates for proposed conditionals.</p>
+    <span class="file-ref">update_preferences.html · UserPreferenceForm (myapp/forms.py)</span>
+  </div>
+  <div id="prefs-groups"></div>
+</div>
+
+<!-- ───────────── NOTIFICATION RULES ───────────── -->
+<div class="page-section" id="page-rules">
+  <div class="page-header">
+    <h2>Notification Rules</h2>
+    <p>Backend selector drives which auth/config fields are shown. Each backend has its own field group.</p>
+    <span class="file-ref">notify/templates/notify/rules.html · NotificationRuleForm</span>
+  </div>
+  <div id="rules-groups"></div>
+</div>
+
+<!-- ───────────── WEBHOOKS ───────────── -->
+<div class="page-section" id="page-webhooks">
+  <div class="page-header">
+    <h2>Outbound Webhooks</h2>
+    <p>Simple form; no conditional logic. All fields always shown.</p>
+    <span class="file-ref">myapp/templates/webhooks.html · UserWebhook model</span>
+  </div>
+  <div id="webhooks-groups"></div>
+</div>
+
+<!-- ───────────── DMS ───────────── -->
+<div class="page-section" id="page-dms">
+  <div class="page-header">
+    <h2>DMS Provider</h2>
+    <p>Provider type selector controls which auth section shows. Auto-pull toggle reveals filter fields.</p>
+    <span class="file-ref">dms/templates/dms/provider_form.html · DMSProviderForm</span>
+  </div>
+  <div id="dms-groups"></div>
+</div>
+
+<!-- ───────────── WALLET ───────────── -->
+<div class="page-section" id="page-wallet">
+  <div class="page-header">
+    <h2>Wallet</h2>
+    <p>Mostly always-visible. Collaborator sub-form only shown when editing an existing wallet.</p>
+    <span class="file-ref">myapp/templates/manage-wallets.html · WalletForm</span>
+  </div>
+  <div id="wallet-groups"></div>
+</div>
+
+<!-- ───────────── MISC ───────────── -->
+<div class="page-section" id="page-misc">
+  <div class="page-header">
+    <h2>Tags &amp; Import</h2>
+    <p>Simple forms. No conditional logic beyond what's shown here.</p>
+    <span class="file-ref">manage-tags.html · TagForm &nbsp;|&nbsp; imports/templates/imports/upload.html</span>
+  </div>
+  <div id="misc-groups"></div>
+</div>
+
+</main><!-- /main -->
+</div><!-- /app -->
+
+<script>
+'use strict';
+
+// ─── DATA ───────────────────────────────────────────────────────
+// status: 'driver' | 'always' | 'conditional' | 'proposed'
+// proposed: string — description of logic to implement
+// dependsOn: string — what controls this field
+// showWhen: string — condition text
+
+const PAGES = {
+
+item: {
+  label: 'Item Form',
+  groups: [
+    { name: 'Scan Helpers (pre-form)', fields: [
+      { name: 'AI Scan', id: 'aiScanInput', type: 'file', status: 'conditional',
+        purpose: 'Upload a photo or PDF to OCR-extract field values automatically.',
+        dependsOn: 'SiteConfiguration.ocr_backend', showWhen: 'ocr_backend ≠ none (server-side)' },
+      { name: 'Apple Wallet Import', id: 'pkpassImportInput', type: 'file', status: 'conditional',
+        purpose: 'Import a .pkpass file to pre-fill item fields.',
+        dependsOn: 'VVDeviceDetect.isApple', showWhen: 'Apple device detected via user-agent' },
+      { name: 'Camera Scan', id: 'startScanner', type: 'button', status: 'always',
+        purpose: 'Launch device camera to scan a barcode into the Redeem Code field.' },
+      { name: 'File Scan', id: 'scanFromFile', type: 'button', status: 'always',
+        purpose: 'Scan a barcode from a still image file into the Redeem Code field.' },
+    ]},
+    { name: 'Basic Information', fields: [
+      { name: 'Type', id: 'type', type: 'select', status: 'driver',
+        purpose: 'Item category: Gift Card, Voucher, Coupon, Loyalty Card, Travel Pass. Drives all other field visibility on this form.' },
+      { name: 'Tile Color', id: 'tile_color', type: 'color', status: 'always',
+        purpose: 'Override the card background color shown on the Inventory grid.' },
+      { name: 'Name', id: 'name', type: 'text', status: 'always',
+        purpose: 'Display name of the item (required).' },
+      { name: 'Issuer', id: 'issuer', type: 'text+datalist', status: 'always', suggest: true,
+        purpose: 'Organization that issued the item. Label changes to "Store" for loyalty cards. Triggers merchant logo auto-fetch. Suggestion button appears when the field is empty; used as the context anchor for other suggest fields.' },
+    ]},
+    { name: 'Code Information', fields: [
+      { name: 'Redeem Code', id: 'redeem_code', type: 'text', status: 'always',
+        purpose: 'The barcode value or code to redeem. Label changes to "Loyalty ID" for loyalty cards.' },
+      { name: 'Card / Member Number', id: 'card_number', type: 'text', status: 'conditional',
+        purpose: 'Printed member/account number when different from the barcode value.',
+        dependsOn: 'type', showWhen: 'gift_card · loyalty_card',
+        matrix: { gift_card:'show', voucher:'hide', coupon:'hide', loyalty_card:'show', travel_pass:'hide' } },
+      { name: 'Journey From', id: 'journey_origin', type: 'text', status: 'conditional',
+        purpose: 'Departure station or stop for a travel ticket.',
+        dependsOn: 'type', showWhen: 'travel_pass only',
+        matrix: { gift_card:'hide', voucher:'hide', coupon:'hide', loyalty_card:'hide', travel_pass:'show' } },
+      { name: 'Journey To', id: 'journey_destination', type: 'text', status: 'conditional',
+        purpose: 'Arrival station or stop for a travel ticket.',
+        dependsOn: 'type', showWhen: 'travel_pass only',
+        matrix: { gift_card:'hide', voucher:'hide', coupon:'hide', loyalty_card:'hide', travel_pass:'show' } },
+      { name: 'Time of Travel', id: 'travel_time', type: 'time', status: 'conditional',
+        purpose: 'Scheduled departure time for a travel ticket.',
+        dependsOn: 'type', showWhen: 'travel_pass only',
+        matrix: { gift_card:'hide', voucher:'hide', coupon:'hide', loyalty_card:'hide', travel_pass:'show' } },
+      { name: 'Seat / Coach', id: 'seat_number', type: 'text', status: 'conditional',
+        purpose: 'Seat or coach reservation on a travel ticket.',
+        dependsOn: 'type', showWhen: 'travel_pass only',
+        matrix: { gift_card:'hide', voucher:'hide', coupon:'hide', loyalty_card:'hide', travel_pass:'show' } },
+      { name: 'Membership Tier', id: 'membership_tier', type: 'text', status: 'conditional',
+        purpose: 'Loyalty scheme tier (Silver, Gold, Platinum, etc.).',
+        dependsOn: 'type', showWhen: 'loyalty_card only',
+        matrix: { gift_card:'hide', voucher:'hide', coupon:'hide', loyalty_card:'show', travel_pass:'hide' } },
+      { name: 'Code Type', id: 'code_type', type: 'select', status: 'always', suggest: true,
+        purpose: 'Barcode symbology (16 options: QR Code, EAN-13, Aztec, PDF417, No Barcode…). Default is No Barcode on create. Suggestion button always visible (SELECT field — always has a selected value).' },
+      { name: 'PIN Code', id: 'pin', type: 'text', status: 'conditional',
+        purpose: 'Security PIN for the card or voucher. Read-only for loyalty cards.',
+        dependsOn: 'type', showWhen: 'gift_card · voucher · loyalty_card (readonly)',
+        matrix: { gift_card:'show', voucher:'show', coupon:'hide', loyalty_card:'show', travel_pass:'hide' } },
+    ]},
+    { name: 'Dates', fields: [
+      { name: 'Issue Date', id: 'issue_date', type: 'date', status: 'conditional',
+        purpose: 'When the item was issued. Required for most types; optional for travel passes (auto-syncs to expiry date if untouched).',
+        dependsOn: 'type', showWhen: 'required for all except travel_pass (optional)' },
+      { name: 'Expiry Date', id: 'expiry_date', type: 'date', status: 'always',
+        purpose: 'When the item expires. Optional — server defaults to 50 years if blank.' },
+    ]},
+    { name: 'Value', fields: [
+      { name: 'Value', id: 'value', type: 'number', status: 'conditional',
+        purpose: 'Monetary / percentage / multiplier value. Read-only (forced 0) for loyalty cards; entire section hidden for travel passes.',
+        dependsOn: 'type', showWhen: 'gift_card · voucher · coupon · loyalty_card(readonly)',
+        matrix: { gift_card:'show', voucher:'show', coupon:'show', loyalty_card:'show', travel_pass:'hide' } },
+      { name: 'Value Type Toggle', id: 'toggle-value-type', type: 'button', status: 'conditional',
+        purpose: 'Cycles value_type between money / percentage / multiplier. Only coupons can have non-money values.',
+        dependsOn: 'type', showWhen: 'coupon only',
+        matrix: { gift_card:'hide', voucher:'hide', coupon:'show', loyalty_card:'hide', travel_pass:'hide' } },
+      { name: 'Currency', id: 'currency', type: 'select', status: 'conditional', suggest: true,
+        purpose: '34 currencies. Hidden for loyalty cards and when value_type is not "money". Suggestion button always visible (SELECT field).',
+        dependsOn: 'type + value_type', showWhen: 'gift_card · voucher · coupon (when money)' },
+      { name: 'Balance Check URL', id: 'balance_check_url', type: 'url', status: 'conditional',
+        purpose: 'Link to the merchant\'s balance check page. Auto-suggested from MerchantProfile when issuer is set.',
+        dependsOn: 'type', showWhen: 'gift_card only',
+        matrix: { gift_card:'show', voucher:'hide', coupon:'hide', loyalty_card:'hide', travel_pass:'hide' } },
+      { name: 'Face Value (at purchase)', id: 'initial_value', type: 'number', status: 'conditional',
+        purpose: 'Loaded value at time of purchase, for tracking spend-down.',
+        dependsOn: 'type', showWhen: 'gift_card only',
+        matrix: { gift_card:'show', voucher:'hide', coupon:'hide', loyalty_card:'hide', travel_pass:'hide' } },
+      { name: 'Points Balance', id: 'points_balance', type: 'number', status: 'conditional',
+        purpose: 'Current points or stamps total for a loyalty card.',
+        dependsOn: 'type', showWhen: 'loyalty_card only',
+        matrix: { gift_card:'hide', voucher:'hide', coupon:'hide', loyalty_card:'show', travel_pass:'hide' } },
+      { name: 'Firefly III Account ID', id: 'firefly_account_id', type: 'text', status: 'proposed',
+        purpose: 'Linked Firefly III asset account ID — balance changes posted here automatically.',
+        dependsOn: 'type + Firefly rule configured',
+        showWhen: 'gift_card · voucher (type) — currently always shown for those types',
+        proposed: 'Also gate on: user has at least one Firefly notification rule (pass has_firefly_rule=True from view). If no Firefly rule exists, this field is useless and adds noise.',
+        matrix: { gift_card:'show', voucher:'show', coupon:'hide', loyalty_card:'hide', travel_pass:'hide' } },
+      { name: 'Firefly III Rule (override)', id: 'firefly_rule', type: 'select', status: 'proposed',
+        purpose: 'Override which Firefly notification rule handles spend posting for this item. Edit form only.',
+        dependsOn: 'type + Firefly rule configured',
+        showWhen: 'edit form only; gift_card · voucher',
+        proposed: 'Same as firefly_account_id — gate on has_firefly_rule. Absent from create form.' },
+    ]},
+    { name: 'Organization', fields: [
+      { name: 'Wallet', id: 'wallet', type: 'select', status: 'conditional', suggest: true,
+        purpose: 'Assign item to a wallet folder. Disabled and auto-assigned for travel passes. Suggestion button always visible (SELECT field).',
+        dependsOn: 'type', showWhen: 'all types — but disabled + forced for travel_pass' },
+      { name: 'Tags', id: 'tags', type: 'checkboxes', status: 'always',
+        purpose: 'Attach one or more tags to the item. Only rendered if user has tags.' },
+      { name: 'New Tags', id: 'new_tags', type: 'text', status: 'always',
+        purpose: 'Create new tags inline (comma-separated). Combined with existing tag selection.' },
+      { name: 'Notes', id: 'notes', type: 'textarea', status: 'always',
+        purpose: 'Free-text redemption instructions, T&Cs, or any other note.' },
+      { name: 'Share Message', id: 'share_message', type: 'textarea', status: 'always',
+        purpose: 'Custom message shown on the public share page when this item is shared.' },
+      { name: 'Recurring / Subscription', id: 'is_recurring', type: 'checkbox', status: 'driver',
+        purpose: 'Mark item as auto-renewing. When checked, reveals renewal period and date fields.' },
+      { name: 'Renewal Period', id: 'renewal_period', type: 'select', status: 'conditional',
+        purpose: 'How often the item renews (weekly / monthly / quarterly / biannual / annual).',
+        dependsOn: 'is_recurring', showWhen: 'is_recurring is checked' },
+      { name: 'Next Renewal Date', id: 'renewal_date', type: 'date', status: 'conditional',
+        purpose: 'The upcoming billing or renewal date.',
+        dependsOn: 'is_recurring', showWhen: 'is_recurring is checked' },
+      { name: 'Notify Before Expiry (days)', id: 'notify_days_before', type: 'number', status: 'proposed',
+        purpose: 'Per-item override of the global expiry notification threshold (days).',
+        proposed: 'Consider hiding unless user has at least one active notification rule. Currently always shown even when no rules exist, which is confusing.' },
+    ]},
+    { name: 'Additional Information', fields: [
+      { name: 'Description', id: 'description', type: 'textarea', status: 'always',
+        purpose: 'Free-text description of the item for your own reference.' },
+      { name: 'Order / Booking Reference', id: 'order_id', type: 'text', status: 'conditional',
+        purpose: 'Booking confirmation or order reference number.',
+        dependsOn: 'type', showWhen: 'gift_card · travel_pass',
+        matrix: { gift_card:'show', voucher:'hide', coupon:'hide', loyalty_card:'hide', travel_pass:'show' } },
+      { name: 'Discount / Railcard Applied', id: 'discount_applied', type: 'text', status: 'conditional', suggest: true,
+        purpose: 'Discount or railcard used at purchase (informational only). Suggestion button appears when the field is empty.',
+        dependsOn: 'type', showWhen: 'travel_pass only',
+        matrix: { gift_card:'hide', voucher:'hide', coupon:'hide', loyalty_card:'hide', travel_pass:'show' } },
+      { name: 'Minimum Spend', id: 'minimum_spend', type: 'number', status: 'conditional',
+        purpose: 'Minimum basket value required to redeem this voucher or coupon.',
+        dependsOn: 'type', showWhen: 'voucher · coupon',
+        matrix: { gift_card:'hide', voucher:'show', coupon:'show', loyalty_card:'hide', travel_pass:'hide' } },
+      { name: 'Logo Slug', id: 'logo_slug', type: 'text', status: 'proposed', suggest: true,
+        purpose: 'Domain slug used to fetch the merchant logo from logo.dev (e.g. "tesco.com"). Suggestion button appears when the field is empty.',
+        proposed: 'Move into an "Advanced" collapsible section — most users never touch this and it adds visual noise to the form.' },
+      { name: 'Upload File', id: 'file', type: 'file', status: 'always',
+        purpose: 'Attach a card photo or PDF scan. Edit form shows a note if a file already exists.' },
+    ]},
+  ]
+},
+
+settings: {
+  label: 'Site Settings',
+  groups: [
+    { name: 'Expiry & Notifications', fields: [
+      { name: 'Expiry Warning Threshold', id: 'expiry_threshold_days', type: 'number', status: 'always',
+        purpose: 'Days before expiry that the first notification fires globally.' },
+      { name: 'Final Warning Threshold', id: 'expiry_last_notification_days', type: 'number', status: 'always',
+        purpose: 'Days before expiry for the final warning; must be ≤ first threshold.' },
+      { name: 'Default ntfy Server', id: 'ntfy_default_server', type: 'url', status: 'always',
+        purpose: 'Pre-filled into new ntfy notification rules so users don\'t retype it.' },
+    ]},
+    { name: 'Web Push (VAPID)', fields: [
+      { name: 'VAPID Public Key', id: 'webpush_vapid_public_key', type: 'text', status: 'driver',
+        purpose: 'Web Push VAPID public key. When non-blank, reveals the Claims Email and Barcode Key Version sub-fields.' },
+      { name: 'VAPID Private Key', id: 'webpush_vapid_private_key', type: 'password', status: 'always',
+        purpose: 'Web Push VAPID private key (stored encrypted).' },
+      { name: 'VAPID Contact Email', id: 'webpush_vapid_claims_email', type: 'text', status: 'conditional',
+        purpose: 'Contact email embedded in VAPID claims (required by spec). Hidden until VAPID public key is set.',
+        dependsOn: 'webpush_vapid_public_key', showWhen: 'VAPID public key input is non-blank (JS: syncWebpushSubFields)' },
+      { name: 'Barcode Key Version', id: 'webpush_barcode_key_version', type: 'number', status: 'conditional',
+        purpose: 'Key version used for encrypting barcode data in web push payloads. Hidden until VAPID public key is set.',
+        dependsOn: 'webpush_vapid_public_key', showWhen: 'VAPID public key input is non-blank (JS: syncWebpushSubFields)' },
+    ]},
+    { name: 'Merchant Logos', fields: [
+      { name: 'Auto-fetch Merchant Logos', id: 'merchant_logos_enabled', type: 'checkbox', status: 'always',
+        purpose: 'Enable background fetching of merchant logos from logo.dev and Clearbit.' },
+      { name: 'logo.dev Publishable Key', id: 'logo_dev_api_key', type: 'password', status: 'always',
+        purpose: 'Optional API key for higher-resolution logos from logo.dev.' },
+    ]},
+    { name: 'Nearby Items', fields: [
+      { name: 'Allow Nearby Widget', id: 'nearby_places_enabled', type: 'checkbox', status: 'driver',
+        purpose: 'Site-wide switch for the Nearby Items feature. Users also opt in per-preference.' },
+      { name: 'Overpass API URL', id: 'overpass_api_url', type: 'url', status: 'proposed',
+        purpose: 'Overpass API endpoint (can be self-hosted). Only used when Nearby is enabled.',
+        dependsOn: 'nearby_places_enabled',
+        proposed: 'Show only when nearby_places_enabled is checked. Irrelevant and confusing when Nearby is off.' },
+    ]},
+    { name: 'Sharing', fields: [
+      { name: 'Smart Share Links', id: 'share_via_smart_enabled', type: 'checkbox', status: 'driver',
+        purpose: 'Enable rich public share links (no-login-required viewer page).' },
+      { name: 'Link Expiry (days)', id: 'share_link_expiry_days', type: 'number', status: 'proposed',
+        purpose: 'How long new public share links stay valid (0 = never expire).',
+        dependsOn: 'share_via_smart_enabled',
+        proposed: 'Show only when share_via_smart_enabled is on. Meaningless when sharing is disabled.' },
+      { name: 'Require PIN on Share Link', id: 'share_link_pin_enabled', type: 'checkbox', status: 'proposed',
+        purpose: 'Require a short PIN to view any public share link.',
+        dependsOn: 'share_via_smart_enabled',
+        proposed: 'Same as above — gate on share_via_smart_enabled.' },
+    ]},
+    { name: 'Scan with AI (OCR)', fields: [
+      { name: 'OCR Backend', id: 'ocr_backend', type: 'select', status: 'driver',
+        purpose: 'Which OCR engine powers "Scan with AI": none / claude / openai / tesseract.' },
+      { name: 'Anthropic API Key', id: 'anthropic_api_key', type: 'password', status: 'conditional',
+        purpose: 'Claude API key for AI-powered barcode and text extraction.',
+        dependsOn: 'ocr_backend', showWhen: 'ocr_backend = claude' },
+      { name: 'Claude Model Override', id: 'anthropic_ocr_model', type: 'text', status: 'conditional',
+        purpose: 'Override which Claude model is used for OCR (default: claude-haiku).',
+        dependsOn: 'ocr_backend', showWhen: 'ocr_backend = claude' },
+      { name: 'OpenAI API Key', id: 'openai_api_key', type: 'password', status: 'conditional',
+        purpose: 'OpenAI API key for GPT-4o Vision OCR scanning.',
+        dependsOn: 'ocr_backend', showWhen: 'ocr_backend = openai' },
+      { name: 'OpenAI Model Override', id: 'openai_ocr_model', type: 'text', status: 'conditional',
+        purpose: 'Override which OpenAI model is used for OCR.',
+        dependsOn: 'ocr_backend', showWhen: 'ocr_backend = openai' },
+    ]},
+    { name: 'Apple Wallet (.pkpass) — ⟨details⟩ collapsed', fields: [
+      { name: 'Certificate Path (.p12)', id: 'pkpass_cert_path', type: 'text', status: 'always',
+        purpose: 'Container path to the signing certificate (.p12 file). All 6 fields required together. Entire section in a <details> element — collapsed by default, auto-opens when pkpass integration is ready.' },
+      { name: 'Certificate Password', id: 'pkpass_cert_password', type: 'password', status: 'always',
+        purpose: 'Password for the .p12 signing certificate.' },
+      { name: 'Apple WWDR Cert Path', id: 'pkpass_wwdr_cert_path', type: 'text', status: 'always',
+        purpose: 'Container path to the Apple WWDR intermediate certificate.' },
+      { name: 'Apple Team ID', id: 'pkpass_team_id', type: 'text', status: 'always',
+        purpose: 'Your Apple Developer Team ID (10-character string).' },
+      { name: 'Pass Type ID', id: 'pkpass_pass_type_id', type: 'text', status: 'always',
+        purpose: 'Pass type identifier registered in Apple Developer portal (pass.com.example…).' },
+      { name: 'Organization Name', id: 'pkpass_organization_name', type: 'text', status: 'always',
+        purpose: 'Organization name displayed on the Apple Wallet pass.' },
+    ]},
+    { name: 'Google Wallet — ⟨details⟩ collapsed', fields: [
+      { name: 'Service Account Key Path', id: 'google_wallet_service_account_key_path', type: 'text', status: 'always',
+        purpose: 'Container path to Google service account JSON key. Entire section in a <details> element — collapsed by default, auto-opens when google_wallet integration is ready.' },
+      { name: 'Issuer ID', id: 'google_wallet_issuer_id', type: 'text', status: 'always',
+        purpose: 'Google Wallet issuer ID from the Google Pay Console.' },
+      { name: 'Pass Class ID Override', id: 'google_wallet_class_id', type: 'text', status: 'always',
+        purpose: 'Optional pass class ID override (auto-generated if blank).' },
+    ]},
+    { name: 'OIDC / Single Sign-On', fields: [
+      { name: 'OIDC Discovery URL', id: 'oidc_discovery_url', type: 'url', status: 'driver',
+        purpose: 'OpenID Connect /.well-known/openid-configuration endpoint. Together with client ID, enables SSO.' },
+      { name: 'OIDC Client ID', id: 'oidc_client_id', type: 'text', status: 'driver',
+        purpose: 'OAuth2 client ID registered with the identity provider.' },
+      { name: 'OIDC Client Secret', id: 'oidc_client_secret', type: 'password', status: 'always',
+        purpose: 'OAuth2 client secret.' },
+      { name: 'Auto-login (OIDC only)', id: 'oidc_autologin', type: 'checkbox', status: 'conditional',
+        purpose: 'Redirect unauthenticated users straight to OIDC — disables local login. Hidden until both discovery_url and client_id are set to prevent accidental lockout.',
+        dependsOn: 'oidc_discovery_url + oidc_client_id', showWhen: 'both OIDC discovery URL and client ID are non-blank (JS: syncOidcDangerFields)' },
+      { name: 'Require TOTP for OIDC', id: 'oidc_require_totp', type: 'checkbox', status: 'conditional',
+        purpose: 'Require TOTP 2FA even for OIDC-authenticated users. Hidden until both discovery_url and client_id are set.',
+        dependsOn: 'oidc_discovery_url + oidc_client_id', showWhen: 'both OIDC discovery URL and client ID are non-blank (JS: syncOidcDangerFields)' },
+    ]},
+    { name: 'Update Check', fields: [
+      { name: 'Check for Updates', id: 'update_check_enabled', type: 'checkbox', status: 'always',
+        purpose: 'Show an update banner for admins when a new GitHub release is available.' },
+      { name: 'Repository', id: 'update_check_repo', type: 'text', status: 'always',
+        purpose: 'GitHub owner/repo to poll for new releases (e.g. "gregbtm/vouchervault").' },
+    ]},
+    { name: 'Portainer Redeploy', fields: [
+      { name: 'Webhook URL', id: 'portainer_webhook_url', type: 'url', status: 'always',
+        purpose: 'Portainer stack webhook URL. Allows one-click redeploy from the admin settings page.' },
+    ]},
+    { name: 'Scheduled Backups', fields: [
+      { name: 'Enable Nightly Backups', id: 'scheduled_backup_enabled', type: 'checkbox', status: 'driver',
+        purpose: 'Run nightly per-user automated backups of all data.' },
+      { name: 'Backups to Keep (per user)', id: 'backup_retention_count', type: 'number', status: 'proposed',
+        purpose: 'Rolling retention count — older backups are deleted automatically.',
+        dependsOn: 'scheduled_backup_enabled',
+        proposed: 'Show only when scheduled_backup_enabled is checked. Meaningless when backups are off.' },
+    ]},
+    { name: 'Analytics & Duplicate Detection', fields: [
+      { name: 'Expiring Soon List Length', id: 'expiring_soon_limit', type: 'number', status: 'always',
+        purpose: 'Max items shown in the dashboard "Expiring Soon" list (1–50).' },
+      { name: 'Expiry Calendar Months', id: 'calendar_months_ahead', type: 'number', status: 'always',
+        purpose: 'How many months ahead the expiry calendar widget covers (1–12).' },
+      { name: 'Wallet Chart Limit', id: 'wallet_chart_limit', type: 'number', status: 'always',
+        purpose: 'Max wallets shown individually in the dashboard chart before collapsing into "Other".' },
+      { name: 'Duplicate Photo Sensitivity', id: 'duplicate_photo_threshold', type: 'number', status: 'always',
+        purpose: 'Hamming distance threshold for near-duplicate card photo detection (0–64).' },
+    ]},
+  ]
+},
+
+prefs: {
+  label: 'User Preferences',
+  groups: [
+    { name: 'Appearance', fields: [
+      { name: 'Inventory Layout', id: 'view_mode', type: 'select', status: 'always',
+        purpose: 'Compact (grid) vs. standard (card) view on the Inventory page.' },
+      { name: 'OLED Dark Mode', id: 'oled_dark_mode', type: 'checkbox', status: 'always',
+        purpose: 'Use pure black (#000) backgrounds in dark mode for OLED displays.' },
+    ]},
+    { name: 'Visible Fields on Cards', fields: [
+      { name: 'Show Issue Date', id: 'show_issue_date', type: 'checkbox', status: 'always',
+        purpose: 'Show the issue date on inventory item cards.' },
+      { name: 'Show Expiry Date', id: 'show_expiry_date', type: 'checkbox', status: 'always',
+        purpose: 'Show the expiry date on inventory item cards.' },
+      { name: 'Show Value', id: 'show_value', type: 'checkbox', status: 'always',
+        purpose: 'Show the monetary value on inventory item cards.' },
+      { name: 'Show Description', id: 'show_description', type: 'checkbox', status: 'always',
+        purpose: 'Show the description snippet on inventory item cards.' },
+    ]},
+    { name: 'Sorting', fields: [
+      { name: 'Sort Items By', id: 'sort_by', type: 'select', status: 'always',
+        purpose: 'Default sort field for the Inventory (expiry date / name / issue date / value / last used).' },
+      { name: 'Sort Order', id: 'sort_order', type: 'select', status: 'always',
+        purpose: 'Ascending or descending sort direction.' },
+    ]},
+    { name: 'Currency', fields: [
+      { name: 'Default Currency', id: 'default_currency', type: 'select', status: 'always',
+        purpose: 'Currency new items default to (34 options, default GBP).' },
+      { name: 'Fixer.io API Key', id: 'fixer_api_key', type: 'text', status: 'always',
+        purpose: 'API key for real-time exchange rates on the dashboard value summary.' },
+    ]},
+    { name: 'Showing a Code', fields: [
+      { name: 'Keep Screen On', id: 'keep_screen_awake', type: 'checkbox', status: 'always',
+        purpose: 'Prevent device screen from sleeping while viewing a barcode at the till.' },
+      { name: 'Blur Barcodes Until Tapped', id: 'blur_codes_enabled', type: 'checkbox', status: 'always',
+        purpose: 'Privacy blur on all codes — tap to reveal. Useful in crowded places.' },
+      { name: 'Tilt Scan Detection', id: 'tilt_scan_detection_enabled', type: 'checkbox', status: 'always',
+        purpose: 'Motion-based prompt to mark an item as used after the device tilts (scan gesture).' },
+    ]},
+    { name: 'Offline Access', fields: [
+      { name: 'Allow Offline Caching', id: 'offline_cache_enabled', type: 'checkbox', status: 'always',
+        purpose: 'Enable PWA offline cache. Turning off immediately purges the local cache.' },
+    ]},
+    { name: 'Next Up Widget', fields: [
+      { name: 'Highlight Wallets', id: 'next_up_wallets', type: 'checkboxes', status: 'driver',
+        purpose: 'Which wallet(s) feed the Next Up barcode queue. Unchecked = widget disabled.' },
+      { name: 'Items to Show', id: 'next_up_max_items', type: 'select', status: 'proposed',
+        purpose: 'Max items surfaced in the Next Up queue (1, 2, or 3).',
+        dependsOn: 'next_up_wallets',
+        proposed: 'Show only when at least one wallet is checked in next_up_wallets. Useless (and confusing) when no wallets are selected.' },
+    ]},
+    { name: 'Active Today Widget', fields: [
+      { name: 'Enable Active Today', id: 'active_today_enabled', type: 'checkbox', status: 'driver',
+        purpose: 'Surface today\'s travel leg — outward in the morning, return in the afternoon.' },
+      { name: 'Home Station', id: 'commute_home_station', type: 'text', status: 'proposed',
+        purpose: 'Station name matched against Journey From / To to identify your commute leg.',
+        dependsOn: 'active_today_enabled',
+        proposed: 'Show only when active_today_enabled is checked. Always visible currently even when the widget is disabled.' },
+      { name: 'Switchover Time', id: 'active_today_cutoff_time', type: 'time', status: 'proposed',
+        purpose: 'Time when Active Today switches from showing the outward leg to the return leg.',
+        dependsOn: 'active_today_enabled',
+        proposed: 'Same as home station — gate on active_today_enabled.' },
+    ]},
+    { name: 'Nearby Widget', fields: [
+      { name: 'Enable Nearby', id: 'nearby_items_enabled', type: 'checkbox', status: 'proposed',
+        purpose: 'Opt-in to one-shot location-based item suggestions.',
+        proposed: 'Disable/grey-out this entire section when Site Settings nearby_places_enabled is False. Currently shows with no indication that the site hasn\'t enabled it.' },
+      { name: 'Search Radius (metres)', id: 'nearby_radius_m', type: 'number', status: 'proposed',
+        purpose: 'Radius around user\'s location used when searching for nearby matching shops (25–1000m).',
+        dependsOn: 'nearby_items_enabled + site nearby_places_enabled',
+        proposed: 'Show only when nearby_items_enabled is checked. Gate entire section on site nearby_places_enabled too.' },
+    ]},
+  ]
+},
+
+rules: {
+  label: 'Notification Rules',
+  groups: [
+    { name: 'Universal Fields', fields: [
+      { name: 'Rule Name', id: 'name', type: 'text', status: 'always',
+        purpose: 'Unique friendly name for this rule (required).' },
+      { name: 'Backend', id: 'backend', type: 'select', status: 'driver',
+        purpose: 'Delivery channel: apprise / firefly / ntfy / webhook / webpush. Webpush only shown when VAPID keys are configured.' },
+      { name: 'Enabled', id: 'enabled', type: 'checkbox', status: 'always',
+        purpose: 'Enable or disable this rule without deleting it.' },
+      { name: 'Event Types', id: 'event_types', type: 'checkboxes', status: 'always',
+        purpose: 'Which events trigger this rule: expiry_warning, expiry_final, item_created, item_used, item_archived, balance_changed, item_shared, next_up_reminder, wallet_invited, wallet_removed.' },
+      { name: 'Delivery', id: 'digest_frequency', type: 'select', status: 'conditional',
+        purpose: 'Immediate or daily digest. Hidden when backend is firefly or webpush — those backends do not support digest batching.',
+        dependsOn: 'backend', showWhen: 'backend ≠ firefly AND backend ≠ webpush (JS: updateVisibility)' },
+    ]},
+    { name: 'ntfy Config', fields: [
+      { name: 'ntfy Server', id: 'ntfy_server', type: 'url', status: 'conditional',
+        purpose: 'ntfy server base URL. Pre-filled from the site-wide default.',
+        dependsOn: 'backend', showWhen: 'backend = ntfy' },
+      { name: 'ntfy Topic', id: 'ntfy_topic', type: 'text', status: 'conditional',
+        purpose: 'ntfy topic name to push notifications to.',
+        dependsOn: 'backend', showWhen: 'backend = ntfy' },
+      { name: 'Priority', id: 'ntfy_priority', type: 'select', status: 'conditional',
+        purpose: 'ntfy message priority: min / low / default / high / urgent.',
+        dependsOn: 'backend', showWhen: 'backend = ntfy' },
+      { name: 'ntfy Access Token', id: 'ntfy_token', type: 'text', status: 'conditional',
+        purpose: 'Optional auth token for private ntfy servers.',
+        dependsOn: 'backend', showWhen: 'backend = ntfy' },
+    ]},
+    { name: 'Webhook Config', fields: [
+      { name: 'Webhook URL', id: 'webhook_url', type: 'url', status: 'conditional',
+        purpose: 'Endpoint to POST event payloads to (required).',
+        dependsOn: 'backend', showWhen: 'backend = webhook' },
+      { name: 'Custom Header Name', id: 'webhook_header_name', type: 'text', status: 'conditional',
+        purpose: 'Name of a custom authentication header (e.g. X-Secret).',
+        dependsOn: 'backend', showWhen: 'backend = webhook' },
+      { name: 'Custom Header Value', id: 'webhook_header_value', type: 'text', status: 'conditional',
+        purpose: 'Value for the custom authentication header.',
+        dependsOn: 'backend', showWhen: 'backend = webhook' },
+    ]},
+    { name: 'Apprise Config', fields: [
+      { name: 'Apprise URLs', id: 'apprise_urls', type: 'textarea', status: 'conditional',
+        purpose: 'One or more Apprise-format notification URLs (Slack, Telegram, email, etc.) — comma or newline separated.',
+        dependsOn: 'backend', showWhen: 'backend = apprise' },
+    ]},
+    { name: 'Firefly III Config', fields: [
+      { name: 'Firefly III URL', id: 'firefly_url', type: 'url', status: 'conditional',
+        purpose: 'Base URL of the Firefly III instance (required).',
+        dependsOn: 'backend', showWhen: 'backend = firefly' },
+      { name: 'Personal Access Token', id: 'firefly_token', type: 'text', status: 'conditional',
+        purpose: 'Firefly III OAuth personal access token for API access.',
+        dependsOn: 'backend', showWhen: 'backend = firefly' },
+    ]},
+    { name: 'Web Push Config', fields: [
+      { name: '(No fields)', id: '', type: '—', status: 'conditional',
+        purpose: 'Web push has no per-rule config — it uses your browser subscription, managed via the "Browser Notifications" panel on the same page.',
+        dependsOn: 'backend', showWhen: 'backend = webpush' },
+    ]},
+  ]
+},
+
+webhooks: {
+  label: 'Outbound Webhooks',
+  groups: [
+    { name: 'Webhook Fields', fields: [
+      { name: 'Name', id: 'name', type: 'text', status: 'always',
+        purpose: 'Friendly name for this outbound webhook.' },
+      { name: 'URL', id: 'url', type: 'url', status: 'always',
+        purpose: 'Endpoint that receives POST requests for each triggered event (required).' },
+      { name: 'Signing Secret', id: 'secret', type: 'text', status: 'always',
+        purpose: 'Optional HMAC-SHA256 secret. When set, adds X-VoucherVault-Signature header so the receiver can verify payloads.' },
+      { name: 'Trigger Events', id: 'event_*', type: 'checkboxes', status: 'always',
+        purpose: 'Which events trigger this webhook: item_created, item_used, item_archived, balance_changed, expiry_warning.' },
+      { name: 'Enabled', id: 'enabled', type: 'checkbox', status: 'always',
+        purpose: 'Enable or disable without deleting the webhook.' },
+    ]},
+  ]
+},
+
+dms: {
+  label: 'DMS Provider',
+  groups: [
+    { name: 'Connection', fields: [
+      { name: 'Name', id: 'name', type: 'text', status: 'always',
+        purpose: 'Friendly name for this DMS connection (required).' },
+      { name: 'Provider Type', id: 'provider', type: 'select', status: 'driver',
+        purpose: 'Which DMS software to connect to: Paperless-ngx / Docspell / PaperMerge. Drives auth section visibility.' },
+      { name: 'Base URL', id: 'base_url', type: 'url', status: 'always',
+        purpose: 'Base URL of the DMS instance (required).' },
+    ]},
+    { name: 'Auth — Paperless-ngx / PaperMerge', fields: [
+      { name: 'API Token', id: 'api_token', type: 'password', status: 'conditional',
+        purpose: 'Admin-generated API token from the DMS dashboard.',
+        dependsOn: 'provider', showWhen: 'provider = paperless or papermerge' },
+      { name: 'Username (fallback)', id: 'username', type: 'text', status: 'conditional',
+        purpose: 'PaperMerge login username (fallback when no API token).',
+        dependsOn: 'provider', showWhen: 'provider = papermerge only' },
+      { name: 'Password (fallback)', id: 'password', type: 'password', status: 'conditional',
+        purpose: 'PaperMerge login password (fallback when no API token).',
+        dependsOn: 'provider', showWhen: 'provider = papermerge only' },
+    ]},
+    { name: 'Auth — Docspell', fields: [
+      { name: 'Collective Name', id: 'docspell_collective', type: 'text', status: 'conditional',
+        purpose: 'Docspell tenant / collective name (required for Docspell).',
+        dependsOn: 'provider', showWhen: 'provider = docspell' },
+      { name: 'Username', id: 'username', type: 'text', status: 'conditional',
+        purpose: 'Docspell login username.',
+        dependsOn: 'provider', showWhen: 'provider = docspell' },
+      { name: 'Password', id: 'password', type: 'password', status: 'conditional',
+        purpose: 'Docspell login password.',
+        dependsOn: 'provider', showWhen: 'provider = docspell' },
+      { name: 'Upload Source ID', id: 'docspell_source_id', type: 'text', status: 'conditional',
+        purpose: 'ID of the Docspell upload source to use for pushing documents.',
+        dependsOn: 'provider', showWhen: 'provider = docspell' },
+    ]},
+    { name: 'Sync Options', fields: [
+      { name: 'Auto-push', id: 'auto_push', type: 'toggle', status: 'always',
+        purpose: 'Auto-upload new VoucherVault attachments to the DMS when items are created/updated.' },
+      { name: 'Auto-pull', id: 'auto_pull', type: 'toggle', status: 'driver',
+        purpose: 'Periodically pull tagged documents from the DMS into VoucherVault. Reveals pull filter fields when on.' },
+      { name: 'Pull Tag Filter', id: 'pull_tag', type: 'text', status: 'conditional',
+        purpose: 'Only pull documents tagged with this label from the DMS. Blank = pull all.',
+        dependsOn: 'auto_pull', showWhen: 'auto_pull is enabled' },
+      { name: 'Correspondent Filter', id: 'pull_correspondent', type: 'text', status: 'conditional',
+        purpose: 'Only pull documents from this correspondent/source in the DMS.',
+        dependsOn: 'auto_pull', showWhen: 'auto_pull is enabled' },
+      { name: 'Enabled', id: 'enabled', type: 'toggle', status: 'always',
+        purpose: 'Enable or disable this provider without deleting it.' },
+    ]},
+  ]
+},
+
+wallet: {
+  label: 'Wallet',
+  groups: [
+    { name: 'Wallet Details', fields: [
+      { name: 'Name', id: 'name', type: 'text', status: 'always',
+        purpose: 'Wallet name (must be unique per user).' },
+      { name: 'Description', id: 'description', type: 'textarea', status: 'always',
+        purpose: 'Optional description of what this wallet is for.' },
+      { name: 'Icon', id: 'icon', type: 'text', status: 'always',
+        purpose: 'Bootstrap icon class for the wallet (e.g. bi-cart, bi-airplane).' },
+      { name: 'Color', id: 'color', type: 'color', status: 'always',
+        purpose: 'Accent color shown on the wallet card and sidebar.' },
+      { name: 'Auto-assign Issuer Match', id: 'auto_assign_issuer_match', type: 'text', status: 'always',
+        purpose: 'Substring matched against new items\' issuers to auto-file them into this wallet.' },
+      { name: 'Budget Amount', id: 'budget_amount', type: 'number', status: 'always',
+        purpose: 'Monthly spending budget for this wallet. Shows a progress bar when set.' },
+    ]},
+    { name: 'Collaborators (edit only)', fields: [
+      { name: 'Username to Invite', id: 'username', type: 'text', status: 'conditional',
+        purpose: 'Username of the collaborator to add to this wallet.',
+        dependsOn: 'editing existing wallet', showWhen: 'only shown when editing an existing wallet' },
+      { name: 'Role', id: 'role', type: 'select', status: 'conditional',
+        purpose: 'Permission level for the invited collaborator: editor (full CRUD) or viewer (read-only).',
+        dependsOn: 'editing existing wallet', showWhen: 'only shown when editing an existing wallet' },
+    ]},
+  ]
+},
+
+misc: {
+  label: 'Tags & Import',
+  groups: [
+    { name: 'Tag Form', fields: [
+      { name: 'Name', id: 'name', type: 'text', status: 'always',
+        purpose: 'Tag label (unique per user).' },
+      { name: 'Color', id: 'color', type: 'color', status: 'always',
+        purpose: 'Tag badge color displayed on item cards and filters.' },
+    ]},
+    { name: 'Import Items', fields: [
+      { name: 'Format', id: 'source_type', type: 'select', status: 'always',
+        purpose: 'Import file format: Catima CSV / Native CSV / Native JSON.' },
+      { name: 'File', id: 'file', type: 'file', status: 'always',
+        purpose: 'The file to import (.csv or .json).' },
+    ]},
+    { name: 'Full Backup Restore', fields: [
+      { name: 'Backup File', id: 'file', type: 'file', status: 'always',
+        purpose: 'A .zip backup file created by the "Export Full Backup" feature.' },
+    ]},
+  ]
+},
+
+};
+
+// Matrix data
+const MATRIX = [
+  { field: 'Card / Member Number',    gift_card:'show', voucher:'hide',  coupon:'hide',  loyalty_card:'show', travel_pass:'hide'  },
+  { field: 'PIN Code',                gift_card:'show', voucher:'show',  coupon:'hide',  loyalty_card:'show', travel_pass:'hide'  },
+  { field: 'Journey From / To / Time',gift_card:'hide', voucher:'hide',  coupon:'hide',  loyalty_card:'hide', travel_pass:'show'  },
+  { field: 'Seat / Coach',            gift_card:'hide', voucher:'hide',  coupon:'hide',  loyalty_card:'hide', travel_pass:'show'  },
+  { field: 'Membership Tier',         gift_card:'hide', voucher:'hide',  coupon:'hide',  loyalty_card:'show', travel_pass:'hide'  },
+  { field: 'Value section',           gift_card:'show', voucher:'show',  coupon:'show',  loyalty_card:'show', travel_pass:'hide'  },
+  { field: 'Currency',                gift_card:'show', voucher:'show',  coupon:'↕money',loyalty_card:'hide', travel_pass:'hide'  },
+  { field: 'Value Type toggle',       gift_card:'hide', voucher:'hide',  coupon:'show',  loyalty_card:'hide', travel_pass:'hide'  },
+  { field: 'Balance Check URL',       gift_card:'show', voucher:'hide',  coupon:'hide',  loyalty_card:'hide', travel_pass:'hide'  },
+  { field: 'Face Value (initial)',     gift_card:'show', voucher:'hide',  coupon:'hide',  loyalty_card:'hide', travel_pass:'hide'  },
+  { field: 'Points Balance',          gift_card:'hide', voucher:'hide',  coupon:'hide',  loyalty_card:'show', travel_pass:'hide'  },
+  { field: 'Firefly Account ID',      gift_card:'show', voucher:'show',  coupon:'hide',  loyalty_card:'hide', travel_pass:'hide'  },
+  { field: 'Order / Booking Ref (create/edit)', gift_card:'show', voucher:'hide', coupon:'hide', loyalty_card:'hide', travel_pass:'show' },
+  { field: 'Order ID tile (view-item)',gift_card:'show', voucher:'hide',  coupon:'hide',  loyalty_card:'hide', travel_pass:'show'  },
+  { field: 'Discount / Railcard',     gift_card:'hide', voucher:'hide',  coupon:'hide',  loyalty_card:'hide', travel_pass:'show'  },
+  { field: 'Minimum Spend',           gift_card:'hide', voucher:'show',  coupon:'show',  loyalty_card:'hide', travel_pass:'hide'  },
+  { field: 'Wallet (field behavior)', gift_card:'select',voucher:'select',coupon:'select',loyalty_card:'select',travel_pass:'locked'},
+  { field: 'Issue Date (required)',    gift_card:'req',  voucher:'req',   coupon:'req',   loyalty_card:'req',  travel_pass:'opt'   },
+];
+
+// ─── RENDERING ──────────────────────────────────────────────────
+
+function badgeHTML(status) {
+  const map = {
+    driver:      ['badge-driver',      'Driver'],
+    always:      ['badge-always',      'Always'],
+    conditional: ['badge-conditional', 'Conditional'],
+    proposed:    ['badge-proposed',    '⚡ Proposed'],
+  };
+  const [cls, label] = map[status] || map['always'];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function typeHTML(type) {
+  return `<span class="field-type">${type}</span>`;
+}
+
+function suggestTagHTML(suggest) {
+  if (!suggest) return '';
+  return '<div class="suggest-tag">context-aware suggestion button · ranked by frequency &amp; context · cross-type fallback · self-healing feedback</div>';
+}
+
+function renderGroups(containerId, pageKey) {
+  const page = PAGES[pageKey];
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  let totalFields = 0;
+
+  page.groups.forEach((group, gi) => {
+    totalFields += group.fields.length;
+    const div = document.createElement('div');
+    div.className = 'field-group';
+    div.id = `grp-${pageKey}-${gi}`;
+    div.innerHTML = `
+      <div class="group-header" onclick="toggleGroup(this)">
+        <h3>${group.name}</h3>
+        <span class="group-count">${group.fields.length} field${group.fields.length !== 1 ? 's':''}</span>
+        <span class="group-chevron">▾</span>
+      </div>
+      <table class="field-table">
+        <thead><tr>
+          <th style="width:160px">Field</th>
+          <th style="width:90px">Type</th>
+          <th style="width:100px">Status</th>
+          <th>Purpose &amp; Logic</th>
+        </tr></thead>
+        <tbody id="tbody-${pageKey}-${gi}"></tbody>
+      </table>`;
+    container.appendChild(div);
+
+    const tbody = document.getElementById(`tbody-${pageKey}-${gi}`);
+    group.fields.forEach(f => {
+      const tr = document.createElement('tr');
+      tr.className = 'field-row';
+      tr.dataset.status = f.status;
+      tr.dataset.name = (f.name + ' ' + (f.id||'') + ' ' + (f.purpose||'')).toLowerCase();
+      tr.dataset.page = pageKey;
+
+      let depHTML = '';
+      if (f.dependsOn) depHTML += `<div class="dep-tag">if ${f.showWhen || f.dependsOn}</div>`;
+      let proposedHTML = '';
+      if (f.proposed) proposedHTML = `<div class="field-proposed">${f.proposed}</div>`;
+      if (f.condition) depHTML += `<div class="field-condition">${f.condition}</div>`;
+      const suggestHTML = suggestTagHTML(f.suggest);
+
+      tr.innerHTML = `
+        <td>
+          <div class="field-name">${f.name}</div>
+          ${f.id ? `<div class="field-id">${f.id}</div>` : ''}
+        </td>
+        <td>${typeHTML(f.type)}</td>
+        <td>${badgeHTML(f.status)}</td>
+        <td>
+          <div class="field-purpose">${f.purpose}</div>
+          ${suggestHTML}
+          ${depHTML}
+          ${proposedHTML}
+        </td>`;
+      tbody.appendChild(tr);
+    });
+  });
+
+  const cntEl = document.getElementById(`cnt-${pageKey}`);
+  if (cntEl) cntEl.textContent = totalFields;
+}
+
+function renderMatrix() {
+  const tbody = document.getElementById('matrix-body');
+  if (!tbody) return;
+  MATRIX.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.className = 'field-row';
+    const cells = ['gift_card','voucher','coupon','loyalty_card','travel_pass'].map(type => {
+      const v = row[type];
+      let cls = 'cell-hide', disp = '–';
+      if (v === 'show' || v === 'select' || v === 'req') { cls = 'cell-show'; disp = '✓'; }
+      if (v === 'hide') { cls = 'cell-hide'; disp = '–'; }
+      if (v === '↕money' || v === 'opt') { cls = 'cell-mod'; disp = v === '↕money' ? '↕' : 'opt'; }
+      if (v === 'locked') { cls = 'cell-mod'; disp = '⚷'; }
+      return `<td class="${cls}">${disp}</td>`;
+    });
+    tr.innerHTML = `<td>${row.field}</td>${cells.join('')}`;
+    tbody.appendChild(tr);
+  });
+}
+
+function toggleGroup(header) {
+  const group = header.closest('.field-group');
+  group.classList.toggle('collapsed');
+}
+
+// ─── FILTERING ──────────────────────────────────────────────────
+let activeFilter = 'all';
+let searchQuery = '';
+
+function applyFilter() {
+  const rows = document.querySelectorAll('.field-row[data-status]');
+  let visible = 0, total = 0;
+  rows.forEach(row => {
+    const status = row.dataset.status;
+    const pageId = row.dataset.page;
+    // Only count rows in currently visible page
+    const inVisiblePage = row.closest('.page-section.visible') !== null;
+    if (!inVisiblePage) { row.classList.add('hidden-by-filter'); return; }
+
+    total++;
+    const matchFilter = activeFilter === 'all' || status === activeFilter;
+    const nameData = row.dataset.name || '';
+    const matchSearch = !searchQuery || nameData.includes(searchQuery.toLowerCase());
+
+    if (matchFilter && matchSearch) {
+      row.classList.remove('hidden-by-filter');
+      visible++;
+    } else {
+      row.classList.add('hidden-by-filter');
+    }
+  });
+
+  // Show/hide groups based on visible children
+  document.querySelectorAll('.page-section.visible .field-group').forEach(grp => {
+    if (grp.id === 'grp-item-matrix') return;
+    const visRows = grp.querySelectorAll('.field-row:not(.hidden-by-filter)');
+    grp.style.display = visRows.length > 0 ? '' : 'none';
+  });
+
+  const noRes = document.getElementById('no-results');
+  if (noRes) noRes.style.display = visible === 0 ? 'block' : 'none';
+
+  const summary = document.getElementById('count-summary');
+  if (summary) summary.textContent = `${visible} of ${total} fields`;
+}
+
+// ─── PAGE NAVIGATION ─────────────────────────────────────────────
+function showPage(pageKey) {
+  document.querySelectorAll('.page-section').forEach(s => s.classList.remove('visible'));
+  document.querySelectorAll('.page-btn').forEach(b => b.classList.remove('active'));
+  const section = document.getElementById(`page-${pageKey}`);
+  if (section) section.classList.add('visible');
+  document.querySelectorAll(`.page-btn[data-page="${pageKey}"]`).forEach(b => b.classList.add('active'));
+  applyFilter();
+}
+
+// ─── INIT ────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  // Render all page groups
+  renderGroups('item-groups', 'item');
+  renderGroups('settings-groups', 'settings');
+  renderGroups('prefs-groups', 'prefs');
+  renderGroups('rules-groups', 'rules');
+  renderGroups('webhooks-groups', 'webhooks');
+  renderGroups('dms-groups', 'dms');
+  renderGroups('wallet-groups', 'wallet');
+  renderGroups('misc-groups', 'misc');
+  renderMatrix();
+
+  // Initial filter
+  applyFilter();
+
+  // Page nav
+  document.querySelectorAll('.page-btn').forEach(btn => {
+    btn.addEventListener('click', () => showPage(btn.dataset.page));
+  });
+
+  // Filter chips
+  document.querySelectorAll('.chip[data-filter]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      activeFilter = chip.dataset.filter;
+      applyFilter();
+    });
+  });
+
+  // Search
+  const searchEl = document.getElementById('search');
+  searchEl.addEventListener('input', () => {
+    searchQuery = searchEl.value.trim().toLowerCase();
+    applyFilter();
+  });
+
+  // Theme toggle
+  const themeBtn = document.getElementById('theme-toggle');
+  let isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  function applyTheme() {
+    document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+    themeBtn.textContent = isDark ? '☀ Light' : '☾ Dark';
+  }
+  applyTheme();
+  themeBtn.addEventListener('click', () => { isDark = !isDark; applyTheme(); });
+});
+</script>
+</body>
+</html>

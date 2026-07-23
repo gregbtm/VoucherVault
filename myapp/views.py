@@ -42,7 +42,7 @@ from .merchant_logos import fetch_merchant_logo, get_cached_balance_check_url, g
 from .nearby_places import find_nearby_issuer_matches, nearby_places_enabled
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .update_check import _is_newer, check_for_update, check_upstream_version
-from .help_docs import render_doc
+from .help_docs import render_doc, CATEGORIES, TOOLS
 from .public_share import is_link_preview_bot, pin_attempt_rate_limited, view_rate_limited
 from .tasks import extract_document_text_task, fetch_merchant_logo_task
 from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
@@ -716,6 +716,47 @@ def _record_scan_learning(request, item):
     record_scan_corrections(request.user, snapshot, item)
 
 
+def _record_suggestion_feedback(request, item):
+    """
+    When a user accepts a field suggestion and then edits the value before
+    saving, that edit is signal: the suggestion was wrong for this context.
+    The form JS injects hidden _sg_suggested_FIELD inputs recording what
+    each suggestion popover filled; here we diff each against the final
+    saved value and write a ScanFieldCorrection row so the ranking can
+    self-correct over time. Best-effort: feedback must never block a save.
+    """
+    from .scan_learning import ScanFieldCorrection, LEARNABLE_FIELDS, _normalize, _saved_value
+    try:
+        for field in _SUGGESTABLE_FIELDS:
+            suggested_raw = request.POST.get(f'_sg_suggested_{field}')
+            if suggested_raw is None:
+                continue
+            suggested = _normalize(suggested_raw)
+            final = _saved_value(item, field) if field in LEARNABLE_FIELDS else _normalize(getattr(item, field, None))
+            if not final:
+                continue
+            if final.lower() == suggested.lower():
+                # User kept the suggestion - retire any old correction that mapped this value away
+                ScanFieldCorrection.objects.filter(
+                    user=request.user, field=field, ai_value__iexact=suggested,
+                ).delete()
+            else:
+                # User changed it - record that for this context the suggestion was wrong
+                correction, created = ScanFieldCorrection.objects.get_or_create(
+                    user=request.user, item_type=item.type, field=field, ai_value=suggested,
+                    defaults={'corrected_value': final},
+                )
+                if not created:
+                    if correction.corrected_value.lower() == final.lower():
+                        correction.times_seen += 1
+                    else:
+                        correction.corrected_value = final
+                        correction.times_seen = 1
+                    correction.save()
+    except Exception:
+        logger.warning('Failed to record suggestion feedback', exc_info=True)
+
+
 def _item_form_ctx(user):
     from notify.models import NotificationRule
     qs = NotificationRule.objects.filter(user=user, enabled=True)
@@ -773,6 +814,7 @@ def create_item(request):
 
             remember_balance_check_url(item.issuer, item.balance_check_url)
             _record_scan_learning(request, item)
+            _record_suggestion_feedback(request, item)
             notify_item_created(item)
             fire_user_webhooks(item.user, 'item_created', item)
             _log_wallet_activity(item.wallet, request.user, 'item_added', item=item)
@@ -857,6 +899,7 @@ def edit_item(request, item_uuid):
 
             remember_balance_check_url(item.issuer, item.balance_check_url)
             _record_scan_learning(request, item)
+            _record_suggestion_feedback(request, item)
             _queue_google_wallet_update(item)
             _log_wallet_activity(item.wallet, request.user, 'item_edited', item=item)
 
@@ -878,52 +921,80 @@ def lookup_merchant_balance_url(request):
     issuer = request.GET.get('issuer', '')
     return JsonResponse({'balance_check_url': get_cached_balance_check_url(issuer)})
 
-_SUGGESTABLE_FIELDS = {'issuer', 'logo_slug', 'wallet', 'discount_applied'}
+_SUGGESTABLE_FIELDS = {'issuer', 'logo_slug', 'wallet', 'discount_applied', 'currency', 'code_type'}
 
 
 @require_GET
 @login_required
 def suggest_field_options(request):
     """
-    Read-only AJAX helper backing the "suggest" button next to a handful
-    of item-form fields (see field-suggest.js): given an item type and one
-    of _SUGGESTABLE_FIELDS, returns up to 5 distinct values for that field
-    drawn from this user's own recent items of that type, ranked by how
-    often each value appears (ties broken by recency) so one odd one-off
-    item doesn't outrank an actual habit. Interactive by design - the
-    button that triggers this only ever appears next to a field the AI
-    scan (or the user) has left blank, and picking a suggestion is always
-    an explicit click, never a silent fill.
+    Read-only AJAX helper backing the "suggest" button next to item-form
+    fields (see field-suggest.js). Accepts an optional ?context=json blob
+    of other already-filled fields so suggestions from items sharing that
+    context (e.g. same issuer) can be ranked first. Falls back to
+    cross-type results when the type-specific pool has fewer than 3 hits.
     """
     field = request.GET.get('field', '')
     item_type = request.GET.get('type', '')
     if field not in _SUGGESTABLE_FIELDS:
         return JsonResponse({'options': []})
 
-    recent = list(
+    try:
+        context = json.loads(request.GET.get('context', '{}'))
+    except (ValueError, TypeError):
+        context = {}
+    context_issuer = (context.get('issuer') or '').strip().lower()
+
+    def _rank(items, base_index_offset=0):
+        ranked = {}
+        for index, item in enumerate(items):
+            if field == 'wallet':
+                if not item.wallet_id:
+                    continue
+                key = str(item.wallet_id)
+                label = item.wallet.name
+                raw = key
+            else:
+                raw = str(getattr(item, field) or '').strip()
+                if not raw:
+                    continue
+                key = raw.lower()
+                label = raw
+            context_match = bool(context_issuer and (item.issuer or '').strip().lower() == context_issuer)
+            entry = ranked.setdefault(key, {
+                'count': 0, 'index': index + base_index_offset,
+                'label': label, 'value': raw, 'context_match': False,
+            })
+            entry['count'] += 1
+            if context_match:
+                entry['context_match'] = True
+        return ranked
+
+    type_items = list(
         Item.objects.filter(user=request.user, type=item_type)
         .select_related('wallet')
         .order_by('-created_at')[:25]
     )
+    ranked = _rank(type_items)
 
-    ranked = {}
-    for index, item in enumerate(recent):
-        if field == 'wallet':
-            if not item.wallet_id:
-                continue
-            key = str(item.wallet_id)
-            label = item.wallet.name
-        else:
-            raw = (getattr(item, field) or '').strip()
-            if not raw:
-                continue
-            key = raw.lower()
-            label = raw
-        entry = ranked.setdefault(key, {'count': 0, 'index': index, 'label': label, 'value': key if field == 'wallet' else raw})
-        entry['count'] += 1
+    # Cross-type fallback when the type pool is thin (e.g. first item of this type)
+    if len(ranked) < 3 and item_type:
+        all_items = list(
+            Item.objects.filter(user=request.user)
+            .exclude(type=item_type)
+            .select_related('wallet')
+            .order_by('-created_at')[:25]
+        )
+        fallback = _rank(all_items, base_index_offset=25)
+        for key, entry in fallback.items():
+            if key not in ranked:
+                ranked[key] = entry
 
-    top = sorted(ranked.values(), key=lambda entry: (-entry['count'], entry['index']))[:5]
-    return JsonResponse({'options': [{'value': entry['value'], 'label': entry['label']} for entry in top]})
+    top = sorted(
+        ranked.values(),
+        key=lambda e: (not e['context_match'], -e['count'], e['index']),
+    )[:5]
+    return JsonResponse({'options': [{'value': e['value'], 'label': e['label']} for e in top]})
 
 @require_GET
 @login_required
@@ -1639,7 +1710,7 @@ def _integration_status(config):
 # All docs are readable by any logged-in user — they are reference guides, not
 # admin actions.  The distinction below is retained only to avoid breaking
 # existing call sites; in practice the Help Center exposes every slug.
-from .help_docs import CATEGORIES, DOCS
+from .help_docs import CATEGORIES, DOCS, TOOLS  # noqa: F811 — re-import keeps module symbol available here
 _SELF_SERVICE_DOCS = set(DOCS.keys())
 
 
@@ -1678,7 +1749,13 @@ def view_doc(request, doc_slug):
 @login_required
 def help_center(request):
     """Help Center — lists all available guides, searchable, with in-page modal viewer."""
-    return render(request, 'help_center.html', {'categories': CATEGORIES})
+    return render(request, 'help_center.html', {'categories': CATEGORIES, 'tools': TOOLS})
+
+
+@login_required
+def field_map(request):
+    """Interactive field map — standalone tool, rendered without base.html."""
+    return render(request, 'field_map.html')
 
 
 @login_required
@@ -2461,6 +2538,336 @@ def api_access(request):
         'token': token,
         'revealed_token': revealed_token,
     })
+
+
+@login_required
+def developer_hub(request):
+    """
+    Unified developer hub: API token management, outbound webhooks, Companies House
+    API key testing, merchant health status monitor, logo.dev connectivity, and
+    a REST API quick-reference.
+    """
+    from .utils import check_companies_house_status, _CH_BAD_STATUSES
+
+    # Token management (mirrors api_access view)
+    token = Token.objects.filter(user=request.user).first()
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action in ('generate', 'regenerate'):
+            if token:
+                token.delete()
+            token = Token.objects.create(user=request.user)
+            request.session['dev_hub_just_generated_token'] = token.key
+            messages.success(
+                request,
+                _('API token regenerated — update anywhere the old one was used.')
+                if action == 'regenerate' else _('API token generated.')
+            )
+        elif action == 'revoke' and token:
+            token.delete()
+            messages.success(request, _('API token revoked.'))
+        return redirect('developer_hub')
+
+    revealed_token = request.session.pop('dev_hub_just_generated_token', None)
+
+    # Webhook list (mirrors manage_webhooks)
+    hooks = UserWebhook.objects.filter(user=request.user).order_by('-created_at')
+
+    # Unique active issuers for merchant health monitor
+    issuers = (
+        Item.objects.filter(user=request.user, is_used=False, is_archived=False)
+        .exclude(issuer='')
+        .values_list('issuer', flat=True)
+        .distinct()
+        .order_by('issuer')
+    )
+
+    cfg = SiteConfiguration.load()
+    ch_key_set = bool(cfg.companies_house_api_key)
+    logo_dev_key_set = bool(getattr(cfg, 'logo_dev_api_key', ''))
+
+    # OCR integration status
+    ocr_backend = cfg.ocr_backend  # 'none', 'anthropic', 'openai'
+    ocr_configured = (
+        (ocr_backend == 'anthropic' and bool(cfg.anthropic_api_key)) or
+        (ocr_backend == 'openai' and bool(cfg.openai_api_key))
+    )
+
+    # User-level integrations
+    prefs = UserPreference.objects.filter(user=request.user).first()
+    fixer_key_set = bool(prefs and prefs.fixer_api_key)
+
+    from dms.models import DMSProvider
+    dms_providers = list(DMSProvider.objects.filter(user=request.user, enabled=True).values('name', 'provider'))
+
+    from notify.models import NotificationRule
+    firefly_rules = list(
+        NotificationRule.objects.filter(user=request.user, backend='firefly', enabled=True)
+        .values_list('name', flat=True)
+    )
+
+    return render(request, 'developer_hub.html', {
+        'token': token,
+        'revealed_token': revealed_token,
+        'hooks': hooks,
+        'event_choices': UserWebhook.EVENT_CHOICES,
+        'issuers': list(issuers),
+        'ch_key_set': ch_key_set,
+        'logo_dev_key_set': logo_dev_key_set,
+        'ch_bad_statuses': sorted(_CH_BAD_STATUSES),
+        'ocr_backend': ocr_backend,
+        'ocr_configured': ocr_configured,
+        'fixer_key_set': fixer_key_set,
+        'dms_providers': dms_providers,
+        'firefly_rules': firefly_rules,
+        'ntfy_server': cfg.ntfy_default_server or 'https://ntfy.sh',
+        'portainer_configured': bool(cfg.portainer_webhook_url),
+    })
+
+
+@require_POST
+@login_required
+def developer_hub_webhook_create(request):
+    """Create a webhook from the developer hub."""
+    data, errors = _WebhookForm.from_post(request.POST)
+    if errors:
+        for msg in errors.values():
+            messages.error(request, msg)
+    else:
+        UserWebhook.objects.create(user=request.user, **data)
+        messages.success(request, _('Webhook created.'))
+    return redirect('developer_hub')
+
+
+@require_POST
+@login_required
+def developer_hub_webhook_edit(request, webhook_id):
+    """Edit a webhook from the developer hub."""
+    hook = get_object_or_404(UserWebhook, id=webhook_id, user=request.user)
+    data, errors = _WebhookForm.from_post(request.POST)
+    if errors:
+        for msg in errors.values():
+            messages.error(request, msg)
+    else:
+        for k, v in data.items():
+            setattr(hook, k, v)
+        hook.save()
+        messages.success(request, _('Webhook updated.'))
+    return redirect('developer_hub')
+
+
+@require_POST
+@login_required
+def developer_hub_webhook_delete(request, webhook_id):
+    """Delete a webhook from the developer hub."""
+    hook = get_object_or_404(UserWebhook, id=webhook_id, user=request.user)
+    hook.delete()
+    messages.success(request, _('Webhook deleted.'))
+    return redirect('developer_hub')
+
+
+@require_POST
+@login_required
+def developer_hub_webhook_test(request, webhook_id):
+    """Send a test delivery from the developer hub."""
+    hook = get_object_or_404(UserWebhook, id=webhook_id, user=request.user)
+    import hmac as _hmac, hashlib as _hashlib, requests as _rq
+    payload = json.dumps({
+        'event': 'test',
+        'message': 'VoucherVault test webhook delivery',
+        'webhook_id': hook.id,
+    }).encode()
+    headers = {'Content-Type': 'application/json', 'X-VoucherVault-Event': 'test'}
+    if hook.secret:
+        sig = _hmac.new(hook.secret.encode(), payload, _hashlib.sha256).hexdigest()
+        headers['X-VoucherVault-Signature'] = f"sha256={sig}"
+    try:
+        resp = _rq.post(hook.url, data=payload, headers=headers, timeout=10)
+        if resp.ok:
+            messages.success(request, _('Test delivery succeeded (HTTP %(status)s).') % {'status': resp.status_code})
+        else:
+            messages.warning(request, _('Test delivered but got HTTP %(status)s.') % {'status': resp.status_code})
+    except Exception as exc:
+        messages.error(request, _('Test delivery failed: %(err)s') % {'err': str(exc)})
+    return redirect('developer_hub')
+
+
+@require_POST
+@login_required
+def test_companies_house_key(request):
+    """
+    AJAX endpoint: test the configured Companies House API key by doing a live
+    lookup for 'Tesco PLC' (a stable, well-known company). Returns JSON with
+    ok/error and detail.
+    """
+    from .utils import check_companies_house_status
+    cfg = SiteConfiguration.load()
+    api_key = cfg.companies_house_api_key
+    if not api_key:
+        return JsonResponse({'ok': False, 'error': 'No Companies House API key is configured. Add one in Admin Tools → Site Settings.'})
+
+    result = check_companies_house_status('Tesco', api_key)
+    if result is None:
+        return JsonResponse({
+            'ok': False,
+            'error': 'Key appears invalid or the Companies House API is unreachable. Check your key at developer.company-information.service.gov.uk',
+        })
+
+    return JsonResponse({
+        'ok': True,
+        'detail': f"Connected — found {result['company_name']} (#{result['company_number']}, status: {result['company_status']})",
+    })
+
+
+@require_POST
+@login_required
+def test_logo_dev_key(request):
+    """
+    AJAX endpoint: test the configured logo.dev API key by fetching a known
+    logo (tesco.com). Returns JSON with ok/error and detail.
+    """
+    cfg = SiteConfiguration.load()
+    api_key = getattr(cfg, 'logo_dev_api_key', '')
+    if not api_key:
+        return JsonResponse({'ok': False, 'error': 'No logo.dev API key configured. Add one in Admin Tools → Site Settings.'})
+
+    try:
+        import requests as _rq
+        resp = _rq.get(
+            'https://img.logo.dev/tesco.com',
+            params={'token': api_key, 'size': '40', 'format': 'png'},
+            timeout=5,
+        )
+        if resp.ok and resp.headers.get('content-type', '').startswith('image/'):
+            return JsonResponse({'ok': True, 'detail': f'Connected — logo.dev returned {resp.status_code} ({len(resp.content)} bytes)'})
+        return JsonResponse({'ok': False, 'error': f'logo.dev returned HTTP {resp.status_code}. Check your API key.'})
+    except Exception as exc:
+        return JsonResponse({'ok': False, 'error': f'Request failed: {exc}'})
+
+
+@require_POST
+@login_required
+def check_merchant_health_status(request):
+    """
+    AJAX endpoint: look up Companies House status for a single issuer name
+    (passed as POST param 'issuer'). Returns JSON with company data or an error.
+    """
+    from .utils import check_companies_house_status, _CH_BAD_STATUSES
+    issuer = (request.POST.get('issuer') or '').strip()
+    if not issuer:
+        return JsonResponse({'ok': False, 'error': 'No issuer name provided.'})
+
+    cfg = SiteConfiguration.load()
+    api_key = cfg.companies_house_api_key
+    if not api_key:
+        return JsonResponse({'ok': False, 'error': 'No Companies House API key configured.'})
+
+    result = check_companies_house_status(issuer, api_key)
+    if result is None:
+        return JsonResponse({
+            'ok': True,
+            'found': False,
+            'issuer': issuer,
+            'detail': f'No confident match found on Companies House for "{issuer}" — may trade under a different registered name.',
+        })
+
+    bad = result['company_status'] in _CH_BAD_STATUSES
+    return JsonResponse({
+        'ok': True,
+        'found': True,
+        'issuer': issuer,
+        'company_name': result['company_name'],
+        'company_number': result['company_number'],
+        'company_status': result['company_status'],
+        'is_bad': bad,
+        'detail': (
+            f"⚠️ {result['company_name']} (#{result['company_number']}) is currently listed as '{result['company_status']}'"
+            if bad else
+            f"✅ {result['company_name']} (#{result['company_number']}) — status: {result['company_status']}"
+        ),
+    })
+
+
+@require_POST
+@login_required
+def test_fixer_key(request):
+    """
+    AJAX: test the calling user's Fixer.io API key by fetching the latest rates.
+    Returns JSON with ok/error and detail.
+    """
+    prefs = UserPreference.objects.filter(user=request.user).first()
+    api_key = prefs.fixer_api_key if prefs else None
+    if not api_key:
+        return JsonResponse({
+            'ok': False,
+            'error': 'No Fixer.io API key configured. Add one in User Preferences → Currency Settings.',
+        })
+    rates = get_fixer_rates(api_key)
+    if rates is None:
+        return JsonResponse({
+            'ok': False,
+            'error': 'Fixer.io returned an error. Check your key at fixer.io/dashboard.',
+        })
+    sample = ', '.join(f'{k}={v}' for k, v in list(rates.items())[:4])
+    return JsonResponse({'ok': True, 'detail': f'Connected — {len(rates)} rates returned. Sample: {sample}'})
+
+
+@require_POST
+@login_required
+def test_ocr_connectivity(request):
+    """
+    AJAX: test the configured OCR backend (Anthropic or OpenAI) with a minimal
+    API call. Returns JSON with ok/error and detail.
+    """
+    cfg = SiteConfiguration.load()
+    backend = cfg.ocr_backend
+    if backend == 'none' or not backend:
+        return JsonResponse({'ok': False, 'error': 'OCR backend is set to "None". Configure it in Site Settings → Scan with AI.'})
+
+    if backend == 'anthropic':
+        api_key = cfg.anthropic_api_key
+        if not api_key:
+            return JsonResponse({'ok': False, 'error': 'No Anthropic API key configured. Add one in Site Settings → Scan with AI.'})
+        try:
+            import requests as _rq
+            resp = _rq.post(
+                'https://api.anthropic.com/v1/messages',
+                headers={
+                    'x-api-key': api_key,
+                    'anthropic-version': '2023-06-01',
+                    'content-type': 'application/json',
+                },
+                json={'model': cfg.anthropic_ocr_model or 'claude-haiku-4-5-20251001',
+                      'max_tokens': 1,
+                      'messages': [{'role': 'user', 'content': 'hi'}]},
+                timeout=10,
+            )
+            if resp.ok:
+                return JsonResponse({'ok': True, 'detail': f'Anthropic API connected (model: {cfg.anthropic_ocr_model or "claude-haiku-4-5-20251001"})'})
+            data = resp.json() if resp.headers.get('content-type', '').startswith('application/json') else {}
+            return JsonResponse({'ok': False, 'error': f'Anthropic returned HTTP {resp.status_code}: {data.get("error", {}).get("message", resp.text[:120])}'})
+        except Exception as exc:
+            return JsonResponse({'ok': False, 'error': f'Request failed: {exc}'})
+
+    if backend == 'openai':
+        api_key = cfg.openai_api_key
+        if not api_key:
+            return JsonResponse({'ok': False, 'error': 'No OpenAI API key configured. Add one in Site Settings → Scan with AI.'})
+        try:
+            import requests as _rq
+            resp = _rq.get(
+                'https://api.openai.com/v1/models',
+                headers={'Authorization': f'Bearer {api_key}'},
+                timeout=10,
+            )
+            if resp.ok:
+                return JsonResponse({'ok': True, 'detail': f'OpenAI API connected (model: {cfg.openai_ocr_model or "gpt-4o-mini"})'})
+            data = resp.json() if resp.headers.get('content-type', '').startswith('application/json') else {}
+            return JsonResponse({'ok': False, 'error': f'OpenAI returned HTTP {resp.status_code}: {data.get("error", {}).get("message", resp.text[:120])}'})
+        except Exception as exc:
+            return JsonResponse({'ok': False, 'error': f'Request failed: {exc}'})
+
+    return JsonResponse({'ok': False, 'error': f'Unknown OCR backend: {backend}'})
 
 
 @require_POST
