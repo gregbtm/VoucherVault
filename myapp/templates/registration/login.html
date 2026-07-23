@@ -191,10 +191,13 @@
         </form>
         {% endif %}
         {% if "OIDC_ENABLED"|env == True %}
-        <form method="get" action="{% url 'oidc_authentication_init' %}">
+        <form method="get" action="{% url 'oidc_authentication_init' %}" id="oidc-form">
             <input type="hidden" name="next" value="{{next}}" />
             {% csrf_token %}
-            <button type="submit" class="btn btn-primary"><i class="bi bi-box-arrow-in-right toggle-sidebar-btn"></i> Login with {{ "OIDC_PROVIDER_NAME"|env|default:"SSO" }}</button>
+            <button type="submit" class="btn btn-primary" id="oidc-btn">
+              <i class="bi bi-box-arrow-in-right me-1" id="oidc-icon"></i>
+              <span id="oidc-label">{% trans "Login with" %} {{ "OIDC_PROVIDER_NAME"|env|default:"SSO" }}</span>
+            </button>
         </form>
         {% endif %}
         {% get_providers as socialaccount_providers %}
@@ -236,10 +239,37 @@
     </script>
     {% endif %}
 
+    {% if "OIDC_ENABLED"|env == True %}
+    <script nonce="{{ request.csp_nonce }}">
+        document.addEventListener('DOMContentLoaded', function() {
+            var form = document.getElementById('oidc-form');
+            var btn  = document.getElementById('oidc-btn');
+            var icon = document.getElementById('oidc-icon');
+            var lbl  = document.getElementById('oidc-label');
+            if (form && btn) {
+                form.addEventListener('submit', function() {
+                    btn.disabled = true;
+                    icon.className = 'spinner-border spinner-border-sm me-1';
+                    icon.setAttribute('role', 'status');
+                    lbl.textContent = '{% trans "Redirecting…" %}';
+                });
+            }
+        });
+    </script>
+    {% endif %}
+
     {% if "OIDC_AUTOLOGIN"|env %}
     <script nonce="{{ request.csp_nonce }}">
         document.addEventListener('DOMContentLoaded', function() {
-                window.location.href = "{% url 'oidc_authentication_init' %}?next={{next}}";
+            var btn  = document.getElementById('oidc-btn');
+            var icon = document.getElementById('oidc-icon');
+            var lbl  = document.getElementById('oidc-label');
+            if (btn) {
+                btn.disabled = true;
+                if (icon) { icon.className = 'spinner-border spinner-border-sm me-1'; icon.setAttribute('role', 'status'); }
+                if (lbl)  { lbl.textContent = '{% trans "Redirecting…" %}'; }
+            }
+            window.location.href = "{% url 'oidc_authentication_init' %}?next={{next}}";
         });
     </script>
     {% endif %}

@@ -570,7 +570,11 @@ def check_merchant_health():
         if issuer in bad_issuers:
             continue
         result = check_companies_house_status(issuer, api_key)
-        if result and result['company_status'] in _CH_BAD_STATUSES:
+        if (
+            result
+            and result['company_status'] in _CH_BAD_STATUSES
+            and result.get('confidence') != 'low'
+        ):
             bad_issuers[issuer] = result
 
     if not bad_issuers:

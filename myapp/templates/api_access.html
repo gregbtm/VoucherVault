@@ -46,7 +46,13 @@
 </style>
 
 <div class="pagetitle">
-  <h1>{% trans "API Access" %}</h1>
+  <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
+    <h1>{% trans "API Access" %}</h1>
+    <a href="{% url 'view_doc' 'api-access' %}" class="btn btn-outline-secondary btn-sm mt-1 help-link"
+       data-doc-url="{% url 'view_doc' 'api-access' %}" title="{% trans 'REST API guide' %}">
+      <i class="bi bi-question-circle me-1"></i>{% trans "Guide" %}
+    </a>
+  </div>
   <nav>
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>

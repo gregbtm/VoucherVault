@@ -1647,6 +1647,10 @@ body.dark-mode .tilt-scan-enable-btn {
       </ol>
     </nav>
   </div>
+  <a href="{% url 'view_doc' 'balance-tracking' %}" class="btn btn-outline-secondary btn-sm help-link ms-auto"
+     data-doc-url="{% url 'view_doc' 'balance-tracking' %}" title="{% trans 'Balance & redemption guide' %}">
+    <i class="bi bi-question-circle me-1"></i><span class="d-none d-sm-inline">{% trans "Guide" %}</span>
+  </a>
 </div>
 
 <section class="section">
@@ -2318,6 +2322,7 @@ body.dark-mode .tilt-scan-enable-btn {
           <h5><i class="bi bi-receipt"></i> {% trans "Transaction History" %}</h5>
         </div>
         <div class="transaction-body">
+          <div style="overflow-x:auto;">
           <table class="transaction-table">
             <thead>
               <tr>
@@ -2379,7 +2384,8 @@ body.dark-mode .tilt-scan-enable-btn {
               </tr>
             </tbody>
           </table>
-          
+          </div>
+
           <form method="post" class="transaction-form">
             {% csrf_token %}
             <div class="transaction-form-row">

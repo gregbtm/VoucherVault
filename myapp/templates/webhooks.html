@@ -99,8 +99,8 @@
             <form method="POST" action="{% url 'edit_webhook' hook.id %}" class="mt-2">
               {% csrf_token %}
               <div class="row g-2 mb-2">
-                <div class="col"><input type="text" name="name" class="form-control form-control-sm" value="{{ hook.name }}" required></div>
-                <div class="col"><input type="url" name="url" class="form-control form-control-sm" value="{{ hook.url }}" required></div>
+                <div class="col-12 col-sm"><input type="text" name="name" class="form-control form-control-sm" value="{{ hook.name }}" required placeholder="{% trans 'Name' %}"></div>
+                <div class="col-12 col-sm"><input type="url" name="url" class="form-control form-control-sm" value="{{ hook.url }}" required placeholder="https://"></div>
               </div>
               <input type="text" name="secret" class="form-control form-control-sm mb-2" value="{{ hook.secret }}" placeholder="{% trans 'Signing secret' %}">
               <div class="mb-2">

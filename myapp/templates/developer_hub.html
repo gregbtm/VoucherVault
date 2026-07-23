@@ -927,16 +927,22 @@ print(resp.json())
           if (nameEl) nameEl.textContent = '—';
           return;
         }
-        var badgeClass;
-        if (data.is_bad) {
+        var badgeClass, badgeText;
+        if (data.is_bad && data.confidence !== 'low') {
           badgeClass = 'ch-bad';
+          badgeText = data.company_status;
+        } else if (data.is_bad && data.confidence === 'low') {
+          badgeClass = 'ch-uncertain';
+          badgeText = data.company_status + '?';
         } else if (data.confidence === 'low') {
           badgeClass = 'ch-uncertain';
+          badgeText = data.company_status;
         } else {
           badgeClass = 'ch-ok';
+          badgeText = data.company_status;
         }
         badge.className = 'ch-status-badge ' + badgeClass + ' mh-status-badge';
-        badge.textContent = data.company_status;
+        badge.textContent = badgeText;
         if (nameEl) nameEl.textContent = data.company_name || '—';
       })
       .catch(function () {

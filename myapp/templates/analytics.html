@@ -103,7 +103,7 @@
   background: var(--card-bg, #fff);
   border: 1px solid var(--border-color, #dee2e6);
   border-radius: 12px;
-  overflow: hidden;
+  overflow-x: auto;
   margin-bottom: 1.5rem;
 }
 .table-card table {
@@ -168,6 +168,10 @@
   color: var(--text-muted, #6c757d);
   text-align: right;
 }
+@media (max-width: 480px) {
+  .budget-label { flex-basis: 80px; }
+  .budget-numbers { flex-basis: 80px; font-size: 0.72rem; }
+}
 .no-data-msg {
   text-align: center;
   padding: 2.5rem 1rem;
@@ -192,9 +196,15 @@ body.dark-mode .kpi-card {
 <div class="analytics-container">
 
   <!-- Header -->
-  <div class="analytics-header">
-    <h1><i class="bi bi-bar-chart-line me-2" style="color:var(--primary-color,#4154f1)"></i>{% trans "Analytics" %} <a href="{% url 'help_center' %}" class="help-link text-muted" title="{% trans 'Help &amp; Guides' %}" style="font-size:1rem;vertical-align:middle;text-decoration:none;"><i class="bi bi-question-circle"></i></a></h1>
-    <p class="analytics-subtitle">{% trans "Portfolio health, trends, and value breakdown" %}</p>
+  <div class="analytics-header d-flex align-items-start justify-content-between flex-wrap gap-2">
+    <div>
+      <h1><i class="bi bi-bar-chart-line me-2" style="color:var(--primary-color,#4154f1)"></i>{% trans "Analytics" %}</h1>
+      <p class="analytics-subtitle">{% trans "Portfolio health, trends, and value breakdown" %}</p>
+    </div>
+    <a href="{% url 'view_doc' 'balance-tracking' %}" class="btn btn-outline-secondary btn-sm mt-1 help-link"
+       data-doc-url="{% url 'view_doc' 'balance-tracking' %}" title="{% trans 'Balance & redemption guide' %}">
+      <i class="bi bi-question-circle me-1"></i>{% trans "Guide" %}
+    </a>
   </div>
 
   <!-- KPI Row -->
@@ -480,6 +490,37 @@ body.dark-mode .kpi-card {
       issuersChart.setOption(buildIssuersOpts(isDark()));
     });
   }
+})();
+</script>
+
+<script nonce="{{ request.csp_nonce }}">
+/* KPI count-up: integers only, fires once when .kpi-grid enters the viewport. */
+(function () {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var grid = document.querySelector('.kpi-grid');
+  if (!grid) return;
+  var observed = false;
+  var obs = new IntersectionObserver(function (entries) {
+    if (observed || !entries[0].isIntersecting) return;
+    observed = true;
+    obs.disconnect();
+    grid.querySelectorAll('.kpi-value').forEach(function (el) {
+      var raw = el.textContent.trim();
+      var num = parseInt(raw, 10);
+      if (isNaN(num) || num <= 0 || raw !== String(num)) return;
+      var start = 0, duration = 600, startTime = null;
+      function step(ts) {
+        if (!startTime) startTime = ts;
+        var progress = Math.min((ts - startTime) / duration, 1);
+        var eased = 1 - Math.pow(1 - progress, 3);
+        el.textContent = String(Math.round(eased * num));
+        if (progress < 1) requestAnimationFrame(step);
+        else el.textContent = raw;
+      }
+      requestAnimationFrame(step);
+    });
+  }, { threshold: 0.2 });
+  obs.observe(grid);
 })();
 </script>
 {% endblock %}
