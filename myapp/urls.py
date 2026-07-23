@@ -92,6 +92,7 @@ urlpatterns = (
     path('admin-tools/site-settings/', views.site_settings, name='site_settings'),
     path('admin-tools/help/<str:doc_slug>/', views.view_doc, name='view_doc'),
     path('help/', views.help_center, name='help_center'),
+    path('help/field-map/', views.field_map, name='field_map'),
     path('barcode/decode/', views.barcode_decode, name='barcode_decode'),
     # #5: Bulk export
     path('items/export/csv/', views.export_selected_csv, name='export_selected_csv'),

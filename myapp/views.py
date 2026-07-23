@@ -1710,7 +1710,7 @@ def _integration_status(config):
 # All docs are readable by any logged-in user — they are reference guides, not
 # admin actions.  The distinction below is retained only to avoid breaking
 # existing call sites; in practice the Help Center exposes every slug.
-from .help_docs import CATEGORIES, DOCS
+from .help_docs import CATEGORIES, DOCS, TOOLS
 _SELF_SERVICE_DOCS = set(DOCS.keys())
 
 
@@ -1749,7 +1749,13 @@ def view_doc(request, doc_slug):
 @login_required
 def help_center(request):
     """Help Center — lists all available guides, searchable, with in-page modal viewer."""
-    return render(request, 'help_center.html', {'categories': CATEGORIES})
+    return render(request, 'help_center.html', {'categories': CATEGORIES, 'tools': TOOLS})
+
+
+@login_required
+def field_map(request):
+    """Interactive field map — standalone tool, rendered without base.html."""
+    return render(request, 'field_map.html')
 
 
 @login_required
