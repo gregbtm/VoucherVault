@@ -5,6 +5,12 @@
 
 * surface OTA errors so admin knows when one-click link fails ([f65d1b6](https://github.com/gregbtm/VoucherVault/commit/f65d1b6393fdfd6603293a1408e60b2a4a9236fb)), closes [#6366f1](https://github.com/gregbtm/VoucherVault/issues/6366f1) [#6366f1](https://github.com/gregbtm/VoucherVault/issues/6366f1)
 
+
+### Bug Fixes
+
+* send JSON body to PocketID OTA endpoint to resolve 500 error ([6bfd244](https://github.com/gregbtm/VoucherVault/commit/6bfd244992f8998d3e60bf69e45d82fe4f1718be))
+* two-step invite flow — passkey setup before VoucherVault access ([f13d96c](https://github.com/gregbtm/VoucherVault/commit/f13d96c9ab1364c3039de173d1957c9062d895f2))
+
 ## [1.1.121](https://github.com/gregbtm/VoucherVault/compare/v1.1.120...v1.1.121) (2026-07-24)
 
 
