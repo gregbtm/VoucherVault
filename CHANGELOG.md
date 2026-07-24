@@ -8,6 +8,7 @@
 
 ### Bug Fixes
 
+* mock probe_ota in test_check_pocket_id_ok to match updated view ([bd115dc](https://github.com/gregbtm/VoucherVault/commit/bd115dcd83ab252b76d5a11da9fefefd7a3ce34c))
 * send JSON body to PocketID OTA endpoint to resolve 500 error ([6bfd244](https://github.com/gregbtm/VoucherVault/commit/6bfd244992f8998d3e60bf69e45d82fe4f1718be))
 * two-step invite flow — passkey setup before VoucherVault access ([f13d96c](https://github.com/gregbtm/VoucherVault/commit/f13d96c9ab1364c3039de173d1957c9062d895f2))
 
