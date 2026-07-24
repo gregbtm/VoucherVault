@@ -1,4 +1,11 @@
-## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.123...v1.2.0) (2026-07-24)
+## [1.1.125](https://github.com/gregbtm/VoucherVault/compare/v1.1.124...v1.1.125) (2026-07-24)
+
+
+### Bug Fixes
+
+* replace inline onclick handlers with CSP-safe event delegation ([5d9dbc2](https://github.com/gregbtm/VoucherVault/commit/5d9dbc2d0a2f8c027397b085f96300e70170cfff))
+
+## [1.1.124](https://github.com/gregbtm/VoucherVault/compare/v1.1.123...v1.1.124) (2026-07-24)
 
 
 ### Features
@@ -32,11 +39,4 @@
 ### Bug Fixes
 
 * invisible invite email button and OTA redirect parameter ([d3ab5a6](https://github.com/gregbtm/VoucherVault/commit/d3ab5a665aaf5d68ed76405ebecb869f84676fce)), closes [#6366f1](https://github.com/gregbtm/VoucherVault/issues/6366f1) [#6366f1](https://github.com/gregbtm/VoucherVault/issues/6366f1)
-
-## [1.1.120](https://github.com/gregbtm/VoucherVault/compare/v1.1.119...v1.1.120) (2026-07-24)
-
-
-### Features
-
-* PocketID invite flow — security hardening, rich provisioning UI, and QR onboarding ([81e7abf](https://github.com/gregbtm/VoucherVault/commit/81e7abf1dd7c57c7c73120d7f348d7b55b2f1b8f))
 
