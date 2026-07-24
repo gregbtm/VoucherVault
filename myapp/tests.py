@@ -6516,11 +6516,13 @@ class ProvisionInviteViewTests(TestCase):
         with patch('myapp.pocket_id.PocketIDClient') as MockClient:
             inst = MockClient.return_value
             inst.ping.return_value = (True, 'Connected')
+            inst.probe_ota.return_value = (True, 'OTA endpoint available')
             resp = self.client.get(reverse('check_pocket_id'))
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertTrue(data['ok'])
         self.assertEqual(data['message'], 'Connected')
+        self.assertTrue(data['ota_ok'])
 
     def test_check_pocket_id_non_superuser_forbidden(self):
         regular = User.objects.create_user('reg_cp', 'r@e.com', 'Pw123456!')
