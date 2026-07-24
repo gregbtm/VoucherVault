@@ -1,3 +1,10 @@
+## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.123...v1.2.0) (2026-07-24)
+
+
+### Features
+
+* passkey registration status check for PocketID-provisioned invites ([5abd71f](https://github.com/gregbtm/VoucherVault/commit/5abd71f9c8c81229869e4939766f5c64046892d9))
+
 ## [1.1.123](https://github.com/gregbtm/VoucherVault/compare/v1.1.122...v1.1.123) (2026-07-24)
 
 
@@ -32,6 +39,4 @@
 ### Features
 
 * PocketID invite flow — security hardening, rich provisioning UI, and QR onboarding ([81e7abf](https://github.com/gregbtm/VoucherVault/commit/81e7abf1dd7c57c7c73120d7f348d7b55b2f1b8f))
-
-## [1.1.119](https://github.com/gregbtm/VoucherVault/compare/v1.1.118...v1.1.119) (2026-07-24)
 
