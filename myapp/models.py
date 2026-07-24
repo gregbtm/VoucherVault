@@ -1103,6 +1103,36 @@ class SiteConfiguration(models.Model):
         help_text="PocketID admin API key (X-API-KEY). Generate one in PocketID → Admin → API Keys.",
     )
 
+    # ---- Outbound email (Django mailer) ----
+    email_host = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="SMTP server hostname (e.g. smtp.gmail.com). Leave blank to disable outbound email.",
+    )
+    email_port = models.PositiveIntegerField(
+        default=587,
+        help_text="SMTP port. 587 for STARTTLS, 465 for SSL, 25 for plain.",
+    )
+    email_host_user = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="SMTP login username.",
+    )
+    email_host_password = models.CharField(
+        max_length=500, blank=True, default='',
+        help_text="SMTP login password.",
+    )
+    email_use_tls = models.BooleanField(
+        default=True,
+        help_text="Use STARTTLS (recommended for port 587). Disable if using SSL on port 465.",
+    )
+    email_use_ssl = models.BooleanField(
+        default=False,
+        help_text="Use implicit SSL (port 465). Mutually exclusive with STARTTLS.",
+    )
+    email_from_address = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="From address for outbound emails (e.g. vault@example.com). Defaults to the SMTP username.",
+    )
+
     # ---- OIDC / PocketID integration ----
     oidc_discovery_url = models.CharField(
         max_length=500, blank=True, default='',
@@ -1192,7 +1222,7 @@ class SiteConfiguration(models.Model):
     SECRET_FIELDS = (
         'webpush_vapid_private_key', 'anthropic_api_key', 'openai_api_key',
         'pkpass_cert_password', 'logo_dev_api_key', 'companies_house_api_key',
-        'oidc_client_secret', 'pocket_id_api_key',
+        'oidc_client_secret', 'pocket_id_api_key', 'email_host_password',
     )
 
     class Meta:

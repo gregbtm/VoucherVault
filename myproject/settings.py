@@ -412,6 +412,10 @@ WEBPUSH_VAPID_PUBLIC_KEY = os.environ.get('WEBPUSH_VAPID_PUBLIC_KEY') or None
 WEBPUSH_VAPID_PRIVATE_KEY = os.environ.get('WEBPUSH_VAPID_PRIVATE_KEY') or None
 WEBPUSH_VAPID_CLAIMS_EMAIL = os.environ.get('WEBPUSH_VAPID_CLAIMS_EMAIL', 'mailto:admin@example.com')
 
+# ---- Outbound email ----
+EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'myapp.email_backend.SiteConfigEmailBackend')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'VoucherVault Plus+ <noreply@example.com>')
+
 # ---- Merchant logos ----
 MERCHANT_LOGOS_ENABLED = os.environ.get('MERCHANT_LOGOS_ENABLED', 'true').lower() in ('true', '1', 'yes')
 
