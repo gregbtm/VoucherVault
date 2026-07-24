@@ -263,20 +263,20 @@
       <div class="card mb-4 border-warning">
         <div class="card-body">
           <h5 class="card-title text-warning"><i class="bi bi-trash me-1"></i> {% trans "Cleanup" %}</h5>
-          <p class="text-muted small mb-3">{% trans "Remove expired or pending invites that are no longer needed. This action cannot be undone." %}</p>
-          <div class="btn-group" role="group">
-            <form method="POST" class="d-inline" onsubmit="return confirm('{% trans "Delete all expired invites? This cannot be undone." %}');">
+          <p class="text-muted small mb-3">{% trans "Remove expired or pending invites that are no longer needed. Used invites and already-accepted invites are not deleted. This action cannot be undone." %}</p>
+          <div class="d-flex gap-2">
+            <form method="POST" onsubmit="return confirm('{% trans "Delete all expired (but unused) invites? This cannot be undone." %}');">
               {% csrf_token %}
               <input type="hidden" name="action" value="clear_expired">
-              <button type="submit" class="btn btn-sm btn-outline-warning">
-                <i class="bi bi-trash me-1"></i> {% trans "Clear Expired Only" %}
+              <button type="submit" class="btn btn-sm btn-warning">
+                <i class="bi bi-trash me-1"></i> {% trans "Clear Expired" %}
               </button>
             </form>
-            <form method="POST" class="d-inline" onsubmit="return confirm('{% trans "Delete all active and expired invites? This cannot be undone." %}');">
+            <form method="POST" onsubmit="return confirm('{% trans "Delete all unused/pending invites? This cannot be undone." %}');">
               {% csrf_token %}
               <input type="hidden" name="action" value="clear_all">
-              <button type="submit" class="btn btn-sm btn-outline-danger">
-                <i class="bi bi-exclamation-triangle me-1"></i> {% trans "Clear All Invites" %}
+              <button type="submit" class="btn btn-sm btn-danger">
+                <i class="bi bi-exclamation-triangle me-1"></i> {% trans "Clear All Pending" %}
               </button>
             </form>
           </div>
