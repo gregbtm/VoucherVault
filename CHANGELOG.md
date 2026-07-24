@@ -1,3 +1,10 @@
+## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.126...v1.2.0) (2026-07-24)
+
+
+### Features
+
+* enhance invite provisioning with cleanup, animations, and random avatars ([dbe2bf2](https://github.com/gregbtm/VoucherVault/commit/dbe2bf2ebe3e72f35fd1161bed700c05f8c22900))
+
 ## [1.1.126](https://github.com/gregbtm/VoucherVault/compare/v1.1.125...v1.1.126) (2026-07-24)
 
 
@@ -25,18 +32,4 @@
 ### Bug Fixes
 
 * redirect OTA link to /profile so new users land on passkey setup page ([f9860bc](https://github.com/gregbtm/VoucherVault/commit/f9860bc5b6777e821d6b8a43ea3637bf9115840c))
-
-## [1.1.122](https://github.com/gregbtm/VoucherVault/compare/v1.1.121...v1.1.122) (2026-07-24)
-
-
-### Features
-
-* surface OTA errors so admin knows when one-click link fails ([f65d1b6](https://github.com/gregbtm/VoucherVault/commit/f65d1b6393fdfd6603293a1408e60b2a4a9236fb)), closes [#6366f1](https://github.com/gregbtm/VoucherVault/issues/6366f1) [#6366f1](https://github.com/gregbtm/VoucherVault/issues/6366f1)
-
-
-### Bug Fixes
-
-* mock probe_ota in test_check_pocket_id_ok to match updated view ([bd115dc](https://github.com/gregbtm/VoucherVault/commit/bd115dcd83ab252b76d5a11da9fefefd7a3ce34c))
-* send JSON body to PocketID OTA endpoint to resolve 500 error ([6bfd244](https://github.com/gregbtm/VoucherVault/commit/6bfd244992f8998d3e60bf69e45d82fe4f1718be))
-* two-step invite flow — passkey setup before VoucherVault access ([f13d96c](https://github.com/gregbtm/VoucherVault/commit/f13d96c9ab1364c3039de173d1957c9062d895f2))
 
