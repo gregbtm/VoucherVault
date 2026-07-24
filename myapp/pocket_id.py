@@ -110,6 +110,7 @@ class PocketIDClient:
         try:
             r = requests.post(
                 self._url(f'/api/users/{dummy_id}/one-time-access-token'),
+                json={'ttl': '1h'},
                 headers=self._headers,
                 timeout=5,
             )
@@ -121,15 +122,20 @@ class PocketIDClient:
         except requests.ConnectionError as exc:
             return False, f'Cannot reach PocketID: {exc}'
 
-    def get_ota_token(self, user_id: str) -> str:
+    def get_ota_token(self, user_id: str, ttl: str = '72h') -> str:
         """
         Request a one-time access token for the given user and return the
         raw token string.  Handles several possible response shapes since
         PocketID's API shape evolves between releases.
+
+        ttl must be a Go duration string (e.g. '72h', '24h').  PocketID's
+        handler uses ShouldBindJSON, so a JSON body is required even though
+        the ttl field itself is optional — sending no body causes a 500.
         """
         try:
             r = requests.post(
                 self._url(f'/api/users/{user_id}/one-time-access-token'),
+                json={'ttl': ttl},
                 headers=self._headers,
                 timeout=10,
             )

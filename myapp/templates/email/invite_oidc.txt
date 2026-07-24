@@ -1,23 +1,27 @@
-{% load i18n %}{% autoescape off %}{% blocktrans with first_name=first_name %}Hi {{ first_name }},{% endblocktrans %}
+{% load i18n %}{% autoescape off %}{% if first_name %}{% blocktrans with first_name=first_name %}Hi {{ first_name }},{% endblocktrans %}{% else %}{% trans "Hi there," %}{% endif %}
 
 {% trans "You've been invited to join VoucherVault Plus+." %}
 {% if welcome_message %}
 {{ welcome_message }}
 
 {% endif %}
-{% trans "Click the link below to get started. It will set up your passkey login via PocketID and drop you straight into the onboarding flow — no password needed." %}
+
+--- {% trans "STEP 1: Set up your secure passkey" %} ---
+
+{% trans "Click the link below to open PocketID. You'll be asked to register a passkey — a secure, passwordless login using your device's face or fingerprint. It only takes a moment." %}
 
 {{ chain_url }}
 
----
-{% trans "If the link above doesn't work (it can only be used once), use this direct invite link instead:" %}
+{% trans "(This link can only be used once.)" %}
+
+--- {% trans "STEP 2: Open VoucherVault" %} ---
+
+{% trans "Once your passkey is registered, click the link below to accept your invitation and enter VoucherVault. After that, you can log in any time with a single touch of your passkey." %}
 
 {{ invite_url }}
 
-{% trans "This direct link will prompt you to log in with your PocketID account before continuing." %}
-
 ---
-{% blocktrans with base_url=pocket_id_url %}Your PocketID instance: {{ base_url }}{% endblocktrans %}
+{% blocktrans with base_url=pocket_id_url %}Your login provider: {{ base_url }}{% endblocktrans %}
 
 {% trans "If you weren't expecting this invitation, you can safely ignore this email." %}
 {% endautoescape %}
