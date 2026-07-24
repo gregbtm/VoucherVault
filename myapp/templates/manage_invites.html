@@ -2,27 +2,33 @@
 {% load i18n %}
 
 {% block content %}
-<div class="pagetitle">
-  <h1>{% trans "Invite Links" %}</h1>
-  <nav>
-    <ol class="breadcrumb">
-      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
-      <li class="breadcrumb-item"><a href="{% url 'manage_users' %}">{% trans "Users" %}</a></li>
-      <li class="breadcrumb-item active">{% trans "Invite Links" %}</li>
-    </ol>
-  </nav>
+<div class="pagetitle d-flex align-items-start justify-content-between flex-wrap gap-2">
+  <div>
+    <h1>{% trans "Invite Links" %}</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'manage_users' %}">{% trans "Users" %}</a></li>
+        <li class="breadcrumb-item active">{% trans "Invite Links" %}</li>
+      </ol>
+    </nav>
+  </div>
+  <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#inviteHelpModal">
+    <i class="bi bi-question-circle me-1"></i> {% trans "Help" %}
+  </button>
 </div>
 
 <section class="section">
   <div class="row">
 
+    <!-- ── Left column: create forms ── -->
     <div class="col-lg-6">
 
       <!-- Standard invite -->
       <div class="card mb-4">
         <div class="card-body">
           <h5 class="card-title"><i class="bi bi-envelope-plus me-1"></i> {% trans "Create Invite Link" %}</h5>
-          <p class="text-muted small">{% trans "Generate a one-time link. The recipient can use it to create an account even when registration is closed." %}</p>
+          <p class="text-muted small">{% trans "Generate a one-time link. The recipient can use it to create an account even when public registration is closed." %}</p>
           <form method="POST">
             {% csrf_token %}
             <input type="hidden" name="action" value="create">
@@ -41,25 +47,114 @@
       <div class="card mb-4 border-primary">
         <div class="card-body">
           <h5 class="card-title text-primary"><i class="bi bi-person-plus-fill me-1"></i> {% trans "Provision & Invite via PocketID" %}</h5>
-          <p class="text-muted small mb-3">{% trans "Creates a PocketID account and generates a one-click onboarding link. The partner clicks it once — passkey setup happens in PocketID, then they land straight in VoucherVault." %}</p>
-          <form method="POST">
+          <p class="text-muted small mb-3">{% trans "Creates (or finds) a PocketID account and generates a one-click onboarding link. The invitee clicks once — passkey setup happens in PocketID, then they land straight in VoucherVault." %}</p>
+
+          <!-- Preflight email check -->
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">{% trans "Email address" %}</label>
+            <div class="input-group input-group-sm">
+              <input type="email" id="provision-email" name="provision_email_display"
+                     class="form-control" placeholder="{% trans 'email@example.com' %}" maxlength="254"
+                     autocomplete="off">
+              <button class="btn btn-outline-secondary" type="button" id="btn-check-email"
+                      title="{% trans 'Check if this email already exists' %}">
+                <i class="bi bi-search"></i>
+              </button>
+            </div>
+            <div id="email-check-result" class="mt-1 small" style="min-height:1.4em;"></div>
+          </div>
+
+          <form method="POST" id="provision-form">
             {% csrf_token %}
             <input type="hidden" name="action" value="provision">
+            <input type="hidden" id="provision-email-hidden" name="email" value="">
+
             <div class="row g-2 mb-3">
-              <div class="col-12">
-                <input type="email" name="email" class="form-control" placeholder="{% trans 'Email address (optional)' %}" maxlength="254">
+              <div class="col-6">
+                <input type="text" name="first_name" id="provision-first-name" class="form-control form-control-sm"
+                       placeholder="{% trans 'First name' %}" maxlength="150">
               </div>
               <div class="col-6">
-                <input type="text" name="first_name" class="form-control" placeholder="{% trans 'First name' %}" maxlength="150">
+                <input type="text" name="last_name" id="provision-last-name" class="form-control form-control-sm"
+                       placeholder="{% trans 'Last name' %}" maxlength="150">
               </div>
-              <div class="col-6">
-                <input type="text" name="last_name" class="form-control" placeholder="{% trans 'Last name' %}" maxlength="150">
-              </div>
+
+              <!-- Username with live preview -->
               <div class="col-12">
-                <input type="text" name="note" class="form-control" placeholder="{% trans 'Note (optional)' %}" maxlength="255">
+                <label class="form-label small mb-1">{% trans "PocketID username" %}</label>
+                <div class="input-group input-group-sm">
+                  <input type="text" name="username" id="provision-username" class="form-control font-monospace"
+                         placeholder="{% trans 'auto' %}" maxlength="150" autocomplete="off">
+                  <span class="input-group-text text-muted small" id="username-preview-badge" style="display:none;"></span>
+                </div>
+                <div class="form-text">{% trans "Leave blank to auto-derive from email. Only letters, digits, hyphens, underscores." %}</div>
+              </div>
+
+              <div class="col-12">
+                <input type="text" name="note" class="form-control form-control-sm"
+                       placeholder="{% trans 'Note (optional)' %}" maxlength="255">
               </div>
             </div>
-            <button type="submit" class="btn btn-primary btn-sm">
+
+            <!-- Advanced options (collapsed by default) -->
+            <div class="mb-3">
+              <a class="small text-muted text-decoration-none" data-bs-toggle="collapse"
+                 href="#provisionAdvanced" role="button" aria-expanded="false">
+                <i class="bi bi-sliders me-1"></i> {% trans "Advanced options" %}
+              </a>
+              <div class="collapse mt-2" id="provisionAdvanced">
+                <div class="border rounded p-3 bg-light-subtle">
+                  <div class="row g-2">
+
+                    <!-- Custom expiry -->
+                    <div class="col-12 col-sm-6">
+                      <label class="form-label small mb-1">
+                        {% trans "Invite expires in" %}
+                        <span class="text-muted">({% trans "days" %})</span>
+                      </label>
+                      <input type="number" name="custom_expiry_days" class="form-control form-control-sm"
+                             placeholder="{{ default_expiry_days|default:'7' }}" min="0" max="3650">
+                      <div class="form-text">{% blocktrans with days=default_expiry_days|default:'7' %}Leave blank to use site default ({{ days }} days). 0 = never expires.{% endblocktrans %}</div>
+                    </div>
+
+                    <!-- Pre-share wallet -->
+                    {% if wallets %}
+                    <div class="col-12 col-sm-6">
+                      <label class="form-label small mb-1">{% trans "Auto-share wallet" %}</label>
+                      <select name="pre_share_wallet" class="form-select form-select-sm">
+                        <option value="">— {% trans "none" %} —</option>
+                        {% for w in wallets %}
+                        <option value="{{ w.id }}">{{ w.name }}</option>
+                        {% endfor %}
+                      </select>
+                      <div class="form-text">{% trans "Automatically adds the invitee as an editor of this wallet when they accept." %}</div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Custom welcome message -->
+                    <div class="col-12">
+                      <label class="form-label small mb-1">{% trans "Custom welcome message" %}</label>
+                      <textarea name="welcome_message" class="form-control form-control-sm" rows="2"
+                                placeholder="{% trans 'Optional personal message included in the invite email…' %}"
+                                maxlength="1000"></textarea>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Progress indicator -->
+            <div id="provision-progress" class="mb-3" style="display:none;">
+              <div class="d-flex gap-2 align-items-center">
+                <div id="step-create" class="provision-step badge bg-secondary">{% trans "1. Creating account" %}</div>
+                <i class="bi bi-arrow-right text-muted small"></i>
+                <div id="step-ota" class="provision-step badge bg-secondary">{% trans "2. Generating link" %}</div>
+                <i class="bi bi-arrow-right text-muted small"></i>
+                <div id="step-invite" class="provision-step badge bg-secondary">{% trans "3. Saving invite" %}</div>
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-sm" id="btn-provision">
               <i class="bi bi-magic me-1"></i> {% trans "Create Account & Generate Link" %}
             </button>
           </form>
@@ -69,33 +164,62 @@
 
     </div>
 
+    <!-- ── Right column: provision result ── -->
     {% if last_provision %}
     <div class="col-lg-6">
-      <!-- Provision result -->
       <div class="card mb-4 border-success">
         <div class="card-body">
-          <h5 class="card-title text-success"><i class="bi bi-check-circle me-1"></i> {% trans "Onboarding Link Ready" %}</h5>
+          <div class="d-flex align-items-start justify-content-between mb-2">
+            <h5 class="card-title text-success mb-0">
+              <i class="bi bi-check-circle me-1"></i> {% trans "Onboarding Link Ready" %}
+            </h5>
+            <span class="badge bg-success-subtle text-success border border-success-subtle">{% trans "Show once" %}</span>
+          </div>
+
           {% if last_provision.email %}
-          <p class="small text-muted mb-2">{% blocktrans with email=last_provision.email %}For: {{ email }}{% endblocktrans %}
+          <p class="small text-muted mb-2">
+            {% blocktrans with email=last_provision.email %}For: {{ email }}{% endblocktrans %}
             {% if last_provision.email_sent %} <span class="badge bg-success ms-1">{% trans "Email sent" %}</span>{% endif %}
+            {% if last_provision.username %} &middot; <span class="text-muted">@{{ last_provision.username }}</span>{% endif %}
+          </p>
+          {% endif %}
+          {% if last_provision.pre_share_wallet %}
+          <p class="small text-muted mb-2">
+            <i class="bi bi-wallet2 me-1"></i>
+            {% blocktrans with w=last_provision.pre_share_wallet %}Will auto-share wallet: <strong>{{ w }}</strong>{% endblocktrans %}
           </p>
           {% endif %}
 
           {% if last_provision.has_ota %}
           <div class="mb-3">
-            <label class="form-label fw-semibold small">{% trans "One-click onboarding link" %} <span class="badge bg-primary ms-1">{% trans "Recommended" %}</span></label>
+            <label class="form-label fw-semibold small">
+              {% trans "One-click onboarding link" %} <span class="badge bg-primary ms-1">{% trans "Recommended" %}</span>
+            </label>
             <p class="text-muted small mb-1">{% trans "Partner clicks once: sets up their passkey in PocketID, then lands in VoucherVault automatically." %}</p>
-            <div class="input-group input-group-sm">
+            <div class="input-group input-group-sm mb-1">
               <input type="text" id="chain-url-field" class="form-control font-monospace" value="{{ last_provision.chain_url }}" readonly>
               <button class="btn btn-outline-secondary" type="button" onclick="copyField('chain-url-field', this)">
                 <i class="bi bi-clipboard"></i>
               </button>
             </div>
+            <!-- QR code for chain URL -->
+            <div class="mt-2 text-center">
+              <a class="small text-muted text-decoration-none" data-bs-toggle="collapse" href="#qrCodeChain">
+                <i class="bi bi-qr-code me-1"></i> {% trans "Show QR code" %}
+              </a>
+              <div class="collapse mt-2" id="qrCodeChain">
+                <img src="{% url 'invite_qr' %}?url={{ last_provision.chain_url|urlencode }}"
+                     alt="QR code" class="img-fluid" style="max-width:180px;border-radius:8px;border:1px solid #e2e8f0;">
+                <p class="text-muted small mt-1">{% trans "Scan to open on a phone" %}</p>
+              </div>
+            </div>
           </div>
           {% endif %}
 
           <div class="mb-2">
-            <label class="form-label fw-semibold small">{% trans "Direct invite link" %} <span class="text-muted">({% trans "fallback" %})</span></label>
+            <label class="form-label fw-semibold small">
+              {% trans "Direct invite link" %} <span class="text-muted">({% trans "fallback" %})</span>
+            </label>
             <p class="text-muted small mb-1">{% trans "Use this if the one-click link has expired or the partner already has a PocketID account." %}</p>
             <div class="input-group input-group-sm">
               <input type="text" id="invite-url-field" class="form-control font-monospace" value="{{ last_provision.invite_url }}" readonly>
@@ -104,13 +228,18 @@
               </button>
             </div>
           </div>
+
+          <p class="text-muted small mb-0 mt-3">
+            <i class="bi bi-shield-lock me-1"></i>
+            {% trans "This card will disappear when you refresh the page. Copy the link before navigating away." %}
+          </p>
         </div>
       </div>
     </div>
     {% endif %}
 
+    <!-- ── Full-width: invite table ── -->
     <div class="col-lg-12">
-      <!-- Invite list -->
       <div class="card">
         <div class="card-body">
           <h5 class="card-title"><i class="bi bi-list-check me-1"></i> {% trans "All Invite Links" %}</h5>
@@ -119,13 +248,14 @@
             <table class="table table-hover table-sm align-middle">
               <thead>
                 <tr>
-                  <th>{% trans "Link" %}</th>
+                  <th>{% trans "Recipient" %}</th>
                   <th>{% trans "Note" %}</th>
-                  <th>{% trans "Created by" %}</th>
                   <th>{% trans "Created" %}</th>
                   <th>{% trans "Expires" %}</th>
                   <th>{% trans "Status" %}</th>
                   <th>{% trans "PocketID" %}</th>
+                  <th>{% trans "Wallet" %}</th>
+                  <th>{% trans "IP" %}</th>
                   <th></th>
                 </tr>
               </thead>
@@ -140,12 +270,14 @@
                     {% endif %}
                   </td>
                   <td class="small">{{ inv.note|default:"—" }}</td>
-                  <td class="small">{{ inv.created_by.username|default:"—" }}</td>
-                  <td class="small text-muted">{{ inv.created_at|date:"d M Y" }}</td>
+                  <td class="small text-muted">{{ inv.created_at|date:"d M Y" }}<br>
+                    <span class="text-muted" style="font-size:0.75em;">{% trans "by" %} {{ inv.created_by.username|default:"—" }}</span>
+                  </td>
                   <td class="small text-muted">{{ inv.expires_at|date:"d M Y"|default:"Never" }}</td>
                   <td>
                     {% if inv.used_at %}
-                    <span class="badge bg-secondary">{% trans "Used" %} — {{ inv.used_by.username|default:"?" }}</span>
+                    <span class="badge bg-secondary">{% trans "Used" %}</span>
+                    {% if inv.used_by %}<br><span class="small text-muted">{{ inv.used_by.username }}</span>{% endif %}
                     {% elif inv.revoked %}
                     <span class="badge bg-danger">{% trans "Revoked" %}</span>
                     {% elif inv.expires_at and inv.expires_at < now %}
@@ -156,20 +288,40 @@
                   </td>
                   <td class="small">
                     {% if inv.pocket_id_user_id %}
-                    <span class="text-primary" title="{{ inv.pocket_id_user_id }}"><i class="bi bi-person-check"></i> {% trans "Provisioned" %}</span>
+                    <span class="text-primary" title="{{ inv.pocket_id_user_id }}">
+                      <i class="bi bi-person-check"></i>
+                      {% if inv.pocket_id_username %}<br><code class="text-muted" style="font-size:0.8em;">@{{ inv.pocket_id_username }}</code>{% endif %}
+                    </span>
                     {% else %}
                     <span class="text-muted">—</span>
                     {% endif %}
                   </td>
-                  <td>
-                    {% if inv.is_valid %}
-                    <form method="POST" class="d-inline">
-                      {% csrf_token %}
-                      <input type="hidden" name="action" value="revoke">
-                      <input type="hidden" name="token" value="{{ inv.token }}">
-                      <button type="submit" class="btn btn-sm btn-outline-danger">{% trans "Revoke" %}</button>
-                    </form>
-                    {% endif %}
+                  <td class="small">
+                    {% if inv.pre_share_wallet %}
+                    <i class="bi bi-wallet2 text-primary me-1"></i>{{ inv.pre_share_wallet.name }}
+                    {% else %}—{% endif %}
+                  </td>
+                  <td class="small text-muted font-monospace" style="font-size:0.75em;">
+                    {{ inv.accepted_ip|default:"—" }}
+                  </td>
+                  <td class="text-end">
+                    <div class="d-flex gap-1 justify-content-end">
+                      {% if inv.is_valid and inv.pocket_id_user_id %}
+                      <button type="button" class="btn btn-sm btn-outline-primary"
+                              onclick="resendOta({{ inv.id }}, this)"
+                              title="{% trans 'Generate a fresh onboarding link' %}">
+                        <i class="bi bi-arrow-clockwise"></i>
+                      </button>
+                      {% endif %}
+                      {% if inv.is_valid %}
+                      <form method="POST" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="revoke">
+                        <input type="hidden" name="token" value="{{ inv.token }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">{% trans "Revoke" %}</button>
+                      </form>
+                      {% endif %}
+                    </div>
                   </td>
                 </tr>
                 {% endfor %}
@@ -186,13 +338,226 @@
   </div>
 </section>
 
+<!-- Resend OTA result modal -->
+<div class="modal fade" id="resendOtaModal" tabindex="-1" aria-labelledby="resendOtaModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title" id="resendOtaModalLabel"><i class="bi bi-link-45deg me-1"></i> {% trans "Fresh Onboarding Link" %}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="resend-spinner" class="text-center py-3" style="display:none;">
+          <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+          <p class="mt-2 small text-muted">{% trans "Generating…" %}</p>
+        </div>
+        <div id="resend-result" style="display:none;">
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">
+              {% trans "One-click onboarding link" %} <span class="badge bg-primary ms-1">{% trans "Recommended" %}</span>
+            </label>
+            <div class="input-group input-group-sm mb-1">
+              <input type="text" id="resend-chain-url" class="form-control font-monospace" readonly>
+              <button class="btn btn-outline-secondary" type="button" onclick="copyField('resend-chain-url', this)">
+                <i class="bi bi-clipboard"></i>
+              </button>
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label fw-semibold small">{% trans "Direct invite link" %} <span class="text-muted">({% trans "fallback" %})</span></label>
+            <div class="input-group input-group-sm">
+              <input type="text" id="resend-invite-url" class="form-control font-monospace" readonly>
+              <button class="btn btn-outline-secondary" type="button" onclick="copyField('resend-invite-url', this)">
+                <i class="bi bi-clipboard"></i>
+              </button>
+            </div>
+          </div>
+          <p class="text-muted small mb-0 mt-2"><i class="bi bi-shield-lock me-1"></i>{% trans "Copy the link now — it won't be shown again." %}</p>
+        </div>
+        <div id="resend-error" class="alert alert-danger small" style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Help modal -->
+<div class="modal fade" id="inviteHelpModal" tabindex="-1" aria-labelledby="inviteHelpModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="inviteHelpModalLabel"><i class="bi bi-question-circle me-1"></i> {% trans "Invite Links — Help" %}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body small">
+        <h6 class="fw-bold">{% trans "Standard invite link" %}</h6>
+        <p>{% trans "Creates a single-use UUID token anyone can follow to register an account, even when public registration is closed. Set a note to remind yourself who it's for. Revoke it at any time before it's used." %}</p>
+
+        <h6 class="fw-bold mt-3">{% trans "PocketID provisioning" %}</h6>
+        <p>{% trans "When PocketID is configured, you can create a PocketID account for the invitee at the same time as the VoucherVault invite. The result is a one-click chain URL: the recipient clicks it, sets up their passkey in PocketID, and lands straight in VoucherVault — no password, no extra steps." %}</p>
+        <p>{% trans "If the person already has a PocketID account at that email address, their existing account is used (no duplicate is created)." %}</p>
+
+        <h6 class="fw-bold mt-3">{% trans "Preflight email check" %}</h6>
+        <p>{% trans "Click the search icon next to the email field before submitting to verify whether the address already exists in VoucherVault or PocketID. This prevents creating a second invite for someone who already has access." %}</p>
+
+        <h6 class="fw-bold mt-3">{% trans "Username" %}</h6>
+        <p>{% trans "Optionally override the PocketID username. Leave blank to auto-derive from the email local-part (e.g. john.smith@example.com → john.smith). Must be unique in your PocketID instance." %}</p>
+
+        <h6 class="fw-bold mt-3">{% trans "Advanced options" %}</h6>
+        <ul class="mb-0">
+          <li><strong>{% trans "Invite expires in" %}</strong> — {% trans "Override the site-wide default expiry for this single invite. 0 means it never expires." %}</li>
+          <li><strong>{% trans "Auto-share wallet" %}</strong> — {% trans "When the invitee accepts, they are automatically added as an editor of the selected wallet. Useful for family or team sharing." %}</li>
+          <li><strong>{% trans "Custom welcome message" %}</strong> — {% trans "A personal note included in the invitation email, shown prominently before the action button." %}</li>
+        </ul>
+
+        <h6 class="fw-bold mt-3">{% trans "Resend / regenerate link" %}</h6>
+        <p class="mb-0">{% trans "The refresh button (↺) on a PocketID-provisioned invite generates a fresh one-time-access token without creating a new user or a new invite. Use this if the previous link expired before the recipient clicked it." %}</p>
+
+        <h6 class="fw-bold mt-3">{% trans "Security notes" %}</h6>
+        <ul class="mb-0">
+          <li>{% trans "The onboarding chain URL contains a one-time-access token. Copy it immediately — it is shown only once and is not stored." %}</li>
+          <li>{% trans "The acceptance IP is recorded for audit purposes and shown in the table." %}</li>
+          <li>{% trans "Invite links are single-use: once accepted they are marked used and cannot be used again." %}</li>
+          <li>{% trans "Revoke an unused invite at any time to prevent it from being used." %}</li>
+        </ul>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">{% trans "Close" %}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script nonce="{{ request.csp_nonce }}">
+// ── copy helper ──────────────────────────────────────────────────────────────
 function copyField(fieldId, btn) {
   var field = document.getElementById(fieldId);
   navigator.clipboard.writeText(field.value).then(function () {
     var orig = btn.innerHTML;
     btn.innerHTML = '<i class="bi bi-check"></i>';
     setTimeout(function () { btn.innerHTML = orig; }, 1500);
+  });
+}
+
+// ── live username preview ────────────────────────────────────────────────────
+var emailInput = document.getElementById('provision-email');
+var usernameInput = document.getElementById('provision-username');
+var usernamePreview = document.getElementById('username-preview-badge');
+var emailHidden = document.getElementById('provision-email-hidden');
+
+function deriveUsername(email) {
+  return email.split('@')[0].toLowerCase().replace(/[^a-z0-9_\-]/g, '_');
+}
+
+if (emailInput) {
+  emailInput.addEventListener('input', function () {
+    emailHidden.value = this.value;
+    if (!usernameInput.value.trim() && this.value.includes('@')) {
+      var preview = deriveUsername(this.value);
+      usernamePreview.textContent = '@' + preview + ' (auto)';
+      usernamePreview.style.display = '';
+    } else if (!this.value) {
+      usernamePreview.style.display = 'none';
+    }
+  });
+  usernameInput.addEventListener('input', function () {
+    if (this.value.trim()) {
+      usernamePreview.textContent = '@' + this.value.trim();
+      usernamePreview.style.display = '';
+    } else if (emailInput.value.includes('@')) {
+      usernamePreview.textContent = '@' + deriveUsername(emailInput.value) + ' (auto)';
+      usernamePreview.style.display = '';
+    } else {
+      usernamePreview.style.display = 'none';
+    }
+  });
+}
+
+// ── preflight email check ────────────────────────────────────────────────────
+var checkBtn = document.getElementById('btn-check-email');
+var checkResult = document.getElementById('email-check-result');
+
+if (checkBtn) {
+  checkBtn.addEventListener('click', function () {
+    var email = emailInput.value.trim();
+    if (!email) { checkResult.innerHTML = '<span class="text-warning">Enter an email first.</span>'; return; }
+    checkResult.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm me-1"></span>Checking…</span>';
+    checkBtn.disabled = true;
+    var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    fetch('{% url "check_invite_email" %}', {
+      method: 'POST',
+      headers: {'X-CSRFToken': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'email=' + encodeURIComponent(email),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      checkBtn.disabled = false;
+      var parts = [];
+      if (data.vv_exists) {
+        parts.push('<span class="text-danger"><i class="bi bi-x-circle me-1"></i>Already has a VoucherVault account.</span>');
+      } else {
+        parts.push('<span class="text-success"><i class="bi bi-check-circle me-1"></i>No VoucherVault account.</span>');
+      }
+      if (data.pocket_id_exists) {
+        parts.push('<span class="text-warning"><i class="bi bi-person-check me-1"></i>PocketID account found: <code>@' + data.pocket_id_username + '</code> — existing account will be used.</span>');
+        if (usernameInput && !usernameInput.value.trim()) {
+          usernameInput.value = data.pocket_id_username;
+          usernamePreview.textContent = '@' + data.pocket_id_username;
+          usernamePreview.style.display = '';
+        }
+      } else {
+        parts.push('<span class="text-success"><i class="bi bi-check-circle me-1"></i>No PocketID account — new account will be created.</span>');
+      }
+      checkResult.innerHTML = parts.join('<br>');
+    })
+    .catch(function () { checkBtn.disabled = false; checkResult.innerHTML = '<span class="text-danger">Check failed.</span>'; });
+  });
+}
+
+// sync email to hidden field on provision form submit
+var provisionForm = document.getElementById('provision-form');
+if (provisionForm) {
+  provisionForm.addEventListener('submit', function () {
+    emailHidden.value = emailInput ? emailInput.value.trim() : '';
+    var progress = document.getElementById('provision-progress');
+    if (progress) {
+      progress.style.display = '';
+      document.getElementById('step-create').className = 'provision-step badge bg-primary';
+    }
+  });
+}
+
+// ── resend OTA ───────────────────────────────────────────────────────────────
+function resendOta(inviteId, btn) {
+  var modal = new bootstrap.Modal(document.getElementById('resendOtaModal'));
+  document.getElementById('resend-spinner').style.display = '';
+  document.getElementById('resend-result').style.display = 'none';
+  document.getElementById('resend-error').style.display = 'none';
+  modal.show();
+
+  var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+  fetch('{% url "resend_invite_ota" %}', {
+    method: 'POST',
+    headers: {'X-CSRFToken': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'invite_id=' + encodeURIComponent(inviteId),
+  })
+  .then(function (r) { return r.json(); })
+  .then(function (data) {
+    document.getElementById('resend-spinner').style.display = 'none';
+    if (data.ok) {
+      document.getElementById('resend-chain-url').value = data.chain_url;
+      document.getElementById('resend-invite-url').value = data.invite_url;
+      document.getElementById('resend-result').style.display = '';
+    } else {
+      var errEl = document.getElementById('resend-error');
+      errEl.textContent = data.error || 'Unknown error';
+      errEl.style.display = '';
+    }
+  })
+  .catch(function () {
+    document.getElementById('resend-spinner').style.display = 'none';
+    var errEl = document.getElementById('resend-error');
+    errEl.textContent = 'Network error — please try again.';
+    errEl.style.display = '';
   });
 }
 </script>

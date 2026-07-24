@@ -21,7 +21,7 @@ from .imagehash import compute_dhash, hamming_distance
 from .scan_learning import record_scan_corrections
 from django.db.models import Sum
 from django.utils import timezone
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 from csp.decorators import csp_replace
@@ -4054,11 +4054,17 @@ def manage_invites(request):
 
     config = SiteConfiguration.load()
     last_provision = request.session.pop('last_provision', None)
-    invites = InviteLink.objects.select_related('created_by', 'used_by').all()
+    invites = InviteLink.objects.select_related(
+        'created_by', 'used_by', 'pre_share_wallet',
+    ).all()
+    # Wallets owned by this admin for the pre-share dropdown.
+    wallets = list(request.user.wallets.order_by('name').values('id', 'name', 'icon', 'color'))
     return render(request, 'manage_invites.html', {
         'invites': invites,
         'pocket_id_configured': bool(config.pocket_id_url and config.pocket_id_api_key),
         'last_provision': last_provision,
+        'wallets': wallets,
+        'default_expiry_days': config.invite_expiry_days,
     })
 
 
@@ -4070,9 +4076,27 @@ def _handle_provision_invite(request):
     email = request.POST.get('email', '').strip()
     first_name = request.POST.get('first_name', '').strip()
     last_name = request.POST.get('last_name', '').strip()
+    username_override = request.POST.get('username', '').strip()
+    welcome_message = request.POST.get('welcome_message', '').strip()
+    pre_share_wallet_id = request.POST.get('pre_share_wallet', '').strip()
+    try:
+        custom_expiry_days = int(request.POST.get('custom_expiry_days', ''))
+        if custom_expiry_days < 0:
+            custom_expiry_days = None
+    except (ValueError, TypeError):
+        custom_expiry_days = None
 
     if not email and not first_name:
         messages.error(request, _('Provide at least an email or first name to provision.'))
+        return
+
+    # Guard: VoucherVault already has an account with this email.
+    if email and User.objects.filter(email=email).exists():
+        messages.error(
+            request,
+            _('A VoucherVault account already exists for %(email)s. '
+              'Use "Create Invite Link" to send them a new login link instead.') % {'email': email},
+        )
         return
 
     config = SiteConfiguration.load()
@@ -4080,21 +4104,24 @@ def _handle_provision_invite(request):
         messages.error(request, _('PocketID URL and API key must be configured in Site Settings.'))
         return
 
-    # Derive a username from the email local part or first name, lowercased.
-    if email:
-        username_base = email.split('@')[0].lower()
+    # Derive a username — use admin's explicit value if provided.
+    if username_override:
+        username = username_override
+    elif email:
+        username = email.split('@')[0].lower()
     else:
-        username_base = (first_name + last_name).lower().replace(' ', '')
-    username = username_base or 'vvuser'
+        username = (first_name + last_name).lower().replace(' ', '') or 'vvuser'
 
     client = PocketIDClient(config.pocket_id_url, config.pocket_id_api_key)
     pocket_id_user_id = ''
     ota_token = ''
     user_already_existed = False
+    resolved_username = username
 
     try:
         user_data = client.create_user(username, email, first_name, last_name)
         pocket_id_user_id = user_data.get('id', '')
+        resolved_username = user_data.get('username', username)
     except PocketIDError as exc:
         exc_msg = str(exc).lower()
         if email and 'email' in exc_msg and ('already' in exc_msg or 'in use' in exc_msg):
@@ -4106,6 +4133,7 @@ def _handle_provision_invite(request):
                 return
             if existing:
                 pocket_id_user_id = existing.get('id', '')
+                resolved_username = existing.get('username', username)
                 user_already_existed = True
             else:
                 messages.error(request, str(_('PocketID error: ')) + str(exc))
@@ -4119,28 +4147,36 @@ def _handle_provision_invite(request):
             ota_token = client.get_ota_token(pocket_id_user_id)
         except PocketIDError:
             # OTA token is a convenience — failure is non-fatal.
-            # The invite link still works; the user will log in normally.
             ota_token = ''
 
-    # Create the VoucherVault invite link.
-    expiry = None
-    if config.invite_expiry_days:
-        expiry = timezone.now() + dt.timedelta(days=config.invite_expiry_days)
+    # Resolve per-invite expiry (custom > site default > no expiry).
+    effective_expiry_days = custom_expiry_days if custom_expiry_days is not None else config.invite_expiry_days
+    expiry = timezone.now() + dt.timedelta(days=effective_expiry_days) if effective_expiry_days else None
+
+    # Resolve pre-share wallet (must be owned by this admin).
+    pre_share_wallet = None
+    if pre_share_wallet_id:
+        try:
+            pre_share_wallet = Wallet.objects.get(id=pre_share_wallet_id, user=request.user)
+        except Wallet.DoesNotExist:
+            pass
+
     note = (first_name or email or 'OIDC invite')[:255]
     invite = InviteLink.objects.create(
         created_by=request.user,
         expires_at=expiry,
         note=note,
         pocket_id_user_id=pocket_id_user_id,
+        pocket_id_username=resolved_username,
+        welcome_message=welcome_message,
+        pre_share_wallet=pre_share_wallet,
+        custom_expiry_days=custom_expiry_days,
     )
 
     invite_url = request.build_absolute_uri(
         reverse('accept_invite', args=[str(invite.token)])
     )
 
-    # Build the chain URL.  PocketID's login page accepts ?redirect= and the
-    # one-time-access frontend page likely does too — we try the OTA path
-    # first, which lets a brand-new user authenticate without a passkey.
     if ota_token:
         chain_url = (
             f"{config.pocket_id_url.rstrip('/')}/one-time-access/{ota_token}"
@@ -4158,6 +4194,7 @@ def _handle_provision_invite(request):
                 'invite_url': invite_url,
                 'pocket_id_url': config.pocket_id_url,
                 'first_name': first_name,
+                'welcome_message': welcome_message,
             }
             text_body = render_to_string('email/invite_oidc.txt', ctx)
             html_body = render_to_string('email/invite_oidc.html', ctx)
@@ -4181,6 +4218,9 @@ def _handle_provision_invite(request):
         'email': email,
         'email_sent': email_sent,
         'has_ota': bool(ota_token),
+        'first_name': first_name,
+        'username': resolved_username,
+        'pre_share_wallet': pre_share_wallet.name if pre_share_wallet else '',
     }
     if email_sent:
         if user_already_existed:
@@ -4206,6 +4246,95 @@ def check_pocket_id(request):
     client = PocketIDClient(config.pocket_id_url, config.pocket_id_api_key)
     ok, message = client.ping()
     return JsonResponse({'ok': ok, 'message': message})
+
+
+@login_required
+def check_invite_email(request):
+    """AJAX: preflight check — does this email already exist in VoucherVault or PocketID?"""
+    if not request.user.is_superuser:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    from .pocket_id import PocketIDClient, PocketIDError
+    email = request.POST.get('email', '').strip().lower()
+    if not email:
+        return JsonResponse({'error': 'email required'}, status=400)
+
+    vv_exists = User.objects.filter(email__iexact=email).exists()
+
+    pocket_id_exists = False
+    pocket_id_username = ''
+    config = SiteConfiguration.load()
+    if config.pocket_id_url and config.pocket_id_api_key:
+        try:
+            client = PocketIDClient(config.pocket_id_url, config.pocket_id_api_key)
+            existing = client.find_user_by_email(email)
+            if existing:
+                pocket_id_exists = True
+                pocket_id_username = existing.get('username', '')
+        except PocketIDError:
+            pass
+
+    return JsonResponse({
+        'vv_exists': vv_exists,
+        'pocket_id_exists': pocket_id_exists,
+        'pocket_id_username': pocket_id_username,
+    })
+
+
+@login_required
+def resend_invite_ota(request):
+    """AJAX: generate a fresh OTA token for an existing PocketID-provisioned invite."""
+    if not request.user.is_superuser:
+        return JsonResponse({'ok': False, 'error': 'Forbidden'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
+    from .pocket_id import PocketIDClient, PocketIDError
+    invite_id = request.POST.get('invite_id', '').strip()
+    try:
+        invite = InviteLink.objects.get(pk=invite_id)
+    except (InviteLink.DoesNotExist, ValueError):
+        return JsonResponse({'ok': False, 'error': 'Invite not found'}, status=404)
+    if not invite.pocket_id_user_id:
+        return JsonResponse({'ok': False, 'error': 'This invite was not provisioned via PocketID'}, status=400)
+
+    config = SiteConfiguration.load()
+    if not config.pocket_id_url or not config.pocket_id_api_key:
+        return JsonResponse({'ok': False, 'error': 'PocketID not configured'}, status=400)
+
+    try:
+        client = PocketIDClient(config.pocket_id_url, config.pocket_id_api_key)
+        ota_token = client.get_ota_token(invite.pocket_id_user_id)
+    except PocketIDError as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=502)
+
+    invite_url = request.build_absolute_uri(
+        reverse('accept_invite', args=[str(invite.token)])
+    )
+    chain_url = (
+        f"{config.pocket_id_url.rstrip('/')}/one-time-access/{ota_token}"
+        f"?redirect={invite_url}"
+    )
+    return JsonResponse({'ok': True, 'chain_url': chain_url, 'invite_url': invite_url})
+
+
+def invite_qr(request):
+    """Return a QR-code PNG for the given ?url= parameter (superuser only)."""
+    if not request.user.is_superuser:
+        return HttpResponseForbidden()
+    target_url = request.GET.get('url', '').strip()
+    if not target_url:
+        return HttpResponseBadRequest('url parameter required')
+    import qrcode
+    import io
+    qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=6, border=2)
+    qr.add_data(target_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color='black', back_color='white')
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    buf.seek(0)
+    return HttpResponse(buf.read(), content_type='image/png')
 
 
 def check_smtp(request):
@@ -4269,6 +4398,21 @@ def send_test_email(request):
         return JsonResponse({'ok': False, 'message': str(exc)})
 
 
+def _apply_invite_pre_share(invite, user):
+    """If the invite had a pre_share_wallet, add the new user as a member."""
+    if not invite.pre_share_wallet_id:
+        return
+    try:
+        WalletMembership.objects.get_or_create(
+            wallet=invite.pre_share_wallet,
+            user=user,
+            defaults={'role': WalletMembership.ROLE_EDITOR},
+        )
+        invite.pre_share_wallet.shared_with.add(user)
+    except Exception:
+        pass
+
+
 def accept_invite(request, token):
     """Public (unauthenticated) registration page for invite-link recipients.
 
@@ -4319,9 +4463,15 @@ def accept_invite(request, token):
             return render(request, 'invite_accept.html', {'invite': invite, 'error': error})
 
         user = User.objects.create_user(username=username, email=email, password=password)
+        client_ip = (
+            request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
+            or request.META.get('REMOTE_ADDR', '')
+        ) or None
         invite.used_at = timezone.now()
         invite.used_by = user
-        invite.save(update_fields=['used_at', 'used_by'])
+        invite.accepted_ip = client_ip
+        invite.save(update_fields=['used_at', 'used_by', 'accepted_ip'])
+        _apply_invite_pre_share(invite, user)
         from django.contrib.auth import login as _login_user
         _login_user(request, user, backend='django.contrib.auth.backends.ModelBackend')
         messages.success(request, _('Welcome! Your account has been created.'))
@@ -4342,9 +4492,15 @@ def invite_complete(request):
         try:
             invite = InviteLink.objects.get(token=token_str)
             if invite.is_valid():
+                client_ip = (
+                    request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
+                    or request.META.get('REMOTE_ADDR', '')
+                ) or None
                 invite.used_at = timezone.now()
                 invite.used_by = request.user
-                invite.save(update_fields=['used_at', 'used_by'])
+                invite.accepted_ip = client_ip
+                invite.save(update_fields=['used_at', 'used_by', 'accepted_ip'])
+                _apply_invite_pre_share(invite, request.user)
                 messages.success(request, _('Welcome to VoucherVault Plus+! Your account is all set.'))
         except InviteLink.DoesNotExist:
             pass
