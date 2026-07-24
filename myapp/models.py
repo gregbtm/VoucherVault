@@ -758,6 +758,27 @@ class InviteLink(models.Model):
         max_length=255, blank=True, default='',
         help_text="PocketID user ID created during OIDC provisioning. Blank for manually-created invites.",
     )
+    pocket_id_username = models.CharField(
+        max_length=150, blank=True, default='',
+        help_text="PocketID username assigned at provisioning time.",
+    )
+    welcome_message = models.TextField(
+        blank=True, default='',
+        help_text="Optional custom message included in the invite email body.",
+    )
+    pre_share_wallet = models.ForeignKey(
+        'Wallet', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='invite_pre_shares',
+        help_text="Wallet to automatically share with the invitee when they accept.",
+    )
+    accepted_ip = models.GenericIPAddressField(
+        null=True, blank=True,
+        help_text="IP address recorded when the invite was accepted.",
+    )
+    custom_expiry_days = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Per-invite expiry override in days. Null means use the site default.",
+    )
 
     class Meta:
         ordering = ['-created_at']
