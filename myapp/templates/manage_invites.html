@@ -190,6 +190,15 @@
           </p>
           {% endif %}
 
+          {% if last_provision.ota_error %}
+          <div class="alert alert-warning py-2 px-3 mb-3 small">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            <strong>{% trans "One-click link unavailable" %}</strong> —
+            {% trans "PocketID's one-time-access endpoint returned an error. The invite link below will work, but only if the recipient already has a PocketID passkey set up." %}
+            <div class="mt-1 text-muted font-monospace" style="font-size:11px;">{{ last_provision.ota_error }}</div>
+          </div>
+          {% endif %}
+
           {% if last_provision.has_ota %}
           <div class="mb-3">
             <label class="form-label fw-semibold small">
@@ -218,9 +227,19 @@
 
           <div class="mb-2">
             <label class="form-label fw-semibold small">
+              {% if last_provision.has_ota %}
               {% trans "Direct invite link" %} <span class="text-muted">({% trans "fallback" %})</span>
+              {% else %}
+              {% trans "Invite link" %}
+              {% endif %}
             </label>
-            <p class="text-muted small mb-1">{% trans "Use this if the one-click link has expired or the partner already has a PocketID account." %}</p>
+            <p class="text-muted small mb-1">
+              {% if last_provision.has_ota %}
+              {% trans "Use this if the one-click link has expired or the partner already has a PocketID passkey." %}
+              {% else %}
+              {% trans "Send this link to the partner. They will need to log in via PocketID first (passkey or login code)." %}
+              {% endif %}
+            </p>
             <div class="input-group input-group-sm">
               <input type="text" id="invite-url-field" class="form-control font-monospace" value="{{ last_provision.invite_url }}" readonly>
               <button class="btn btn-outline-secondary" type="button" onclick="copyField('invite-url-field', this)">
