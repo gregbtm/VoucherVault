@@ -1,3 +1,10 @@
+## [1.1.126](https://github.com/gregbtm/VoucherVault/compare/v1.1.125...v1.1.126) (2026-07-24)
+
+
+### Bug Fixes
+
+* use PocketID's real /lc/ route for onboarding links ([c704ad3](https://github.com/gregbtm/VoucherVault/commit/c704ad399008690506a0e2d159ccaf56b51c0067))
+
 ## [1.1.125](https://github.com/gregbtm/VoucherVault/compare/v1.1.124...v1.1.125) (2026-07-24)
 
 
@@ -32,11 +39,4 @@
 * mock probe_ota in test_check_pocket_id_ok to match updated view ([bd115dc](https://github.com/gregbtm/VoucherVault/commit/bd115dcd83ab252b76d5a11da9fefefd7a3ce34c))
 * send JSON body to PocketID OTA endpoint to resolve 500 error ([6bfd244](https://github.com/gregbtm/VoucherVault/commit/6bfd244992f8998d3e60bf69e45d82fe4f1718be))
 * two-step invite flow — passkey setup before VoucherVault access ([f13d96c](https://github.com/gregbtm/VoucherVault/commit/f13d96c9ab1364c3039de173d1957c9062d895f2))
-
-## [1.1.121](https://github.com/gregbtm/VoucherVault/compare/v1.1.120...v1.1.121) (2026-07-24)
-
-
-### Bug Fixes
-
-* invisible invite email button and OTA redirect parameter ([d3ab5a6](https://github.com/gregbtm/VoucherVault/commit/d3ab5a665aaf5d68ed76405ebecb869f84676fce)), closes [#6366f1](https://github.com/gregbtm/VoucherVault/issues/6366f1) [#6366f1](https://github.com/gregbtm/VoucherVault/issues/6366f1)
 
