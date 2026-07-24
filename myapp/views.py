@@ -4179,14 +4179,13 @@ def _handle_provision_invite(request):
         reverse('accept_invite', args=[str(invite.token)])
     )
 
-    # Build the chain URL.  PocketID's one-time-access page accepts ?redirectUri=
-    # (camelCase) — after passkey setup it redirects the user to the invite URL.
+    # Build the chain URL.  No redirectUri — the user lands on PocketID's own
+    # dashboard where they are prompted to register a passkey (because they have
+    # none yet).  After adding their passkey they click the VoucherVault invite
+    # link (invite_url), which is sent as a separate button in the email.
+    # Including a redirectUri here would skip the passkey-setup step entirely.
     if ota_token:
-        from urllib.parse import quote as _quote
-        chain_url = (
-            f"{config.pocket_id_url.rstrip('/')}/one-time-access/{ota_token}"
-            f"?redirectUri={_quote(invite_url, safe='')}"
-        )
+        chain_url = f"{config.pocket_id_url.rstrip('/')}/one-time-access/{ota_token}"
     else:
         chain_url = invite_url
 
@@ -4325,10 +4324,7 @@ def resend_invite_ota(request):
     invite_url = request.build_absolute_uri(
         reverse('accept_invite', args=[str(invite.token)])
     )
-    chain_url = (
-        f"{config.pocket_id_url.rstrip('/')}/one-time-access/{ota_token}"
-        f"?redirect={invite_url}"
-    )
+    chain_url = f"{config.pocket_id_url.rstrip('/')}/one-time-access/{ota_token}"
     return JsonResponse({'ok': True, 'chain_url': chain_url, 'invite_url': invite_url})
 
 

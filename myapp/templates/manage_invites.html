@@ -47,7 +47,7 @@
       <div class="card mb-4 border-primary">
         <div class="card-body">
           <h5 class="card-title text-primary"><i class="bi bi-person-plus-fill me-1"></i> {% trans "Provision & Invite via PocketID" %}</h5>
-          <p class="text-muted small mb-3">{% trans "Creates (or finds) a PocketID account and generates a one-click onboarding link. The invitee clicks once — passkey setup happens in PocketID, then they land straight in VoucherVault." %}</p>
+          <p class="text-muted small mb-3">{% trans "Creates (or finds) a PocketID account and sends the invitee two links: one to register their passkey in PocketID (Step 1), and one to access VoucherVault once their passkey is set up (Step 2)." %}</p>
 
           <!-- Preflight email check -->
           <div class="mb-3">
@@ -202,9 +202,9 @@
           {% if last_provision.has_ota %}
           <div class="mb-3">
             <label class="form-label fw-semibold small">
-              {% trans "One-click onboarding link" %} <span class="badge bg-primary ms-1">{% trans "Recommended" %}</span>
+              <span class="badge bg-primary me-1">1</span>{% trans "Passkey setup link" %}
             </label>
-            <p class="text-muted small mb-1">{% trans "Partner clicks once: sets up their passkey in PocketID, then lands in VoucherVault automatically." %}</p>
+            <p class="text-muted small mb-1">{% trans "Partner clicks this first — it opens PocketID where they register their secure passkey (fingerprint / face). Takes about 30 seconds." %}</p>
             <div class="input-group input-group-sm mb-1">
               <input type="text" id="chain-url-field" class="form-control font-monospace" value="{{ last_provision.chain_url }}" readonly>
               <button class="btn btn-outline-secondary" type="button" onclick="copyField('chain-url-field', this)">
@@ -228,16 +228,16 @@
           <div class="mb-2">
             <label class="form-label fw-semibold small">
               {% if last_provision.has_ota %}
-              {% trans "Direct invite link" %} <span class="text-muted">({% trans "fallback" %})</span>
+              <span class="badge bg-success me-1">2</span>{% trans "VoucherVault access link" %}
               {% else %}
               {% trans "Invite link" %}
               {% endif %}
             </label>
             <p class="text-muted small mb-1">
               {% if last_provision.has_ota %}
-              {% trans "Use this if the one-click link has expired or the partner already has a PocketID passkey." %}
+              {% trans "After the passkey is set up, partner uses this link to accept the invite and enter VoucherVault. Future logins use their passkey — one biometric tap." %}
               {% else %}
-              {% trans "Send this link to the partner. They will need to log in via PocketID first (passkey or login code)." %}
+              {% trans "Send this link to the partner. They will need to log in via PocketID first (passkey required)." %}
               {% endif %}
             </p>
             <div class="input-group input-group-sm">
@@ -373,8 +373,9 @@
         <div id="resend-result" style="display:none;">
           <div class="mb-3">
             <label class="form-label fw-semibold small">
-              {% trans "One-click onboarding link" %} <span class="badge bg-primary ms-1">{% trans "Recommended" %}</span>
+              <span class="badge bg-primary me-1">1</span>{% trans "Passkey setup link" %}
             </label>
+            <p class="text-muted small mb-1">{% trans "Send this first — partner opens PocketID and registers their passkey." %}</p>
             <div class="input-group input-group-sm mb-1">
               <input type="text" id="resend-chain-url" class="form-control font-monospace" readonly>
               <button class="btn btn-outline-secondary" type="button" onclick="copyField('resend-chain-url', this)">
@@ -383,7 +384,10 @@
             </div>
           </div>
           <div class="mb-2">
-            <label class="form-label fw-semibold small">{% trans "Direct invite link" %} <span class="text-muted">({% trans "fallback" %})</span></label>
+            <label class="form-label fw-semibold small">
+              <span class="badge bg-success me-1">2</span>{% trans "VoucherVault access link" %}
+            </label>
+            <p class="text-muted small mb-1">{% trans "After passkey setup, partner uses this to accept the invite and enter VoucherVault." %}</p>
             <div class="input-group input-group-sm">
               <input type="text" id="resend-invite-url" class="form-control font-monospace" readonly>
               <button class="btn btn-outline-secondary" type="button" onclick="copyField('resend-invite-url', this)">
