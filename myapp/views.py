@@ -4117,9 +4117,10 @@ def _handle_provision_invite(request):
     if pocket_id_user_id:
         try:
             ota_token = client.get_ota_token(pocket_id_user_id)
-        except PocketIDError as exc:
-            messages.error(request, str(_('PocketID error: ')) + str(exc))
-            return
+        except PocketIDError:
+            # OTA token is a convenience — failure is non-fatal.
+            # The invite link still works; the user will log in normally.
+            ota_token = ''
 
     # Create the VoucherVault invite link.
     expiry = None
