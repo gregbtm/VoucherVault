@@ -36,6 +36,8 @@ class VoucherVaultOIDCBackend(OIDCAuthenticationBackend):
 
     def _sync_user_profile(self, user, claims):
         from myapp.models import UserProfile, SiteConfiguration
+        from myapp.avatar import generate_initial_avatar
+        import base64
 
         full_name = claims.get('name', '')
         name_parts = full_name.split() if full_name else []
@@ -71,6 +73,11 @@ class VoucherVaultOIDCBackend(OIDCAuthenticationBackend):
         oidc_sub = claims.get('sub', '')
         avatar_url = claims.get('picture', '')
         now = timezone.now()
+
+        # Generate a random avatar if OIDC provider didn't supply one
+        if not avatar_url:
+            avatar_bytes = generate_initial_avatar(user.username or email or 'User')
+            avatar_url = f"data:image/png;base64,{base64.b64encode(avatar_bytes).decode()}"
 
         profile_changed = (
             profile.oidc_sub != oidc_sub

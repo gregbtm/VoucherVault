@@ -145,12 +145,12 @@
 
             <!-- Progress indicator -->
             <div id="provision-progress" class="mb-3" style="display:none;">
-              <div class="d-flex gap-2 align-items-center">
-                <div id="step-create" class="provision-step badge bg-secondary">{% trans "1. Creating account" %}</div>
-                <i class="bi bi-arrow-right text-muted small"></i>
-                <div id="step-ota" class="provision-step badge bg-secondary">{% trans "2. Generating link" %}</div>
-                <i class="bi bi-arrow-right text-muted small"></i>
-                <div id="step-invite" class="provision-step badge bg-secondary">{% trans "3. Saving invite" %}</div>
+              <div class="d-flex gap-2 align-items-center flex-nowrap" style="overflow-x: auto; min-height: 2.5rem; padding-bottom: 0.5rem;">
+                <div id="step-create" class="provision-step badge bg-secondary" style="white-space: nowrap; flex-shrink: 0;">{% trans "1. Creating account" %}</div>
+                <i class="bi bi-arrow-right text-muted small" style="flex-shrink: 0;"></i>
+                <div id="step-ota" class="provision-step badge bg-secondary" style="white-space: nowrap; flex-shrink: 0;">{% trans "2. Generating link" %}</div>
+                <i class="bi bi-arrow-right text-muted small" style="flex-shrink: 0;"></i>
+                <div id="step-invite" class="provision-step badge bg-secondary" style="white-space: nowrap; flex-shrink: 0;">{% trans "3. Saving invite" %}</div>
               </div>
             </div>
 
@@ -257,8 +257,33 @@
     </div>
     {% endif %}
 
-    <!-- ── Full-width: invite table ── -->
+    <!-- ── Full-width: invite management ── -->
     <div class="col-lg-12">
+      <!-- Clear expired invites card -->
+      <div class="card mb-4 border-warning">
+        <div class="card-body">
+          <h5 class="card-title text-warning"><i class="bi bi-trash me-1"></i> {% trans "Cleanup" %}</h5>
+          <p class="text-muted small mb-3">{% trans "Remove expired or pending invites that are no longer needed. This action cannot be undone." %}</p>
+          <div class="btn-group" role="group">
+            <form method="POST" class="d-inline" onsubmit="return confirm('{% trans "Delete all expired invites? This cannot be undone." %}');">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="clear_expired">
+              <button type="submit" class="btn btn-sm btn-outline-warning">
+                <i class="bi bi-trash me-1"></i> {% trans "Clear Expired Only" %}
+              </button>
+            </form>
+            <form method="POST" class="d-inline" onsubmit="return confirm('{% trans "Delete all active and expired invites? This cannot be undone." %}');">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="clear_all">
+              <button type="submit" class="btn btn-sm btn-outline-danger">
+                <i class="bi bi-exclamation-triangle me-1"></i> {% trans "Clear All Invites" %}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Invite table -->
       <div class="card">
         <div class="card-body">
           <h5 class="card-title"><i class="bi bi-list-check me-1"></i> {% trans "All Invite Links" %}</h5>
@@ -546,7 +571,7 @@ if (checkBtn) {
   });
 }
 
-// sync email to hidden field on provision form submit
+// sync email to hidden field on provision form submit + animate progress with 5s delay
 var provisionForm = document.getElementById('provision-form');
 if (provisionForm) {
   provisionForm.addEventListener('submit', function () {
@@ -554,7 +579,20 @@ if (provisionForm) {
     var progress = document.getElementById('provision-progress');
     if (progress) {
       progress.style.display = '';
-      document.getElementById('step-create').className = 'provision-step badge bg-primary';
+      var stepCreate = document.getElementById('step-create');
+      var stepOta = document.getElementById('step-ota');
+      var stepInvite = document.getElementById('step-invite');
+
+      // Animate: step 1 active, then delay 5s before step 2, then delay 5s before step 3
+      stepCreate.className = 'provision-step badge bg-primary';
+      setTimeout(function () {
+        stepCreate.className = 'provision-step badge bg-success';
+        stepOta.className = 'provision-step badge bg-primary';
+      }, 5000);
+      setTimeout(function () {
+        stepOta.className = 'provision-step badge bg-success';
+        stepInvite.className = 'provision-step badge bg-primary';
+      }, 10000);
     }
   });
 }
