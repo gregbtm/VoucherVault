@@ -10,9 +10,35 @@ All calls require an admin API key generated in the PocketID interface.
 """
 import requests
 
+# Where a freshly-onboarded user should land once the one-time access token has
+# signed them in.  /settings/account is PocketID's own account page, which shows
+# an "Add passkey" prompt when the user has no credentials yet.
+ONBOARDING_LANDING_PATH = '/settings/account'
+
 
 class PocketIDError(Exception):
     pass
+
+
+def build_ota_login_url(
+    base_url: str,
+    ota_token: str,
+    landing_path: str = ONBOARDING_LANDING_PATH,
+) -> str:
+    """
+    Build the login link that redeems a one-time access token.
+
+    PocketID serves this at /lc/<code>, which 307s to
+    /login/alternative/code?code=...&redirect=... — that page exchanges the code
+    for a session and then client-side navigates to `redirect`.  The redirect
+    must be a site-relative path; SvelteKit's goto() rejects external URLs.
+    """
+    from urllib.parse import quote
+
+    return (
+        f"{base_url.rstrip('/')}/lc/{quote(ota_token, safe='')}"
+        f"?redirect={quote(landing_path, safe='')}"
+    )
 
 
 class PocketIDClient:
@@ -123,20 +149,24 @@ class PocketIDClient:
             return False, f'Cannot reach PocketID: {exc}'
 
     def get_user_passkeys(self, user_id: str) -> list[dict]:
-        """Return passkeys registered by the given user, or [] if none / endpoint absent."""
+        """
+        Return the WebAuthn credentials (passkeys) registered by the given user.
+
+        PocketID exposes these at /api/users/:id/webauthn-credentials and returns
+        a bare JSON array of {id, name, credentialID, ...}.  An empty array means
+        the user has been provisioned but has not completed passkey setup yet.
+        """
         try:
             r = requests.get(
-                self._url(f'/api/users/{user_id}/passkeys'),
+                self._url(f'/api/users/{user_id}/webauthn-credentials'),
                 headers=self._headers,
                 timeout=10,
             )
-            if r.status_code == 404:
-                return []
             r.raise_for_status()
             data = r.json()
             if isinstance(data, list):
                 return data
-            return data.get('passkeys') or data.get('data') or []
+            return data.get('credentials') or data.get('data') or []
         except requests.HTTPError as exc:
             raise PocketIDError(f'get_user_passkeys failed ({exc.response.status_code})') from exc
         except requests.RequestException as exc:

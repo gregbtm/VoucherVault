@@ -4179,16 +4179,11 @@ def _handle_provision_invite(request):
         reverse('accept_invite', args=[str(invite.token)])
     )
 
-    # Build the chain URL.  No redirectUri — the user lands on PocketID's own
-    # After the OTA token authenticates the user, redirect to /profile so they
-    # land on PocketID's authenticated dashboard rather than the root (/) which
-    # is always the login page.  The profile page shows a "no passkeys" warning
-    # with an "Add passkey" button for new users — exactly what we want.
+    # The chain URL redeems the one-time access token and drops the recipient on
+    # PocketID's account page, which prompts them to add their first passkey.
     if ota_token:
-        pocket_id_base = config.pocket_id_url.rstrip('/')
-        from urllib.parse import quote
-        profile_url = f"{pocket_id_base}/profile"
-        chain_url = f"{pocket_id_base}/one-time-access/{ota_token}?redirect={quote(profile_url, safe='')}"
+        from .pocket_id import build_ota_login_url
+        chain_url = build_ota_login_url(config.pocket_id_url, ota_token)
     else:
         chain_url = invite_url
 
@@ -4327,10 +4322,8 @@ def resend_invite_ota(request):
     invite_url = request.build_absolute_uri(
         reverse('accept_invite', args=[str(invite.token)])
     )
-    from urllib.parse import quote
-    pocket_id_base = config.pocket_id_url.rstrip('/')
-    profile_url = f"{pocket_id_base}/profile"
-    chain_url = f"{pocket_id_base}/one-time-access/{ota_token}?redirect={quote(profile_url, safe='')}"
+    from .pocket_id import build_ota_login_url
+    chain_url = build_ota_login_url(config.pocket_id_url, ota_token)
     return JsonResponse({'ok': True, 'chain_url': chain_url, 'invite_url': invite_url})
 
 
@@ -4358,10 +4351,7 @@ def check_passkey_status(request):
         return JsonResponse({
             'ok': True,
             'count': len(passkeys),
-            'passkeys': [
-                {'name': pk.get('name') or pk.get('credentialName') or 'Passkey', 'created_at': pk.get('createdAt') or pk.get('created_at', '')}
-                for pk in passkeys
-            ],
+            'passkeys': [{'name': pk.get('name') or 'Passkey'} for pk in passkeys],
         })
     except PocketIDError as exc:
         return JsonResponse({'ok': False, 'error': str(exc)})

@@ -6540,6 +6540,44 @@ class ProvisionInviteViewTests(TestCase):
         data = resp.json()
         self.assertFalse(data['ok'])
 
+    # ── PocketID URL / endpoint contract ──────────────────────────────────────
+    # PocketID 2.x serves the one-time-access login at /lc/<code> (which 307s to
+    # /login/alternative/code) and lists a user's passkeys at
+    # /api/users/<id>/webauthn-credentials.  Guessing either wrong fails silently:
+    # an unknown SPA route just renders the login page.
+
+    def test_build_ota_login_url_uses_lc_route_and_account_landing(self):
+        from myapp.pocket_id import build_ota_login_url
+        url = build_ota_login_url('https://id.example.com/', 'ota-tok')
+        self.assertEqual(
+            url,
+            'https://id.example.com/lc/ota-tok?redirect=%2Fsettings%2Faccount',
+        )
+
+    def test_resend_ota_returns_lc_chain_url(self):
+        invite = self._make_pocket_id_invite()
+        with patch('myapp.pocket_id.PocketIDClient') as MockClient:
+            MockClient.return_value.get_ota_token.return_value = 'fresh-tok'
+            resp = self.client.post(reverse('resend_invite_ota'), {'invite_id': invite.pk})
+        data = resp.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(
+            data['chain_url'],
+            'https://id.example.com/lc/fresh-tok?redirect=%2Fsettings%2Faccount',
+        )
+
+    def test_get_user_passkeys_calls_webauthn_credentials_endpoint(self):
+        from myapp.pocket_id import PocketIDClient
+        with patch('myapp.pocket_id.requests.get') as mock_get:
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.json.return_value = [{'id': 'c1', 'name': 'Pixel'}]
+            passkeys = PocketIDClient('https://id.example.com', 'k').get_user_passkeys('uid-9')
+        self.assertEqual(
+            mock_get.call_args[0][0],
+            'https://id.example.com/api/users/uid-9/webauthn-credentials',
+        )
+        self.assertEqual(passkeys, [{'id': 'c1', 'name': 'Pixel'}])
+
     # ── check_passkey_status ──────────────────────────────────────────────────
 
     def _make_pocket_id_invite(self):
