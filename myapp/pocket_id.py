@@ -104,6 +104,23 @@ class PocketIDClient:
         except requests.RequestException as exc:
             raise PocketIDError(f'find_user_by_email network error: {exc}') from exc
 
+    def probe_ota(self) -> tuple[bool, str]:
+        """Check whether the one-time-access-token endpoint exists in this PocketID version."""
+        dummy_id = '00000000-0000-0000-0000-000000000000'
+        try:
+            r = requests.post(
+                self._url(f'/api/users/{dummy_id}/one-time-access-token'),
+                headers=self._headers,
+                timeout=5,
+            )
+            if 'application/json' in r.headers.get('content-type', ''):
+                return True, 'OTA endpoint available'
+            return False, f'OTA endpoint not found (HTTP {r.status_code})'
+        except requests.Timeout:
+            return False, 'Connection timed out'
+        except requests.ConnectionError as exc:
+            return False, f'Cannot reach PocketID: {exc}'
+
     def get_ota_token(self, user_id: str) -> str:
         """
         Request a one-time access token for the given user and return the

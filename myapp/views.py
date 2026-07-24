@@ -4142,12 +4142,14 @@ def _handle_provision_invite(request):
             messages.error(request, str(_('PocketID error: ')) + str(exc))
             return
 
+    ota_error = ''
     if pocket_id_user_id:
         try:
             ota_token = client.get_ota_token(pocket_id_user_id)
-        except PocketIDError:
+        except PocketIDError as exc:
             # OTA token is a convenience — failure is non-fatal.
             ota_token = ''
+            ota_error = str(exc)
 
     # Resolve per-invite expiry (custom > site default > no expiry).
     effective_expiry_days = custom_expiry_days if custom_expiry_days is not None else config.invite_expiry_days
@@ -4221,10 +4223,18 @@ def _handle_provision_invite(request):
         'email': email,
         'email_sent': email_sent,
         'has_ota': bool(ota_token),
+        'ota_error': ota_error,
         'first_name': first_name,
         'username': resolved_username,
         'pre_share_wallet': pre_share_wallet.name if pre_share_wallet else '',
     }
+    if ota_error:
+        messages.warning(
+            request,
+            _('One-click onboarding link could not be generated (%(err)s). '
+              'The invite link will still work, but the recipient must '
+              'already have a PocketID account with a passkey.') % {'err': ota_error},
+        )
     if email_sent:
         if user_already_existed:
             messages.success(request, _('Existing PocketID account found and invite email sent to %(email)s.') % {'email': email})
@@ -4248,7 +4258,8 @@ def check_pocket_id(request):
         return JsonResponse({'ok': False, 'message': 'PocketID URL or API key not configured.'})
     client = PocketIDClient(config.pocket_id_url, config.pocket_id_api_key)
     ok, message = client.ping()
-    return JsonResponse({'ok': ok, 'message': message})
+    ota_ok, ota_message = client.probe_ota() if ok else (False, 'Skipped — PocketID unreachable')
+    return JsonResponse({'ok': ok, 'message': message, 'ota_ok': ota_ok, 'ota_message': ota_message})
 
 
 @login_required
