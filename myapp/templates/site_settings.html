@@ -418,6 +418,54 @@
             </div>
 
             <div class="settings-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-envelope me-2"></i>{% trans "Outbound Email (SMTP)" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Configure an SMTP server so VoucherVault can send password-reset emails and PocketID invite emails.' %}"></i></h6>
+              <p class="text-muted small mb-3">{% trans "Used for password resets and invite emails. Leave the host blank to disable outbound email." %}</p>
+              <div class="row">
+                <div class="col-md-8 mb-3">
+                  <label for="{{ form.email_host.id_for_label }}" class="form-label">{% trans "SMTP host" %}</label>
+                  {{ form.email_host }}
+                  <div class="form-text">{% trans "e.g. smtp.gmail.com, smtp.sendgrid.net" %}</div>
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.email_port.id_for_label }}" class="form-label">{% trans "Port" %}</label>
+                  {{ form.email_port }}
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.email_host_user.id_for_label }}" class="form-label">{% trans "Username" %}</label>
+                  {{ form.email_host_user }}
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.email_host_password.id_for_label }}" class="form-label">{% trans "Password" %}</label>
+                  {{ form.email_host_password }}
+                  <div class="form-text">{% if config.email_host_password %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %}</div>
+                </div>
+                <div class="col-12 mb-3">
+                  <label for="{{ form.email_from_address.id_for_label }}" class="form-label">{% trans "From address" %}</label>
+                  {{ form.email_from_address }}
+                  <div class="form-text">{% trans "Defaults to the username above if left blank." %}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <div class="form-check">
+                    {{ form.email_use_tls }}
+                    <label class="form-check-label" for="{{ form.email_use_tls.id_for_label }}">{% trans "Use STARTTLS" %} <span class="text-muted">({% trans "port 587" %})</span></label>
+                  </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <div class="form-check">
+                    {{ form.email_use_ssl }}
+                    <label class="form-check-label" for="{{ form.email_use_ssl.id_for_label }}">{% trans "Use SSL" %} <span class="text-muted">({% trans "port 465" %})</span></label>
+                  </div>
+                </div>
+                <div class="col-12">
+                  <button type="button" id="test-smtp-btn" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-plug me-1"></i> {% trans "Test connection" %}
+                  </button>
+                  <span id="smtp-status" class="ms-2 small"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-shield-exclamation me-2"></i>{% trans "Security Alerts" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Send an ntfy alert when a failed-login spike is detected. Uses the Default ntfy Server configured above.' %}"></i><a href="{% url 'view_doc' 'security-settings' %}" data-doc-url="{% url 'view_doc' 'security-settings' %}" class="help-link" title="{% trans 'Security guide' %}"><i class="bi bi-question-circle"></i></a></h6>
               <div class="row">
                 <div class="col-md-6 mb-3">
@@ -1050,6 +1098,31 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .catch(function () {
           window.setButtonLoading(pocketIdBtn, false);
+          statusEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>{% trans "Request failed" %}</span>';
+        });
+    });
+  }
+
+  var smtpBtn = document.getElementById('test-smtp-btn');
+  if (smtpBtn) {
+    smtpBtn.addEventListener('click', function () {
+      var statusEl = document.getElementById('smtp-status');
+      window.setButtonLoading(smtpBtn, true);
+      statusEl.textContent = '';
+      fetch('{% url "check_smtp" %}', {
+        headers: {'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '', 'X-Requested-With': 'XMLHttpRequest'},
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          window.setButtonLoading(smtpBtn, false);
+          if (data.ok) {
+            statusEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>' + data.message + '</span>';
+          } else {
+            statusEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>' + data.message + '</span>';
+          }
+        })
+        .catch(function () {
+          window.setButtonLoading(smtpBtn, false);
           statusEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>{% trans "Request failed" %}</span>';
         });
     });

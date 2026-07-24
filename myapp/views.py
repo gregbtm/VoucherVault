@@ -4136,10 +4136,11 @@ def _handle_provision_invite(request):
             text_body = render_to_string('email/invite_oidc.txt', ctx)
             html_body = render_to_string('email/invite_oidc.html', ctx)
             from django.core.mail import EmailMultiAlternatives
+            from_email = (config.email_from_address or config.email_host_user) or None
             msg = EmailMultiAlternatives(
                 subject=str(_("You're invited to VoucherVault Plus+")),
                 body=text_body,
-                from_email=None,
+                from_email=from_email,
                 to=[email],
             )
             msg.attach_alternative(html_body, 'text/html')
@@ -4173,6 +4174,29 @@ def check_pocket_id(request):
     client = PocketIDClient(config.pocket_id_url, config.pocket_id_api_key)
     ok, message = client.ping()
     return JsonResponse({'ok': ok, 'message': message})
+
+
+def check_smtp(request):
+    """AJAX: verify the outbound SMTP settings by opening a connection."""
+    if not request.user.is_superuser:
+        return JsonResponse({'ok': False, 'message': 'Forbidden'}, status=403)
+    config = SiteConfiguration.load()
+    if not config.email_host:
+        return JsonResponse({'ok': False, 'message': 'SMTP host not configured.'})
+    import smtplib
+    try:
+        if config.email_use_ssl:
+            conn = smtplib.SMTP_SSL(config.email_host, config.email_port or 465, timeout=10)
+        else:
+            conn = smtplib.SMTP(config.email_host, config.email_port or 587, timeout=10)
+            if config.email_use_tls:
+                conn.starttls()
+        if config.email_host_user and config.email_host_password:
+            conn.login(config.email_host_user, config.email_host_password)
+        conn.quit()
+        return JsonResponse({'ok': True, 'message': f'Connected to {config.email_host}:{config.email_port} successfully.'})
+    except Exception as exc:
+        return JsonResponse({'ok': False, 'message': str(exc)})
 
 
 def accept_invite(request, token):
