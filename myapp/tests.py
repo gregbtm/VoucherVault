@@ -3965,6 +3965,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
             'Gift Card Inactivity Check', 'Merchant Health Check',
             'Purge Old Import Jobs',
             'Login Spike Alert',
+            'Email Expiry Digest',
         })
 
     def test_update_check_and_upstream_check_run_hourly_not_daily(self):

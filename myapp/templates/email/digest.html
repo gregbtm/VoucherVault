@@ -1,0 +1,44 @@
+{% extends "email/base_email.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Expiry Digest — VoucherVault Plus+" %}{% endblock %}
+{% block preheader_text %}{% blocktrans count count=items|length %}{{ count }} item expiring soon{% plural %}{{ count }} items expiring soon{% endblocktrans %}{% endblock %}
+{% block header_tagline %}<p style="margin:0;font-size:12px;color:#94a3b8;letter-spacing:0.2px;">{% trans "Your upcoming expiry summary" %}</p>{% endblock %}
+
+{% block card_content %}
+<h2 style="margin:0 0 6px;font-size:20px;font-weight:700;color:#1e293b;">{% trans "Expiry Digest" %}</h2>
+<p style="margin:0 0 24px;font-size:14px;color:#64748b;">
+  {% blocktrans with days=horizon_days %}Items expiring in the next {{ days }} days{% endblocktrans %}
+</p>
+
+{% if items %}
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;">
+  <thead>
+    <tr style="background:#f1f5f9;">
+      <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:600;color:#64748b;letter-spacing:0.5px;text-transform:uppercase;border-bottom:1px solid #e2e8f0;">{% trans "Name" %}</th>
+      <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:600;color:#64748b;letter-spacing:0.5px;text-transform:uppercase;border-bottom:1px solid #e2e8f0;">{% trans "Type" %}</th>
+      <th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:600;color:#64748b;letter-spacing:0.5px;text-transform:uppercase;border-bottom:1px solid #e2e8f0;">{% trans "Expires" %}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in items %}
+    <tr style="border-bottom:1px solid #f1f5f9;">
+      <td style="padding:10px 12px;font-size:13px;color:#1e293b;font-weight:500;">{{ item.name }}{% if item.issuer %}<br><span style="font-size:11px;color:#94a3b8;font-weight:400;">{{ item.issuer }}</span>{% endif %}</td>
+      <td style="padding:10px 12px;font-size:12px;color:#64748b;">{{ item.get_type_display }}</td>
+      <td style="padding:10px 12px;font-size:12px;color:#e53e3e;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">{{ item.expiry_date }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p style="margin:0;font-size:14px;color:#64748b;font-style:italic;">{% trans "No items expiring soon." %}</p>
+{% endif %}
+
+{% if app_url %}
+<p style="margin:24px 0 0;text-align:center;">
+  <a href="{{ app_url }}" style="display:inline-block;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:11px 28px;border-radius:8px;letter-spacing:0.2px;">{% trans "Open VoucherVault" %}</a>
+</p>
+{% endif %}
+{% endblock %}
+
+{% block footer_line_2 %}{% trans "You're receiving this because you enabled the email digest in your preferences. You can turn it off at any time in your account settings." %}{% endblock %}
