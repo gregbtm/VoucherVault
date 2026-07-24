@@ -23,6 +23,7 @@ from myapp.test_utils import set_site_config
 
 from .backends import get_backend
 from .backends.apprise_backend import AppriseBackend
+from .backends.email_smtp import EmailBackend
 from .backends.firefly_backend import FireflyBackend
 from .backends.ntfy import NtfyBackend
 from .backends.webhook import WebhookBackend
@@ -71,7 +72,8 @@ def make_rule(user, backend='ntfy', event_types=None, digest_frequency='immediat
         'apprise': {'urls': 'json://example.com/notify'},
         'webpush': {},
         'firefly': {'url': 'https://firefly.example.com', 'token': 'secret-token'},
-    }[backend]
+        'email': {},
+    }.get(backend, {})
     config.update(config_overrides)
     return NotificationRule.objects.create(
         user=user, name=f'{backend} rule', backend=backend,
@@ -177,6 +179,19 @@ class BackendTests(TestCase):
         rule = make_rule(user, backend='firefly')
         backend = get_backend(rule)
         self.assertIsInstance(backend, FireflyBackend)
+
+    def test_get_backend_injects_user_email_for_email_when_to_addresses_absent(self):
+        user = User.objects.create_user(username='frank', email='frank@example.com', password='pw12345!')
+        rule = make_rule(user, backend='email')
+        backend = get_backend(rule)
+        self.assertIsInstance(backend, EmailBackend)
+        self.assertEqual(backend.config['to_addresses'], 'frank@example.com')
+
+    def test_get_backend_does_not_override_explicit_to_addresses(self):
+        user = User.objects.create_user(username='grace', email='grace@example.com', password='pw12345!')
+        rule = make_rule(user, backend='email', to_addresses='other@example.com')
+        backend = get_backend(rule)
+        self.assertEqual(backend.config['to_addresses'], 'other@example.com')
 
 
 class TelegramBackendTests(TestCase):

@@ -3801,7 +3801,7 @@ def gdpr_data_export(request):
     """GDPR-compliant machine-readable export of everything stored for the user."""
     user = request.user
     items_qs = Item.objects.filter(user=user).prefetch_related(
-        'tags', 'transactions', 'documents', 'shares',
+        'tags', 'transactions', 'documents', 'shared_with',
     ).select_related('wallet')
 
     items_data = []
@@ -3842,7 +3842,7 @@ def gdpr_data_export(request):
             ],
             'shared_with': [
                 {'username': s.shared_with_user.username, 'shared_at': str(s.shared_at)}
-                for s in item.shares.all()
+                for s in item.shared_with.all()
             ],
             'created_at': str(item.created_at) if item.created_at else None,
             'last_used_at': str(item.last_used_at) if item.last_used_at else None,
