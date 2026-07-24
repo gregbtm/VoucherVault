@@ -1,4 +1,11 @@
-## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.121...v1.2.0) (2026-07-24)
+## [1.1.123](https://github.com/gregbtm/VoucherVault/compare/v1.1.122...v1.1.123) (2026-07-24)
+
+
+### Bug Fixes
+
+* redirect OTA link to /profile so new users land on passkey setup page ([f9860bc](https://github.com/gregbtm/VoucherVault/commit/f9860bc5b6777e821d6b8a43ea3637bf9115840c))
+
+## [1.1.122](https://github.com/gregbtm/VoucherVault/compare/v1.1.121...v1.1.122) (2026-07-24)
 
 
 ### Features
@@ -27,11 +34,4 @@
 * PocketID invite flow — security hardening, rich provisioning UI, and QR onboarding ([81e7abf](https://github.com/gregbtm/VoucherVault/commit/81e7abf1dd7c57c7c73120d7f348d7b55b2f1b8f))
 
 ## [1.1.119](https://github.com/gregbtm/VoucherVault/compare/v1.1.118...v1.1.119) (2026-07-24)
-
-## [1.1.118](https://github.com/gregbtm/VoucherVault/compare/v1.1.117...v1.1.118) (2026-07-24)
-
-
-### Features
-
-* email features — test send, backend unification, expiry digest ([04a709a](https://github.com/gregbtm/VoucherVault/commit/04a709a72f76a6d7fbcd92b684cd82153b84e674))
 
