@@ -6540,6 +6540,63 @@ class ProvisionInviteViewTests(TestCase):
         data = resp.json()
         self.assertFalse(data['ok'])
 
+    # ── check_passkey_status ──────────────────────────────────────────────────
+
+    def _make_pocket_id_invite(self):
+        from myapp.models import InviteLink
+        return InviteLink.objects.create(
+            created_by=self.admin,
+            pocket_id_user_id='pid-user-1',
+        )
+
+    def test_check_passkey_status_has_passkeys(self):
+        invite = self._make_pocket_id_invite()
+        with patch('myapp.pocket_id.PocketIDClient') as MockClient:
+            inst = MockClient.return_value
+            inst.get_user_passkeys.return_value = [
+                {'name': 'iPhone', 'createdAt': '2024-01-01T00:00:00Z'},
+            ]
+            resp = self.client.get(reverse('check_passkey_status'), {'invite_id': invite.pk})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['count'], 1)
+        self.assertEqual(data['passkeys'][0]['name'], 'iPhone')
+
+    def test_check_passkey_status_no_passkeys(self):
+        invite = self._make_pocket_id_invite()
+        with patch('myapp.pocket_id.PocketIDClient') as MockClient:
+            inst = MockClient.return_value
+            inst.get_user_passkeys.return_value = []
+            resp = self.client.get(reverse('check_passkey_status'), {'invite_id': invite.pk})
+        data = resp.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['count'], 0)
+
+    def test_check_passkey_status_non_superuser_forbidden(self):
+        regular = User.objects.create_user('reg_ps', 'ps@e.com', 'Pw123456!')
+        self.client.logout()
+        self.client.login(username='reg_ps', password='Pw123456!')
+        resp = self.client.get(reverse('check_passkey_status'), {'invite_id': 1})
+        self.assertEqual(resp.status_code, 403)
+
+    def test_check_passkey_status_no_pocket_id_user(self):
+        from myapp.models import InviteLink
+        invite = InviteLink.objects.create(created_by=self.admin)
+        resp = self.client.get(reverse('check_passkey_status'), {'invite_id': invite.pk})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_check_passkey_status_pocket_id_error(self):
+        from myapp.pocket_id import PocketIDError
+        invite = self._make_pocket_id_invite()
+        with patch('myapp.pocket_id.PocketIDClient') as MockClient:
+            inst = MockClient.return_value
+            inst.get_user_passkeys.side_effect = PocketIDError('API down')
+            resp = self.client.get(reverse('check_passkey_status'), {'invite_id': invite.pk})
+        data = resp.json()
+        self.assertFalse(data['ok'])
+        self.assertIn('API down', data['error'])
+
 
 class ManageUsersViewTests(TestCase):
     def setUp(self):

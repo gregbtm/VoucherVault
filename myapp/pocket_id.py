@@ -122,6 +122,26 @@ class PocketIDClient:
         except requests.ConnectionError as exc:
             return False, f'Cannot reach PocketID: {exc}'
 
+    def get_user_passkeys(self, user_id: str) -> list[dict]:
+        """Return passkeys registered by the given user, or [] if none / endpoint absent."""
+        try:
+            r = requests.get(
+                self._url(f'/api/users/{user_id}/passkeys'),
+                headers=self._headers,
+                timeout=10,
+            )
+            if r.status_code == 404:
+                return []
+            r.raise_for_status()
+            data = r.json()
+            if isinstance(data, list):
+                return data
+            return data.get('passkeys') or data.get('data') or []
+        except requests.HTTPError as exc:
+            raise PocketIDError(f'get_user_passkeys failed ({exc.response.status_code})') from exc
+        except requests.RequestException as exc:
+            raise PocketIDError(f'get_user_passkeys network error: {exc}') from exc
+
     def get_ota_token(self, user_id: str, ttl: str = '72h') -> str:
         """
         Request a one-time access token for the given user and return the

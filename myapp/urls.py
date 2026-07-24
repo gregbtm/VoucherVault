@@ -114,6 +114,7 @@ urlpatterns = (
     # Invite links
     path('admin-tools/invites/', views.manage_invites, name='manage_invites'),
     path('admin-tools/check-pocket-id/', views.check_pocket_id, name='check_pocket_id'),
+    path('admin-tools/check-passkey-status/', views.check_passkey_status, name='check_passkey_status'),
     path('admin-tools/check-invite-email/', views.check_invite_email, name='check_invite_email'),
     path('admin-tools/resend-invite/', views.resend_invite_ota, name='resend_invite_ota'),
     path('admin-tools/invite-qr/', views.invite_qr, name='invite_qr'),

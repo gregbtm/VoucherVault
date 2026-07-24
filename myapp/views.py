@@ -4334,6 +4334,39 @@ def resend_invite_ota(request):
     return JsonResponse({'ok': True, 'chain_url': chain_url, 'invite_url': invite_url})
 
 
+@login_required
+def check_passkey_status(request):
+    """AJAX: return the number of passkeys a PocketID-provisioned invite user has registered."""
+    if not request.user.is_superuser:
+        return JsonResponse({'ok': False, 'error': 'Forbidden'}, status=403)
+    invite_id = request.GET.get('invite_id', '').strip()
+    if not invite_id:
+        return JsonResponse({'ok': False, 'error': 'invite_id required'}, status=400)
+    try:
+        invite = InviteLink.objects.get(pk=invite_id)
+    except (InviteLink.DoesNotExist, ValueError):
+        return JsonResponse({'ok': False, 'error': 'Invite not found'}, status=404)
+    if not invite.pocket_id_user_id:
+        return JsonResponse({'ok': False, 'error': 'No PocketID user linked to this invite'}, status=400)
+    from .pocket_id import PocketIDClient, PocketIDError
+    config = SiteConfiguration.load()
+    if not config.pocket_id_url or not config.pocket_id_api_key:
+        return JsonResponse({'ok': False, 'error': 'PocketID not configured'}, status=400)
+    try:
+        client = PocketIDClient(config.pocket_id_url, config.pocket_id_api_key)
+        passkeys = client.get_user_passkeys(invite.pocket_id_user_id)
+        return JsonResponse({
+            'ok': True,
+            'count': len(passkeys),
+            'passkeys': [
+                {'name': pk.get('name') or pk.get('credentialName') or 'Passkey', 'created_at': pk.get('createdAt') or pk.get('created_at', '')}
+                for pk in passkeys
+            ],
+        })
+    except PocketIDError as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)})
+
+
 def invite_qr(request):
     """Return a QR-code PNG for the given ?url= parameter (superuser only)."""
     if not request.user.is_superuser:
