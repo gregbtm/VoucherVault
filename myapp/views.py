@@ -4177,10 +4177,13 @@ def _handle_provision_invite(request):
         reverse('accept_invite', args=[str(invite.token)])
     )
 
+    # Build the chain URL.  PocketID's one-time-access page accepts ?redirectUri=
+    # (camelCase) — after passkey setup it redirects the user to the invite URL.
     if ota_token:
+        from urllib.parse import quote as _quote
         chain_url = (
             f"{config.pocket_id_url.rstrip('/')}/one-time-access/{ota_token}"
-            f"?redirect={invite_url}"
+            f"?redirectUri={_quote(invite_url, safe='')}"
         )
     else:
         chain_url = invite_url
