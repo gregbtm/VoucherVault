@@ -4050,6 +4050,15 @@ def manage_invites(request):
             token = request.POST.get('token', '')
             InviteLink.objects.filter(token=token, revoked=False, used_at__isnull=True).update(revoked=True)
             messages.success(request, _('Invite link revoked.'))
+        elif action == 'clear_expired':
+            expired_count = InviteLink.objects.filter(
+                expires_at__lt=timezone.now(),
+                used_at__isnull=True
+            ).delete()[0]
+            messages.success(request, _('Cleared %(count)d expired invite(s).') % {'count': expired_count})
+        elif action == 'clear_all':
+            used_count = InviteLink.objects.filter(used_at__isnull=True).delete()[0]
+            messages.success(request, _('Cleared %(count)d invite(s).') % {'count': used_count})
         return redirect('manage_invites')
 
     config = SiteConfiguration.load()
@@ -4539,6 +4548,13 @@ def invite_complete(request):
                 invite.used_by = request.user
                 invite.accepted_ip = client_ip
                 invite.save(update_fields=['used_at', 'used_by', 'accepted_ip'])
+                # Store provisioning metadata in UserProfile
+                profile, created = UserProfile.objects.get_or_create(user=request.user)
+                if invite.created_by and not profile.invited_by:
+                    profile.invited_by = invite.created_by
+                    profile.invited_at = invite.created_at
+                    profile.invited_email = invite.note if '@' in invite.note else request.user.email or ''
+                    profile.save(update_fields=['invited_by', 'invited_at', 'invited_email'])
                 _apply_invite_pre_share(invite, request.user)
                 messages.success(request, _('Welcome to VoucherVault Plus+! Your account is all set.'))
         except InviteLink.DoesNotExist:

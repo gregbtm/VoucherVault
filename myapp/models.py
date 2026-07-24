@@ -672,6 +672,19 @@ class UserProfile(models.Model):
         null=True, blank=True,
         help_text="Timestamp of the last successful OIDC authentication.",
     )
+    invited_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='invited_users',
+        help_text="The admin user who provisioned this account (if OIDC-provisioned).",
+    )
+    invited_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Timestamp when this account was provisioned via PocketID.",
+    )
+    invited_email = models.EmailField(
+        max_length=254, blank=True, default='',
+        help_text="Email address used when provisioning this account.",
+    )
 
     def __str__(self):
         return self.user.username
