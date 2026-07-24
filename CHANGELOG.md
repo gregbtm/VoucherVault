@@ -1,4 +1,11 @@
-## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.115...v1.2.0) (2026-07-23)
+## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.116...v1.2.0) (2026-07-24)
+
+
+### Features
+
+* SMTP email settings in Site Settings UI ([18f2b39](https://github.com/gregbtm/VoucherVault/commit/18f2b39a23a95d024870ef3f6263db2ab2d6924c))
+
+## [1.1.116](https://github.com/gregbtm/VoucherVault/compare/v1.1.115...v1.1.116) (2026-07-23)
 
 
 ### Features
@@ -22,11 +29,4 @@
 ### Bug Fixes
 
 * connectivity test CSRF, code-block copy overlap, CH key type hint ([814ba4b](https://github.com/gregbtm/VoucherVault/commit/814ba4bfea7d83dfbe711430407899630a667f74))
-
-## [1.1.112](https://github.com/gregbtm/VoucherVault/compare/v1.1.111...v1.1.112) (2026-07-23)
-
-
-### Bug Fixes
-
-* connectivity test CSRF, code-block copy overlap, CH key type hint ([#150](https://github.com/gregbtm/VoucherVault/issues/150)) ([d20fd81](https://github.com/gregbtm/VoucherVault/commit/d20fd818620fd7d9383cdc1a76ca2fff8e2befe6))
 
