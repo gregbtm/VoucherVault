@@ -1,3 +1,10 @@
+## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.121...v1.2.0) (2026-07-24)
+
+
+### Features
+
+* surface OTA errors so admin knows when one-click link fails ([f65d1b6](https://github.com/gregbtm/VoucherVault/commit/f65d1b6393fdfd6603293a1408e60b2a4a9236fb)), closes [#6366f1](https://github.com/gregbtm/VoucherVault/issues/6366f1) [#6366f1](https://github.com/gregbtm/VoucherVault/issues/6366f1)
+
 ## [1.1.121](https://github.com/gregbtm/VoucherVault/compare/v1.1.120...v1.1.121) (2026-07-24)
 
 
@@ -20,11 +27,4 @@
 ### Features
 
 * email features — test send, backend unification, expiry digest ([04a709a](https://github.com/gregbtm/VoucherVault/commit/04a709a72f76a6d7fbcd92b684cd82153b84e674))
-
-## [1.1.117](https://github.com/gregbtm/VoucherVault/compare/v1.1.116...v1.1.117) (2026-07-24)
-
-
-### Features
-
-* SMTP email settings in Site Settings UI ([18f2b39](https://github.com/gregbtm/VoucherVault/commit/18f2b39a23a95d024870ef3f6263db2ab2d6924c))
 
