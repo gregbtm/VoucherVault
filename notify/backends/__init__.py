@@ -30,4 +30,10 @@ def get_backend(rule) -> NotificationBackend:
         # webpush has no per-rule destination in config — it delivers to
         # every subscription the rule's owner has registered.
         config['user_id'] = rule.user_id
+    if rule.backend == 'email' and not (config.get('to_addresses') or '').strip():
+        # Fall back to the rule owner's registered email address so users
+        # can create an email rule without explicitly typing their own address.
+        owner_email = getattr(rule.user, 'email', '') or ''
+        if owner_email:
+            config['to_addresses'] = owner_email
     return backend_cls(config, rule_id=rule.id)

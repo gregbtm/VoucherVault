@@ -1,9 +1,19 @@
 from django.urls import include, path
+from django.utils.decorators import method_decorator
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.authtoken.views import obtain_auth_token
 from rest_framework.routers import DefaultRouter
+from csp.decorators import csp_replace
 
 from . import views
+
+
+# Swagger UI injects inline <script> blocks which the site-wide CSP blocks.
+# Relax script-src to allow unsafe-inline only for this view.
+class _SwaggerView(SpectacularSwaggerView):
+    @method_decorator(csp_replace({"script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'"]}))
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
 router = DefaultRouter()
 router.register('items', views.ItemViewSet, basename='item')
@@ -25,7 +35,7 @@ urlpatterns = [
     path('preferences/', views.UserPreferenceView.as_view(), name='api-preferences'),
     path('profile/', views.UserProfileView.as_view(), name='api-profile'),
     path('schema/', SpectacularAPIView.as_view(), name='api-schema'),
-    path('docs/', SpectacularSwaggerView.as_view(url_name='api-schema'), name='api-docs'),
+    path('docs/', _SwaggerView.as_view(url_name='api-schema'), name='api-docs'),
     path('imports/upload/', views.ImportUploadView.as_view(), name='api-import-upload'),
     path('imports/preview/', views.ImportPreviewView.as_view(), name='api-import-preview'),
     path('exports/csv/', views.ExportCsvView.as_view(), name='api-export-csv'),

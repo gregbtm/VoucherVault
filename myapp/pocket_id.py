@@ -80,6 +80,30 @@ class PocketIDClient:
         except requests.RequestException as exc:
             raise PocketIDError(f'create_user network error: {exc}') from exc
 
+    def find_user_by_email(self, email: str) -> dict | None:
+        """Search PocketID for a user with exactly this email. Returns user dict or None."""
+        try:
+            r = requests.get(
+                self._url('/api/users'),
+                headers=self._headers,
+                params={'search': email, 'limit': 10},
+                timeout=10,
+            )
+            r.raise_for_status()
+            data = r.json()
+            if isinstance(data, list):
+                users = data
+            else:
+                users = data.get('users') or data.get('data') or []
+            for user in users:
+                if (user.get('email') or '').lower() == email.lower():
+                    return user
+            return None
+        except requests.HTTPError as exc:
+            raise PocketIDError(f'find_user_by_email failed ({exc.response.status_code})') from exc
+        except requests.RequestException as exc:
+            raise PocketIDError(f'find_user_by_email network error: {exc}') from exc
+
     def get_ota_token(self, user_id: str) -> str:
         """
         Request a one-time access token for the given user and return the
