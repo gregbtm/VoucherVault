@@ -104,6 +104,11 @@ class Command(BaseCommand):
             # exceeds SiteConfiguration.security_alert_threshold. A no-op unless a
             # security_alert_ntfy_topic is configured in Site Settings.
             {'name': 'Login Spike Alert', 'task': 'myapp.tasks.check_login_spike_task', 'crontab': hourly_schedule, 'enabled': True},
+            # Sends each user who has opted in a branded email digest of their items
+            # expiring soon. Frequency is per-user (weekly/monthly); runs daily and
+            # skips users whose chosen send day doesn't match today. A no-op until a
+            # user enables the digest in their preferences and SMTP is configured.
+            {'name': 'Email Expiry Digest', 'task': 'notify.tasks.send_email_digests', 'crontab': crontab_schedule, 'enabled': True},
         ]
 
         for task_data in tasks:

@@ -4199,6 +4199,44 @@ def check_smtp(request):
         return JsonResponse({'ok': False, 'message': str(exc)})
 
 
+@login_required
+def send_test_email(request):
+    """AJAX: send a branded test email to the current superuser's address."""
+    if not request.user.is_superuser:
+        return JsonResponse({'ok': False, 'message': 'Forbidden'}, status=403)
+    config = SiteConfiguration.load()
+    if not config.email_host:
+        return JsonResponse({'ok': False, 'message': 'SMTP host not configured.'})
+    to_addr = request.user.email
+    if not to_addr:
+        return JsonResponse({'ok': False, 'message': 'Your user account has no email address set.'})
+    from django.core.mail import EmailMultiAlternatives
+    from django.template.loader import render_to_string as _rts
+    subject = 'VoucherVault Plus+ — test email'
+    plain = (
+        'This is a test email from VoucherVault Plus+.\n\n'
+        'If you received it your SMTP configuration is working correctly.'
+    )
+    try:
+        html = _rts('email/notification.html', {
+            'title': 'Test Email',
+            'message': 'This is a test email from VoucherVault Plus+. '
+                       'If you received it, your SMTP configuration is working correctly.',
+            'item': None,
+        })
+    except Exception:
+        html = None
+    from_email = (config.email_from_address or config.email_host_user) or None
+    msg = EmailMultiAlternatives(subject=subject, body=plain, from_email=from_email, to=[to_addr])
+    if html:
+        msg.attach_alternative(html, 'text/html')
+    try:
+        msg.send()
+        return JsonResponse({'ok': True, 'message': f'Test email sent to {to_addr}.'})
+    except Exception as exc:
+        return JsonResponse({'ok': False, 'message': str(exc)})
+
+
 def accept_invite(request, token):
     """Public (unauthenticated) registration page for invite-link recipients.
 

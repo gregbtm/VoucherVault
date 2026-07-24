@@ -115,6 +115,7 @@ urlpatterns = (
     path('admin-tools/invites/', views.manage_invites, name='manage_invites'),
     path('admin-tools/check-pocket-id/', views.check_pocket_id, name='check_pocket_id'),
     path('admin-tools/check-smtp/', views.check_smtp, name='check_smtp'),
+    path('admin-tools/send-test-email/', views.send_test_email, name='send_test_email'),
     path('invite/complete/', views.invite_complete, name='invite_complete'),
     path('invite/<uuid:token>/', views.accept_invite, name='accept_invite'),
     # Users panel (superuser)

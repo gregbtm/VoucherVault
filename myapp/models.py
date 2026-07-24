@@ -63,6 +63,10 @@ class UserPreference(models.Model):
         ('compact', 'Compact'),
         ('standard', 'Standard'),
     )
+    DIGEST_FREQUENCY_CHOICES = [
+        ('weekly', 'Weekly (every Monday)'),
+        ('monthly', 'Monthly (1st of each month)'),
+    ]
 
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     show_issue_date = models.BooleanField(default=False)
@@ -133,6 +137,15 @@ class UserPreference(models.Model):
         default=150,
         validators=[MinValueValidator(25), MaxValueValidator(1000)],
         help_text="How far around your current location to look for a matching shop, in metres.",
+    )
+    email_digest_enabled = models.BooleanField(
+        default=False,
+        help_text="Receive a periodic email summary of your items expiring soon.",
+    )
+    email_digest_frequency = models.CharField(
+        max_length=10,
+        choices=DIGEST_FREQUENCY_CHOICES,
+        default='weekly',
     )
 
 class Wallet(models.Model):

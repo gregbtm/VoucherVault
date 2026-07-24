@@ -266,6 +266,7 @@ class UserPreferenceForm(forms.ModelForm):
             'next_up_wallets', 'next_up_max_items',
             'active_today_enabled', 'commute_home_station', 'active_today_cutoff_time',
             'nearby_items_enabled', 'nearby_radius_m',
+            'email_digest_enabled', 'email_digest_frequency',
         ]
         widgets = {
             'show_issue_date': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
@@ -290,6 +291,8 @@ class UserPreferenceForm(forms.ModelForm):
             'active_today_cutoff_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}, format='%H:%M'),
             'nearby_items_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'nearby_radius_m': forms.NumberInput(attrs={'class': 'form-control', 'min': 25, 'max': 1000}),
+            'email_digest_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'email_digest_frequency': forms.Select(attrs={'class': 'form-select form-select-sm'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -302,6 +305,9 @@ class UserPreferenceForm(forms.ModelForm):
         self.fields['active_today_cutoff_time'].required = False
         # Same reasoning as above, for a plain <input type="number">.
         self.fields['nearby_radius_m'].required = False
+        # A select always submits a value in the real form; optional here so
+        # tests that don't include it fall back to the model default.
+        self.fields['email_digest_frequency'].required = False
         # Scoped to wallets the user can actually see (own or shared with
         # them) - the instance always has a user by the time this form is
         # built (update_user_preferences creates the UserPreference first).
@@ -318,6 +324,9 @@ class UserPreferenceForm(forms.ModelForm):
 
     def clean_nearby_radius_m(self):
         return self.cleaned_data.get('nearby_radius_m') or UserPreference._meta.get_field('nearby_radius_m').default
+
+    def clean_email_digest_frequency(self):
+        return self.cleaned_data.get('email_digest_frequency') or UserPreference._meta.get_field('email_digest_frequency').default
 
 class DocumentForm(forms.ModelForm):
     class Meta:

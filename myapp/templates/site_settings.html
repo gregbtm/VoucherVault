@@ -460,6 +460,9 @@
                   <button type="button" id="test-smtp-btn" class="btn btn-sm btn-outline-secondary">
                     <i class="bi bi-plug me-1"></i> {% trans "Test connection" %}
                   </button>
+                  <button type="button" id="send-test-email-btn" class="btn btn-sm btn-outline-primary ms-2">
+                    <i class="bi bi-envelope me-1"></i> {% trans "Send test email" %}
+                  </button>
                   <span id="smtp-status" class="ms-2 small"></span>
                 </div>
               </div>
@@ -1123,6 +1126,31 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .catch(function () {
           window.setButtonLoading(smtpBtn, false);
+          statusEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>{% trans "Request failed" %}</span>';
+        });
+    });
+  }
+
+  var testEmailBtn = document.getElementById('send-test-email-btn');
+  if (testEmailBtn) {
+    testEmailBtn.addEventListener('click', function () {
+      var statusEl = document.getElementById('smtp-status');
+      window.setButtonLoading(testEmailBtn, true);
+      statusEl.textContent = '';
+      fetch('{% url "send_test_email" %}', {
+        headers: {'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '', 'X-Requested-With': 'XMLHttpRequest'},
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          window.setButtonLoading(testEmailBtn, false);
+          if (data.ok) {
+            statusEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>' + data.message + '</span>';
+          } else {
+            statusEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>' + data.message + '</span>';
+          }
+        })
+        .catch(function () {
+          window.setButtonLoading(testEmailBtn, false);
           statusEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>{% trans "Request failed" %}</span>';
         });
     });

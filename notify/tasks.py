@@ -593,3 +593,85 @@ def check_merchant_health():
                 f"Consider spending your {item.name} balance soon."
             )
             fire_notifications(item, 'merchant_health_alert', title, message, dedupe=True)
+
+
+@shared_task
+def send_email_digests():
+    """
+    Runs daily. Sends each opted-in user a branded email digest of their
+    items expiring soon. Frequency is controlled per-user:
+      weekly  — sends every Monday
+      monthly — sends on the 1st of each month
+    Skips silently if SMTP is not configured or the user has no email address.
+    """
+    from django.core.mail import EmailMultiAlternatives
+    from django.template.loader import render_to_string
+    from django.conf import settings as _settings
+
+    today = date.today()
+    config = SiteConfiguration.load()
+
+    if not config.email_host:
+        logger.info('send_email_digests: no SMTP configured, skipping.')
+        return
+
+    prefs = (
+        UserPreference.objects
+        .filter(email_digest_enabled=True)
+        .exclude(user__email='')
+        .select_related('user')
+    )
+
+    sent = 0
+    for pref in prefs:
+        freq = pref.email_digest_frequency
+        if freq == 'weekly' and today.weekday() != 0:
+            continue
+        if freq == 'monthly' and today.day != 1:
+            continue
+
+        horizon_days = 30 if freq == 'weekly' else 90
+        cutoff = today + timedelta(days=horizon_days)
+
+        items = (
+            Item.objects
+            .filter(user=pref.user, is_archived=False, expiry_date__gte=today, expiry_date__lte=cutoff)
+            .order_by('expiry_date')
+        )
+        if not items.exists():
+            continue
+
+        app_url = getattr(_settings, 'APP_URL', '')
+        subject = f'VoucherVault Plus+ — {items.count()} item(s) expiring in the next {horizon_days} days'
+        plain_lines = [f'Items expiring in the next {horizon_days} days:\n']
+        for it in items:
+            plain_lines.append(f'  • {it.name}  ({it.expiry_date})')
+        plain_text = '\n'.join(plain_lines)
+
+        try:
+            html = render_to_string('email/digest.html', {
+                'items': items,
+                'horizon_days': horizon_days,
+                'app_url': app_url,
+            })
+        except Exception as exc:
+            logger.warning('send_email_digests: template render failed for %s: %s', pref.user, exc)
+            html = None
+
+        from_email = (config.email_from_address or config.email_host_user) or None
+        msg = EmailMultiAlternatives(
+            subject=subject,
+            body=plain_text,
+            from_email=from_email,
+            to=[pref.user.email],
+        )
+        if html:
+            msg.attach_alternative(html, 'text/html')
+        try:
+            msg.send()
+            sent += 1
+            logger.info('send_email_digests: sent to %s (%s items)', pref.user.email, items.count())
+        except Exception as exc:
+            logger.warning('send_email_digests: failed for %s: %s', pref.user.email, exc)
+
+    logger.info('send_email_digests: done. %d digest(s) sent.', sent)
