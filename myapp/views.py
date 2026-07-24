@@ -4088,13 +4088,38 @@ def _handle_provision_invite(request):
     username = username_base or 'vvuser'
 
     client = PocketIDClient(config.pocket_id_url, config.pocket_id_api_key)
+    pocket_id_user_id = ''
+    ota_token = ''
+    user_already_existed = False
+
     try:
         user_data = client.create_user(username, email, first_name, last_name)
         pocket_id_user_id = user_data.get('id', '')
-        ota_token = client.get_ota_token(pocket_id_user_id) if pocket_id_user_id else ''
     except PocketIDError as exc:
-        messages.error(request, str(_('PocketID error: ')) + str(exc))
-        return
+        exc_msg = str(exc).lower()
+        if email and 'email' in exc_msg and ('already' in exc_msg or 'in use' in exc_msg):
+            # The person already has a PocketID account — look them up and proceed.
+            try:
+                existing = client.find_user_by_email(email)
+            except PocketIDError as lookup_exc:
+                messages.error(request, str(_('PocketID error: ')) + str(lookup_exc))
+                return
+            if existing:
+                pocket_id_user_id = existing.get('id', '')
+                user_already_existed = True
+            else:
+                messages.error(request, str(_('PocketID error: ')) + str(exc))
+                return
+        else:
+            messages.error(request, str(_('PocketID error: ')) + str(exc))
+            return
+
+    if pocket_id_user_id:
+        try:
+            ota_token = client.get_ota_token(pocket_id_user_id)
+        except PocketIDError as exc:
+            messages.error(request, str(_('PocketID error: ')) + str(exc))
+            return
 
     # Create the VoucherVault invite link.
     expiry = None
@@ -4157,9 +4182,15 @@ def _handle_provision_invite(request):
         'has_ota': bool(ota_token),
     }
     if email_sent:
-        messages.success(request, _('PocketID user created and invite email sent to %(email)s.') % {'email': email})
+        if user_already_existed:
+            messages.success(request, _('Existing PocketID account found and invite email sent to %(email)s.') % {'email': email})
+        else:
+            messages.success(request, _('PocketID user created and invite email sent to %(email)s.') % {'email': email})
     else:
-        messages.success(request, _('PocketID user created. Copy the onboarding link below and send it to your partner.'))
+        if user_already_existed:
+            messages.success(request, _('Existing PocketID account found. Copy the onboarding link below and send it to your partner.'))
+        else:
+            messages.success(request, _('PocketID user created. Copy the onboarding link below and send it to your partner.'))
 
 
 @login_required
