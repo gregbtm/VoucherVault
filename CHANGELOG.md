@@ -1,3 +1,10 @@
+## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.128...v1.2.0) (2026-07-25)
+
+
+### Features
+
+* add audit logging foundation + merge dashboard enhancements ([77c44fc](https://github.com/gregbtm/VoucherVault/commit/77c44fc723fe925e2746292331abef488e861500))
+
 ## [1.1.128](https://github.com/gregbtm/VoucherVault/compare/v1.1.127...v1.1.128) (2026-07-24)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * replace inline onclick handlers with CSP-safe event delegation ([5d9dbc2](https://github.com/gregbtm/VoucherVault/commit/5d9dbc2d0a2f8c027397b085f96300e70170cfff))
-
-## [1.1.124](https://github.com/gregbtm/VoucherVault/compare/v1.1.123...v1.1.124) (2026-07-24)
-
-
-### Features
-
-* passkey registration status check for PocketID-provisioned invites ([5abd71f](https://github.com/gregbtm/VoucherVault/commit/5abd71f9c8c81229869e4939766f5c64046892d9))
 
