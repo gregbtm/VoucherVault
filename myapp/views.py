@@ -59,6 +59,14 @@ from django.utils.text import get_valid_filename
 
 logger = logging.getLogger(__name__)
 
+
+def _get_client_ip(request):
+    """Extract client IP from request, accounting for proxies."""
+    x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    if x_forwarded:
+        return x_forwarded.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR') or None
+
 apprise_txt = _('Apprise URLs were already configured. Will not display them again here to protect secrets. You can freely re-configure the URLs now and hit update though.')
 
 def _queue_google_wallet_update(item):
@@ -4032,6 +4040,9 @@ def manage_invites(request):
 
     if request.method == 'POST':
         action = request.POST.get('action')
+        ip_address = _get_client_ip(request)
+        user_agent = request.META.get('HTTP_USER_AGENT', '')[:500]
+
         if action == 'create':
             config = SiteConfiguration.load()
             expiry = None
@@ -4043,21 +4054,52 @@ def manage_invites(request):
                 expires_at=expiry,
                 note=note,
             )
+            AuditLog.objects.create(
+                user=request.user,
+                action='invite_create',
+                description=f'Created invite link: {note}',
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
             messages.success(request, _('Invite link created.'))
         elif action == 'provision':
             _handle_provision_invite(request)
         elif action == 'revoke':
             token = request.POST.get('token', '')
-            InviteLink.objects.filter(token=token, revoked=False, used_at__isnull=True).update(revoked=True)
+            revoked_count = InviteLink.objects.filter(token=token, revoked=False, used_at__isnull=True).update(revoked=True)
+            if revoked_count:
+                AuditLog.objects.create(
+                    user=request.user,
+                    action='invite_revoke',
+                    description=f'Revoked invite link: {token[:8]}...',
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                )
             messages.success(request, _('Invite link revoked.'))
         elif action == 'clear_expired':
             expired_count = InviteLink.objects.filter(
                 expires_at__lt=timezone.now(),
                 used_at__isnull=True
             ).delete()[0]
+            if expired_count:
+                AuditLog.objects.create(
+                    user=request.user,
+                    action='invite_clear_expired',
+                    description=f'Cleared {expired_count} expired invite link(s)',
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                )
             messages.success(request, _('Cleared %(count)d expired invite(s).') % {'count': expired_count})
         elif action == 'clear_all':
             used_count = InviteLink.objects.filter(used_at__isnull=True).delete()[0]
+            if used_count:
+                AuditLog.objects.create(
+                    user=request.user,
+                    action='invite_clear_all',
+                    description=f'Cleared {used_count} pending invite link(s)',
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                )
             messages.success(request, _('Cleared %(count)d invite(s).') % {'count': used_count})
         return redirect('manage_invites')
 
@@ -4182,6 +4224,14 @@ def _handle_provision_invite(request):
         welcome_message=welcome_message,
         pre_share_wallet=pre_share_wallet,
         custom_expiry_days=custom_expiry_days,
+    )
+
+    AuditLog.objects.create(
+        user=request.user,
+        action='invite_create',
+        description=f'Provisioned PocketID user {resolved_username} ({email})',
+        ip_address=_get_client_ip(request),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],
     )
 
     invite_url = request.build_absolute_uri(
@@ -4555,6 +4605,13 @@ def invite_complete(request):
                     profile.invited_at = invite.created_at
                     profile.invited_email = invite.note if '@' in invite.note else request.user.email or ''
                     profile.save(update_fields=['invited_by', 'invited_at', 'invited_email'])
+                AuditLog.objects.create(
+                    user=request.user,
+                    action='invite_accept',
+                    description=f'Accepted invite link from {invite.created_by.username if invite.created_by else "admin"}',
+                    ip_address=client_ip,
+                    user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],
+                )
                 _apply_invite_pre_share(invite, request.user)
                 messages.success(request, _('Welcome to VoucherVault Plus+! Your account is all set.'))
         except InviteLink.DoesNotExist:
@@ -4627,6 +4684,48 @@ def toggle_user_superuser(request):
     u.save(update_fields=['is_superuser', 'is_staff'])
     messages.success(request, _(f"{'Promoted' if u.is_superuser else 'Demoted'} {u.username}."))
     return redirect('manage_users')
+
+
+# ── Audit Log (superuser) ────────────────────────────────────────────────────
+
+@login_required
+def audit_log(request):
+    """Superuser: view audit log of all user actions."""
+    if not request.user.is_superuser:
+        return redirect('show_items')
+
+    # Filters
+    action_filter = request.GET.get('action', '')
+    user_filter = request.GET.get('user', '')
+    days_filter = int(request.GET.get('days', '30'))
+
+    # Build queryset
+    logs = AuditLog.objects.select_related('user').order_by('-timestamp')
+
+    if action_filter:
+        logs = logs.filter(action=action_filter)
+
+    if user_filter:
+        logs = logs.filter(user__username__icontains=user_filter)
+
+    if days_filter > 0:
+        cutoff = timezone.now() - dt.timedelta(days=days_filter)
+        logs = logs.filter(timestamp__gte=cutoff)
+
+    # Pagination
+    from django.core.paginator import Paginator
+    paginator = Paginator(logs, 50)
+    page_num = request.GET.get('page', '1')
+    page_obj = paginator.get_page(page_num)
+
+    action_choices = dict(AuditLog.ACTION_CHOICES)
+    return render(request, 'audit_log.html', {
+        'page_obj': page_obj,
+        'action_filter': action_filter,
+        'user_filter': user_filter,
+        'days_filter': days_filter,
+        'action_choices': action_choices,
+    })
 
 
 @require_POST

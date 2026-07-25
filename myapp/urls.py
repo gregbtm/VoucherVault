@@ -125,6 +125,7 @@ urlpatterns = (
     # Users panel (superuser)
     path('admin-tools/users/', views.manage_users, name='manage_users'),
     path('admin-tools/users/toggle-superuser/', views.toggle_user_superuser, name='toggle_user_superuser'),
+    path('admin-tools/audit-log/', views.audit_log, name='audit_log'),
     # OIDC identity management
     path('user/security/unlink-oidc/', views.unlink_oidc, name='unlink_oidc'),
 )
