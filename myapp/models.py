@@ -944,6 +944,39 @@ class LoginAuditLog(models.Model):
         return f"{self.username_attempted} [{status}] at {self.timestamp}"
 
 
+class AuditLog(models.Model):
+    """Immutable record of user actions (invites, settings, etc)."""
+    ACTION_CHOICES = (
+        ('invite_create', 'Invite Created'),
+        ('invite_accept', 'Invite Accepted'),
+        ('invite_revoke', 'Invite Revoked'),
+        ('invite_clear_expired', 'Cleared Expired Invites'),
+        ('invite_clear_all', 'Cleared All Pending Invites'),
+        ('settings_change', 'Settings Changed'),
+        ('user_create', 'User Created'),
+        ('user_provision', 'User Provisioned via PocketID'),
+        ('password_change', 'Password Changed'),
+        ('session_logout_forced', 'Session Forced Logout'),
+    )
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs')
+    action = models.CharField(max_length=50, choices=ACTION_CHOICES)
+    description = models.TextField(blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['user', '-timestamp']),
+            models.Index(fields=['action', '-timestamp']),
+        ]
+
+    def __str__(self):
+        user_name = self.user.username if self.user else 'unknown'
+        return f"{user_name} - {self.get_action_display()} at {self.timestamp}"
+
+
 class UpstreamSyncStatus(models.Model):
     """
     Singleton row (always pk=1) holding the result of the last check
