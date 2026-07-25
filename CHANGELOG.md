@@ -1,4 +1,11 @@
-## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.126...v1.2.0) (2026-07-24)
+## [1.1.128](https://github.com/gregbtm/VoucherVault/compare/v1.1.127...v1.1.128) (2026-07-24)
+
+
+### Bug Fixes
+
+* improve invite cleanup UI and clarify button behavior ([9fe1f54](https://github.com/gregbtm/VoucherVault/commit/9fe1f5481a9c3ac9522e0cca6c2f426290ca56af))
+
+## [1.1.127](https://github.com/gregbtm/VoucherVault/compare/v1.1.126...v1.1.127) (2026-07-24)
 
 
 ### Features
@@ -25,11 +32,4 @@
 ### Features
 
 * passkey registration status check for PocketID-provisioned invites ([5abd71f](https://github.com/gregbtm/VoucherVault/commit/5abd71f9c8c81229869e4939766f5c64046892d9))
-
-## [1.1.123](https://github.com/gregbtm/VoucherVault/compare/v1.1.122...v1.1.123) (2026-07-24)
-
-
-### Bug Fixes
-
-* redirect OTA link to /profile so new users land on passkey setup page ([f9860bc](https://github.com/gregbtm/VoucherVault/commit/f9860bc5b6777e821d6b8a43ea3637bf9115840c))
 
