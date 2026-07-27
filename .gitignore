@@ -64,3 +64,7 @@ node_modules/
 # ignore minified JS build output (Phase 88 - `npm run build`; only the
 # Docker image build stage's copy of this ever ships, never this one)
 /dist/
+
+# ignore local Redis dump left behind by running `redis-server` in the
+# repo root for sandbox/dev verification (auto-saves to cwd by default)
+dump.rdb
