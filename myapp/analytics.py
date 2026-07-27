@@ -3,6 +3,7 @@ from datetime import date as date_cls
 from datetime import timedelta
 from decimal import Decimal
 
+from django.core.cache import cache
 from django.db.models import Count, Sum
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
@@ -22,7 +23,15 @@ def get_summary_stats(user):
     for a precise ledger. `redeemed_this_month` isn't included: the model
     has no redemption timestamp (only the `is_used` boolean), so "this
     month" can't be determined.
+
+    Results are cached for 60 seconds per user to reduce repeated aggregations
+    on dashboard reloads.
     """
+    cache_key = f'summary_stats:{user.id}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     now = timezone.now()
     today = timezone.localtime(now).date()
     threshold_days = SiteConfiguration.load().expiry_threshold_days
@@ -43,7 +52,7 @@ def get_summary_stats(user):
             for row in rows if row['total'] is not None
         }
 
-    return {
+    result = {
         'total_items': active_items.count(),
         'used_items': Item.objects.filter(user=user, is_used=True).count(),
         'expired_items': active_items.filter(expiry_date__lt=today).count(),
@@ -56,6 +65,8 @@ def get_summary_stats(user):
             valued_items.filter(expiry_date__gte=today, expiry_date__lt=soon_cutoff)
         ),
     }
+    cache.set(cache_key, result, 60)
+    return result
 
 
 def get_expiry_timeline(user, months_ahead=None):
@@ -216,7 +227,7 @@ def get_active_today_item(user, enabled, home_station, cutoff_time):
 
 def get_spend_stats(user):
     """
-    Spending analytics for a user's transaction history:
+    Spending analytics for a user's transaction history (cached for 60s):
 
     - `total_spent`: absolute sum of all negative Transaction.value amounts
       across the user's items (i.e. money spent out of gift cards / vouchers),
@@ -230,6 +241,11 @@ def get_spend_stats(user):
       returned as a 2 d.p. string.  Loyalty cards are excluded because their
       `value` field typically holds points rather than a monetary amount.
     """
+    cache_key = f'spend_stats:{user.id}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     now = timezone.now()
 
     # Total spent — sum of all negative transactions, returned as positive
@@ -275,11 +291,13 @@ def get_spend_stats(user):
     redeemed_raw = redeemed_agg['total'] or Decimal('0')
     redeemed_value = redeemed_raw.quantize(Decimal('0.01'))
 
-    return {
+    result = {
         'total_spent': str(total_spent),
         'monthly_spend': monthly_spend,
         'redeemed_value': str(redeemed_value),
     }
+    cache.set(cache_key, result, 60)
+    return result
 
 
 def build_expiry_calendar(user, months_ahead=None):
