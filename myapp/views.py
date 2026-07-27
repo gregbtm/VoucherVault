@@ -10,7 +10,7 @@ import uuid
 import datetime as dt
 import requests
 from django.core import signing
-from django.db import IntegrityError
+from django.db import IntegrityError, models
 from django.db.models import Q
 from django.utils.safestring import mark_safe
 from .forms import *
@@ -3371,24 +3371,33 @@ def analytics(request):
     )
 
     month_start = now_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    wallet_budgets = []
-    for wallet in Wallet.objects.filter(user=user, budget_amount__isnull=False):
-        spent = abs(
-            Transaction.objects.filter(
-                item__wallet=wallet, item__user=user,
-                date__gte=month_start, value__lt=0,
-            ).aggregate(total=Sum('value'))['total'] or 0
+
+    # Single annotated query replaces N separate Transaction queries
+    wallet_data = Wallet.objects.filter(
+        user=user, budget_amount__isnull=False
+    ).annotate(
+        spent=Coalesce(
+            Sum('items__transactions__value', filter=Q(
+                items__transactions__date__gte=month_start,
+                items__transactions__value__lt=0
+            )),
+            Value(0, output_field=models.DecimalField())
         )
+    )
+
+    wallet_budgets = []
+    for wallet in wallet_data:
+        spent = abs(float(wallet.spent))
         budget = float(wallet.budget_amount)
-        percent = min(int(float(spent) / budget * 100), 100) if budget else 0
+        percent = min(int(spent / budget * 100), 100) if budget else 0
         wallet_budgets.append({
             'name': wallet.name,
             'color': wallet.color,
             'budget': budget,
-            'spent': float(spent),
-            'remaining': max(budget - float(spent), 0),
+            'spent': spent,
+            'remaining': max(budget - spent, 0),
             'percent': percent,
-            'over_budget': float(spent) > budget,
+            'over_budget': spent > budget,
         })
 
     type_labels = {
