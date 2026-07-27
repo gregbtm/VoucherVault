@@ -194,6 +194,12 @@ class OpenAIOCRBackend(OCRBackend):
         if item_type not in VALID_ITEM_TYPES:
             item_type = None
 
+        journey_origin = sanitize_free_text(result.get('journey_origin'), _MAX_JOURNEY_STATION_LENGTH)
+        journey_destination = sanitize_free_text(result.get('journey_destination'), _MAX_JOURNEY_STATION_LENGTH)
+
+        if item_type == 'travelpass' and not (journey_origin and journey_destination):
+            item_type = 'giftcard'
+
         return {
             'code': result.get('code') or None,
             'code_type': code_type,
@@ -210,8 +216,8 @@ class OpenAIOCRBackend(OCRBackend):
             'description': sanitize_free_text(result.get('description'), _MAX_DESCRIPTION_LENGTH),
             'notes': sanitize_free_text(result.get('notes'), _MAX_NOTES_LENGTH),
             'tags': sanitize_tag_suggestions(result.get('tags')),
-            'journey_origin': sanitize_free_text(result.get('journey_origin'), _MAX_JOURNEY_STATION_LENGTH),
-            'journey_destination': sanitize_free_text(result.get('journey_destination'), _MAX_JOURNEY_STATION_LENGTH),
+            'journey_origin': journey_origin,
+            'journey_destination': journey_destination,
             'travel_time': sanitize_time_or_none(result.get('travel_time')),
             'confidence': float(result.get('confidence') or 0.0),
         }

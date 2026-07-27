@@ -93,7 +93,16 @@
           <form method="POST" action="{% url 'share_wallet' wallet_id=editing_wallet.id %}" class="mb-3">
             {% csrf_token %}
             <div class="d-flex gap-2 flex-wrap">
-              {{ share_form.username }}
+              <div style="position: relative; flex: 1; min-width: 200px;">
+                {% with share_form.username as field %}
+                {{ field }}
+                {# Add list attribute to connect input to datalist #}
+                <script nonce="{{ request.csp_nonce }}">
+                  document.getElementById('{{ field.id_for_label }}').setAttribute('list', 'username-suggestions');
+                </script>
+                {% endwith %}
+                <datalist id="username-suggestions"></datalist>
+              </div>
               <select name="role" class="form-select" style="max-width:110px;min-width:90px;">
                 <option value="editor">{% trans "Editor" %}</option>
                 <option value="viewer">{% trans "Viewer" %}</option>
@@ -273,6 +282,32 @@
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
       body: JSON.stringify({ order }),
     }).catch(() => {});
+  });
+})();
+
+(function () {
+  const usernameInput = document.getElementById('id_username');
+  const datalist = document.getElementById('username-suggestions');
+  if (!usernameInput || !datalist) return;
+  let searchTimeout;
+
+  usernameInput.addEventListener('input', e => {
+    clearTimeout(searchTimeout);
+    const query = (e.target.value || '').trim();
+    if (query.length === 0) {
+      datalist.innerHTML = '';
+      return;
+    }
+    searchTimeout = setTimeout(() => {
+      fetch(`/api/v1/users/search/?q=${encodeURIComponent(query)}`)
+        .then(r => r.json())
+        .then(users => {
+          datalist.innerHTML = users.map(u =>
+            `<option value="${u.username}">${u.username} (${u.email})</option>`
+          ).join('');
+        })
+        .catch(() => {});
+    }, 300);
   });
 })();
 </script>
