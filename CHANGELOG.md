@@ -1,4 +1,11 @@
-## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.130...v1.2.0) (2026-07-27)
+## [1.1.132](https://github.com/gregbtm/VoucherVault/compare/v1.1.131...v1.1.132) (2026-07-27)
+
+
+### Bug Fixes
+
+* Normalize currency to uppercase in validation module ([10e1aa2](https://github.com/gregbtm/VoucherVault/commit/10e1aa2bbef0231b9c22f4bd9eeca27738277e39))
+
+## [1.1.131](https://github.com/gregbtm/VoucherVault/compare/v1.1.130...v1.1.131) (2026-07-27)
 
 
 ### Features
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * improve invite cleanup UI and clarify button behavior ([9fe1f54](https://github.com/gregbtm/VoucherVault/commit/9fe1f5481a9c3ac9522e0cca6c2f426290ca56af))
-
-## [1.1.127](https://github.com/gregbtm/VoucherVault/compare/v1.1.126...v1.1.127) (2026-07-24)
-
-
-### Features
-
-* enhance invite provisioning with cleanup, animations, and random avatars ([dbe2bf2](https://github.com/gregbtm/VoucherVault/commit/dbe2bf2ebe3e72f35fd1161bed700c05f8c22900))
 
