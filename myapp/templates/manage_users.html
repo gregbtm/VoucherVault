@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="pagetitle">
-  <h1>{% trans "Users" %}</h1>
+  <h1>{% trans "Users" %} <a href="{% url 'view_doc' 'security-settings' %}" data-doc-url="{% url 'view_doc' 'security-settings' %}" class="help-link text-muted" title="{% trans 'Security settings & hardening guide' %}" style="font-size:1rem;vertical-align:middle;text-decoration:none;"><i class="bi bi-question-circle"></i></a></h1>
   <nav>
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
