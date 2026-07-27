@@ -1,4 +1,5 @@
 import uuid
+import logging
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, asdict
@@ -6,6 +7,9 @@ from django.db import transaction
 from django.contrib.auth.models import User
 from myapp.models import Item, ItemEnrichmentLog, Document
 from .merchant_lookup import MerchantLookup
+from .ocr_backend_integration import OCRExtractor
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -44,7 +48,8 @@ class ItemEnricher:
     def __init__(self, created_by: Optional[User] = None):
         self.created_by = created_by
 
-    def enrich_from_ocr(self, item: Item, confidence_threshold: Decimal = Decimal('0.5')) -> EnrichmentResult:
+    def enrich_from_ocr(self, item: Item, confidence_threshold: Decimal = Decimal('0.5'),
+                       ocr_backend: Optional[str] = None) -> EnrichmentResult:
         """Re-scan and extract data from attached documents."""
         enrichment_run_id = uuid.uuid4()
         changes = []
@@ -61,7 +66,7 @@ class ItemEnricher:
             )
 
         # Extract data from documents using OCR backend
-        extracted_data = self._extract_from_documents(documents)
+        extracted_data = self._extract_from_documents(documents, ocr_backend=ocr_backend)
         if not extracted_data:
             return EnrichmentResult(
                 item_id=item.id,
@@ -224,11 +229,33 @@ class ItemEnricher:
             'total_confidence': sum(c.confidence_score for c in changes) / len(changes) if changes else 0
         }
 
-    def _extract_from_documents(self, documents) -> Optional[Dict[str, Any]]:
-        """Extract structured data from documents using OCR."""
-        # This will be implemented in the next phase with actual OCR integration
-        # For now, return empty dict to indicate no extraction
-        return None
+    def _extract_from_documents(self, documents, ocr_backend: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Extract structured data from documents using OCR backend."""
+        if not documents.exists():
+            return None
+
+        extractor = OCRExtractor(preferred_backend=ocr_backend)
+        merged_data = {}
+
+        # Process each document and merge results
+        for document in documents:
+            try:
+                extracted = extractor.extract_from_document(document)
+                if extracted:
+                    # Merge data, preferring fields with higher confidence
+                    for key, value in extracted.items():
+                        if key not in merged_data:
+                            merged_data[key] = value
+                        elif key.endswith('_confidence'):
+                            # Keep the higher confidence value
+                            if isinstance(value, Decimal) and isinstance(merged_data.get(key), Decimal):
+                                if value > merged_data[key]:
+                                    merged_data[key] = value
+            except Exception as e:
+                logger.error(f"OCR extraction failed for document {document.id}: {e}")
+                continue
+
+        return merged_data if merged_data else None
 
     def _normalize_issuer(self, value: str) -> Tuple[str, Decimal]:
         """Normalize issuer name."""
