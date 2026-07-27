@@ -1772,3 +1772,21 @@ class DMSSyncLogViewSet(viewsets.ReadOnlyModelViewSet):
         if provider_id:
             qs = qs.filter(provider_id=provider_id)
         return qs
+
+
+class UserSearchView(views.APIView):
+    """Search for users by partial username. Returns username + email for autocomplete."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        query = request.query_params.get('q', '').strip()
+        if not query or len(query) < 1:
+            return Response([], status=status.HTTP_200_OK)
+
+        users = User.objects.filter(
+            username__icontains=query
+        ).exclude(
+            id=request.user.id
+        ).values('id', 'username', 'email').order_by('username')[:10]
+
+        return Response(list(users), status=status.HTTP_200_OK)
