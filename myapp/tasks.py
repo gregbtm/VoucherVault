@@ -2,6 +2,7 @@
 from celery import shared_task
 from django.core.management import call_command
 from django.utils import timezone
+from django.db import models
 
 from .merchant_logos import fetch_merchant_logo, merchant_logos_enabled
 from .update_check import check_for_update, check_upstream_version
@@ -154,3 +155,231 @@ def mark_expired_commute_outward_tickets():
             outward.is_used = True
             outward.save(update_fields=['is_used'])
             notify_item_used(outward)
+
+
+@shared_task
+def run_scheduled_enrichment(method):
+    """
+    Celery Beat task to run scheduled enrichment for a given method.
+    Creates an EnrichmentRun and queues items for enrichment.
+    """
+    import logging
+    import uuid
+    from .models import EnrichmentConfig, EnrichmentRun, Item
+
+    _log = logging.getLogger(__name__)
+
+    try:
+        config = EnrichmentConfig.objects.get(method=method, enabled=True)
+    except EnrichmentConfig.DoesNotExist:
+        _log.debug(f"Enrichment config not found or disabled for method: {method}")
+        return
+
+    run_id = uuid.uuid4()
+    try:
+        # Find all items to enrich (exclude archived)
+        items = Item.objects.filter(is_archived=False).select_related('user')
+        item_count = items.count()
+
+        # Create enrichment run
+        run = EnrichmentRun.objects.create(
+            id=run_id,
+            method=method,
+            status='in_progress',
+            confidence_threshold=config.confidence_threshold,
+            total_items=item_count,
+        )
+
+        # Queue items for enrichment
+        for item in items:
+            queue_item_enrichment.delay(item.id, str(run_id), method, config.auto_apply)
+
+        # If no items, finalize immediately
+        if item_count == 0:
+            finalize_enrichment_run.delay(str(run_id))
+        else:
+            # Schedule finalization check after 5 minutes (gives time for all items to process)
+            from celery import current_app
+            current_app.send_task(
+                'myapp.tasks.check_and_finalize_run',
+                args=[str(run_id)],
+                countdown=300  # 5 minutes
+            )
+
+        _log.info(f"Started enrichment run {run_id.hex[:8]} for method {method} with {item_count} items")
+
+    except Exception as exc:
+        _log.error(f"Error starting enrichment run for {method}: {exc}", exc_info=True)
+        if 'run' in locals():
+            run.status = 'failed'
+            run.completed_at = timezone.now()
+            run.save()
+
+
+@shared_task
+def check_and_finalize_run(run_id):
+    """
+    Check if an enrichment run has completed all items and finalize if so.
+    Retries every minute until all items are done.
+    """
+    import logging
+    from .models import EnrichmentRun, EnrichmentRunItem
+
+    _log = logging.getLogger(__name__)
+
+    try:
+        run = EnrichmentRun.objects.get(id=run_id)
+
+        # Count completed run items
+        completed_count = EnrichmentRunItem.objects.filter(run=run).count()
+
+        if completed_count >= run.total_items:
+            # All items complete, finalize
+            finalize_enrichment_run.delay(run_id)
+        else:
+            # Not done yet, check again in 1 minute
+            from celery import current_app
+            current_app.send_task(
+                'myapp.tasks.check_and_finalize_run',
+                args=[run_id],
+                countdown=60
+            )
+            _log.debug(f"Run {run_id.hex[:8]} has {completed_count}/{run.total_items} items, will recheck")
+
+    except Exception as exc:
+        _log.error(f"Error checking finalization for run {run_id}: {exc}", exc_info=True)
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=60)
+def queue_item_enrichment(self, item_id, run_id, method, auto_apply=False):
+    """
+    Enrich a single item using the specified method.
+    Queued by run_scheduled_enrichment.
+    """
+    import logging
+    from .models import Item, EnrichmentRun, EnrichmentRunItem
+    from .services.enrichment import ItemEnricher
+
+    _log = logging.getLogger(__name__)
+
+    try:
+        item = Item.objects.get(id=item_id)
+        run = EnrichmentRun.objects.get(id=run_id)
+    except (Item.DoesNotExist, EnrichmentRun.DoesNotExist) as exc:
+        _log.error(f"Item or run not found: {exc}")
+        return
+
+    try:
+        enricher = ItemEnricher(created_by=None)
+        result = None
+
+        if method == 'ocr':
+            result = enricher.enrich_from_ocr(item, run.confidence_threshold)
+        elif method == 'validation':
+            result = enricher.validate_and_normalize(item, run.confidence_threshold)
+        elif method == 'merchant_lookup':
+            result = enricher.enrich_from_merchant_lookup(item, run.confidence_threshold)
+
+        if result is None:
+            raise ValueError(f"Unknown enrichment method: {method}")
+
+        # Store result and preview
+        run_item, created = EnrichmentRunItem.objects.get_or_create(
+            run=run,
+            item=item,
+            defaults={
+                'success': result.success,
+                'changes_proposed': len(result.changes),
+                'error_message': result.error_message or '',
+                'preview_data': {
+                    'changes': [
+                        {
+                            'field_name': c.field_name,
+                            'old_value': c.old_value,
+                            'new_value': c.new_value,
+                            'confidence_score': float(c.confidence_score),
+                            'reason': c.reason,
+                        }
+                        for c in result.changes
+                    ]
+                }
+            }
+        )
+
+        # Apply changes if auto_apply is True
+        if auto_apply and result.changes:
+            success, error = enricher.apply_changes(item, result.changes)
+            if success:
+                enricher.log_enrichment(item, result.enrichment_run_id, result.changes, method)
+                run_item.changes_applied = len(result.changes)
+                run_item.success = True
+                run_item.save(update_fields=['changes_applied', 'success'])
+            else:
+                run_item.error_message = error or 'Failed to apply changes'
+                run_item.save(update_fields=['error_message'])
+
+        _log.debug(f"Enriched item {item_id} in run {run_id.hex[:8]} with {len(result.changes)} changes")
+
+    except Exception as exc:
+        _log.error(f"Error enriching item {item_id}: {exc}", exc_info=True)
+        # Retry once on transient errors
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=exc)
+
+
+@shared_task
+def finalize_enrichment_run(run_id):
+    """
+    Finalize an enrichment run: calculate summary stats and update status.
+    Called manually or via scheduled check.
+    """
+    import logging
+    from decimal import Decimal
+    from django.db.models import Count, Sum, Q
+    from .models import EnrichmentRun, EnrichmentRunItem, EnrichmentConfig
+
+    _log = logging.getLogger(__name__)
+
+    try:
+        run = EnrichmentRun.objects.get(id=run_id)
+
+        # Recalculate stats from run items
+        stats = EnrichmentRunItem.objects.filter(run=run).aggregate(
+            total=Count('id'),
+            successful=Count('id', filter=Q(success=True)),
+            total_changes=Sum('changes_proposed'),
+        )
+
+        run.total_items = stats['total'] or 0
+        run.successful_items = stats['successful'] or 0
+        run.total_changes = stats['total_changes'] or 0
+
+        # Calculate average confidence from preview data
+        if run.total_items > 0:
+            confidence_scores = []
+            for item in EnrichmentRunItem.objects.filter(run=run):
+                changes = item.preview_data.get('changes', [])
+                if changes:
+                    confidence_scores.extend([c['confidence_score'] for c in changes])
+            if confidence_scores:
+                run.average_confidence = Decimal(str(sum(confidence_scores) / len(confidence_scores)))
+
+        run.completed_at = timezone.now()
+
+        # Set status based on auto_apply config
+        try:
+            cfg = EnrichmentConfig.objects.get(method=run.method)
+            if cfg.auto_apply:
+                run.status = 'completed'
+            else:
+                run.status = 'pending_approval'
+        except EnrichmentConfig.DoesNotExist:
+            run.status = 'completed'
+
+        run.save()
+        _log.info(f"Finalized run {run_id.hex[:8]}: {run.successful_items}/{run.total_items} items, {run.total_changes} changes")
+
+    except EnrichmentRun.DoesNotExist:
+        _log.error(f"Enrichment run {run_id} not found")
+    except Exception as exc:
+        _log.error(f"Error finalizing run {run_id}: {exc}", exc_info=True)
