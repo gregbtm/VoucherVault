@@ -190,7 +190,7 @@
   ======================================================== -->
 </head>
 
-<body data-oled-preferred="{% if global_preferences.oled_dark_mode %}1{% else %}0{% endif %}">
+<body data-oled-preferred="{% if global_preferences.oled_dark_mode %}1{% else %}0{% endif %}" data-unread-count="0">
   <a href="#main" class="skip-link">{% trans "Skip to main content" %}</a>
   <!-- Apply theme synchronously before any content renders to prevent flash.
        Priority: 1) user override in localStorage, 2) OS prefers-color-scheme, 3) light default -->
@@ -755,6 +755,29 @@
 
   <!-- PWA Install Prompt (Phase C) -->
   <script src="{% static 'assets/js/pwa-install.js' %}"></script>
+
+  <!-- PWA Enhancements (Phase 3) -->
+  <script src="{% static 'assets/js/pwa-badge.js' %}"></script>
+  <script src="{% static 'assets/js/pwa-orientation.js' %}"></script>
+  <script src="{% static 'assets/js/pwa-periodic-sync.js' %}"></script>
+
+  <!-- Service Worker Message Handler for PWA Updates -->
+  <script nonce="{{ request.csp_nonce }}">
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.controller?.postMessage({ type: 'SKIP_WAITING' });
+
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        const { type, count } = event.data;
+
+        if (type === 'UNREAD_COUNT_UPDATE') {
+          document.body.setAttribute('data-unread-count', count);
+          document.dispatchEvent(new CustomEvent('notification-count-changed', { detail: { count } }));
+        } else if (type === 'INVENTORY_UPDATE') {
+          document.dispatchEvent(new CustomEvent('inventory-updated'));
+        }
+      });
+    }
+  </script>
 
   <!-- Native Web Share -->
   <script nonce="{{ request.csp_nonce }}">window.VV_SHARE_SMART_ENABLED = {{ share_via_smart_enabled|yesno:"true,false" }};</script>

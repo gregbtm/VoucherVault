@@ -691,3 +691,102 @@ self.addEventListener('notificationclick', event => {
         })
     );
 });
+
+// Periodic Background Sync - handles periodic sync events
+self.addEventListener('periodicsync', event => {
+    const tag = event.tag;
+
+    switch (tag) {
+        case 'check-notifications':
+            event.waitUntil(checkForNotifications());
+            break;
+        case 'sync-offline-changes':
+            event.waitUntil(syncOfflineChanges());
+            break;
+        case 'update-inventory':
+            event.waitUntil(updateInventory());
+            break;
+        default:
+            console.log('[Service Worker] Unknown periodic sync tag:', tag);
+    }
+});
+
+async function checkForNotifications() {
+    try {
+        const response = await fetch('/api/v1/notifications/unread/', {
+            credentials: 'include'
+        });
+        if (response.ok) {
+            const data = await response.json();
+            const count = data.count || 0;
+
+            // Notify all clients about the unread count update
+            const clients = await self.clients.matchAll();
+            clients.forEach(client => {
+                client.postMessage({
+                    type: 'UNREAD_COUNT_UPDATE',
+                    count: count
+                });
+            });
+
+            console.log('[Service Worker] Checked notifications, unread count:', count);
+        }
+    } catch (error) {
+        console.error('[Service Worker] Failed to check notifications:', error);
+    }
+}
+
+async function syncOfflineChanges() {
+    try {
+        // Sync any offline changes stored in IndexedDB
+        const cache = await caches.open(DATA_CACHE);
+        const request = new Request('/api/v1/items/sync/', {
+            method: 'POST',
+            credentials: 'include'
+        });
+
+        const response = await fetch(request);
+        if (response.ok) {
+            // Clear offline sync queue on successful sync
+            const db = await openIndexedDB();
+            const tx = db.transaction('offlineSyncQueue', 'readwrite');
+            await tx.objectStore('offlineSyncQueue').clear();
+            console.log('[Service Worker] Offline changes synced successfully');
+        }
+    } catch (error) {
+        console.error('[Service Worker] Failed to sync offline changes:', error);
+    }
+}
+
+async function updateInventory() {
+    try {
+        const response = await fetch('/api/v1/items/', {
+            credentials: 'include'
+        });
+        if (response.ok) {
+            // Cache the updated inventory
+            const cache = await caches.open(DATA_CACHE);
+            await cache.put(new Request('/api/v1/items/'), response.clone());
+
+            // Notify all clients about inventory update
+            const clients = await self.clients.matchAll();
+            clients.forEach(client => {
+                client.postMessage({
+                    type: 'INVENTORY_UPDATE'
+                });
+            });
+
+            console.log('[Service Worker] Inventory updated');
+        }
+    } catch (error) {
+        console.error('[Service Worker] Failed to update inventory:', error);
+    }
+}
+
+function openIndexedDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open('vouchervault', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
