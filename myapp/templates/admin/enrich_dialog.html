@@ -1,0 +1,91 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Enrich Items" %}{% endblock %}
+
+{% block content %}
+<div class="content">
+  <h1>{% trans "Enrich Selected Items" %}</h1>
+
+  <form method="post">
+    {% csrf_token %}
+
+    <fieldset class="module aligned">
+      <h2>{% trans "Enrichment Settings" %}</h2>
+
+      <div class="form-row">
+        <div>
+          <label for="id_enrichment_mode">{% trans "Enrichment Mode" %}</label>
+          <select id="id_enrichment_mode" name="enrichment_mode" required>
+            <option value="ocr">{% trans "OCR Rescan (items with documents)" %} - {{ items_with_docs }} {% trans "items" %}</option>
+            <option value="validation">{% trans "Validation & Normalization" %}</option>
+            <option value="all">{% trans "All Methods (sequential)" %}</option>
+          </select>
+          <p class="help">{% trans "Choose how to enrich the selected items." %}</p>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div>
+          <label for="id_confidence_threshold">{% trans "Confidence Threshold (0.0 - 1.0)" %}</label>
+          <input type="number" id="id_confidence_threshold" name="confidence_threshold" min="0" max="1" step="0.1" value="0.5" required>
+          <p class="help">{% trans "Only apply enrichments with confidence scores at or above this threshold." %}</p>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div>
+          <label for="id_dry_run">
+            <input type="checkbox" id="id_dry_run" name="dry_run">
+            {% trans "Dry Run - Preview changes without applying them" %}
+          </label>
+          <p class="help">{% trans "Check this to preview what would be changed without actually modifying the items." %}</p>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset class="module aligned">
+      <h2>{% trans "Summary" %}</h2>
+      <p>
+        {% blocktrans count counter=selected_count %}
+          You have selected {{ counter }} item.
+        {% plural %}
+          You have selected {{ counter }} items.
+        {% endblocktrans %}
+      </p>
+      <p>
+        {% trans "Selected items:" %}
+        <ul>
+          {% for id in selected_ids %}
+            <input type="hidden" name="selected_ids" value="{{ id }}">
+            <li>#{{ id }}</li>
+          {% endfor %}
+        </ul>
+      </p>
+    </fieldset>
+
+    <div class="submit-row">
+      <button type="submit" name="_continue" class="button default">
+        {% trans "Preview Changes" %}
+      </button>
+      <button type="submit" name="_apply" class="button">
+        {% trans "Apply Enrichment" %}
+      </button>
+      <a href="{% url 'admin:myapp_item_changelist' %}" class="button">{% trans "Cancel" %}</a>
+    </div>
+  </form>
+
+  <hr>
+
+  <div class="info-box">
+    <h3>{% trans "About Enrichment" %}</h3>
+    <ul>
+      <li><strong>{% trans "Protected Fields:" %}</strong> {% trans "barcode_number, barcode_type, item_type are never modified" %}</li>
+      <li><strong>{% trans "OCR Rescan:" %}</strong> {% trans "Re-extracts data from attached documents for improved accuracy" %}</li>
+      <li><strong>{% trans "Validation:" %}</strong> {% trans "Normalizes and validates existing field values" %}</li>
+      <li><strong>{% trans "Cost Caveat:" %}</strong> {% trans "Re-running OCR on many items may incur API costs" %}</li>
+      <li><strong>{% trans "Audit Trail:" %}</strong> {% trans "All changes are logged for review and rollback" %}</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

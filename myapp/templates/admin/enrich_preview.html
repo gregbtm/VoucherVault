@@ -1,0 +1,124 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Enrichment Preview" %}{% endblock %}
+
+{% block content %}
+<div class="content">
+  <h1>{% trans "Enrichment Preview" %}</h1>
+
+  <div class="info-box">
+    <p>
+      {% blocktrans count counter=preview_changes|length %}
+        {{ counter }} item has enrichment opportunities.
+      {% plural %}
+        {{ counter }} items have enrichment opportunities.
+      {% endblocktrans %}
+      {% trans "Total changes:" %} <strong>{{ total_changes }}</strong>
+    </p>
+  </div>
+
+  {% if preview_changes %}
+    <form method="post" action="{% url 'admin:myapp_item_changelist' %}">
+      {% csrf_token %}
+
+      {% for item_data in preview_changes %}
+        <fieldset class="module aligned">
+          <h2>{{ item_data.item.name }} (ID: {{ item_data.item.id }})</h2>
+
+          <div class="table-responsive">
+            <table class="table table-hover table-sm">
+              <thead>
+                <tr>
+                  <th>{% trans "Field" %}</th>
+                  <th>{% trans "Current Value" %}</th>
+                  <th>{% trans "New Value" %}</th>
+                  <th>{% trans "Confidence" %}</th>
+                  <th>{% trans "Reason" %}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for change in item_data.changes %}
+                  <tr>
+                    <td><strong>{{ change.field }}</strong></td>
+                    <td><code>{{ change.old_value|default:"(empty)" }}</code></td>
+                    <td><code style="color: green;">{{ change.new_value }}</code></td>
+                    <td>
+                      <span class="badge {% if change.confidence >= 0.8 %}bg-success{% elif change.confidence >= 0.6 %}bg-warning{% else %}bg-danger{% endif %}">
+                        {{ change.confidence|floatformat:2 }}
+                      </span>
+                    </td>
+                    <td><small>{{ change.reason }}</small></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </fieldset>
+      {% endfor %}
+
+      <div class="submit-row">
+        <button type="submit" name="_apply" class="button default">
+          {% trans "Apply All Changes" %}
+        </button>
+        <a href="{% url 'admin:myapp_item_changelist' %}" class="button">{% trans "Cancel" %}</a>
+      </div>
+
+      {% for id in selected_ids %}
+        <input type="hidden" name="selected_ids" value="{{ id }}">
+      {% endfor %}
+      <input type="hidden" name="enrichment_mode" value="{{ enrichment_mode }}">
+      <input type="hidden" name="confidence_threshold" value="{{ confidence_threshold }}">
+    </form>
+
+  {% else %}
+    <div class="warning-box">
+      <p>{% trans "No enrichment opportunities found for the selected items." %}</p>
+    </div>
+    <div class="submit-row">
+      <a href="{% url 'admin:myapp_item_changelist' %}" class="button">{% trans "Back to Items" %}</a>
+    </div>
+  {% endif %}
+
+  <hr>
+
+  <div class="info-box">
+    <h3>{% trans "Note" %}</h3>
+    <ul>
+      <li>{% trans "All changes shown above are proposed enrichments." %}</li>
+      <li>{% trans "Protected fields (barcode_number, barcode_type, item_type) are never modified." %}</li>
+      <li>{% trans "After applying, all changes will be logged in the enrichment audit trail." %}</li>
+      <li>{% trans "You can review the full audit trail in the ItemEnrichmentLog admin panel." %}</li>
+    </ul>
+  </div>
+</div>
+
+<style>
+  .info-box, .warning-box {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    margin-bottom: 10px;
+  }
+  .info-box {
+    background-color: #f9f9f9;
+  }
+  .warning-box {
+    background-color: #fff9f0;
+    border-color: #f4a100;
+  }
+  .table-responsive {
+    overflow-x: auto;
+    margin: 10px 0;
+  }
+  .badge {
+    padding: 3px 8px;
+    border-radius: 3px;
+    color: white;
+    font-size: 0.85em;
+  }
+  .bg-success { background-color: #28a745; }
+  .bg-warning { background-color: #ffc107; color: #333; }
+  .bg-danger { background-color: #dc3545; }
+</style>
+{% endblock %}

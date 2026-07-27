@@ -1328,3 +1328,63 @@ class SiteConfiguration(models.Model):
     def __str__(self):
         return "Site Configuration"
 
+
+class ItemEnrichmentLog(models.Model):
+    """
+    Audit trail for all item enrichment operations. Tracks what was changed,
+    by whom, when, and with what confidence. Allows rollback of enrichments.
+    """
+    ENRICHMENT_TYPES = (
+        ('ocr_rescan', 'OCR Rescan - Re-extracted from attached document'),
+        ('merchant_lookup', 'Merchant Lookup - Matched against merchant database'),
+        ('validation', 'Validation - Normalized/corrected field values'),
+        ('auto_enrich', 'Auto Enrichment - Populated from enrichment pipeline'),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    enrichment_run_id = models.UUIDField(
+        db_index=True,
+        help_text="Groups changes from the same enrichment operation together."
+    )
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='enrichment_logs')
+    field_name = models.CharField(
+        max_length=100,
+        help_text="Name of the field that was changed (e.g., 'expiry_date', 'issuer')."
+    )
+    old_value = models.TextField(
+        blank=True, null=True,
+        help_text="Previous value before enrichment."
+    )
+    new_value = models.TextField(
+        blank=True, null=True,
+        help_text="New value after enrichment."
+    )
+    enrichment_type = models.CharField(
+        max_length=50, choices=ENRICHMENT_TYPES,
+        help_text="What type of enrichment produced this change."
+    )
+    confidence_score = models.DecimalField(
+        max_digits=3, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(1)],
+        help_text="Confidence score (0-1) for this enriched value, if applicable."
+    )
+    reason = models.TextField(
+        blank=True,
+        help_text="Human-readable explanation of why this field was changed."
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        help_text="Admin user who triggered this enrichment."
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['enrichment_run_id', 'created_at']),
+            models.Index(fields=['item', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.item.name} - {self.field_name} ({self.get_enrichment_type_display()})"
+
