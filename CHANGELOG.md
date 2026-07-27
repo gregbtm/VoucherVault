@@ -1,4 +1,18 @@
-## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.128...v1.2.0) (2026-07-25)
+## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.130...v1.2.0) (2026-07-27)
+
+
+### Features
+
+* enhance invite provisioning with cleanup, animations, and random avatars ([4125429](https://github.com/gregbtm/VoucherVault/commit/4125429e12a2ec41f9a3f2dcea5812cd15dcd4c7))
+
+
+### Bug Fixes
+
+* ntfy notification links and shared users display ([43b15da](https://github.com/gregbtm/VoucherVault/commit/43b15da10059e5a3f66ff793b6557eb9be4ba7b4))
+
+## [1.1.130](https://github.com/gregbtm/VoucherVault/compare/v1.1.129...v1.1.130) (2026-07-27)
+
+## [1.1.129](https://github.com/gregbtm/VoucherVault/compare/v1.1.128...v1.1.129) (2026-07-25)
 
 
 ### Features
@@ -18,18 +32,4 @@
 ### Features
 
 * enhance invite provisioning with cleanup, animations, and random avatars ([dbe2bf2](https://github.com/gregbtm/VoucherVault/commit/dbe2bf2ebe3e72f35fd1161bed700c05f8c22900))
-
-## [1.1.126](https://github.com/gregbtm/VoucherVault/compare/v1.1.125...v1.1.126) (2026-07-24)
-
-
-### Bug Fixes
-
-* use PocketID's real /lc/ route for onboarding links ([c704ad3](https://github.com/gregbtm/VoucherVault/commit/c704ad399008690506a0e2d159ccaf56b51c0067))
-
-## [1.1.125](https://github.com/gregbtm/VoucherVault/compare/v1.1.124...v1.1.125) (2026-07-24)
-
-
-### Bug Fixes
-
-* replace inline onclick handlers with CSP-safe event delegation ([5d9dbc2](https://github.com/gregbtm/VoucherVault/commit/5d9dbc2d0a2f8c027397b085f96300e70170cfff))
 
