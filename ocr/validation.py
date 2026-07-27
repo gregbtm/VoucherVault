@@ -70,11 +70,14 @@ def validate_and_score(extraction: dict) -> dict:
             validation_issues.append('expired')
             confidence *= 0.7
 
-    # Validate currency code if present
+    # Validate currency code if present (normalize to uppercase)
     if extraction.get('currency'):
-        if extraction['currency'] not in VALID_CURRENCIES:
+        currency = extraction['currency'].upper() if isinstance(extraction['currency'], str) else extraction['currency']
+        if currency not in VALID_CURRENCIES:
             validation_issues.append('invalid_currency')
             confidence *= 0.8
+        else:
+            extraction['currency'] = currency
 
     # Validate value is numeric and reasonable
     if extraction.get('value') is not None:
