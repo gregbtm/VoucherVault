@@ -126,7 +126,7 @@ def enrichment_run_list(request):
             'has_prev': page > 1,
             'has_next': (page * per_page) < total,
         },
-        'methods': [c.method for c in EnrichmentConfig.objects.all()],
+        'methods': list(EnrichmentConfig.objects.values_list('method', flat=True)),
         'statuses': EnrichmentRun.STATUS_CHOICES,
     }
     return render(request, 'enrichment/run_list.html', context)
