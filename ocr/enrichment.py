@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 _DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 _UK_STATIONS = None
 _MERCHANTS = None
+_MERCHANT_CACHE = {}  # Cache fuzzy match results to avoid repeated SequenceMatcher calls
 
 
 def _load_uk_stations():
@@ -118,6 +119,7 @@ def detect_merchant(name_str: str, similarity_threshold: float = 0.75) -> dict |
     Returns merchant dict with category, logo_slug, typical values, etc., or None.
 
     Handles OCR misreads: "Amazn" → "Amazon", "Strbks" → "Starbucks".
+    Results are cached to avoid repeated SequenceMatcher calls for common names.
     """
     if not name_str or not isinstance(name_str, str):
         return None
@@ -128,11 +130,16 @@ def detect_merchant(name_str: str, similarity_threshold: float = 0.75) -> dict |
 
     name_key = name_str.strip().upper()
 
+    # Check cache first (avoids redundant fuzzy matching)
+    if name_key in _MERCHANT_CACHE:
+        return _MERCHANT_CACHE[name_key]
+
     # Exact match first (fast path)
     if name_key in merchants:
+        _MERCHANT_CACHE[name_key] = merchants[name_key]
         return merchants[name_key]
 
-    # Fuzzy match with SequenceMatcher
+    # Fuzzy match with SequenceMatcher - early exit if near-perfect match found
     best_match = None
     best_ratio = 0.0
 
@@ -141,10 +148,14 @@ def detect_merchant(name_str: str, similarity_threshold: float = 0.75) -> dict |
         if ratio > best_ratio:
             best_ratio = ratio
             best_match = merchant_data
+            if best_ratio > 0.95:  # Early exit if very high confidence match found
+                break
 
     if best_ratio >= similarity_threshold:
+        _MERCHANT_CACHE[name_key] = best_match
         return best_match
 
+    _MERCHANT_CACHE[name_key] = None
     return None
 
 
