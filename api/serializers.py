@@ -11,7 +11,7 @@ from imports.models import ImportJob
 from myapp.models import (
     Document, Item, ItemShare, MerchantProfile, Tag, Transaction,
     UserPreference, UserProfile, UserWebhook, Wallet,
-    WalletActivity, WalletMembership,
+    WalletActivity, WalletMembership, EnrichmentConfig, EnrichmentRun, EnrichmentRunItem,
 )
 from dms.models import DMSProvider, DMSSyncLog
 from myapp.utils import generate_code_image_base64
@@ -441,3 +441,60 @@ class DMSSyncLogSerializer(serializers.ModelSerializer):
             'dms_document_id', 'dms_document_title', 'detail', 'created_at',
         ]
         read_only_fields = fields
+
+
+class EnrichmentConfigSerializer(serializers.ModelSerializer):
+    method_display = serializers.CharField(source='get_method_display', read_only=True)
+    schedule_display = serializers.CharField(source='get_schedule_display', read_only=True)
+
+    class Meta:
+        model = EnrichmentConfig
+        fields = [
+            'id', 'method', 'method_display', 'enabled', 'schedule', 'schedule_display',
+            'confidence_threshold', 'auto_apply', 'updated_at',
+        ]
+        read_only_fields = ['id', 'updated_at']
+
+
+class EnrichmentRunItemSerializer(serializers.ModelSerializer):
+    item_name = serializers.CharField(source='item.name', read_only=True)
+    item_issuer = serializers.CharField(source='item.issuer', read_only=True, allow_null=True)
+
+    class Meta:
+        model = EnrichmentRunItem
+        fields = [
+            'id', 'run', 'item', 'item_name', 'item_issuer', 'success',
+            'changes_proposed', 'changes_applied', 'error_message',
+            'preview_data',
+        ]
+        read_only_fields = [
+            'id', 'run', 'item_name', 'item_issuer', 'success',
+            'changes_proposed', 'changes_applied', 'error_message', 'preview_data',
+        ]
+
+
+class EnrichmentRunSerializer(serializers.ModelSerializer):
+    method_display = serializers.CharField(source='get_method_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    approved_by_username = serializers.CharField(source='approved_by.username', read_only=True, allow_null=True)
+    items = EnrichmentRunItemSerializer(many=True, read_only=True)
+    success_rate = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = EnrichmentRun
+        fields = [
+            'id', 'method', 'method_display', 'status', 'status_display',
+            'total_items', 'successful_items', 'total_changes', 'average_confidence',
+            'confidence_threshold', 'started_at', 'completed_at', 'approved_at',
+            'approved_by', 'approved_by_username', 'notes', 'items', 'success_rate',
+        ]
+        read_only_fields = [
+            'id', 'method_display', 'status_display', 'total_items', 'successful_items',
+            'total_changes', 'average_confidence', 'started_at', 'completed_at',
+            'approved_at', 'approved_by_username', 'items',
+        ]
+
+    def get_success_rate(self, obj) -> float:
+        if obj.total_items == 0:
+            return 0.0
+        return round(obj.successful_items / obj.total_items * 100, 1)
