@@ -2380,32 +2380,50 @@ def get_stats(request):
             else:
                 currency_conversion_note = "Items span multiple currencies with no Fixer.io key available to convert them; see total_value_by_currency."
 
-        # Item stats
+        # Item stats — single aggregate replaces 9+ separate COUNT queries
+        item_counts = items_query.aggregate(
+            total_items=Count('id'),
+            vouchers=Count('id', filter=Q(type='voucher')),
+            giftcards=Count('id', filter=Q(type='giftcard')),
+            coupons=Count('id', filter=Q(type='coupon')),
+            loyaltycards=Count('id', filter=Q(type='loyaltycard')),
+            used_items=Count('id', filter=Q(is_used=True)),
+            available_items=Count('id', filter=Q(is_used=False, expiry_date__gte=now())),
+            expired_items=Count('id', filter=Q(expiry_date__lt=now())),
+            soon_expiring_items=Count('id', filter=Q(expiry_date__gte=now(), expiry_date__lt=soon_expiry_date)),
+        )
         item_stats = {
-            "total_items": items_query.count(),
+            "total_items": item_counts['total_items'],
             "total_value": total_value,
             "total_value_currency": total_currency,
-            "vouchers": items_query.filter(type='voucher').count(),
-            "giftcards": items_query.filter(type='giftcard').count(),
-            "coupons": items_query.filter(type='coupon').count(),
-            "loyaltycards": items_query.filter(type='loyaltycard').count(),
-            "used_items": items_query.filter(is_used=True).count(),
-            "available_items": items_query.filter(is_used=False).count() - items_query.filter(expiry_date__lt=now()).count(),
-            "expired_items": items_query.filter(expiry_date__lt=now()).count(),
-            "soon_expiring_items": items_query.filter(expiry_date__gte=now(), expiry_date__lt=soon_expiry_date).count(),
+            "vouchers": item_counts['vouchers'],
+            "giftcards": item_counts['giftcards'],
+            "coupons": item_counts['coupons'],
+            "loyaltycards": item_counts['loyaltycards'],
+            "used_items": item_counts['used_items'],
+            "available_items": item_counts['available_items'],
+            "expired_items": item_counts['expired_items'],
+            "soon_expiring_items": item_counts['soon_expiring_items'],
         }
         if total_value_by_currency is not None:
             item_stats["total_value_by_currency"] = total_value_by_currency
         if currency_conversion_note:
             item_stats["currency_conversion_note"] = currency_conversion_note
 
-        # Return global user_stats
+        # Return global user_stats — single aggregate replaces 5 separate COUNT queries
+        user_counts = User.objects.aggregate(
+            total_users=Count('id'),
+            active_users=Count('id', filter=Q(is_active=True)),
+            disabled_users=Count('id', filter=Q(is_active=False)),
+            superusers=Count('id', filter=Q(is_superuser=True)),
+            staff_members=Count('id', filter=Q(is_staff=True)),
+        )
         user_stats = {
-            "total_users": User.objects.count(),
-            "active_users": User.objects.filter(is_active=True).count(),
-            "disabled_users": User.objects.filter(is_active=False).count(),
-            "superusers": User.objects.filter(is_superuser=True).count(),
-            "staff_members": User.objects.filter(is_staff=True).count(),
+            "total_users": user_counts['total_users'],
+            "active_users": user_counts['active_users'],
+            "disabled_users": user_counts['disabled_users'],
+            "superusers": user_counts['superusers'],
+            "staff_members": user_counts['staff_members'],
         }
 
         # Issuer stats - grouped by (issuer, currency) rather than issuer
