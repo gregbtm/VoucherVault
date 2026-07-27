@@ -1,0 +1,541 @@
+{
+  "merchants": [
+    {
+      "name": "Amazon",
+      "logo_slug": "amazon.com",
+      "category": "Retail",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100, 250],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Apple",
+      "logo_slug": "apple.com",
+      "category": "Electronics",
+      "common_code_type": "qrcode",
+      "typical_values": [10, 25, 50, 100, 200],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Starbucks",
+      "logo_slug": "starbucks.com",
+      "category": "Coffee",
+      "common_code_type": "qrcode",
+      "typical_values": [5, 10, 25, 50],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Spotify",
+      "logo_slug": "spotify.com",
+      "category": "Music",
+      "common_code_type": "qrcode",
+      "typical_values": [10, 30, 50],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Netflix",
+      "logo_slug": "netflix.com",
+      "category": "Entertainment",
+      "common_code_type": "code128",
+      "typical_values": [15, 25, 50, 100],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Google Play",
+      "logo_slug": "play.google.com",
+      "category": "Digital",
+      "common_code_type": "qrcode",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "PlayStation",
+      "logo_slug": "playstation.com",
+      "category": "Gaming",
+      "common_code_type": "qrcode",
+      "typical_values": [10, 20, 50, 100],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Xbox",
+      "logo_slug": "xbox.com",
+      "category": "Gaming",
+      "common_code_type": "qrcode",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Nike",
+      "logo_slug": "nike.com",
+      "category": "Sports",
+      "common_code_type": "code128",
+      "typical_values": [25, 50, 100, 250],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Adidas",
+      "logo_slug": "adidas.com",
+      "category": "Sports",
+      "common_code_type": "code128",
+      "typical_values": [25, 50, 100, 250],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Uber",
+      "logo_slug": "uber.com",
+      "category": "Transport",
+      "common_code_type": "qrcode",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Uber Eats",
+      "logo_slug": "ubereats.com",
+      "category": "Food Delivery",
+      "common_code_type": "qrcode",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "DoorDash",
+      "logo_slug": "doordash.com",
+      "category": "Food Delivery",
+      "common_code_type": "qrcode",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["US"]
+    },
+    {
+      "name": "Deliveroo",
+      "logo_slug": "deliveroo.com",
+      "category": "Food Delivery",
+      "common_code_type": "qrcode",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["UK", "EU"]
+    },
+    {
+      "name": "Boots",
+      "logo_slug": "boots.com",
+      "category": "Pharmacy",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["UK"]
+    },
+    {
+      "name": "John Lewis",
+      "logo_slug": "johnlewis.com",
+      "category": "Retail",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100, 250],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Tesco",
+      "logo_slug": "tesco.com",
+      "category": "Grocery",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["UK", "EU"]
+    },
+    {
+      "name": "Sainsbury's",
+      "logo_slug": "sainsburys.co.uk",
+      "category": "Grocery",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Marks and Spencer",
+      "logo_slug": "marksandspencer.com",
+      "category": "Retail",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100, 250],
+      "regions": ["UK", "EU"]
+    },
+    {
+      "name": "Waitrose",
+      "logo_slug": "waitrose.com",
+      "category": "Grocery",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Selfridges",
+      "logo_slug": "selfridges.com",
+      "category": "Luxury Retail",
+      "common_code_type": "code128",
+      "typical_values": [25, 50, 100, 250, 500],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Harrods",
+      "logo_slug": "harrods.com",
+      "category": "Luxury Retail",
+      "common_code_type": "code128",
+      "typical_values": [25, 50, 100, 250, 500],
+      "regions": ["UK"]
+    },
+    {
+      "name": "British Airways",
+      "logo_slug": "ba.com",
+      "category": "Travel",
+      "common_code_type": "qrcode",
+      "typical_values": [50, 100, 250, 500],
+      "regions": ["UK", "EU"],
+      "bin_prefix": "4111,4539,5425"
+    },
+    {
+      "name": "Ryanair",
+      "logo_slug": "ryanair.com",
+      "category": "Travel",
+      "common_code_type": "qrcode",
+      "typical_values": [50, 100, 250],
+      "regions": ["EU", "UK"]
+    },
+    {
+      "name": "EasyJet",
+      "logo_slug": "easyjet.com",
+      "category": "Travel",
+      "common_code_type": "qrcode",
+      "typical_values": [50, 100, 250],
+      "regions": ["UK", "EU"]
+    },
+    {
+      "name": "Lufthansa",
+      "logo_slug": "lufthansa.com",
+      "category": "Travel",
+      "common_code_type": "qrcode",
+      "typical_values": [50, 100, 250, 500],
+      "regions": ["EU"]
+    },
+    {
+      "name": "Booking.com",
+      "logo_slug": "booking.com",
+      "category": "Travel",
+      "common_code_type": "qrcode",
+      "typical_values": [50, 100, 250, 500],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Expedia",
+      "logo_slug": "expedia.com",
+      "category": "Travel",
+      "common_code_type": "qrcode",
+      "typical_values": [50, 100, 250, 500],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Airbnb",
+      "logo_slug": "airbnb.com",
+      "category": "Travel",
+      "common_code_type": "qrcode",
+      "typical_values": [50, 100, 250, 500],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Tesco Clubcard",
+      "logo_slug": "clubcard.tesco.com",
+      "category": "Loyalty",
+      "common_code_type": "code128",
+      "typical_values": [null],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Boots Advantage Card",
+      "logo_slug": "boots.com",
+      "category": "Loyalty",
+      "common_code_type": "code128",
+      "typical_values": [null],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Sainsbury's Nectar",
+      "logo_slug": "sainsburys.co.uk",
+      "category": "Loyalty",
+      "common_code_type": "code128",
+      "typical_values": [null],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Marks and Spencer Sparks",
+      "logo_slug": "marksandspencer.com",
+      "category": "Loyalty",
+      "common_code_type": "code128",
+      "typical_values": [null],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Costa Coffee",
+      "logo_slug": "costa.co.uk",
+      "category": "Coffee",
+      "common_code_type": "qrcode",
+      "typical_values": [5, 10, 25, 50],
+      "regions": ["UK", "EU"]
+    },
+    {
+      "name": "Pret A Manger",
+      "logo_slug": "pret.com",
+      "category": "Coffee",
+      "common_code_type": "qrcode",
+      "typical_values": [5, 10, 25],
+      "regions": ["UK"]
+    },
+    {
+      "name": "McDonald's",
+      "logo_slug": "mcdonalds.com",
+      "category": "Restaurant",
+      "common_code_type": "qrcode",
+      "typical_values": [5, 10, 25, 50],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Burger King",
+      "logo_slug": "burgerking.com",
+      "category": "Restaurant",
+      "common_code_type": "qrcode",
+      "typical_values": [5, 10, 25, 50],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Subway",
+      "logo_slug": "subway.com",
+      "category": "Restaurant",
+      "common_code_type": "code128",
+      "typical_values": [5, 10, 25],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Zizzi",
+      "logo_slug": "zizzi.com",
+      "category": "Restaurant",
+      "common_code_type": "qrcode",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Frankie & Benny's",
+      "logo_slug": "frankieandbennys.com",
+      "category": "Restaurant",
+      "common_code_type": "qrcode",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Nando's",
+      "logo_slug": "nandos.co.uk",
+      "category": "Restaurant",
+      "common_code_type": "qrcode",
+      "typical_values": [10, 25, 50],
+      "regions": ["UK", "EU"]
+    },
+    {
+      "name": "TGI Friday's",
+      "logo_slug": "tgifridays.co.uk",
+      "category": "Restaurant",
+      "common_code_type": "qrcode",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Wagamama",
+      "logo_slug": "wagamama.com",
+      "category": "Restaurant",
+      "common_code_type": "qrcode",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["UK", "EU"]
+    },
+    {
+      "name": "Waterstones",
+      "logo_slug": "waterstones.com",
+      "category": "Books",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Amazon Prime Video",
+      "logo_slug": "primevideo.com",
+      "category": "Entertainment",
+      "common_code_type": "qrcode",
+      "typical_values": [7.99, 14.99, 50, 100],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Disney Plus",
+      "logo_slug": "disneyplus.com",
+      "category": "Entertainment",
+      "common_code_type": "qrcode",
+      "typical_values": [7.99, 10.99, 50, 100],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Now TV",
+      "logo_slug": "nowtv.com",
+      "category": "Entertainment",
+      "common_code_type": "qrcode",
+      "typical_values": [9.99, 19.99, 50],
+      "regions": ["UK"]
+    },
+    {
+      "name": "BT Sport",
+      "logo_slug": "btsport.com",
+      "category": "Entertainment",
+      "common_code_type": "qrcode",
+      "typical_values": [9.99, 19.99],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Sky",
+      "logo_slug": "sky.com",
+      "category": "Entertainment",
+      "common_code_type": "code128",
+      "typical_values": [25, 50, 100],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Virgin Media",
+      "logo_slug": "virginmedia.com",
+      "category": "Entertainment",
+      "common_code_type": "code128",
+      "typical_values": [25, 50, 100],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Next",
+      "logo_slug": "next.co.uk",
+      "category": "Fashion",
+      "common_code_type": "code128",
+      "typical_values": [25, 50, 100, 250],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Zara",
+      "logo_slug": "zara.com",
+      "category": "Fashion",
+      "common_code_type": "code128",
+      "typical_values": [25, 50, 100, 250],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "H&M",
+      "logo_slug": "hm.com",
+      "category": "Fashion",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100, 250],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Uniqlo",
+      "logo_slug": "uniqlo.com",
+      "category": "Fashion",
+      "common_code_type": "qrcode",
+      "typical_values": [25, 50, 100, 250],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "Clarks",
+      "logo_slug": "clarks.co.uk",
+      "category": "Fashion",
+      "common_code_type": "code128",
+      "typical_values": [25, 50, 100],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Argos",
+      "logo_slug": "argos.co.uk",
+      "category": "Retail",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100, 250],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Curry's",
+      "logo_slug": "currys.co.uk",
+      "category": "Electronics",
+      "common_code_type": "code128",
+      "typical_values": [25, 50, 100, 250],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Maplin",
+      "logo_slug": "maplin.co.uk",
+      "category": "Electronics",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Screwfix",
+      "logo_slug": "screwfix.com",
+      "category": "Home",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100, 250],
+      "regions": ["UK"]
+    },
+    {
+      "name": "B&Q",
+      "logo_slug": "diy.com",
+      "category": "Home",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100, 250],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Wickes",
+      "logo_slug": "wickes.co.uk",
+      "category": "Home",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100, 250],
+      "regions": ["UK"]
+    },
+    {
+      "name": "The Range",
+      "logo_slug": "therange.co.uk",
+      "category": "Home",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Dunelm",
+      "logo_slug": "dunelm.com",
+      "category": "Home",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["UK"]
+    },
+    {
+      "name": "IKEA",
+      "logo_slug": "ikea.com",
+      "category": "Furniture",
+      "common_code_type": "qrcode",
+      "typical_values": [25, 50, 100, 250],
+      "regions": ["US", "UK", "EU"]
+    },
+    {
+      "name": "John Lewis Home",
+      "logo_slug": "johnlewis.com",
+      "category": "Furniture",
+      "common_code_type": "code128",
+      "typical_values": [25, 50, 100, 250],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Pets at Home",
+      "logo_slug": "petsathome.com",
+      "category": "Pets",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50, 100],
+      "regions": ["UK"]
+    },
+    {
+      "name": "Screwfix",
+      "logo_slug": "screwfix.com",
+      "category": "Pets",
+      "common_code_type": "code128",
+      "typical_values": [10, 25, 50],
+      "regions": ["UK"]
+    }
+  ]
+}

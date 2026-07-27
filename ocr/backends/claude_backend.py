@@ -5,6 +5,7 @@ import logging
 import anthropic
 
 from myapp.models import SiteConfiguration
+from ocr.validation import validate_and_score
 
 from .base import (
     OCRBackend, VALID_CODE_TYPES, VALID_CURRENCIES, VALID_ITEM_TYPES,
@@ -194,7 +195,7 @@ class ClaudeOCRBackend(OCRBackend):
         if item_type == 'travelpass' and not (journey_origin and journey_destination):
             item_type = 'giftcard'
 
-        return {
+        extraction = {
             'code': result.get('code') or None,
             'code_type': code_type,
             'name': result.get('name') or None,
@@ -215,3 +216,4 @@ class ClaudeOCRBackend(OCRBackend):
             'travel_time': sanitize_time_or_none(result.get('travel_time')),
             'confidence': float(result.get('confidence') or 0.0),
         }
+        return validate_and_score(extraction)

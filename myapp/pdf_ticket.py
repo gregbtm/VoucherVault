@@ -13,10 +13,13 @@ bundled MuPDF build, so no system package (poppler, ghostscript, etc.) is
 required beyond what's already needed for treepoem's barcode generation.
 """
 import io
+import logging
 
 import fitz
 import zxingcpp
-from PIL import Image
+from PIL import Image, ImageEnhance
+
+logger = logging.getLogger(__name__)
 
 # zxing-cpp's BarcodeFormat enum names, mapped to the code_type strings this
 # app already uses everywhere else (Item.code_type, the create/edit-item
@@ -65,14 +68,65 @@ def decode_barcode_from_image(image):
     Finds and decodes the first barcode in a PIL Image, in the same
     symbology universe the rest of the app already supports. Returns
     (redeem_code, code_type) or (None, None) if nothing decodable is found.
+
+    Tries multiple decoding strategies: direct decode, preprocessing (contrast
+    enhancement), and upscaling for small/blurry codes.
     """
     result = zxingcpp.read_barcode(image)
     if result is None or not result.valid:
+        # Direct decode failed, try preprocessing strategies
+        redeem_code, code_type = _decode_barcode_with_preprocessing(image)
+        if redeem_code:
+            return redeem_code, code_type
         return None, None
+
     code_type = _ZXING_FORMAT_MAP.get(result.format.name, None)
     if code_type is None:
         return None, None
     return result.text, code_type
+
+
+def _decode_barcode_with_preprocessing(image):
+    """
+    Try decoding with preprocessing strategies: contrast enhancement and rotation.
+    Returns (redeem_code, code_type) or (None, None).
+    """
+    # Strategy 1: Contrast enhancement (helps dense barcodes on white backgrounds)
+    for contrast_factor in [1.5, 2.0, 2.5]:
+        try:
+            enhanced = ImageEnhance.Contrast(image).enhance(contrast_factor)
+            result = zxingcpp.read_barcode(enhanced)
+            if result and result.valid:
+                code_type = _ZXING_FORMAT_MAP.get(result.format.name, None)
+                if code_type:
+                    return result.text, code_type
+        except Exception as e:
+            logger.debug(f"Contrast enhancement factor {contrast_factor} failed: {e}")
+
+    # Strategy 2: Rotation (some codes need rotation for decoder to work)
+    for angle in [90, 180, 270]:
+        try:
+            rotated = image.rotate(angle, expand=False)
+            result = zxingcpp.read_barcode(rotated)
+            if result and result.valid:
+                code_type = _ZXING_FORMAT_MAP.get(result.format.name, None)
+                if code_type:
+                    return result.text, code_type
+        except Exception as e:
+            logger.debug(f"Rotation {angle}° failed: {e}")
+
+    # Strategy 3: Upscaling (for small/blurry codes)
+    try:
+        upscaled = image.resize((image.width * 2, image.height * 2), Image.LANCZOS)
+        result = zxingcpp.read_barcode(upscaled)
+        if result and result.valid:
+            code_type = _ZXING_FORMAT_MAP.get(result.format.name, None)
+            if code_type:
+                return result.text, code_type
+    except Exception as e:
+        logger.debug(f"Upscaling failed: {e}")
+
+    return None, None
 
 
 def decode_barcode_from_pdf(pdf_bytes, dpi=300):
@@ -106,6 +160,24 @@ def iter_pdf_pages(pdf_bytes, dpi=300):
         png_bytes = buf.getvalue()
         redeem_code, code_type = decode_barcode_from_image(image)
         yield idx, png_bytes, redeem_code, code_type
+
+
+def extract_text_from_pdf(pdf_bytes):
+    """
+    Extracts all text from a PDF by reading the text layer (faster than
+    OCR, works when text is selectable in the PDF). Returns a dict mapping
+    page index to extracted text, or an empty dict if no text found.
+    """
+    text_by_page = {}
+    try:
+        with fitz.open(stream=pdf_bytes, filetype='pdf') as doc:
+            for page_num, page in enumerate(doc):
+                text = page.get_text()
+                if text.strip():
+                    text_by_page[page_num] = text
+    except Exception as e:
+        logger.debug(f"Failed to extract PDF text: {e}")
+    return text_by_page
 
 
 def pdf_page_to_png_bytes(pdf_bytes, page_number=0, dpi=200):

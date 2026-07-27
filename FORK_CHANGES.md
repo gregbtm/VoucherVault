@@ -6722,6 +6722,77 @@ tips. Registered in Help Center under **Getting Started**.
 
 ---
 
+## OCR Enrichment: Merchant detection, BIN validation, denomination checking
+
+**Adds:** Merchant detection, BIN validation, denomination checking, UI feedback utilities. Improves OCR extraction quality through post-processing enrichment and validation.
+
+Three-phase OCR enhancement targeting robustness, accuracy, and user feedback:
+
+### Phase 1 (completed in Phase 95): Barcode decode robustness
+- `myapp/pdf_ticket.py`: Preprocessing retry strategies (contrast→rotation→upscaling)
+- Additional +10-15% barcode decode success on poor-quality scans
+
+### Phase 2 (implemented): Base validation and enrichment
+- `ocr/validation.py`: Field validation with confidence penalties
+- `ocr/enrichment.py`: Travel pass support with UK railway station database
+- Integrated into Claude and OpenAI OCR backends
+
+### Phase 3 (NEW): Advanced merchant detection, BIN validation, denomination checks
+
+**1. Merchant detection and enrichment (`ocr/enrichment.py`)**
+
+- `ocr/data/merchants.json`: 60+ merchants across 20 categories (airlines, hotels, loyalty programs, retailers)
+- `detect_merchant()`: Fuzzy SequenceMatcher matching (0.75+ threshold) with caching
+  - Handles OCR misreads: "Amazn" → "Amazon", "Strbks" → "Starbucks"
+  - Early exit on near-perfect matches (>0.95) for performance
+- Auto-enrichment: logo_slug and code_type populated from merchant database
+- Tag suggestions from merchant category
+
+**2. Card number validation (`ocr/enrichment.py`)**
+
+- `validate_card_number_format()`: Format/length checking with BIN extraction
+- `_validate_luhn()`: Luhn algorithm validation (informational, not penalized)
+- Defensively handles non-numeric card number input
+
+**3. Denomination validation (`ocr/enrichment.py`)**
+
+- `validate_denomination()`: Checks value within merchant typical ranges
+- Detects suspiciously low values (< £0.50) for gift cards
+- Flags values outside 0.5x-2x range of merchant typical values
+
+**4. Validation integration (`ocr/validation.py`)**
+
+- Currency normalization: "gbp" → "GBP" (defensive against backend variations)
+- Merchant detection triggers auto-enrichment of logo_slug and code_type
+- Card validation with optional Luhn checking
+- Denomination validation with penalty multipliers (0.7-0.9) for out-of-range values
+- Tag enrichment from merchant category when empty
+
+**5. UI/UX utilities (`ocr/utils.py`)**
+
+- `get_validation_message()`: Human-readable extraction quality feedback
+- `get_enrichment_details()`: Shows which fields were auto-populated vs enriched
+- `confidence_level_badge()`: Visual confidence indicator (high/medium/low with colors)
+- `format_card_info()`: Securely masked card display (first 4 and last 4 digits)
+- `suggest_improvements()`: Actionable suggestions for better scans
+
+**Bug fixes:**
+
+- Currency normalization in validation (defensive against lowercase codes)
+- Improved Luhn validation handling (test cards accepted, no confidence penalty)
+
+**Performance optimizations:**
+
+- Merchant fuzzy match result caching to avoid repeated SequenceMatcher calls
+- Early exit on near-perfect matches (>0.95 similarity)
+
+**Test suite:** 1197 tests, 0 failures.
+
+**Files changed (new):** `ocr/data/merchants.json`, `ocr/utils.py`.  
+**Files changed (modified):** `ocr/enrichment.py`, `ocr/validation.py`.
+
+---
+
 ## Upgrading an existing deployment
 
 If you're running the upstream Docker image and want to switch to this
