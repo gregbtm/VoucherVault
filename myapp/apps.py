@@ -8,3 +8,4 @@ class MyappConfig(AppConfig):
     def ready(self):
         import myapp.signals
         import myapp.checks  # noqa: F401 — registers system checks
+        import myapp.cache_invalidation  # noqa: F401 — registers cache invalidation signals

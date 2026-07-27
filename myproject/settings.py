@@ -373,6 +373,8 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_CLASSES': ['api.throttling.WriteRateThrottle'],
     'DEFAULT_THROTTLE_RATES': {
         'write': os.environ.get('API_WRITE_RATE_LIMIT', '60/minute'),
+        'anon_write': os.environ.get('API_ANON_WRITE_RATE_LIMIT', '10/minute'),
+        'auth_read': os.environ.get('API_AUTH_READ_RATE_LIMIT', '1000/hour'),
     },
 }
 
