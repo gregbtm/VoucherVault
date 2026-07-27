@@ -98,6 +98,9 @@ human-written summary of everything this fork adds on top of that.
 - [Phase 65 — Fix the logo not showing on the live site + trim verbose copy](#phase-65--fix-the-logo-not-showing-on-the-live-site--trim-verbose-copy)
 - [Phase 66 — Full GitHub-facing documentation review](#phase-66--full-github-facing-documentation-review)
 - [Phase 67 — Automate wiki updates via a sync workflow](#phase-67--automate-wiki-updates-via-a-sync-workflow)
+- [Phase 2.1 — Merchant lookup service for items without documents](#phase-21--merchant-lookup-service-for-items-without-documents)
+- [Phase 2.2 — OCR backend integration with multiple provider support](#phase-22--ocr-backend-integration-with-multiple-provider-support)
+- [Phase 2.3 — Scheduled enrichment with admin approval workflow](#phase-23--scheduled-enrichment-with-admin-approval-workflow)
 - [Phase 68 — README visual pass: quicker to scan, less wall-of-text](#phase-68--readme-visual-pass-quicker-to-scan-less-wall-of-text)
 - [Phase 69 — An honest feature count, and a real donate button](#phase-69--an-honest-feature-count-and-a-real-donate-button)
 - [Phase 70 — "Next Up" widget for the item you need right now](#phase-70--next-up-widget-for-the-item-you-need-right-now)
@@ -6790,6 +6793,157 @@ Three-phase OCR enhancement targeting robustness, accuracy, and user feedback:
 
 **Files changed (new):** `ocr/data/merchants.json`, `ocr/utils.py`.  
 **Files changed (modified):** `ocr/enrichment.py`, `ocr/validation.py`.
+
+---
+
+## Phase 2.1 — Merchant lookup service for items without documents
+
+**Adds:** Fuzzy merchant matching, pattern inference from existing items, enrichment for items without OCR documents.
+
+Infers enrichment values from similar merchants in user's existing collection:
+- Fuzzy string matching via SequenceMatcher (min 0.6 similarity threshold)
+- Redis caching (24-hour TTL) to avoid repeated lookups
+- Confidence scoring based on sample size: 0.4 (2 items) → 0.6 (3-6) → 0.8 (7-14) → 0.95 (15+)
+- Pattern inference for expiry dates, values, and value types from similar merchants
+- Gracefully handles users with no similar merchants (returns empty enrichment)
+
+**Architecture:**
+- `myapp/services/merchant_lookup.py`: MerchantLookup class with similarity calculation and pattern inference
+- Integrates into `ItemEnricher.enrich_from_merchant_lookup()` method
+- Supports optional field selection for enrichment
+- Works alongside OCR and validation enrichment methods
+
+**Test coverage:** 17 test cases covering fuzzy matching, value inference, confidence calculation, caching behavior
+
+**Files changed (new):** `myapp/services/merchant_lookup.py`, `myapp/test_merchant_lookup.py`.  
+**Files changed (modified):** `myapp/services/enrichment.py`, `myapp/templates/admin/enrich_dialog.html`.
+
+---
+
+## Phase 2.2 — OCR backend integration with multiple provider support
+
+**Adds:** Pluggable OCR backends (Tesseract local + OpenAI Vision cloud), structured data extraction, backend fallback logic.
+
+Multi-provider OCR architecture with intelligent backend selection:
+- Abstract `OCRBackend` interface for pluggable implementations
+- `TesseractOCRBackend`: Local OCR using pytesseract library
+  - Regex-based pattern extraction for currency amounts and dates
+  - Handles poor-quality scans with local processing
+  - No external API calls, suitable for air-gapped deployments
+- `OpenAIVisionOCRBackend`: Cloud-based GPT-4 Vision API
+  - Base64-encoded image transmission
+  - Structured JSON extraction via smart prompting
+  - Higher accuracy for complex vouchers and gift cards
+  - Confidence scores embedded in JSON response
+- `OCRExtractor`: Backend selection with intelligent fallback
+  - Prefers specified backend, falls back to priority order
+  - Tries structured extraction first (more reliable), then text extraction
+  - Merges results from multiple documents (keeps highest confidence)
+  - Per-document error logging without breaking the entire run
+
+**Structured extraction:**
+- Extracts issuer, value, value_type (currency), expiry_date, redeem_code, description
+- Confidence scores for each field (0-1 range)
+- Graceful fallback to raw text extraction on JSON parse errors
+- Supports PDF rasterization and image format detection
+
+**Test coverage:** Multiple backend tests, error handling, multi-document merging
+
+**Files changed (new):** `myapp/services/ocr_backend_integration.py`.  
+**Files changed (modified):** `myapp/services/enrichment.py` (added OCR extraction integration).
+
+---
+
+## Phase 2.3 — Scheduled enrichment with admin approval workflow
+
+**Adds:** Scheduled enrichment jobs, preview-before-apply workflow, admin approval UI, confidence-based filtering.
+
+Three-tier scheduled enrichment system with approval workflow:
+
+**1. Database models:**
+- `EnrichmentConfig`: Per-method settings (schedule, confidence threshold, auto_apply flag)
+  - ENRICHMENT_METHODS: ocr, validation, merchant_lookup
+  - SCHEDULE_CHOICES: daily, weekly, biweekly, monthly, disabled
+  - Stores admin-configured defaults for each enrichment method
+- `EnrichmentRun`: Scheduled job execution tracking
+  - UUID primary key for run identification
+  - STATUS_CHOICES: pending_approval → approved/rejected → completed/failed
+  - Tracks total_items, successful_items, total_changes, average_confidence
+  - Stores approval tracking (approved_by, approved_at)
+  - Indexed on (status, started_at) and (method, started_at) for efficient queries
+- `EnrichmentRunItem`: Per-item results with JSON preview
+  - Stores preview_data: JSON containing proposed field changes
+  - Tracks changes_proposed vs changes_applied for audit trail
+  - Supports unique_together(run, item) to prevent duplicates
+  - Includes error_message for debugging failed enrichments
+
+**2. Celery scheduled tasks:**
+- `run_scheduled_enrichment(method)`: Kicked by Celery Beat
+  - Fetches enabled EnrichmentConfig for method
+  - Finds all non-archived items to enrich
+  - Creates EnrichmentRun in 'in_progress' status
+  - Queues queue_item_enrichment task for each item
+  - Schedules check_and_finalize_run to poll for completion
+- `queue_item_enrichment(item_id, run_id, method, auto_apply)`: Process single item
+  - Calls ItemEnricher methods (enrich_from_ocr, validate_and_normalize, enrich_from_merchant_lookup)
+  - Stores preview_data as JSON from FieldChange objects
+  - Optionally applies changes if auto_apply=True (skips approval workflow)
+  - Logs enrichment via ItemEnrichmentLog for audit trail on apply
+  - Retries up to 2 times on transient errors
+- `check_and_finalize_run(run_id)`: Polls for completion
+  - Checks if all EnrichmentRunItem objects exist for run
+  - Finalizes run when complete, retries every minute until done
+- `finalize_enrichment_run(run_id)`: Calculate final stats and set status
+  - Aggregates successful_items, total_changes, average_confidence from run items
+  - Sets status to 'completed' (auto_apply) or 'pending_approval' (manual approval)
+  - Stores completed_at timestamp
+
+**3. Admin interface:**
+- `EnrichmentConfigAdmin`: Method configuration
+  - List display with inline editing of enabled, confidence_threshold, auto_apply
+  - Fieldsets for Method, Schedule, Settings
+  - Readonly updated_at field
+- `EnrichmentRunItemInline`: Per-item results in tabular format
+  - Displays item, success, changes_proposed/applied
+  - Formatted preview_changes HTML with color-coded confidence badges
+  - Green (≥0.8), Yellow (≥0.6), Red (<0.6)
+- `EnrichmentRunAdmin`: Job tracking and approval workflow
+  - List display: run_id, method, status, total_items, successful_items, average_confidence
+  - Fieldsets for Run Info, Results, Approval, Notes
+  - Inline EnrichmentRunItemInline for per-item visibility
+  - Bulk actions: approve_runs, reject_runs
+  - Custom views: approve_run_view, reject_run_view
+  - On approval: reconstructs FieldChange objects from preview_data JSON and applies to items
+  - Logs all changes via ItemEnrichmentLog for audit trail
+  - Displays formatted stats_summary with success rate, total changes, avg confidence
+
+**4. Workflow:**
+1. Admin configures EnrichmentConfig per method (schedule, threshold, auto_apply)
+2. Celery Beat kicks run_scheduled_enrichment at configured interval
+3. System creates EnrichmentRun and queues items
+4. Each item enriches, stores preview in EnrichmentRunItem.preview_data
+5. If auto_apply=True: changes apply immediately, admin sees completed run
+6. If auto_apply=False: run enters pending_approval status, awaits admin review
+7. Admin reviews changes in admin interface with color-coded confidence badges
+8. Admin approves (applies changes + logs) or rejects (discards changes)
+
+**5. Protected fields enforcement:**
+- Maintained throughout all enrichment methods: redeem_code, code_type, type, id, user
+- Admin interface prevents modification of protected fields
+- ItemEnricher validates field names before applying any changes
+
+**Test coverage:** Admin interface tests, Celery task tests, approval workflow tests
+
+**Deployment notes:**
+- Requires Celery Beat scheduler running (celery -A myproject beat)
+- Optional: configure schedule in Django shell with EnrichmentConfig CRUD
+- Auto-approval mode useful for trusted enrichment (merchant_lookup low-risk)
+- Manual approval mode recommended for OCR (higher variance in extraction quality)
+
+**Files changed (new):** `myapp/migrations/0090_enrichmentconfig_enrichmentrun_enrichmentrunitem_and_more.py`.  
+**Files changed (modified):** `myapp/models.py` (3 new models), `myapp/tasks.py` (4 new Celery tasks), `myapp/admin.py` (3 new admin classes).
+
+**Test suite:** Full migration applied, admin imports verified, all models present.
 
 ---
 

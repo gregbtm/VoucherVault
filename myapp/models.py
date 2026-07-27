@@ -1388,3 +1388,165 @@ class ItemEnrichmentLog(models.Model):
     def __str__(self):
         return f"{self.item.name} - {self.field_name} ({self.get_enrichment_type_display()})"
 
+
+class EnrichmentConfig(models.Model):
+    """
+    Admin configuration for scheduled enrichment operations.
+    Allows enabling/disabling specific enrichment types and setting defaults.
+    """
+    ENRICHMENT_METHODS = (
+        ('ocr', 'OCR Rescan - Extract from attached documents'),
+        ('validation', 'Validation & Normalization - Correct existing data'),
+        ('merchant_lookup', 'Merchant Lookup - Infer from similar items'),
+    )
+
+    SCHEDULE_CHOICES = (
+        ('daily', 'Every Day at 2 AM'),
+        ('weekly', 'Every Monday at 2 AM'),
+        ('biweekly', 'Every 2 Weeks at 2 AM'),
+        ('monthly', 'First of Month at 2 AM'),
+        ('disabled', 'Disabled'),
+    )
+
+    method = models.CharField(
+        max_length=50, choices=ENRICHMENT_METHODS, unique=True,
+        help_text="Which enrichment method this config applies to."
+    )
+    enabled = models.BooleanField(
+        default=False,
+        help_text="Enable scheduled enrichment for this method."
+    )
+    schedule = models.CharField(
+        max_length=20, choices=SCHEDULE_CHOICES, default='disabled',
+        help_text="How often to run scheduled enrichment."
+    )
+    confidence_threshold = models.DecimalField(
+        max_digits=3, decimal_places=2, default=Decimal('0.5'),
+        validators=[MinValueValidator(0), MaxValueValidator(1)],
+        help_text="Minimum confidence score to apply enrichment (0-1)."
+    )
+    auto_apply = models.BooleanField(
+        default=False,
+        help_text="Automatically apply changes without admin approval (if False, shows preview)."
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Enrichment Configurations"
+
+    def __str__(self):
+        return f"{self.get_method_display()} ({self.get_schedule_display()})"
+
+
+class EnrichmentRun(models.Model):
+    """
+    Tracks a scheduled enrichment job: when it ran, how many items, approval status.
+    Contains per-item results in related EnrichmentRunItem objects.
+    """
+    STATUS_CHOICES = (
+        ('pending_approval', 'Pending Approval - Preview ready'),
+        ('approved', 'Approved - Changes applied'),
+        ('rejected', 'Rejected - Changes not applied'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    method = models.CharField(
+        max_length=50, choices=EnrichmentConfig.ENRICHMENT_METHODS,
+        help_text="Which enrichment method was run."
+    )
+    status = models.CharField(
+        max_length=50, choices=STATUS_CHOICES, default='in_progress',
+        db_index=True,
+        help_text="Current status of this enrichment run."
+    )
+    total_items = models.PositiveIntegerField(
+        default=0,
+        help_text="Total items processed in this run."
+    )
+    successful_items = models.PositiveIntegerField(
+        default=0,
+        help_text="Items with at least one successful enrichment."
+    )
+    total_changes = models.PositiveIntegerField(
+        default=0,
+        help_text="Total field changes made across all items."
+    )
+    average_confidence = models.DecimalField(
+        max_digits=3, decimal_places=2, default=Decimal('0.0'),
+        validators=[MinValueValidator(0), MaxValueValidator(1)],
+        help_text="Average confidence score of all changes."
+    )
+    confidence_threshold = models.DecimalField(
+        max_digits=3, decimal_places=2, default=Decimal('0.5'),
+        validators=[MinValueValidator(0), MaxValueValidator(1)],
+        help_text="Confidence threshold used for this run."
+    )
+    started_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='approved_enrichment_runs',
+        help_text="Admin who approved this enrichment run."
+    )
+    notes = models.TextField(
+        blank=True,
+        help_text="Admin notes about this run (e.g., rejection reason)."
+    )
+
+    class Meta:
+        ordering = ['-started_at']
+        indexes = [
+            models.Index(fields=['status', 'started_at']),
+            models.Index(fields=['method', 'started_at']),
+        ]
+
+    def __str__(self):
+        return f"Enrichment Run {self.id.hex[:8]} ({self.get_method_display()}) - {self.get_status_display()}"
+
+
+class EnrichmentRunItem(models.Model):
+    """
+    Per-item results for a scheduled enrichment run.
+    Tracks what changes were proposed and whether they were applied.
+    """
+    run = models.ForeignKey(
+        EnrichmentRun, on_delete=models.CASCADE, related_name='items'
+    )
+    item = models.ForeignKey(
+        Item, on_delete=models.CASCADE, related_name='enrichment_run_results'
+    )
+    success = models.BooleanField(
+        default=False,
+        help_text="Whether enrichment was successful for this item."
+    )
+    changes_proposed = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of field changes proposed for this item."
+    )
+    changes_applied = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of field changes actually applied."
+    )
+    error_message = models.TextField(
+        blank=True,
+        help_text="Error message if enrichment failed for this item."
+    )
+    preview_data = models.JSONField(
+        default=dict, blank=True,
+        help_text="JSON preview of proposed changes before approval."
+    )
+
+    class Meta:
+        ordering = ['-run__started_at']
+        indexes = [
+            models.Index(fields=['run', 'item']),
+        ]
+        unique_together = ('run', 'item')
+
+    def __str__(self):
+        return f"{self.item.name} in {self.run.id.hex[:8]}"
+

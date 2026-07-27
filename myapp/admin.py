@@ -7,8 +7,9 @@ from django.utils.translation import gettext_lazy as _
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.http import JsonResponse
+from django.utils import timezone
 from decimal import Decimal
-from .services.enrichment import BulkEnricher
+from .services.enrichment import BulkEnricher, ItemEnricher, FieldChange
 
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'apprise_urls')
@@ -188,6 +189,235 @@ class TagAdmin(admin.ModelAdmin):
     search_fields = ('name', 'user__username')
     list_filter = ('user',)
 
+class EnrichmentConfigAdmin(admin.ModelAdmin):
+    """Admin interface for enrichment method configuration."""
+    list_display = ('get_method_display', 'enabled', 'get_schedule_display', 'confidence_threshold', 'auto_apply', 'updated_at')
+    list_editable = ('enabled', 'confidence_threshold', 'auto_apply')
+    list_filter = ('enabled', 'schedule')
+    fieldsets = (
+        (_('Method'), {
+            'fields': ('method',),
+            'description': _('Which enrichment method this configuration applies to.')
+        }),
+        (_('Schedule'), {
+            'fields': ('enabled', 'schedule'),
+            'description': _('Enable/disable this method and choose how often to run it.')
+        }),
+        (_('Settings'), {
+            'fields': ('confidence_threshold', 'auto_apply'),
+            'description': _('Confidence threshold and whether to auto-apply changes without admin review.')
+        }),
+    )
+    readonly_fields = ('updated_at',)
+
+    def get_schedule_display(self, obj):
+        return obj.get_schedule_display()
+    get_schedule_display.short_description = _('Schedule')
+
+
+class EnrichmentRunItemInline(admin.TabularInline):
+    """Inline display of enrichment results for an item."""
+    model = EnrichmentRunItem
+    extra = 0
+    readonly_fields = ('item', 'success', 'changes_proposed', 'changes_applied', 'error_message', 'preview_changes')
+    can_delete = False
+    fields = ('item', 'success', 'changes_proposed', 'changes_applied', 'preview_changes', 'error_message')
+
+    def preview_changes(self, obj):
+        """Display proposed changes from JSON preview."""
+        if not obj.preview_data or 'changes' not in obj.preview_data:
+            return '-'
+        changes = obj.preview_data['changes']
+        if not changes:
+            return 'No changes'
+        html = '<ul style="margin: 0;">'
+        for change in changes:
+            confidence = change.get('confidence_score', 0)
+            confidence_color = '#28a745' if confidence >= 0.8 else '#ffc107' if confidence >= 0.6 else '#dc3545'
+            html += f'<li><strong>{change["field_name"]}</strong>: {change.get("old_value", "null")} → {change.get("new_value", "null")} '
+            html += f'<span style="color: {confidence_color}; font-weight: bold;">({confidence:.1%})</span></li>'
+        html += '</ul>'
+        return format_html(html)
+    preview_changes.short_description = _('Preview')
+
+
+class EnrichmentRunAdmin(admin.ModelAdmin):
+    """Admin interface for enrichment run tracking and approval."""
+    list_display = ('run_id', 'get_method_display', 'get_status_display', 'total_items', 'successful_items', 'total_changes', 'average_confidence', 'started_at', 'actions_buttons')
+    list_filter = ('status', 'method', 'started_at')
+    search_fields = ('id',)
+    readonly_fields = ('id', 'started_at', 'completed_at', 'approved_at', 'approved_by', 'stats_summary')
+    inlines = [EnrichmentRunItemInline]
+    actions = ['approve_runs', 'reject_runs']
+
+    fieldsets = (
+        (_('Run Information'), {
+            'fields': ('id', 'method', 'status', 'started_at', 'completed_at'),
+            'description': _('Basic information about this enrichment run.')
+        }),
+        (_('Results'), {
+            'fields': ('total_items', 'successful_items', 'total_changes', 'average_confidence', 'stats_summary'),
+            'description': _('Summary of enrichment results.')
+        }),
+        (_('Approval'), {
+            'fields': ('approved_by', 'approved_at', 'confidence_threshold'),
+            'description': _('Approval workflow tracking.')
+        }),
+        (_('Notes'), {
+            'fields': ('notes',),
+            'description': _('Admin notes about this run.')
+        }),
+    )
+
+    def run_id(self, obj):
+        """Display truncated run ID."""
+        return obj.id.hex[:8]
+    run_id.short_description = _('Run ID')
+
+    def stats_summary(self, obj):
+        """Display formatted summary of run stats."""
+        return format_html(
+            '<strong>Success Rate:</strong> {}/{} ({:.1%})<br>'
+            '<strong>Total Changes:</strong> {}<br>'
+            '<strong>Avg Confidence:</strong> {:.1%}',
+            obj.successful_items,
+            obj.total_items,
+            obj.successful_items / max(obj.total_items, 1),
+            obj.total_changes,
+            obj.average_confidence
+        )
+    stats_summary.short_description = _('Summary')
+
+    def actions_buttons(self, obj):
+        """Display action buttons for approval/rejection."""
+        if obj.status == 'pending_approval':
+            approve_url = reverse('admin:approve_enrichment_run', args=[obj.id])
+            reject_url = reverse('admin:reject_enrichment_run', args=[obj.id])
+            return format_html(
+                '<a class="button" href="{approve_url}">Approve</a>&nbsp;'
+                '<a class="button" style="background-color: #dc3545;" href="{reject_url}">Reject</a>',
+                approve_url=approve_url,
+                reject_url=reject_url,
+            )
+        return obj.get_status_display()
+    actions_buttons.short_description = _('Actions')
+
+    def approve_runs(self, request, queryset):
+        """Bulk action to approve runs."""
+        updated = 0
+        for run in queryset.filter(status='pending_approval'):
+            run.status = 'approved'
+            run.approved_by = request.user
+            run.approved_at = timezone.now()
+            run.save()
+
+            # Apply all changes in the run's items
+            from .services.enrichment import ItemEnricher
+            enricher = ItemEnricher(created_by=request.user)
+            for run_item in run.items.all():
+                if run_item.preview_data and 'changes' in run_item.preview_data:
+                    # Reconstruct FieldChange objects from preview
+                    from .services.enrichment import FieldChange
+                    changes = [
+                        FieldChange(
+                            field_name=c['field_name'],
+                            old_value=c['old_value'],
+                            new_value=c['new_value'],
+                            confidence_score=Decimal(str(c['confidence_score'])),
+                            reason=c['reason'],
+                        )
+                        for c in run_item.preview_data['changes']
+                    ]
+                    success, error = enricher.apply_changes(run_item.item, changes)
+                    if success:
+                        enricher.log_enrichment(run_item.item, str(run.id), changes, run.method)
+                        run_item.changes_applied = len(changes)
+                        run_item.success = True
+                        run_item.save()
+                    updated += 1
+
+        messages.success(request, f"Approved {updated} enrichment runs.")
+    approve_runs.short_description = _('Approve selected enrichment runs')
+
+    def reject_runs(self, request, queryset):
+        """Bulk action to reject runs."""
+        updated = queryset.filter(status='pending_approval').update(
+            status='rejected',
+            approved_by=request.user,
+            approved_at=timezone.now(),
+        )
+        messages.success(request, f"Rejected {updated} enrichment runs.")
+    reject_runs.short_description = _('Reject selected enrichment runs')
+
+    def get_urls(self):
+        """Add custom approval/rejection endpoints."""
+        urls = super().get_urls()
+        custom_urls = [
+            path('<uuid:run_id>/approve/', self.admin_site.admin_view(self.approve_run_view), name='approve_enrichment_run'),
+            path('<uuid:run_id>/reject/', self.admin_site.admin_view(self.reject_run_view), name='reject_enrichment_run'),
+        ]
+        return custom_urls + urls
+
+    def approve_run_view(self, request, run_id):
+        """View to approve a single enrichment run."""
+        from django.http import HttpResponseRedirect
+        try:
+            run = EnrichmentRun.objects.get(id=run_id)
+            if run.status == 'pending_approval':
+                run.status = 'approved'
+                run.approved_by = request.user
+                run.approved_at = timezone.now()
+                run.save()
+
+                # Apply all changes
+                from .services.enrichment import ItemEnricher, FieldChange
+                enricher = ItemEnricher(created_by=request.user)
+                for run_item in run.items.all():
+                    if run_item.preview_data and 'changes' in run_item.preview_data:
+                        changes = [
+                            FieldChange(
+                                field_name=c['field_name'],
+                                old_value=c['old_value'],
+                                new_value=c['new_value'],
+                                confidence_score=Decimal(str(c['confidence_score'])),
+                                reason=c['reason'],
+                            )
+                            for c in run_item.preview_data['changes']
+                        ]
+                        success, error = enricher.apply_changes(run_item.item, changes)
+                        if success:
+                            enricher.log_enrichment(run_item.item, str(run.id), changes, run.method)
+                            run_item.changes_applied = len(changes)
+                            run_item.success = True
+                            run_item.save()
+
+                messages.success(request, f"Approved enrichment run {run_id.hex[:8]} and applied changes.")
+            else:
+                messages.warning(request, f"Run is already {run.get_status_display().lower()}.")
+        except EnrichmentRun.DoesNotExist:
+            messages.error(request, "Enrichment run not found.")
+
+        return HttpResponseRedirect(reverse('admin:myapp_enrichmentrun_change', args=[run_id]))
+
+    def reject_run_view(self, request, run_id):
+        """View to reject a single enrichment run."""
+        from django.http import HttpResponseRedirect
+        try:
+            run = EnrichmentRun.objects.get(id=run_id)
+            if run.status == 'pending_approval':
+                run.status = 'rejected'
+                run.approved_by = request.user
+                run.approved_at = timezone.now()
+                run.save()
+                messages.success(request, f"Rejected enrichment run {run_id.hex[:8]}.")
+            else:
+                messages.warning(request, f"Run is already {run.get_status_display().lower()}.")
+        except EnrichmentRun.DoesNotExist:
+            messages.error(request, "Enrichment run not found.")
+
+        return HttpResponseRedirect(reverse('admin:myapp_enrichmentrun_change', args=[run_id]))
+
+
 admin.site.register(Item, ItemAdmin)
 admin.site.register(Transaction)
 admin.site.register(AppSettings, AppSettingsAdmin)
@@ -195,3 +425,5 @@ admin.site.register(UserPreference, UserPreferenceAdmin)
 admin.site.register(Wallet, WalletAdmin)
 admin.site.register(Tag, TagAdmin)
 admin.site.register(Document, DocumentAdmin)
+admin.site.register(EnrichmentConfig, EnrichmentConfigAdmin)
+admin.site.register(EnrichmentRun, EnrichmentRunAdmin)
