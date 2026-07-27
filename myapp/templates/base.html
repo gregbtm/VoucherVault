@@ -78,6 +78,9 @@
   <!-- Phase 6: Accessibility (WCAG 2.1 AA) -->
   <link href="{% static 'assets/css/accessibility.css' %}" rel="stylesheet">
 
+  <!-- Phase 7: Offline Sync -->
+  <link href="{% static 'assets/css/offline-sync.css' %}" rel="stylesheet">
+
   <style>
     /* Network status indicator styles */
     .network-status {
@@ -779,6 +782,9 @@
 
   <!-- Phase 6: Accessibility (WCAG 2.1 AA) -->
   <script src="{% static 'assets/js/accessibility.js' %}"></script>
+
+  <!-- Phase 7: Offline Sync Manager -->
+  <script src="{% static 'assets/js/offline-sync-manager.js' %}"></script>
 
   <!-- Service Worker Message Handler for PWA Updates -->
   <script nonce="{{ request.csp_nonce }}">
