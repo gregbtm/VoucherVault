@@ -3966,6 +3966,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
             'Purge Old Import Jobs',
             'Login Spike Alert',
             'Email Expiry Digest',
+            'Process Webhook Retries',
         })
 
     def test_update_check_and_upstream_check_run_hourly_not_daily(self):

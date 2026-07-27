@@ -165,13 +165,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Uses the Anchore GitHub Actions (binary download) rather than
+      # `docker run anchore/syft:latest` / `anchore/grype:latest` - the raw
+      # docker pull was intermittently hitting Docker Hub registry timeouts
+      # ("context deadline exceeded") on hosted runners, failing CI on
+      # otherwise-unrelated commits.
       - name: Generate SBOM with Syft
-        run: |
-          docker run --rm -v "$PWD:/pwd" anchore/syft:latest /pwd -o cyclonedx-json > sbom.json
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sbom.json
+          upload-artifact: false
 
       - name: Scan SBOM with Grype
-        run: |
-          docker run --rm -v "$PWD:/pwd" anchore/grype:latest sbom:/pwd/sbom.json --fail-on high
+        uses: anchore/scan-action@v4
+        with:
+          sbom: sbom.json
+          fail-build: true
+          severity-cutoff: high
 
       - name: Upload SBOM artifact
         if: always()

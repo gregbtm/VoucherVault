@@ -1,6 +1,7 @@
 """Tests for merchant lookup enrichment service."""
 
 from decimal import Decimal
+from django.core.cache import cache
 from django.test import TestCase
 from django.contrib.auth.models import User
 from myapp.models import Item
@@ -12,11 +13,22 @@ class MerchantLookupTestCase(TestCase):
 
     def setUp(self):
         """Create test users and items."""
+        # _find_similar_items caches by (user.id, issuer); LocMemCache isn't
+        # reset between test methods the way the DB is, so a stale entry from
+        # an earlier test reusing the same issuer name (e.g. 'Starbucks')
+        # would otherwise leak in here.
+        cache.clear()
         self.user = User.objects.create_user('testuser', 'test@example.com', 'testpass123')
 
     def _create_test_item(self, name='Test Item', issuer=None, expiry_date=None,
-                         value=None, value_type=None, user=None, set_defaults=True):
-        """Helper to create test items with required fields."""
+                         value=None, value_type=None, user=None, set_defaults=True, save=True):
+        """Helper to build test items with required fields.
+
+        save=False returns an unsaved instance so 'empty' fields can be left
+        as None to simulate an item mid-enrichment - persisted Items enforce
+        NOT NULL on issuer/expiry_date/value at the DB level, so a genuinely
+        empty target item can only exist pre-save.
+        """
         if user is None:
             user = self.user
 
@@ -28,23 +40,26 @@ class MerchantLookupTestCase(TestCase):
         if value_type is None and set_defaults:
             value_type = 'GBP'
 
-        return Item.objects.create(
+        item = Item(
             user=user,
             name=name,
             type='giftcard',
             issuer=issuer,
             expiry_date=expiry_date,
             value=value,
-            value_type=value_type or 'GBP',
+            value_type=value_type,
             redeem_code='TEST123',
             code_type='code128'
         )
+        if save:
+            item.save()
+        return item
 
     def test_find_similar_items_exact_match(self):
         """Test finding items with exact issuer match."""
         self._create_test_item(issuer='Starbucks', value=Decimal('25.00'), set_defaults=True)
         self._create_test_item(issuer='Starbucks', value=Decimal('50.00'), set_defaults=True)
-        self._create_test_item(issuer='Starbucks', set_defaults=False)  # Target with no value
+        self._create_test_item(issuer='Starbucks', value=Decimal('0.00'), set_defaults=True)  # Target with no value
 
         lookup = MerchantLookup(self.user)
         similar = lookup._find_similar_items('Starbucks')
@@ -67,14 +82,11 @@ class MerchantLookupTestCase(TestCase):
     def test_infer_expiry_date(self):
         """Test inferring expiry date from similar items."""
         expiry = '2025-12-31'
-        self._create_test_item(issuer='Starbucks', expiry_date=expiry)
-        self._create_test_item(issuer='Starbucks', expiry_date=expiry)
+        item1 = self._create_test_item(issuer='Starbucks', expiry_date=expiry)
+        item2 = self._create_test_item(issuer='Starbucks', expiry_date=expiry)
         self._create_test_item(issuer='Starbucks', expiry_date='2026-01-15')
 
-        similar = [
-            Item.objects.get(issuer='Starbucks', expiry_date='2025-12-31'),
-            Item.objects.get(issuer='Starbucks', expiry_date='2025-12-31'),
-        ]
+        similar = [item1, item2]
 
         lookup = MerchantLookup(self.user)
         inferred_date, confidence = lookup._infer_expiry_date(similar)
@@ -152,7 +164,7 @@ class MerchantLookupTestCase(TestCase):
         self._create_test_item(issuer='Starbucks', value=Decimal('75.00'), set_defaults=True)
 
         # Target item with no value
-        target_item = self._create_test_item(issuer='Starbucks', value=None, set_defaults=False)
+        target_item = self._create_test_item(issuer='Starbucks', value=None, set_defaults=False, save=False)
 
         lookup = MerchantLookup(self.user)
         enrichment = lookup.enrich_from_merchant(target_item, confidence_threshold=Decimal('0.6'))
@@ -168,7 +180,7 @@ class MerchantLookupTestCase(TestCase):
         self._create_test_item(issuer='Starbucks', value=Decimal('25.00'), set_defaults=True)
         self._create_test_item(issuer='Starbucks', value=Decimal('50.00'), set_defaults=True)
 
-        target_item = self._create_test_item(issuer='Starbucks', value=None, set_defaults=False)
+        target_item = self._create_test_item(issuer='Starbucks', value=None, set_defaults=False, save=False)
 
         # With high threshold (0.8), should not infer
         lookup = MerchantLookup(self.user)
@@ -200,7 +212,7 @@ class MerchantLookupTestCase(TestCase):
 
     def test_enrich_from_merchant_empty_issuer(self):
         """Test enrichment with empty issuer returns empty dict."""
-        target_item = self._create_test_item(issuer=None)
+        target_item = self._create_test_item(issuer=None, save=False)
 
         lookup = MerchantLookup(self.user)
         enrichment = lookup.enrich_from_merchant(target_item)
@@ -222,21 +234,17 @@ class MerchantLookupTestCase(TestCase):
 
     def test_integration_enrich_from_merchant_multiple_fields(self):
         """Test enriching multiple fields from merchant lookup."""
-        # Create comprehensive similar merchant profile
-        self._create_test_item(
-            issuer='Sainsburys',
-            value=Decimal('50.00'),
-            value_type='GBP',
-            expiry_date='2025-12-31',
-            set_defaults=True
-        )
-        self._create_test_item(
-            issuer='Sainsburys',
-            value=Decimal('50.00'),
-            value_type='GBP',
-            expiry_date='2025-12-31',
-            set_defaults=True
-        )
+        # Create comprehensive similar merchant profile - 3+ items are needed
+        # to clear the 'very_low' (0-2 items -> 0.4) confidence tier, since
+        # the test below enriches at a 0.5 threshold.
+        for _ in range(3):
+            self._create_test_item(
+                issuer='Sainsburys',
+                value=Decimal('50.00'),
+                value_type='GBP',
+                expiry_date='2025-12-31',
+                set_defaults=True
+            )
 
         # Target item needing enrichment (no defaults set so fields are None)
         target_item = self._create_test_item(
@@ -245,7 +253,8 @@ class MerchantLookupTestCase(TestCase):
             value=None,
             value_type=None,
             expiry_date=None,
-            set_defaults=False
+            set_defaults=False,
+            save=False
         )
 
         lookup = MerchantLookup(self.user)
