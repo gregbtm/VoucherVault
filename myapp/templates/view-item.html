@@ -626,6 +626,19 @@ body.dark-mode a.more-action-row-danger:hover {
   color: #ff6b6b;
 }
 
+/* Dark mode file upload */
+body.dark-mode .file-input-label {
+  background: #2a2a2a;
+  border-color: #444;
+  color: #ccc;
+}
+
+body.dark-mode .file-input-label:hover {
+  background: #333;
+  border-color: #5a6cf1;
+  color: #5a6cf1;
+}
+
 /* QR Section */
 .qr-section {
   position: sticky;
@@ -971,6 +984,108 @@ body.dark-mode a.more-action-row-danger:hover {
   padding: 1.25rem;
   border: 1px solid var(--border-color, #eee);
   margin-top: 1.5rem;
+}
+
+/* Document Upload Form */
+.document-upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color, #eee);
+}
+
+.file-input-wrapper {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+
+.file-input-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.25rem;
+  background: var(--field-bg, #f8f9fa);
+  border: 2px dashed var(--border-color, #dee2e6);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-color, #495057);
+  font-weight: 500;
+  user-select: none;
+}
+
+.file-input-label:hover {
+  background: var(--hover-bg, #e9ecef);
+  border-color: var(--primary-color, #4154f1);
+  color: var(--primary-color, #4154f1);
+}
+
+.file-input-label i {
+  font-size: 1.35rem;
+}
+
+.file-input-wrapper input[type="file"] {
+  display: none;
+}
+
+.btn-upload-doc {
+  min-height: 44px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+/* Global button consistency */
+.btn {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.btn-sm {
+  min-height: 40px;
+  padding: 0.5rem 0.875rem !important;
+  font-size: 0.85rem;
+}
+
+/* Action buttons spacing */
+.action-btn,
+.action-btn-primary,
+.action-btn-danger-outline {
+  min-height: 44px;
+  padding: 0.65rem 1.25rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+/* Button groups / form button rows */
+.button-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+@media (min-width: 576px) {
+  .button-row {
+    flex-direction: row;
+    gap: 1rem;
+  }
+
+  .button-row .btn {
+    flex: 1;
+  }
 }
 
 .shared-users-card h5,
@@ -2242,11 +2357,17 @@ body.dark-mode .tilt-scan-enable-btn {
             <p class="text-muted mb-0">{% trans "No receipts or documents attached yet." %}</p>
             {% endfor %}
             {% if can_edit %}
-            <form method="POST" action="{% url 'upload_document' item.id %}" enctype="multipart/form-data" class="mt-3 d-flex gap-2 align-items-center">
+            <form method="POST" action="{% url 'upload_document' item.id %}" enctype="multipart/form-data" class="mt-3 document-upload-form">
               {% csrf_token %}
-              {{ document_form.file }}
-              <button type="submit" class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-upload"></i> {% trans "Upload" %}
+              <div class="file-input-wrapper">
+                <label for="id_file" class="file-input-label">
+                  <i class="bi bi-cloud-arrow-up"></i>
+                  <span>{% trans "Choose a file to upload" %}</span>
+                </label>
+                {{ document_form.file }}
+              </div>
+              <button type="submit" class="btn btn-primary btn-upload-doc">
+                <i class="bi bi-upload"></i> {% trans "Upload Document" %}
               </button>
             </form>
             {% endif %}

@@ -300,8 +300,26 @@ body.dark-mode .modern-select.suggested-fill {
 }
 
 .type-select {
-  flex: 1;
-  min-width: 150px;
+  flex: 0 0 auto;
+  min-width: 140px;
+  max-width: 100%;
+}
+
+@media (max-width: 576px) {
+  .type-selector-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .type-select {
+    width: 100%;
+    min-width: auto;
+  }
+
+  .color-picker-wrapper {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 .color-picker-wrapper {
