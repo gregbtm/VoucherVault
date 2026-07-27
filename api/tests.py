@@ -1774,3 +1774,164 @@ class GiftCardEmailImportApiTests(APITestCase):
         item = Item.objects.get(redeem_code='SCOPETEST1234AB')
         self.assertEqual(item.user, self.alice)
         self.assertFalse(Item.objects.filter(user=self.bob, redeem_code='SCOPETEST1234AB').exists())
+
+
+class EnrichmentConfigViewSetTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.force_authenticate(user=self.user)
+        from myapp.models import EnrichmentConfig
+        self.config_ocr = EnrichmentConfig.objects.create(
+            method='ocr',
+            enabled=True,
+            schedule='daily',
+            confidence_threshold=0.75,
+            auto_apply=False,
+        )
+        self.config_merchant = EnrichmentConfig.objects.create(
+            method='merchant_lookup',
+            enabled=False,
+            schedule='disabled',
+            confidence_threshold=0.6,
+            auto_apply=True,
+        )
+
+    def test_list_configs(self):
+        response = self.client.get('/api/v1/enrichment/config/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 2)
+
+    def test_retrieve_config_by_method(self):
+        response = self.client.get('/api/v1/enrichment/config/ocr/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['method'], 'ocr')
+        self.assertEqual(float(response.data['confidence_threshold']), 0.75)
+        self.assertFalse(response.data['auto_apply'])
+
+    def test_retrieve_nonexistent_config(self):
+        response = self.client.get('/api/v1/enrichment/config/nonexistent/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_update_config(self):
+        response = self.client.patch('/api/v1/enrichment/config/ocr/', {
+            'confidence_threshold': 0.85,
+            'auto_apply': True,
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.config_ocr.refresh_from_db()
+        self.assertEqual(self.config_ocr.confidence_threshold, Decimal('0.85'))
+        self.assertTrue(self.config_ocr.auto_apply)
+
+    def test_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get('/api/v1/enrichment/config/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class EnrichmentRunViewSetTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.force_authenticate(user=self.user)
+        from myapp.models import EnrichmentConfig, EnrichmentRun, Item
+
+        # Create config and items
+        self.config = EnrichmentConfig.objects.create(
+            method='ocr',
+            enabled=True,
+            schedule='daily',
+            confidence_threshold=0.75,
+            auto_apply=False,
+        )
+        self.item1 = make_item(self.user, name='Item 1', issuer='Issuer 1')
+        self.item2 = make_item(self.user, name='Item 2', issuer='Issuer 2')
+
+        # Create a sample enrichment run
+        self.run = EnrichmentRun.objects.create(
+            method='ocr',
+            status='pending_approval',
+            total_items=2,
+            confidence_threshold=0.75,
+        )
+
+    def test_list_runs(self):
+        response = self.client.get('/api/v1/enrichment/runs/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreater(len(response.data['results']), 0)
+
+    def test_filter_runs_by_method(self):
+        response = self.client.get('/api/v1/enrichment/runs/?method=ocr')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        for item in response.data['results']:
+            self.assertEqual(item['method'], 'ocr')
+
+    def test_filter_runs_by_status(self):
+        response = self.client.get('/api/v1/enrichment/runs/?status=pending_approval')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        for item in response.data['results']:
+            self.assertEqual(item['status'], 'pending_approval')
+
+    def test_retrieve_run_details(self):
+        response = self.client.get(f'/api/v1/enrichment/runs/{self.run.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(str(response.data['id']), str(self.run.id))
+        self.assertEqual(response.data['method'], 'ocr')
+        self.assertEqual(response.data['status'], 'pending_approval')
+
+    def test_retrieve_nonexistent_run(self):
+        from uuid import uuid4
+        response = self.client.get(f'/api/v1/enrichment/runs/{uuid4()}/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_reject_run(self):
+        response = self.client.post(f'/api/v1/enrichment/runs/{self.run.id}/reject/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'rejected')
+        self.run.refresh_from_db()
+        self.assertEqual(self.run.status, 'rejected')
+
+    def test_reject_completed_run_fails(self):
+        from myapp.models import EnrichmentRun
+        completed_run = EnrichmentRun.objects.create(
+            method='ocr',
+            status='completed',
+            total_items=1,
+        )
+        response = self.client.post(f'/api/v1/enrichment/runs/{completed_run.id}/reject/')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+
+    def test_approve_run_without_items_succeeds(self):
+        response = self.client.post(f'/api/v1/enrichment/runs/{self.run.id}/approve/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'completed')
+        self.run.refresh_from_db()
+        self.assertEqual(self.run.status, 'completed')
+        self.assertEqual(self.run.approved_by_id, self.user.id)
+
+    def test_trigger_enrichment(self):
+        response = self.client.post('/api/v1/enrichment/runs/trigger/', {
+            'method': 'ocr'
+        })
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.data['method'], 'ocr')
+
+    def test_trigger_enrichment_without_method_fails(self):
+        response = self.client.post('/api/v1/enrichment/runs/trigger/', {})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_trigger_disabled_enrichment_fails(self):
+        from myapp.models import EnrichmentConfig
+        EnrichmentConfig.objects.create(
+            method='validation',
+            enabled=False,
+            schedule='disabled',
+        )
+        response = self.client.post('/api/v1/enrichment/runs/trigger/', {
+            'method': 'validation'
+        })
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get('/api/v1/enrichment/runs/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
