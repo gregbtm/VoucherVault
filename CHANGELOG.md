@@ -1,3 +1,14 @@
+## [1.1.135](https://github.com/gregbtm/VoucherVault/compare/v1.1.134...v1.1.135) (2026-07-27)
+
+
+### Bug Fixes
+
+* Add missing help app to Docker COPY commands ([986d08f](https://github.com/gregbtm/VoucherVault/commit/986d08f52a5d1ba001c2055b694e2bdf0f6eb716))
+
+## [1.1.134](https://github.com/gregbtm/VoucherVault/compare/v1.1.133...v1.1.134) (2026-07-27)
+
+## [1.1.133](https://github.com/gregbtm/VoucherVault/compare/v1.1.132...v1.1.133) (2026-07-27)
+
 ## [1.1.132](https://github.com/gregbtm/VoucherVault/compare/v1.1.131...v1.1.132) (2026-07-27)
 
 
@@ -16,20 +27,4 @@
 ### Bug Fixes
 
 * ntfy notification links and shared users display ([43b15da](https://github.com/gregbtm/VoucherVault/commit/43b15da10059e5a3f66ff793b6557eb9be4ba7b4))
-
-## [1.1.130](https://github.com/gregbtm/VoucherVault/compare/v1.1.129...v1.1.130) (2026-07-27)
-
-## [1.1.129](https://github.com/gregbtm/VoucherVault/compare/v1.1.128...v1.1.129) (2026-07-25)
-
-
-### Features
-
-* add audit logging foundation + merge dashboard enhancements ([77c44fc](https://github.com/gregbtm/VoucherVault/commit/77c44fc723fe925e2746292331abef488e861500))
-
-## [1.1.128](https://github.com/gregbtm/VoucherVault/compare/v1.1.127...v1.1.128) (2026-07-24)
-
-
-### Bug Fixes
-
-* improve invite cleanup UI and clarify button behavior ([9fe1f54](https://github.com/gregbtm/VoucherVault/commit/9fe1f5481a9c3ac9522e0cca6c2f426290ca56af))
 
