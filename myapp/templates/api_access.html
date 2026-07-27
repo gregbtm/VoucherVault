@@ -33,15 +33,6 @@
     border-radius: 0.4rem;
     padding: 0.5rem 0.75rem;
   }
-  .token-copy-btn {
-    border: 1px solid rgba(128, 128, 128, 0.3);
-    background: transparent;
-    border-radius: 0.4rem;
-    padding: 0.5rem 0.7rem;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-  .token-copy-btn.copied { border-color: #2e7d32; color: #2e7d32; }
   .token-meta { color: var(--text-muted, #6c757d); font-size: 0.85rem; margin-top: 0.5rem; }
 </style>
 
@@ -84,7 +75,7 @@
             <strong><i class="bi bi-exclamation-triangle text-warning"></i> {% trans "Copy this now - it won't be shown again." %}</strong>
             <div class="token-value-row">
               <span class="token-value" id="revealed-token-value">Token {{ revealed_token }}</span>
-              <button type="button" class="token-copy-btn" id="copy-token-btn" data-copy="Token {{ revealed_token }}" title="{% trans 'Copy' %}">
+              <button type="button" class="copy-btn" id="copy-token-btn" data-copy="Token {{ revealed_token }}" title="{% trans 'Copy' %}">
                 <i class="bi bi-clipboard"></i>
               </button>
             </div>

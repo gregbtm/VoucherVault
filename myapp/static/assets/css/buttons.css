@@ -1,0 +1,245 @@
+/*
+ * Canonical sitewide button system.
+ *
+ * The app grew ~6 independent button conventions over time (.action-btn,
+ * .toolbar-btn, .file-btn, three separate .copy-btn implementations, plus
+ * per-template inline <style> blocks patching .btn sizing on just one or
+ * two pages). Result: buttons that were squashed, clipped, inconsistently
+ * sized, or misaligned depending which page you were on.
+ *
+ * This file is the single source of truth for size/spacing/alignment on
+ * every `.btn` (Bootstrap's own class) sitewide. It intentionally builds on
+ * Bootstrap's --bs-btn-* custom-property system rather than fighting it -
+ * color/background stay exactly as Bootstrap and dark-mode.css define them;
+ * this file only normalizes layout (sizing, icon+label alignment, spacing
+ * between buttons) so every button looks and behaves the same everywhere.
+ *
+ * Load order: linked in base.html AFTER bootstrap.min.css, style.css,
+ * dark-mode.css and mobile.css, so it wins the cascade over older
+ * per-template button overrides without needing !important.
+ */
+
+/* ---- Base sizing & alignment ----
+   flex + gap keeps an icon and its label vertically centered and evenly
+   spaced regardless of icon width - the #1 cause of "squashed" buttons was
+   icons and text baseline-aligned inconsistently across templates. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.btn i,
+.btn .bi {
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* A button's label must never be allowed to collapse to unreadable width -
+   long labels wrap onto a second line instead of clipping/ellipsis-ing. */
+.btn {
+  white-space: normal;
+  word-break: normal;
+}
+
+.btn-sm {
+  min-height: 38px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  gap: 0.3rem;
+}
+
+.btn-lg {
+  min-height: 50px;
+  padding: 0.65rem 1.5rem;
+  font-size: 1.05rem;
+}
+
+/* Icon-only buttons (no visible text label) get a square tap target
+   instead of the wide pill a text button gets - used across the app for
+   things like copy/close/zoom controls. Opt in with .btn-icon-only. */
+.btn-icon-only {
+  min-width: 44px;
+  padding: 0;
+  gap: 0;
+}
+
+.btn-icon-only.btn-sm {
+  min-width: 38px;
+}
+
+/* ---- Groups & rows ----
+   A consistent way to lay out 2+ buttons together, replacing one-off
+   flex/gap rules scattered per template. Stacks on narrow screens so
+   buttons never get squeezed below a usable width. */
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+@media (max-width: 480px) {
+  .btn-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn-row .btn {
+    width: 100%;
+  }
+}
+
+/* ---- Disabled state ----
+   Bootstrap already dims disabled buttons via --bs-btn-disabled-opacity,
+   but on touch devices a dimmed-but-still-full-color button can still read
+   as "broken" rather than "unavailable" - not-allowed cursor makes the
+   state unambiguous on devices that show it (desktop/trackpad). */
+.btn:disabled,
+.btn.disabled {
+  cursor: not-allowed;
+}
+
+/* ---- Focus visibility ----
+   Bootstrap's default focus ring is easy to lose against light card
+   backgrounds; make it unmistakable site-wide for keyboard/switch users. */
+.btn:focus-visible {
+  outline: 3px solid var(--primary-color, #4154f1);
+  outline-offset: 2px;
+}
+
+body.dark-mode .btn:focus-visible {
+  outline-color: #5a6cf1;
+}
+
+/* ---- Copy-to-clipboard buttons ----
+   Consolidates independent .copy-btn/.token-copy-btn implementations
+   (api_access.html, developer_hub.html) that each hand-rolled the same
+   small icon button + "flash green on copy" interaction with slightly
+   different chrome/colors. Use class="copy-btn" and this covers both the
+   resting appearance and the .copied state (toggled by each page's
+   existing copy-to-clipboard JS) - no per-template CSS needed.
+   (public_item.html has its own third copy-btn - deliberately left alone,
+   that page is a standalone public share view that doesn't extend
+   base.html and never loads this stylesheet.) */
+.copy-btn {
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  background: transparent;
+  border-radius: 0.4rem;
+  padding: 0.5rem 0.7rem;
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.copy-btn:active {
+  transform: scale(0.97);
+}
+
+.copy-btn.copied {
+  background-color: #198754 !important;
+  border-color: #198754 !important;
+  color: #fff !important;
+}
+
+body.dark-mode .copy-btn.copied {
+  background-color: #2f9e5c !important;
+  border-color: #2f9e5c !important;
+}
+
+/* ---- File input + action button rows ----
+   Native <input type="file"> has a browser-drawn "Choose File" button with
+   unpredictable width, which breaks badly inside a Bootstrap .input-group
+   (designed for text-like inputs) - the accompanying action button gets
+   squeezed down to an unreadable strip. This is a drop-in replacement: a
+   full-width dashed drop-zone-style label triggers a hidden file input,
+   with the action button placed on its own row below rather than crammed
+   alongside. Markup:
+     <div class="file-input-row">
+       <label class="file-input-label" for="...">
+         <i class="bi bi-cloud-arrow-up"></i><span>Choose a file</span>
+       </label>
+       <input type="file" id="..." class="visually-hidden-file-input" ...>
+       <button type="submit" class="btn btn-primary">Upload</button>
+     </div> */
+.file-input-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Older wrapper name used by view-item.html's document-upload form -
+   equivalent to .file-input-row but hides the native input via a plain
+   `input[type="file"] { display: none }` descendant rule instead of the
+   visually-hidden-file-input class. Kept as an alias so both markup
+   patterns share the same .file-input-label chrome below. */
+.file-input-wrapper {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.file-input-wrapper input[type="file"] {
+  display: none;
+}
+
+.file-input-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.1rem;
+  background: var(--field-bg, #f8f9fa);
+  border: 2px dashed var(--border-color, #dee2e6);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-color, #495057);
+  font-weight: 500;
+  user-select: none;
+  text-align: center;
+}
+
+.file-input-label:hover {
+  background: var(--hover-bg, #e9ecef);
+  border-color: var(--primary-color, #4154f1);
+  color: var(--primary-color, #4154f1);
+}
+
+.file-input-label .file-input-name {
+  font-weight: 400;
+  color: var(--text-muted, #6c757d);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.visually-hidden-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+body.dark-mode .file-input-label {
+  background: #2a2a2a;
+  border-color: #444;
+  color: #ccc;
+}
+
+body.dark-mode .file-input-label:hover {
+  background: #333;
+  border-color: #5a6cf1;
+  color: #5a6cf1;
+}

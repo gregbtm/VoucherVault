@@ -62,6 +62,18 @@
     byContainer.forEach(function (elements, container) {
         var group = elements.slice(0, MAX_PER_CONTAINER);
         group.forEach(function (el) { el.classList.add('vv-anim-pre'); });
+        var revealed = false;
+
+        function reveal() {
+            if (revealed) return;
+            revealed = true;
+            group.forEach(function (el) { el.classList.remove('vv-anim-pre'); });
+            animate(
+                group,
+                { opacity: [0, 1], y: [10, 0] },
+                { duration: 0.3, delay: stagger(0.045), ease: [0.22, 1, 0.36, 1] }
+            );
+        }
 
         // Not returning a cleanup function makes inView one-shot: each
         // group animates the first time it scrolls into view, then the
@@ -73,13 +85,14 @@
         // container to fill the ENTIRE viewport before it's reached,
         // which reads as "page is blank until you scroll". 'some' (any
         // pixel visible) is Motion's own default for exactly this reason.
-        inView(container, function () {
-            group.forEach(function (el) { el.classList.remove('vv-anim-pre'); });
-            animate(
-                group,
-                { opacity: [0, 1], y: [10, 0] },
-                { duration: 0.3, delay: stagger(0.045), ease: [0.22, 1, 0.36, 1] }
-            );
-        }, { amount: 'some' });
+        inView(container, reveal, { amount: 'some' });
+
+        // Belt-and-braces: an IntersectionObserver callback that never
+        // fires (a layout race against late-loading webfonts, a container
+        // whose size settles after this ran, or any other timing edge
+        // case) must never leave content stuck at opacity:0 - that reads
+        // as "the button/card is invisible until something else forces a
+        // repaint". Guarantee a reveal within a bounded time regardless.
+        setTimeout(reveal, 1200);
     });
 })();

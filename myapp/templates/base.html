@@ -65,6 +65,9 @@
   <link href="{% static 'assets/css/animations.css' %}" rel="stylesheet">
   <!-- Mobile & PWA Optimizations -->
   <link href="{% static 'assets/css/mobile.css' %}" rel="stylesheet">
+  <!-- Canonical sitewide button system - loads last so it wins the cascade
+       over any older per-page button overrides that haven't been cleaned up yet -->
+  <link href="{% static 'assets/css/buttons.css' %}" rel="stylesheet">
 
   <style>
     /* Network status indicator styles */

@@ -3874,7 +3874,7 @@ def gdpr_data_export(request):
                 for t in item.transactions.all()
             ],
             'documents': [
-                {'file': str(d.file), 'label': d.label, 'uploaded_at': str(d.uploaded_at)}
+                {'file': str(d.file), 'uploaded_at': str(d.uploaded_at)}
                 for d in item.documents.all()
             ],
             'shared_with': [

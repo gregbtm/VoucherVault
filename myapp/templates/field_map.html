@@ -1004,6 +1004,7 @@ function renderGroups(containerId, pageKey) {
         <span class="group-count">${group.fields.length} field${group.fields.length !== 1 ? 's':''}</span>
         <span class="group-chevron">▾</span>
       </div>
+      <div style="overflow-x:auto;">
       <table class="field-table">
         <thead><tr>
           <th style="width:160px">Field</th>
@@ -1012,7 +1013,8 @@ function renderGroups(containerId, pageKey) {
           <th>Purpose &amp; Logic</th>
         </tr></thead>
         <tbody id="tbody-${pageKey}-${gi}"></tbody>
-      </table>`;
+      </table>
+      </div>`;
     container.appendChild(div);
 
     const tbody = document.getElementById(`tbody-${pageKey}-${gi}`);

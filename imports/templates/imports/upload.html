@@ -133,10 +133,17 @@
           </a>
           <form method="POST" enctype="multipart/form-data" action="{% url 'import_full_backup' %}">
             {% csrf_token %}
-            <div class="input-group">
-              <input type="file" class="form-control" name="file" accept=".zip" required>
-              <button type="submit" class="btn btn-outline-primary">
-                <i class="bi bi-upload me-1"></i>{% trans "Restore" %}
+            <div class="file-input-row">
+              <div class="file-input-wrapper">
+                <label for="id_full_backup_file" class="file-input-label">
+                  <i class="bi bi-cloud-arrow-up"></i>
+                  <span id="full-backup-file-name">{% trans "Choose a backup .zip to restore" %}</span>
+                </label>
+                <input type="file" id="id_full_backup_file" name="file" accept=".zip" required
+                       onchange="document.getElementById('full-backup-file-name').textContent = this.files[0] ? this.files[0].name : '{% trans "Choose a backup .zip to restore" %}';">
+              </div>
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-upload"></i> {% trans "Restore" %}
               </button>
             </div>
             <small class="form-text text-muted">{% trans "Max 50MB." %}</small>

@@ -1597,6 +1597,19 @@ class DashboardAnalyticsContextTests(TestCase):
         self.assertIsNone(response.context['at_risk_value'])
         self.assertEqual(response.context['items_by_wallet'], [])
 
+    def test_dashboard_my_collection_shows_travel_passes(self):
+        """
+        Regression coverage: the "My Collection" stat-card row was missing
+        a Travel Pass card entirely (giftcard/coupon/voucher/loyaltycard
+        were shown, travelpasses_count was computed and passed into the
+        context but the template never rendered a 5th card for it).
+        """
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['travelpasses_count'], 0)
+        self.assertContains(response, 'Travel Passes')
+        self.assertContains(response, 'stat-card travelpass')
+
     def test_dashboard_expiring_soon_list_agrees_with_inventory_count(self):
         """
         Regression coverage: the Dashboard's "Expiring Soon" list and the
@@ -6708,4 +6721,33 @@ class UnlinkOIDCViewTests(TestCase):
         self.client.logout()
         resp = self.client.post(reverse('unlink_oidc'))
         self.assertNotEqual(resp.status_code, 200)
+
+
+class GDPRDataExportViewTests(TestCase):
+    """
+    Regression test for gdpr_data_export() crashing with
+    AttributeError: 'Document' object has no attribute 'label' whenever an
+    item had an attached document - Document has no such field.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_export_succeeds_with_attached_document(self):
+        item = make_item(self.user)
+        Document.objects.create(item=item, file=SimpleUploadedFile('receipt.txt', b'hello'))
+
+        resp = self.client.get(reverse('gdpr_data_export'))
+
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertEqual(len(data['items'][0]['documents']), 1)
+        self.assertIn('file', data['items'][0]['documents'][0])
+        self.assertIn('uploaded_at', data['items'][0]['documents'][0])
+
+    def test_export_succeeds_with_no_documents(self):
+        make_item(self.user)
+        resp = self.client.get(reverse('gdpr_data_export'))
+        self.assertEqual(resp.status_code, 200)
         self.assertNotEqual(resp.status_code, 405)

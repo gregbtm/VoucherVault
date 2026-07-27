@@ -162,6 +162,11 @@ body.dark-mode .quick-stats-gc-total { background: rgba(239, 68, 68, 0.12); }
   color: #3b82f6;
 }
 
+.stat-card.travelpass .stat-card-icon {
+  background: rgba(139, 92, 246, 0.15);
+  color: #8b5cf6;
+}
+
 .stat-card.available .stat-card-icon {
   background: rgba(34, 197, 94, 0.12);
   color: #22c55e;
@@ -389,6 +394,10 @@ body.dark-mode .stat-card.voucher .stat-card-icon {
 
 body.dark-mode .stat-card.loyalty .stat-card-icon {
   background: rgba(59, 130, 246, 0.2);
+}
+
+body.dark-mode .stat-card.travelpass .stat-card-icon {
+  background: rgba(139, 92, 246, 0.25);
 }
 
 body.dark-mode .stat-card.available .stat-card-icon,
@@ -656,6 +665,16 @@ body.dark-mode .calendar-month-label {
             <div class="stat-card-content">
               <div class="stat-card-label">{% trans "Loyalty Cards" %}</div>
               <div class="stat-card-value">{{ loyaltycards_count }}</div>
+            </div>
+          </a>
+
+          <a href="{% url 'show_items' %}?type=travelpass" class="stat-card travelpass">
+            <div class="stat-card-icon">
+              <i class="bi bi-train-front"></i>
+            </div>
+            <div class="stat-card-content">
+              <div class="stat-card-label">{% trans "Travel Passes" %}</div>
+              <div class="stat-card-value">{{ travelpasses_count }}</div>
             </div>
           </a>
         </div>

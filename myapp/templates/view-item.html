@@ -626,18 +626,7 @@ body.dark-mode a.more-action-row-danger:hover {
   color: #ff6b6b;
 }
 
-/* Dark mode file upload */
-body.dark-mode .file-input-label {
-  background: #2a2a2a;
-  border-color: #444;
-  color: #ccc;
-}
-
-body.dark-mode .file-input-label:hover {
-  background: #333;
-  border-color: #5a6cf1;
-  color: #5a6cf1;
-}
+/* Dark mode file upload styling now lives sitewide in assets/css/buttons.css */
 
 /* QR Section */
 .qr-section {
@@ -996,41 +985,8 @@ body.dark-mode .file-input-label:hover {
   border-top: 1px solid var(--border-color, #eee);
 }
 
-.file-input-wrapper {
-  position: relative;
-  display: inline-block;
-  width: 100%;
-}
-
-.file-input-label {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 1.25rem;
-  background: var(--field-bg, #f8f9fa);
-  border: 2px dashed var(--border-color, #dee2e6);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  color: var(--text-color, #495057);
-  font-weight: 500;
-  user-select: none;
-}
-
-.file-input-label:hover {
-  background: var(--hover-bg, #e9ecef);
-  border-color: var(--primary-color, #4154f1);
-  color: var(--primary-color, #4154f1);
-}
-
-.file-input-label i {
-  font-size: 1.35rem;
-}
-
-.file-input-wrapper input[type="file"] {
-  display: none;
-}
+/* .file-input-wrapper / .file-input-label now live sitewide in
+   assets/css/buttons.css */
 
 .btn-upload-doc {
   min-height: 44px;
@@ -1039,20 +995,7 @@ body.dark-mode .file-input-label:hover {
   font-size: 0.95rem;
 }
 
-/* Global button consistency */
-.btn {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-}
-
-.btn-sm {
-  min-height: 40px;
-  padding: 0.5rem 0.875rem !important;
-  font-size: 0.85rem;
-}
+/* Base .btn/.btn-sm sizing now lives sitewide in assets/css/buttons.css */
 
 /* Action buttons spacing */
 .action-btn,
@@ -1067,25 +1010,6 @@ body.dark-mode .file-input-label:hover {
   gap: 0.35rem;
   border-radius: 10px;
   transition: all 0.2s ease;
-}
-
-/* Button groups / form button rows */
-.button-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 1rem;
-}
-
-@media (min-width: 576px) {
-  .button-row {
-    flex-direction: row;
-    gap: 1rem;
-  }
-
-  .button-row .btn {
-    flex: 1;
-  }
 }
 
 .shared-users-card h5,
