@@ -182,8 +182,10 @@ class ItemSerializer(serializers.ModelSerializer):
         return (item.expiry_date - timezone.localtime().date()).days
 
     def get_transaction_total(self, item) -> str:
-        total = sum((t.value for t in item.transactions.all()), item.value)
-        return str(total)
+        total = getattr(item, 'transaction_total', None)
+        if total is not None:
+            return str(total)
+        return str(sum((t.value for t in item.transactions.all()), item.value))
 
     def validate(self, attrs):
         item_type = attrs.get('type', getattr(self.instance, 'type', None))

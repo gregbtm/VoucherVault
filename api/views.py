@@ -6,7 +6,7 @@ import uuid as uuid_module
 import requests
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum, F
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -526,7 +526,9 @@ class ItemViewSet(viewsets.ModelViewSet):
             return Item.objects.none()
         return Item.objects.filter(
             Q(user=self.request.user) | Q(wallet__shared_with=self.request.user)
-        ).distinct().select_related('wallet').prefetch_related('transactions', 'tags')
+        ).distinct().select_related('wallet').prefetch_related('transactions', 'tags').annotate(
+            transaction_total=Sum('transactions__value') + F('value')
+        )
 
     def perform_create(self, serializer):
         item = serializer.save(user=self.request.user, source='api')
@@ -738,7 +740,7 @@ class WalletViewSet(viewsets.ModelViewSet):
             return Wallet.objects.none()
         return Wallet.objects.filter(
             Q(user=self.request.user) | Q(shared_with=self.request.user)
-        ).distinct().annotate(item_count=Count('items')).order_by('name')
+        ).distinct().annotate(item_count=Count('items')).prefetch_related('shared_with').order_by('name')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

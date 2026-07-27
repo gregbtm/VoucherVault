@@ -88,7 +88,9 @@ def has_wallet_access(wallet, user):
     """True if `user` owns `wallet` or is a collaborator it's been shared with."""
     if wallet is None:
         return False
-    return wallet.user_id == user.id or wallet.shared_with.filter(pk=user.id).exists()
+    if wallet.user_id == user.id:
+        return True
+    return user in wallet.shared_with.all()
 
 def has_item_access(item, user):
     """
@@ -480,8 +482,8 @@ def show_items(request):
         'coupon_count': coupon_count,
         'loyaltycard_count': loyaltycard_count,
         'all_types_count': available_count,
-        # Wallet filter
-        'wallets': Wallet.objects.filter(Q(user=user) | Q(shared_with=user)).distinct().annotate(item_count=Count('items')),
+        # Wallet filter — use distinct on pk before annotating to avoid M2M join duplicates
+        'wallets': Wallet.objects.filter(Q(user=user) | Q(shared_with=user)).values('id').distinct().annotate(item_count=Count('items')),
         'selected_wallet_id': int(wallet_id) if wallet_id and wallet_id.isdigit() else None,
         'wallet_budget': _get_wallet_budget(wallet_id, user),
         # Tag filter — counts reflect the user's own non-archived accessible
