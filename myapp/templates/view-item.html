@@ -2296,11 +2296,18 @@ body.dark-mode .tilt-scan-enable-btn {
             </form>
             {% endif %}
           </div>
-          {% if item.enrichment_run_results.exists %}
-          <div class="text-end mt-2">
+          {% if can_edit or item.enrichment_run_results.exists %}
+          <div class="d-flex justify-content-end align-items-center gap-3 mt-2 flex-wrap">
+            {% if can_edit %}
+            <button type="button" class="btn btn-link p-0 text-muted small text-decoration-none" id="enrich-item-now-btn" data-enrich-url="{% url 'item_enrich_now' item.id %}">
+              <i class="bi bi-magic me-1"></i>{% trans "Re-scan documents for updates" %}
+            </button>
+            {% endif %}
+            {% if item.enrichment_run_results.exists %}
             <a href="{% url 'item_enrichment_history' item.id %}" class="text-muted small">
-              <i class="bi bi-magic me-1"></i>{% trans "View enrichment history" %}
+              <i class="bi bi-clock-history me-1"></i>{% trans "View enrichment history" %}
             </a>
+            {% endif %}
           </div>
           {% endif %}
         </div>
@@ -3128,5 +3135,128 @@ vvInitTiltScanDetect({
 })();
 </script>
 {% endif %}
+
+<!-- Re-scan documents (on-demand enrichment) modal -->
+<div class="modal fade" id="enrichItemModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title"><i class="bi bi-magic me-1"></i>{% trans "Re-scan Documents" %}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="enrich-item-loading" class="text-center py-3">
+          <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+          <span class="text-muted small">{% trans "Re-reading attached documents…" %}</span>
+        </div>
+        <div id="enrich-item-empty" class="text-muted small" style="display:none;">
+          {% trans "No changes found - the attached documents already match this item's details." %}
+        </div>
+        <div id="enrich-item-error" class="alert alert-warning small mb-0" style="display:none;"></div>
+        <div id="enrich-item-changes" style="display:none;">
+          <p class="text-muted small mb-2">{% trans "Proposed changes from the attached documents:" %}</p>
+          <div id="enrich-item-changes-list"></div>
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">{% trans "Close" %}</button>
+        <button type="button" class="btn btn-sm btn-primary" id="enrich-item-apply-btn" style="display:none;">
+          <i class="bi bi-check-lg me-1"></i>{% trans "Apply Changes" %}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script nonce="{{ request.csp_nonce }}">
+document.addEventListener('DOMContentLoaded', function () {
+  var enrichBtn = document.getElementById('enrich-item-now-btn');
+  if (!enrichBtn) return;
+
+  var modalEl = document.getElementById('enrichItemModal');
+  var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  var loadingEl = document.getElementById('enrich-item-loading');
+  var emptyEl = document.getElementById('enrich-item-empty');
+  var errorEl = document.getElementById('enrich-item-error');
+  var changesEl = document.getElementById('enrich-item-changes');
+  var changesListEl = document.getElementById('enrich-item-changes-list');
+  var applyBtn = document.getElementById('enrich-item-apply-btn');
+  var enrichUrl = enrichBtn.dataset.enrichUrl;
+
+  function resetModal() {
+    loadingEl.style.display = '';
+    emptyEl.style.display = 'none';
+    errorEl.style.display = 'none';
+    changesEl.style.display = 'none';
+    applyBtn.style.display = 'none';
+    changesListEl.innerHTML = '';
+  }
+
+  function renderChanges(changes) {
+    changesListEl.innerHTML = changes.map(function (c) {
+      var pct = Math.round(c.confidence * 100);
+      return '<div class="mb-2 pb-2 border-bottom">' +
+        '<div class="fw-semibold small">' + c.field + '</div>' +
+        '<div class="small"><span class="text-muted text-decoration-line-through">' + (c.old_value || '—') + '</span>' +
+        ' <i class="bi bi-arrow-right mx-1"></i> <span class="text-success fw-semibold">' + (c.new_value || '—') + '</span></div>' +
+        '<div class="text-muted" style="font-size:0.75em;">{% trans "Confidence:" %} ' + pct + '% · ' + c.reason + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function runEnrichment(apply) {
+    var csrfToken = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value ||
+      (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+    return fetch(enrichUrl, {
+      method: 'POST',
+      headers: {'X-CSRFToken': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'},
+      body: apply ? 'apply=1' : '',
+    }).then(function (r) { return r.json(); });
+  }
+
+  enrichBtn.addEventListener('click', function () {
+    resetModal();
+    modal.show();
+    runEnrichment(false).then(function (data) {
+      loadingEl.style.display = 'none';
+      if (!data.ok) {
+        errorEl.textContent = data.error || '{% trans "Something went wrong." %}';
+        errorEl.style.display = '';
+        return;
+      }
+      if (!data.success || !data.changes.length) {
+        emptyEl.textContent = data.error_message || emptyEl.textContent;
+        emptyEl.style.display = '';
+        return;
+      }
+      renderChanges(data.changes);
+      changesEl.style.display = '';
+      applyBtn.style.display = '';
+    }).catch(function () {
+      loadingEl.style.display = 'none';
+      errorEl.textContent = '{% trans "Request failed - please try again." %}';
+      errorEl.style.display = '';
+    });
+  });
+
+  applyBtn.addEventListener('click', function () {
+    applyBtn.disabled = true;
+    applyBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>{% trans "Applying…" %}';
+    runEnrichment(true).then(function (data) {
+      if (data.ok && data.success) {
+        if (typeof showToast === 'function') {
+          showToast('success', '{% trans "Item updated from attached documents." %}');
+        }
+        window.location.reload();
+      } else {
+        applyBtn.disabled = false;
+        applyBtn.innerHTML = '<i class="bi bi-check-lg me-1"></i>{% trans "Apply Changes" %}';
+        errorEl.textContent = data.error || data.error_message || '{% trans "Failed to apply changes." %}';
+        errorEl.style.display = '';
+      }
+    });
+  });
+});
+</script>
 
 {% endblock content %}

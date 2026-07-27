@@ -7,7 +7,6 @@ from django.db import transaction
 from django.contrib.auth.models import User
 from myapp.models import Item, ItemEnrichmentLog, Document
 from .merchant_lookup import MerchantLookup
-from .ocr_backend_integration import OCRExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -230,30 +229,66 @@ class ItemEnricher:
         }
 
     def _extract_from_documents(self, documents, ocr_backend: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Extract structured data from documents using OCR backend."""
+        """
+        Extract structured data from documents using the app's real,
+        SiteConfiguration-driven OCR backend (ocr.backends.get_backend()) -
+        the same one item creation/edit scanning and the document-upload
+        text-extraction task (extract_document_text_task) already use.
+
+        This used to go through myapp.services.ocr_backend_integration, a
+        separate, never-actually-working implementation: it read its API
+        key from a raw OPENAI_API_KEY env var instead of the key configured
+        in Site Settings (so the client was always None in every real
+        deployment), and its OpenAI backend called `.messages.create()` -
+        the Anthropic SDK's method name, not OpenAI's - so even a correctly
+        configured key would have failed. Every enrichment OCR run
+        therefore silently produced "No documents found" or "Failed to
+        extract data from documents" regardless of what was attached.
+        """
         if not documents.exists():
             return None
 
-        extractor = OCRExtractor(preferred_backend=ocr_backend)
-        merged_data = {}
+        from ocr.backends import get_backend, ocr_enabled
+        if not ocr_enabled():
+            logger.info("OCR enrichment skipped: OCR is disabled in Site Settings")
+            return None
 
-        # Process each document and merge results
+        import mimetypes
+        merged_data: Dict[str, Any] = {}
+
         for document in documents:
+            if not document.file:
+                continue
             try:
-                extracted = extractor.extract_from_document(document)
-                if extracted:
-                    # Merge data, preferring fields with higher confidence
-                    for key, value in extracted.items():
-                        if key not in merged_data:
-                            merged_data[key] = value
-                        elif key.endswith('_confidence'):
-                            # Keep the higher confidence value
-                            if isinstance(value, Decimal) and isinstance(merged_data.get(key), Decimal):
-                                if value > merged_data[key]:
-                                    merged_data[key] = value
+                mime_type = mimetypes.guess_type(document.file.name)[0] or 'application/octet-stream'
+                document.file.seek(0)
+                file_bytes = document.file.read()
+
+                if mime_type == 'application/pdf':
+                    from myapp.pdf_ticket import pdf_page_to_png_bytes
+                    file_bytes = pdf_page_to_png_bytes(file_bytes)
+                    mime_type = 'image/png'
+
+                result = get_backend().extract(file_bytes, mime_type)
             except Exception as e:
                 logger.error(f"OCR extraction failed for document {document.id}: {e}")
                 continue
+
+            if not result:
+                continue
+
+            confidence = Decimal(str(result.get('confidence') or 0))
+            for field_name in self.ENRICHABLE_FIELDS:
+                value = result.get(field_name)
+                if value is None or value == '':
+                    continue
+                conf_key = f'{field_name}_confidence'
+                # Prefer the value from whichever document OCR'd with higher
+                # overall confidence - later documents don't just overwrite
+                # earlier, better ones.
+                if field_name not in merged_data or confidence > merged_data.get(conf_key, Decimal('0')):
+                    merged_data[field_name] = value
+                    merged_data[conf_key] = confidence
 
         return merged_data if merged_data else None
 

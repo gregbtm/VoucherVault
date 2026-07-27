@@ -1,4 +1,6 @@
 from decimal import Decimal
+from unittest.mock import patch, MagicMock
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.contrib.auth.models import User
 from myapp.models import Item, Document, ItemEnrichmentLog
@@ -65,6 +67,52 @@ class ItemEnricherTestCase(TestCase):
 
         self.assertFalse(result.success)
         self.assertIsNotNone(result.error_message)
+        self.assertEqual(len(result.changes), 0)
+
+    @patch('ocr.backends.get_backend')
+    @patch('ocr.backends.ocr_enabled', return_value=True)
+    def test_enrich_from_ocr_reads_attached_document(self, mock_enabled, mock_get_backend):
+        """
+        Regression test: enrich_from_ocr used to go through a separate,
+        broken OCR client (myapp.services.ocr_backend_integration) that
+        read its API key from an unset env var and called the wrong SDK
+        method, so it silently failed on every real document - it now
+        reuses ocr.backends.get_backend(), the same SiteConfiguration-driven
+        backend the rest of the app uses successfully.
+        """
+        item = self._create_test_item(issuer='')
+        Document.objects.create(item=item, file=SimpleUploadedFile('receipt.png', b'fake-image-bytes', content_type='image/png'))
+
+        mock_backend = MagicMock()
+        mock_backend.extract.return_value = {
+            'issuer': 'Costa Coffee',
+            'expiry_date': None,
+            'confidence': 0.88,
+        }
+        mock_get_backend.return_value = mock_backend
+
+        result = self.enricher.enrich_from_ocr(item, confidence_threshold=Decimal('0.5'))
+
+        mock_backend.extract.assert_called_once()
+        called_bytes, called_mime = mock_backend.extract.call_args[0]
+        self.assertEqual(called_bytes, b'fake-image-bytes')
+        self.assertEqual(called_mime, 'image/png')
+
+        self.assertTrue(result.success)
+        self.assertEqual(len(result.changes), 1)
+        self.assertEqual(result.changes[0].field_name, 'issuer')
+        self.assertEqual(result.changes[0].new_value, 'Costa Coffee')
+        self.assertEqual(result.changes[0].confidence_score, Decimal('0.88'))
+
+    @patch('ocr.backends.ocr_enabled', return_value=False)
+    def test_enrich_from_ocr_skips_gracefully_when_ocr_disabled(self, mock_enabled):
+        """OCR-disabled deployments shouldn't error, just produce no changes."""
+        item = self._create_test_item()
+        Document.objects.create(item=item, file=SimpleUploadedFile('receipt.png', b'fake-image-bytes', content_type='image/png'))
+
+        result = self.enricher.enrich_from_ocr(item)
+
+        self.assertFalse(result.success)
         self.assertEqual(len(result.changes), 0)
 
     def test_validate_and_normalize(self):

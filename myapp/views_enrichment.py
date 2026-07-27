@@ -11,7 +11,7 @@ from decimal import Decimal
 from functools import wraps
 
 from .models import EnrichmentConfig, EnrichmentRun, EnrichmentRunItem, Item
-from .services.enrichment import ItemEnricher
+from .services.enrichment import ItemEnricher, BulkEnricher
 
 
 def superuser_required(view_func):
@@ -242,6 +242,55 @@ def enrichment_trigger(request):
     if referer and url_has_allowed_host_and_scheme(referer, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
         return redirect(referer)
     return redirect('enrichment_dashboard')
+
+
+@login_required
+@require_http_methods(['POST'])
+def item_enrich_now(request, item_id):
+    """
+    On-demand enrichment for a single item, from its detail page rather
+    than the admin bulk action or a scheduled run. Anyone who can edit the
+    item (owner or a shared-wallet editor - the same check edit_item uses)
+    can run this; it's scoped to that one item, not the app-wide admin
+    tooling, so it doesn't need superuser_required.
+
+    Always previews first (dry_run, the default) and only writes changes
+    when the client explicitly confirms with apply=1 - OCR/merchant-lookup
+    guesses are wrong often enough that silently overwriting item fields
+    on a single click would be a bad default.
+    """
+    from .views import _check_item_edit_permission
+
+    item = get_object_or_404(Item, id=item_id)
+    if not _check_item_edit_permission(item, request.user):
+        return JsonResponse({'ok': False, 'error': str(_('You do not have permission to edit this item.'))}, status=403)
+
+    apply_changes = request.POST.get('apply') == '1'
+    enricher = BulkEnricher(created_by=request.user)
+    results = enricher.enrich_selected_items(
+        [item.id], enrichment_mode='all', confidence_threshold=Decimal('0.5'), dry_run=not apply_changes
+    )
+    result = results.get(item.id)
+    if result is None:
+        return JsonResponse({'ok': False, 'error': str(_('Enrichment failed to run.'))}, status=500)
+
+    changes = [
+        {
+            'field': c.field_name,
+            'old_value': c.old_value,
+            'new_value': c.new_value,
+            'confidence': float(c.confidence_score),
+            'reason': c.reason,
+        }
+        for c in result.changes
+    ]
+    return JsonResponse({
+        'ok': True,
+        'applied': apply_changes,
+        'success': result.success,
+        'error_message': result.error_message,
+        'changes': changes,
+    })
 
 
 @login_required

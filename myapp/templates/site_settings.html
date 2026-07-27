@@ -12,17 +12,46 @@
     padding: 1.1rem 1.25rem 0.6rem;
     margin-bottom: 1.25rem;
   }
-  .settings-group-label {
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: var(--text-muted, #6c757d);
-    margin: 1.75rem 0 0.75rem;
-  }
-  .settings-group-label:first-of-type { margin-top: 0.5rem; }
   /* Inline "?" tooltip icon for sections without a full setup guide. */
   .help-hint { color: var(--text-muted, #6c757d); margin-left: 0.35rem; cursor: help; }
+
+  /* Settings tab bar: scrolls horizontally instead of wrapping onto a
+     second row on narrow screens - each tab keeps its full label
+     (icon-only tabs on a 5-way settings nav would be unreadable/ambiguous
+     without a legend), and a horizontally-scrolling strip is a familiar,
+     well-established mobile pattern (iOS Settings top nav, GitHub's
+     mobile repo tabs) rather than a novelty. */
+  .settings-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    border-bottom-color: rgba(128, 128, 128, 0.25);
+  }
+  .settings-tabs::-webkit-scrollbar { height: 4px; }
+  .settings-tabs .nav-link {
+    white-space: nowrap;
+    flex-shrink: 0;
+    color: var(--text-muted, #6c757d);
+    border: none;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    padding: 0.7rem 1rem;
+    font-weight: 500;
+  }
+  .settings-tabs .nav-link:hover {
+    border-bottom-color: rgba(65, 84, 241, 0.35);
+    color: var(--text-color, #212529);
+  }
+  .settings-tabs .nav-link.active {
+    color: var(--primary-color, #4154f1);
+    background: transparent;
+    border-bottom-color: var(--primary-color, #4154f1);
+  }
+  body.dark-mode .settings-tabs .nav-link.active { color: #5a6cf1; border-bottom-color: #5a6cf1; }
+  body.dark-mode .settings-tabs .nav-link:hover { color: #e0e6eb; }
+  #settingsTabContent { padding-top: 1.5rem; }
 </style>
 <div class="pagetitle">
   <h1>{% trans "Site Settings" %}</h1>
@@ -54,10 +83,39 @@
           </div>
           {% endif %}
 
+          <ul class="nav nav-tabs settings-tabs" id="settingsTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="tab-notifications-btn" data-bs-toggle="tab" data-bs-target="#tab-notifications" type="button" role="tab" aria-controls="tab-notifications" aria-selected="true">
+                <i class="bi bi-bell me-1"></i>{% trans "Notifications" %}
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-integrations-btn" data-bs-toggle="tab" data-bs-target="#tab-integrations" type="button" role="tab" aria-controls="tab-integrations" aria-selected="false">
+                <i class="bi bi-puzzle me-1"></i>{% trans "Features & Integrations" %}
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-access-btn" data-bs-toggle="tab" data-bs-target="#tab-access" type="button" role="tab" aria-controls="tab-access" aria-selected="false">
+                <i class="bi bi-shield-lock me-1"></i>{% trans "Access Control" %}
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-deployment-btn" data-bs-toggle="tab" data-bs-target="#tab-deployment" type="button" role="tab" aria-controls="tab-deployment" aria-selected="false">
+                <i class="bi bi-tools me-1"></i>{% trans "Maintenance & Deployment" %}
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-analytics-btn" data-bs-toggle="tab" data-bs-target="#tab-analytics" type="button" role="tab" aria-controls="tab-analytics" aria-selected="false">
+                <i class="bi bi-bar-chart me-1"></i>{% trans "Dashboard & Analytics" %}
+              </button>
+            </li>
+          </ul>
+
           <form method="POST" action="" id="site-settings-form">
             {% csrf_token %}
 
-            <div class="settings-group-label"><i class="bi bi-bell me-1"></i> {% trans "Notifications & Expiry" %}</div>
+            <div class="tab-content" id="settingsTabContent">
+            <div class="tab-pane fade show active" id="tab-notifications" role="tabpanel" aria-labelledby="tab-notifications-btn">
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-clock-history me-2"></i>{% trans "Expiry & Notifications" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'How many days before an item expires the first and final expiry notifications fire, unless an item sets its own override.' %}"></i><a href="{% url 'view_doc' 'notifications' %}" data-doc-url="{% url 'view_doc' 'notifications' %}" class="help-link ms-1" title="{% trans 'Notification rules & expiry alerts guide' %}"><i class="bi bi-question-circle"></i></a></h6>
@@ -132,7 +190,8 @@
               </div>
             </div>
 
-            <div class="settings-group-label"><i class="bi bi-puzzle me-1"></i> {% trans "Features & Integrations" %}</div>
+            </div><!-- /tab-notifications -->
+            <div class="tab-pane fade" id="tab-integrations" role="tabpanel" aria-labelledby="tab-integrations-btn">
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-image me-2"></i>{% trans "Merchant Logos" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Fetches a brand logo for each item card automatically, based on the issuer name or logo domain.' %}"></i></h6>
@@ -378,7 +437,8 @@
               </div>
             </details>
 
-            <div class="settings-group-label"><i class="bi bi-shield-lock me-1"></i> {% trans "Access Control" %}</div>
+            </div><!-- /tab-integrations -->
+            <div class="tab-pane fade" id="tab-access" role="tabpanel" aria-labelledby="tab-access-btn">
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-person-plus me-2"></i>{% trans "User Registration" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Controls whether the registration page accepts new signups. Existing users and SSO/OIDC logins are unaffected.' %}"></i></h6>
@@ -484,7 +544,8 @@
               </div>
             </div>
 
-            <div class="settings-group-label"><i class="bi bi-tools me-1"></i> {% trans "Maintenance & Deployment" %}</div>
+            </div><!-- /tab-access -->
+            <div class="tab-pane fade" id="tab-deployment" role="tabpanel" aria-labelledby="tab-deployment-btn">
 
             <div class="settings-section">
               <h6 class="text-muted mb-3">
@@ -644,7 +705,8 @@
               </div>
             </div>
 
-            <div class="settings-group-label"><i class="bi bi-bar-chart me-1"></i> {% trans "Dashboard & Analytics" %}</div>
+            </div><!-- /tab-deployment -->
+            <div class="tab-pane fade" id="tab-analytics" role="tabpanel" aria-labelledby="tab-analytics-btn">
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-sliders me-2"></i>{% trans "Analytics & Duplicate Detection" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Tuning knobs for the Dashboard widgets and the duplicate-photo detector on the item form.' %}"></i></h6>
@@ -672,6 +734,9 @@
               </div>
             </div>
 
+            </div><!-- /tab-analytics -->
+            </div><!-- /settingsTabContent -->
+
             <div class="mt-4 text-muted small" id="autosave-status">
               <i class="bi bi-cloud-check me-1"></i>{% trans "Changes save automatically." %}
             </div>
@@ -685,6 +750,25 @@
 
 <script nonce="{{ request.csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function () {
+  // ── Deep-link routing ─────────────────────────────────────────────────
+  // Settings used to be one long scroll, so links like
+  // {% url 'site_settings' %}#gift-card-health (see developer_hub.html)
+  // just relied on the browser's normal anchor-jump. Now that section
+  // lives inside a Bootstrap tab pane that's hidden unless active - jumping
+  // straight to the hash would land on an invisible element. Activate the
+  // owning tab first, then let the browser complete the anchor scroll.
+  if (window.location.hash) {
+    var target = document.querySelector(window.location.hash);
+    var pane = target ? target.closest('.tab-pane') : null;
+    if (pane) {
+      var tabBtn = document.getElementById(pane.id + '-btn');
+      if (tabBtn && window.bootstrap && window.bootstrap.Tab) {
+        window.bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+      }
+      setTimeout(function () { target.scrollIntoView({ block: 'start' }); }, 50);
+    }
+  }
+
   // ── Conditional sub-field visibility ─────────────────────────────────
   // nearby_places_enabled → overpass_api_url row
   var nearbyToggle = document.getElementById('{{ form.nearby_places_enabled.id_for_label }}');
