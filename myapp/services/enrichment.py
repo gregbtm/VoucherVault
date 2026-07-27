@@ -5,6 +5,7 @@ from dataclasses import dataclass, asdict
 from django.db import transaction
 from django.contrib.auth.models import User
 from myapp.models import Item, ItemEnrichmentLog, Document
+from .merchant_lookup import MerchantLookup
 
 
 @dataclass
@@ -134,6 +135,54 @@ class ItemEnricher:
             success=True
         )
 
+    def enrich_from_merchant_lookup(self, item: Item, confidence_threshold: Decimal = Decimal('0.5')) -> EnrichmentResult:
+        """Infer enrichment from similar merchants in user's existing items."""
+        enrichment_run_id = uuid.uuid4()
+        changes = []
+
+        # Get merchant lookup for this user
+        lookup = MerchantLookup(item.user)
+        enrichment_data = lookup.enrich_from_merchant(item, confidence_threshold)
+
+        if not enrichment_data:
+            return EnrichmentResult(
+                item_id=item.id,
+                enrichment_run_id=str(enrichment_run_id),
+                changes=[],
+                success=True,
+                error_message="No similar merchants found for enrichment"
+            )
+
+        # Generate field changes from merchant lookup
+        for field_name, field_value in enrichment_data.items():
+            if field_name.endswith('_confidence'):
+                continue
+
+            if field_name not in self.ENRICHABLE_FIELDS:
+                continue
+            if field_name in self.PROTECTED_FIELDS:
+                continue
+
+            current_value = getattr(item, field_name, None)
+            if current_value is None or current_value == '':
+                confidence_key = f'{field_name}_confidence'
+                confidence = enrichment_data.get(confidence_key, Decimal('0.5'))
+                if confidence >= confidence_threshold:
+                    changes.append(FieldChange(
+                        field_name=field_name,
+                        old_value=None,
+                        new_value=str(field_value),
+                        confidence_score=confidence,
+                        reason=f"Inferred from similar merchants in user's collection"
+                    ))
+
+        return EnrichmentResult(
+            item_id=item.id,
+            enrichment_run_id=str(enrichment_run_id),
+            changes=changes,
+            success=True
+        )
+
     def apply_changes(self, item: Item, changes: List[FieldChange]) -> Tuple[bool, Optional[str]]:
         """Apply enrichment changes to an item."""
         try:
@@ -213,7 +262,7 @@ class BulkEnricher:
                              confidence_threshold: Decimal = Decimal('0.5'),
                              dry_run: bool = False) -> Dict[int, EnrichmentResult]:
         """
-        Enrich multiple items. Modes: 'ocr', 'validation', 'all'
+        Enrich multiple items. Modes: 'ocr', 'validation', 'merchant_lookup', 'all'
         """
         results = {}
 
@@ -238,6 +287,16 @@ class BulkEnricher:
                         if success:
                             self.enricher.log_enrichment(item, result.enrichment_run_id,
                                                         result.changes, 'validation')
+                    results[item_id] = result
+                    continue
+
+                if enrichment_mode in ('merchant_lookup', 'all'):
+                    result = self.enricher.enrich_from_merchant_lookup(item, confidence_threshold)
+                    if result.changes and not dry_run:
+                        success, error = self.enricher.apply_changes(item, result.changes)
+                        if success:
+                            self.enricher.log_enrichment(item, result.enrichment_run_id,
+                                                        result.changes, 'merchant_lookup')
                     results[item_id] = result
 
             except Item.DoesNotExist:

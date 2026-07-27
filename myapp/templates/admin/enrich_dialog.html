@@ -19,6 +19,7 @@
           <select id="id_enrichment_mode" name="enrichment_mode" required>
             <option value="ocr">{% trans "OCR Rescan (items with documents)" %} - {{ items_with_docs }} {% trans "items" %}</option>
             <option value="validation">{% trans "Validation & Normalization" %}</option>
+            <option value="merchant_lookup">{% trans "Merchant Lookup (infer from similar items)" %}</option>
             <option value="all">{% trans "All Methods (sequential)" %}</option>
           </select>
           <p class="help">{% trans "Choose how to enrich the selected items." %}</p>
@@ -80,9 +81,10 @@
   <div class="info-box">
     <h3>{% trans "About Enrichment" %}</h3>
     <ul>
-      <li><strong>{% trans "Protected Fields:" %}</strong> {% trans "barcode_number, barcode_type, item_type are never modified" %}</li>
+      <li><strong>{% trans "Protected Fields:" %}</strong> {% trans "redeem_code, code_type, type are never modified" %}</li>
       <li><strong>{% trans "OCR Rescan:" %}</strong> {% trans "Re-extracts data from attached documents for improved accuracy" %}</li>
       <li><strong>{% trans "Validation:" %}</strong> {% trans "Normalizes and validates existing field values" %}</li>
+      <li><strong>{% trans "Merchant Lookup:" %}</strong> {% trans "Infers missing values from similar merchants in your collection (e.g., typical expiry, value)" %}</li>
       <li><strong>{% trans "Cost Caveat:" %}</strong> {% trans "Re-running OCR on many items may incur API costs" %}</li>
       <li><strong>{% trans "Audit Trail:" %}</strong> {% trans "All changes are logged for review and rollback" %}</li>
     </ul>
