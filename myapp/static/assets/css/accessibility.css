@@ -544,12 +544,19 @@ button,
 a.btn,
 input[type="button"],
 input[type="submit"],
-input[type="reset"],
-input[type="checkbox"],
-input[type="radio"] {
+input[type="reset"] {
   min-height: 44px;
   min-width: 44px;
 }
+
+/* Checkboxes/radios are deliberately NOT in the rule above: this selector's
+   attribute-selector specificity (0,1,1) beats mobile.css's ".form-check-input"
+   (0,1,0), which unconditionally forced every checkbox/radio to 44x44 on
+   every device - including desktop mouse users - and silently defeated
+   mobile.css's own narrower-screen downsize rule (24x24) since that rule
+   could never win the cascade against this higher-specificity one. Touch
+   target sizing for checkboxes belongs behind mobile.css's
+   `@media (hover: none) and (pointer: coarse)` gate, not here. */
 
 /* Improve small text readability */
 small,
