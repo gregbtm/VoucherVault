@@ -768,6 +768,9 @@
   <!-- Mobile UX improvements: touch targets, swipe gestures, haptic feedback -->
   <script src="{% static 'assets/js/mobile-interactions.js' %}"></script>
 
+  <!-- Mobile performance optimizations: lazy-load, touch targets, reduced motion -->
+  <script src="{% static 'assets/js/mobile-optimizations.js' %}"></script>
+
   <script nonce="{{ request.csp_nonce }}">
     document.getElementById('languageSelect').addEventListener('change', function() {
       document.getElementById('languageForm').submit();

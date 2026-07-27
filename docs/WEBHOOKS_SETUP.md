@@ -55,7 +55,17 @@ def verify(body: bytes, signature: str, secret: str) -> bool:
 
 ## Retry policy
 
-Failed deliveries (non-2xx response or connection error) are retried up to three times with exponential backoff (5 s, 25 s, 125 s). After three failures the delivery is marked as failed in the Webhook Log; no further retries occur.
+Failed deliveries (non-2xx response or connection error) are retried automatically with exponential backoff:
+
+| Attempt | Delay | Cumulative Time |
+|---------|-------|-----------------|
+| 1 | 1 minute | 1 minute |
+| 2 | 5 minutes | 6 minutes |
+| 3 | 15 minutes | 21 minutes |
+| 4 | 1 hour | 1 hour 21 minutes |
+| 5 | 4 hours | 5 hours 21 minutes |
+
+The retry system (Celery task `process_webhook_retries`) runs every 5 minutes and automatically reschedules failed deliveries. After 5 failed attempts over approximately 24 hours, the delivery is abandoned and logged as failed in the Webhook Log. This means transient failures (network blips, temporary service outages) are handled gracefully without manual intervention.
 
 ## Webhook Log
 

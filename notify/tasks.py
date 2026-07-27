@@ -675,3 +675,48 @@ def send_email_digests():
             logger.warning('send_email_digests: failed for %s: %s', pref.user.email, exc)
 
     logger.info('send_email_digests: done. %d digest(s) sent.', sent)
+
+
+@shared_task
+def process_webhook_retries():
+    """
+    Retry failed webhooks with exponential backoff.
+    Runs every 5 minutes. Each WebhookRetry awaiting next_retry_at
+    is attempted; on failure, increments attempt and reschedules.
+    """
+    from .models import WebhookRetry
+    import requests
+
+    now = timezone.now()
+    pending = WebhookRetry.objects.filter(
+        next_retry_at__lte=now,
+        attempt__lt=len(WebhookRetry.RETRY_BACKOFF)
+    ).select_related('rule')
+
+    attempted = 0
+    succeeded = 0
+
+    for retry in pending:
+        attempted += 1
+        url = retry.rule.config.get('url')
+        headers = retry.rule.config.get('headers') or {}
+
+        try:
+            response = requests.post(url, json=retry.payload, headers=headers, timeout=10)
+            response.raise_for_status()
+            retry.delete()
+            succeeded += 1
+            logger.info('webhook retry #%d succeeded for rule %s', retry.attempt + 1, retry.rule)
+        except requests.RequestException as exc:
+            retry.last_error = str(exc)
+            retry.attempt += 1
+            if retry.attempt < len(WebhookRetry.RETRY_BACKOFF):
+                delay = WebhookRetry.RETRY_BACKOFF[retry.attempt]
+                retry.next_retry_at = now + timedelta(seconds=delay)
+                retry.save()
+                logger.warning('webhook retry #%d failed, scheduled retry #%d', retry.attempt, retry.attempt + 1)
+            else:
+                retry.delete()
+                logger.error('webhook retry exhausted after 5 attempts for rule %s', retry.rule)
+
+    logger.info('process_webhook_retries: %d attempted, %d succeeded', attempted, succeeded)

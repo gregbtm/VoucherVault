@@ -129,3 +129,45 @@ class WebPushSubscription(models.Model):
 
     def __str__(self):
         return f'{self.user} @ {self.endpoint[:50]}'
+
+
+class WebhookRetry(models.Model):
+    """
+    Webhook delivery retry tracking with exponential backoff.
+    Max 5 retries across 24 hours (delays: 1m, 5m, 15m, 1h, 4h).
+    """
+    RETRY_BACKOFF = [60, 300, 900, 3600, 14400]  # seconds
+
+    rule = models.ForeignKey(NotificationRule, on_delete=models.CASCADE, related_name='webhook_retries')
+    item = models.ForeignKey(Item, on_delete=models.SET_NULL, null=True, blank=True)
+    event_type = models.CharField(max_length=50)
+    payload = models.JSONField()
+    attempt = models.IntegerField(default=0)
+    last_error = models.TextField(blank=True)
+    next_retry_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['next_retry_at']
+        indexes = [
+            models.Index(fields=['rule', 'next_retry_at']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.rule} retry #{self.attempt} for {self.event_type}'
+
+
+class FireflyTransaction(models.Model):
+    """
+    Firefly III transaction sync cache — tracks which items have been
+    synced to Firefly to prevent duplicates and enable balance reconciliation.
+    """
+    item = models.OneToOneField(Item, on_delete=models.CASCADE, related_name='firefly_transaction')
+    firefly_transaction_id = models.IntegerField(unique=True)
+    firefly_account_id = models.IntegerField()
+    synced_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'{self.item} → Firefly TX {self.firefly_transaction_id}'

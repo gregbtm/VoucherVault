@@ -1593,3 +1593,68 @@ class EnrichmentFieldPreference(models.Model):
     def __str__(self):
         return f"{self.user.username} - {self.method}: exclude {self.field_name}"
 
+
+
+class ItemCategory(models.Model):
+    """AI-inferred category for an item (e.g., 'Groceries', 'Entertainment')."""
+    item = models.OneToOneField(Item, on_delete=models.CASCADE, related_name='category')
+    category = models.CharField(max_length=50)
+    confidence = models.DecimalField(max_digits=3, decimal_places=2, default=Decimal('0.0'))
+    inferred_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['item', 'category'])]
+
+    def __str__(self):
+        return f"{self.item.name} → {self.category} ({self.confidence})"
+
+
+class WalletBudget(models.Model):
+    """Monthly spending budget for a wallet, with alerts."""
+    wallet = models.OneToOneField(Wallet, on_delete=models.CASCADE, related_name='budget')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    monthly_limit = models.DecimalField(max_digits=10, decimal_places=2)
+    alert_threshold = models.IntegerField(default=80, help_text="Alert when spend reaches X% of limit")
+    current_month_spent = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.0'))
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('wallet', 'user')
+
+    def __str__(self):
+        return f"{self.wallet.name}: £{self.monthly_limit}/month"
+
+    @property
+    def spent_percentage(self):
+        if self.monthly_limit == 0:
+            return 0
+        return int((self.current_month_spent / self.monthly_limit) * 100)
+
+    @property
+    def is_alert_threshold_reached(self):
+        return self.spent_percentage >= self.alert_threshold
+
+
+class ItemRecommendation(models.Model):
+    """AI-generated action recommendations for items (e.g., 'expires soon', 'low balance')."""
+    REASON_CHOICES = [
+        ('expires_soon', 'Expires within 7 days'),
+        ('expires_very_soon', 'Expires today or tomorrow'),
+        ('low_balance', 'Balance below £5'),
+        ('unused', 'Unused for 6+ months'),
+        ('budget_overspend', 'Category overspending'),
+    ]
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='recommendations')
+    reason = models.CharField(max_length=30, choices=REASON_CHOICES)
+    action = models.CharField(max_length=255, help_text="Suggested action text")
+    priority = models.IntegerField(choices=[(1, 'Low'), (2, 'Medium'), (3, 'High')])
+    dismissed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('item', 'reason')
+        indexes = [models.Index(fields=['item', 'dismissed_at'])]
+
+    def __str__(self):
+        return f"{self.item.name}: {self.get_reason_display()}"

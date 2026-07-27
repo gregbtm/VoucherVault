@@ -35,6 +35,15 @@ class Command(BaseCommand):
             month_of_year='*'
         )
 
+        # Every 5 minutes for webhook retry processing
+        five_min_schedule, created = CrontabSchedule.objects.get_or_create(
+            minute='*/5',
+            hour='*',
+            day_of_week='*',
+            day_of_month='*',
+            month_of_year='*'
+        )
+
         # This fork ships multiple releases a day during active work (see
         # the GitHub Releases page) - a once-a-day check made "installed
         # version ahead of the last known latest" the constant normal
@@ -109,6 +118,9 @@ class Command(BaseCommand):
             # skips users whose chosen send day doesn't match today. A no-op until a
             # user enables the digest in their preferences and SMTP is configured.
             {'name': 'Email Expiry Digest', 'task': 'notify.tasks.send_email_digests', 'crontab': crontab_schedule, 'enabled': True},
+            # Retries failed webhook notifications with exponential backoff (1m, 5m, 15m, 1h, 4h).
+            # Max 5 retries over 24 hours. A no-op until a user creates a webhook NotificationRule.
+            {'name': 'Process Webhook Retries', 'task': 'notify.tasks.process_webhook_retries', 'crontab': five_min_schedule, 'enabled': True},
         ]
 
         for task_data in tasks:
