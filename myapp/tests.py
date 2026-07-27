@@ -34,7 +34,7 @@ from .merchant_logos import (
 from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
 from .nearby_places import _names_match, _normalize, find_nearby_issuer_matches
 from .imagehash import compute_dhash, hamming_distance
-from .models import AppSettings, BalanceHistory, Document, Item, ItemPublicShare, LoginAuditLog, MerchantProfile, ScanFieldCorrection, SiteConfiguration, Tag, TOTPDevice, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, UserWebhook, Wallet, WalletActivity, WalletMembership
+from .models import AppSettings, BalanceHistory, Document, EnrichmentConfig, EnrichmentRun, EnrichmentRunItem, Item, ItemEnrichmentLog, ItemPublicShare, LoginAuditLog, MerchantProfile, ScanFieldCorrection, SiteConfiguration, Tag, TOTPDevice, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, UserWebhook, Wallet, WalletActivity, WalletMembership
 from .scan_learning import apply_learned_corrections, record_scan_corrections
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .test_utils import set_site_config
@@ -6751,3 +6751,141 @@ class GDPRDataExportViewTests(TestCase):
         resp = self.client.get(reverse('gdpr_data_export'))
         self.assertEqual(resp.status_code, 200)
         self.assertNotEqual(resp.status_code, 405)
+
+
+class EnrichmentWebUITests(TestCase):
+    """
+    Covers the second (previously unreachable) enrichment system: the
+    /enrichment/ dashboard in views_enrichment.py. Its templates never
+    existed (TemplateDoesNotExist on every view), it used the wrong
+    related_name (run.enrichmentrunitem_set instead of run.items) in
+    enrichment_run_detail, and every view was reachable by any logged-in
+    user despite EnrichmentConfig/EnrichmentRun having no user FK - a
+    scheduled run touches every non-archived item app-wide, same blast
+    radius as the admin bulk-enrich action, so it needs the same
+    superuser gate.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner', password='pw12345!')
+        self.other = User.objects.create_user(username='other', password='pw12345!')
+        self.admin = User.objects.create_superuser(username='admin', password='pw12345!')
+        self.item = make_item(self.owner)
+
+        self.config = EnrichmentConfig.objects.create(
+            method='ocr', enabled=True, schedule='weekly',
+            confidence_threshold=Decimal('0.5'), auto_apply=False,
+        )
+        self.run = EnrichmentRun.objects.create(
+            method='ocr', status='pending_approval', total_items=1,
+            successful_items=1, total_changes=1,
+            average_confidence=Decimal('0.8'), confidence_threshold=Decimal('0.5'),
+        )
+        self.run_item = EnrichmentRunItem.objects.create(
+            run=self.run, item=self.item, success=True, changes_proposed=1,
+            preview_data={'changes': [{
+                'field_name': 'issuer', 'old_value': '', 'new_value': 'Costa Coffee',
+                'confidence_score': 0.8, 'reason': 'OCR match',
+            }]},
+        )
+
+    def test_regular_user_denied_on_every_admin_view(self):
+        self.client.login(username='other', password='pw12345!')
+        urls = [
+            reverse('enrichment_dashboard'),
+            reverse('enrichment_config_list'),
+            reverse('enrichment_config_detail', args=['ocr']),
+            reverse('enrichment_run_list'),
+            reverse('enrichment_run_detail', args=[self.run.id]),
+        ]
+        for url in urls:
+            resp = self.client.get(url)
+            self.assertRedirects(resp, reverse('show_items'))
+
+    def test_trigger_denied_for_regular_user(self):
+        self.client.login(username='other', password='pw12345!')
+        resp = self.client.post(reverse('enrichment_trigger'), {'method': 'ocr'})
+        self.assertRedirects(resp, reverse('show_items'))
+
+    def test_superuser_can_view_every_admin_page(self):
+        self.client.login(username='admin', password='pw12345!')
+        urls = [
+            reverse('enrichment_dashboard'),
+            reverse('enrichment_config_list'),
+            reverse('enrichment_config_detail', args=['ocr']),
+            reverse('enrichment_run_list'),
+            reverse('enrichment_run_detail', args=[self.run.id]),
+        ]
+        for url in urls:
+            resp = self.client.get(url)
+            self.assertEqual(resp.status_code, 200, url)
+
+    def test_run_detail_lists_items_via_correct_related_name(self):
+        """
+        Regression test: the view used to call
+        run.enrichmentrunitem_set.all(), which raised AttributeError
+        because EnrichmentRunItem.run has related_name='items'.
+        """
+        self.client.login(username='admin', password='pw12345!')
+        resp = self.client.get(reverse('enrichment_run_detail', args=[self.run.id]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, self.item.name)
+        self.assertContains(resp, 'Costa Coffee')
+
+    def test_config_detail_saves_settings(self):
+        self.client.login(username='admin', password='pw12345!')
+        resp = self.client.post(reverse('enrichment_config_detail', args=['ocr']), {
+            'enabled': 'on', 'schedule': 'daily',
+            'confidence_threshold': '0.7', 'auto_apply': 'on',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.schedule, 'daily')
+        self.assertEqual(self.config.confidence_threshold, Decimal('0.7'))
+        self.assertTrue(self.config.auto_apply)
+
+    def test_approve_applies_changes_and_logs(self):
+        self.client.login(username='admin', password='pw12345!')
+        resp = self.client.post(
+            reverse('enrichment_run_detail', args=[self.run.id]), {'action': 'approve'}
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.issuer, 'Costa Coffee')
+        self.run.refresh_from_db()
+        self.assertEqual(self.run.status, 'completed')
+        self.assertEqual(self.run.approved_by, self.admin)
+        self.assertIsNotNone(self.run.approved_at)
+        self.assertTrue(
+            ItemEnrichmentLog.objects.filter(item=self.item, field_name='issuer').exists()
+        )
+
+    def test_reject_leaves_item_unchanged_and_records_notes(self):
+        self.client.login(username='admin', password='pw12345!')
+        original_issuer = self.item.issuer
+        resp = self.client.post(
+            reverse('enrichment_run_detail', args=[self.run.id]),
+            {'action': 'reject', 'reject_reason': 'Confidence too low'},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.issuer, original_issuer)
+        self.run.refresh_from_db()
+        self.assertEqual(self.run.status, 'rejected')
+        self.assertEqual(self.run.notes, 'Confidence too low')
+
+    def test_item_enrichment_history_scoped_to_owner(self):
+        """
+        Unlike the other enrichment views, item_enrichment_history is
+        legitimately per-user (it already filters by user=request.user)
+        and must stay reachable by the item's owner, not just superusers.
+        """
+        self.client.login(username='owner', password='pw12345!')
+        resp = self.client.get(reverse('item_enrichment_history', args=[self.item.id]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Costa Coffee')
+
+    def test_item_enrichment_history_404s_for_non_owner(self):
+        self.client.login(username='other', password='pw12345!')
+        resp = self.client.get(reverse('item_enrichment_history', args=[self.item.id]))
+        self.assertEqual(resp.status_code, 404)

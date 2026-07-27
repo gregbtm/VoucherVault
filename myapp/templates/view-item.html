@@ -2296,6 +2296,13 @@ body.dark-mode .tilt-scan-enable-btn {
             </form>
             {% endif %}
           </div>
+          {% if item.enrichment_run_results.exists %}
+          <div class="text-end mt-2">
+            <a href="{% url 'item_enrichment_history' item.id %}" class="text-muted small">
+              <i class="bi bi-magic me-1"></i>{% trans "View enrichment history" %}
+            </a>
+          </div>
+          {% endif %}
         </div>
       </div>
 

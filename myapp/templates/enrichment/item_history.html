@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{% trans "Enrichment History" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'view_item' item.id %}">{{ item.name }}</a></li>
+      <li class="breadcrumb-item active">{% trans "Enrichment History" %}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="card">
+    <div class="card-body">
+      <h5 class="card-title">{{ item.name }}</h5>
+      {% if run_items %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th>{% trans "Date" %}</th>
+              <th>{% trans "Method" %}</th>
+              <th>{% trans "Result" %}</th>
+              <th>{% trans "Changes" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for run_item in run_items %}
+            <tr>
+              <td class="small text-muted">{{ run_item.run.started_at|date:"d M Y, H:i" }}</td>
+              <td>{{ run_item.run.get_method_display }}</td>
+              <td>
+                {% if run_item.success %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle">{% trans "OK" %}</span>
+                {% else %}
+                <span class="badge bg-danger-subtle text-danger border border-danger-subtle">{% trans "Failed" %}</span>
+                {% endif %}
+                {% if run_item.changes_applied %}
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle ms-1">{% blocktrans with n=run_item.changes_applied %}{{ n }} applied{% endblocktrans %}</span>
+                {% endif %}
+              </td>
+              <td>
+                {% with changes=run_item.preview_data.changes %}
+                {% if changes %}
+                <ul class="list-unstyled small mb-0">
+                  {% for c in changes %}
+                  <li><strong>{{ c.field_name }}</strong>:
+                    <span class="text-muted text-decoration-line-through">{{ c.old_value|default:"—" }}</span>
+                    <i class="bi bi-arrow-right mx-1"></i>{{ c.new_value|default:"—" }}
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% else %}
+                <span class="text-muted small">{% trans "No changes proposed." %}</span>
+                {% endif %}
+                {% endwith %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted mb-0">{% trans "This item has not been through an enrichment run yet." %}</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}

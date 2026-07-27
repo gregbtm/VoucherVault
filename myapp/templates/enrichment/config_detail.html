@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>{{ config.get_method_display }}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'enrichment_dashboard' %}">{% trans "Enrichment" %}</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'enrichment_config_list' %}">{% trans "Configuration" %}</a></li>
+      <li class="breadcrumb-item active">{{ config.get_method_display }}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="row g-3">
+    <div class="col-lg-5">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-sliders me-1"></i>{% trans "Settings" %}</h5>
+          <form method="POST">
+            {% csrf_token %}
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input" type="checkbox" role="switch" id="id_enabled" name="enabled" {% if config.enabled %}checked{% endif %}>
+              <label class="form-check-label" for="id_enabled">{% trans "Enabled for scheduled runs" %}</label>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label small fw-semibold" for="id_schedule">{% trans "Schedule" %}</label>
+              <select class="form-select form-select-sm" id="id_schedule" name="schedule">
+                {% for value, label in schedule_choices %}
+                <option value="{{ value }}" {% if value == config.schedule %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label small fw-semibold" for="id_confidence">{% trans "Confidence threshold" %}</label>
+              <input type="number" class="form-control form-control-sm" id="id_confidence" name="confidence_threshold"
+                     min="0" max="1" step="0.05" value="{{ config.confidence_threshold }}">
+              <div class="form-text">{% trans "Proposed changes below this confidence (0-1) are skipped." %}</div>
+            </div>
+
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input" type="checkbox" role="switch" id="id_auto_apply" name="auto_apply" {% if config.auto_apply %}checked{% endif %}>
+              <label class="form-check-label" for="id_auto_apply">{% trans "Auto-apply changes (skip approval)" %}</label>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-sm">
+              <i class="bi bi-check-lg me-1"></i>{% trans "Save Configuration" %}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+            <h5 class="card-title mb-0"><i class="bi bi-clock-history me-1"></i>{% trans "Run History" %}</h5>
+            <form method="POST" action="{% url 'enrichment_trigger' %}" id="run-now-form">
+              {% csrf_token %}
+              <input type="hidden" name="method" value="{{ config.method }}">
+              <button type="submit" class="btn btn-sm btn-primary" {% if not config.enabled %}disabled title="{% trans 'Enable this method first' %}"{% endif %}>
+                <i class="bi bi-play-fill"></i> {% trans "Run Now" %}
+              </button>
+            </form>
+          </div>
+          {% if runs %}
+          <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>{% trans "Started" %}</th>
+                  <th>{% trans "Items" %}</th>
+                  <th>{% trans "Changes" %}</th>
+                  <th>{% trans "Status" %}</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for run in runs %}
+                <tr>
+                  <td class="small text-muted">{{ run.started_at|date:"d M Y, H:i" }}</td>
+                  <td>{{ run.successful_items }}/{{ run.total_items }}</td>
+                  <td>{{ run.total_changes }}</td>
+                  <td>{% include "enrichment/_status_badge.html" with status=run.status status_display=run.get_status_display %}</td>
+                  <td class="text-end">
+                    <a href="{% url 'enrichment_run_detail' run.id %}" class="btn btn-sm btn-outline-primary">{% trans "View" %}</a>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <p class="text-muted mb-0">{% trans "No runs yet for this method." %}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script nonce="{{ request.csp_nonce }}">
+var runNowForm = document.getElementById('run-now-form');
+if (runNowForm) {
+  runNowForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    showConfirm(
+      '{% trans "Queue an enrichment run for this method? It will process every non-archived item in the background." %}',
+      '{% trans "Run Now" %}',
+      function () { runNowForm.submit(); }
+    );
+  });
+}
+</script>
+{% endblock %}

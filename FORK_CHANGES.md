@@ -6947,6 +6947,32 @@ Three-tier scheduled enrichment system with approval workflow:
 
 ---
 
+## Enrichment web dashboard: build out the second, previously dead, enrichment UI
+
+**Fixes:** completes a parallel enrichment system (`myapp/views_enrichment.py`, `/enrichment/...`) that shipped in an earlier PR alongside the admin-tooling system above, but whose HTML templates were never committed - every one of its URLs 500'd with `TemplateDoesNotExist`. Also fixes two bugs uncovered while completing it, and closes an access-control gap.
+
+**Context:** `EnrichmentConfig`/`EnrichmentRun`/`EnrichmentRunItem` are shared by two UIs: the Django Admin bulk-action workflow (Phase 2.3, above) and this standalone `/enrichment/` dashboard. Both operate on the same underlying data; this phase makes the second one actually reachable.
+
+**1. New templates** (`myapp/templates/enrichment/`): `dashboard.html` (stats + per-method Run Now/Configure cards + recent runs), `config_list.html`, `config_detail.html` (schedule/threshold/auto-apply form + run history), `run_list.html` (filterable, paginated), `run_detail.html` (per-item proposed-change diffs, approve/reject with an optional rejection note), `item_history.html` (per-item enrichment audit trail), and a shared `_status_badge.html` partial. Styled to match the existing admin pages (`manage_invites.html` conventions: `.pagetitle`/breadcrumb, `.card`, `showConfirm()` for destructive actions).
+
+**2. Bug fixes in `views_enrichment.py`:**
+- `enrichment_run_detail` called `run.enrichmentrunitem_set.all()`, but `EnrichmentRunItem.run` declares `related_name='items'` - this raised `AttributeError` on every hit. Fixed to `run.items.all()`.
+- `enrichment_trigger` always redirected to the dashboard after queuing a run, even when triggered from a config detail page. Now redirects back to a validated `HTTP_REFERER` (same pattern as `trigger_portainer_redeploy`), falling back to the dashboard.
+- Approving a run now also stamps `approved_at` (the field existed but was never set). Rejecting a run accepts an optional free-text reason, stored on `EnrichmentRun.notes`.
+
+**3. Access control fix:** `EnrichmentConfig`/`EnrichmentRun` have no `user` FK - a scheduled or manually-triggered run touches every non-archived item app-wide, the same blast radius as the admin bulk-enrich action. The views were only `@login_required`, so any authenticated user could view every account's enrichment runs, edit global schedules, and trigger/approve/reject organization-wide field changes. Added a `superuser_required` decorator (same inline `is_superuser` check used elsewhere, e.g. `trigger_portainer_redeploy`) to every admin-only view. `item_enrichment_history` is left as-is - it already scopes to `Item.objects.get(id=item_id, user=request.user)`, so it's legitimately reachable by any user viewing their own item.
+
+**4. Nav + entry points:** added "Enrichment" to the superuser-only sidebar section (next to Site Settings/Users/Invite Links), and a small "View enrichment history" link on the item detail page, shown only when `item.enrichment_run_results.exists()`.
+
+**Test coverage:** new `EnrichmentWebUITests` (9 tests) - regular users denied on every admin view and on trigger, superusers can reach every page, the `related_name` regression is covered directly, config save persists, approve applies changes and writes an `ItemEnrichmentLog` entry, reject leaves the item untouched and records the note, and `item_enrichment_history` stays owner-scoped (200 for the owner, 404 for anyone else).
+
+**Files changed (new):** `myapp/templates/enrichment/{dashboard,config_list,config_detail,run_list,run_detail,item_history,_status_badge}.html`.
+**Files changed (modified):** `myapp/views_enrichment.py` (access control + two bug fixes), `myapp/templates/base.html` (nav link), `myapp/templates/view-item.html` (history link), `myapp/tests.py` (`EnrichmentWebUITests`).
+
+**Test suite:** 1257 tests, 0 failures. Live-verified in a running dev server as both a superuser and a regular user - dashboard, config edit, run approve/reject (confirmed the item field actually updates and an audit log row is written), and the per-user item-history page.
+
+---
+
 ## Upgrading an existing deployment
 
 If you're running the upstream Docker image and want to switch to this

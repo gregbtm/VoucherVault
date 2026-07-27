@@ -5,14 +5,35 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.utils import timezone
+from django.utils.translation import gettext as _
 from django.db.models import Q, Count, Sum, Avg
 from decimal import Decimal
+from functools import wraps
 
 from .models import EnrichmentConfig, EnrichmentRun, EnrichmentRunItem, Item
 from .services.enrichment import ItemEnricher
 
 
+def superuser_required(view_func):
+    """
+    EnrichmentConfig/EnrichmentRun are app-wide (no user FK) - a scheduled
+    run touches every non-archived item across every account, same as the
+    admin bulk-enrich action these views are a web-UI counterpart to. Gate
+    them the same way the rest of the app gates admin-only pages (see
+    trigger_portainer_redeploy/site_settings), rather than leaving them
+    reachable by any logged-in user.
+    """
+    @wraps(view_func)
+    def wrapped(request, *args, **kwargs):
+        if not request.user.is_superuser:
+            messages.error(request, _('Only administrators can access enrichment management.'))
+            return redirect('show_items')
+        return view_func(request, *args, **kwargs)
+    return wrapped
+
+
 @login_required
+@superuser_required
 def enrichment_dashboard(request):
     """Dashboard showing enrichment status and history."""
     configs = EnrichmentConfig.objects.all()
@@ -44,6 +65,7 @@ def enrichment_dashboard(request):
 
 
 @login_required
+@superuser_required
 def enrichment_config_list(request):
     """List all enrichment configurations."""
     configs = EnrichmentConfig.objects.all().order_by('method')
@@ -67,6 +89,7 @@ def enrichment_config_list(request):
 
 
 @login_required
+@superuser_required
 def enrichment_config_detail(request, method):
     """View and edit enrichment configuration."""
     config = get_object_or_404(EnrichmentConfig, method=method)
@@ -95,6 +118,7 @@ def enrichment_config_detail(request, method):
 
 
 @login_required
+@superuser_required
 def enrichment_run_list(request):
     """List all enrichment runs."""
     runs = EnrichmentRun.objects.order_by('-started_at')
@@ -123,6 +147,7 @@ def enrichment_run_list(request):
             'page': page,
             'per_page': per_page,
             'total': total,
+            'total_pages': max(1, -(-total // per_page)),
             'has_prev': page > 1,
             'has_next': (page * per_page) < total,
         },
@@ -133,10 +158,11 @@ def enrichment_run_list(request):
 
 
 @login_required
+@superuser_required
 def enrichment_run_detail(request, run_id):
     """View enrichment run details and results."""
     run = get_object_or_404(EnrichmentRun, id=run_id)
-    items = run.enrichmentrunitem_set.all().select_related('item')
+    items = run.items.all().select_related('item')
 
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -172,6 +198,7 @@ def enrichment_run_detail(request, run_id):
 
             run.status = 'completed'
             run.approved_by = request.user
+            run.approved_at = timezone.now()
             run.completed_at = timezone.now()
             run.save()
             messages.success(request, f'Applied changes to {applied_count} items.')
@@ -179,6 +206,9 @@ def enrichment_run_detail(request, run_id):
         elif action == 'reject' and run.status == 'pending_approval':
             run.status = 'rejected'
             run.completed_at = timezone.now()
+            reason = request.POST.get('reject_reason', '').strip()
+            if reason:
+                run.notes = reason
             run.save()
             messages.info(request, 'Run rejected. No changes were applied.')
 
@@ -192,6 +222,7 @@ def enrichment_run_detail(request, run_id):
 
 
 @login_required
+@superuser_required
 @require_http_methods(['POST'])
 def enrichment_trigger(request):
     """Manually trigger an enrichment run."""
@@ -206,6 +237,10 @@ def enrichment_trigger(request):
     except Exception as e:
         messages.error(request, f'Failed to queue enrichment: {e}')
 
+    from django.utils.http import url_has_allowed_host_and_scheme
+    referer = request.META.get('HTTP_REFERER')
+    if referer and url_has_allowed_host_and_scheme(referer, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return redirect(referer)
     return redirect('enrichment_dashboard')
 
 
