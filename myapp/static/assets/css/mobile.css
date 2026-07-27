@@ -58,6 +58,8 @@
       line-height: 1.5;
     }
 
+    input[type="checkbox"],
+    input[type="radio"],
     .form-check-input {
       min-height: 24px;
       min-width: 24px;

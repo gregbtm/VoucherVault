@@ -6973,6 +6973,24 @@ Three-tier scheduled enrichment system with approval workflow:
 
 ---
 
+## Fix: oversized checkboxes on touch devices (CSS specificity conflict)
+
+**Fixes:** checkboxes/radios rendering far larger than intended on phones - e.g. Site Settings' STARTTLS/SSL/sharing toggles - despite `mobile.css` already containing a rule that was clearly meant to shrink them back down on narrow screens.
+
+**Root cause:** two separate specificity bugs stacked on top of each other, both predating the app-wide button system pass above:
+1. `accessibility.css` (from an old "Phase 6: Accessibility Enhancements" commit) set `min-height`/`min-width: 44px` on `input[type="checkbox"]`/`input[type="radio"]` **unconditionally** - on every device, not just touch - via the "Touch target sizing" rule. Removed checkboxes/radios from that selector; buttons/submit/reset inputs keep the always-on 44px min, which is correct for those.
+2. Even with that removed, `mobile.css`'s own narrow-screen downsize rule (`.form-check-input { min-height: 24px; min-width: 24px; }`, intended to shrink the 44px WCAG touch-target checkbox back down on screens ≤767px) could never win: it matches via a class selector (specificity `0,1,0`), while the 44px rule above it also matches via `input[type="checkbox"]`/`input[type="radio"]` (specificity `0,1,1`) - a higher-specificity selector always wins regardless of source order, so the "shrink it back down" rule was dead code from the day it was written. Fixed by adding the same `input[type="checkbox"], input[type="radio"]` selectors to the 24px rule, giving it equal specificity so the later (and now correctly cascading) rule wins.
+
+Net effect: checkboxes stay at Bootstrap's normal ~16-20px on desktop (mouse/trackpad, unaffected by either rule), grow to the WCAG-AAA 44px touch target on tablets/larger touch screens, and settle at a proportionate ~24-26px on phones - instead of blowing up to nearly 4x that on narrow touch viewports as reported.
+
+**Investigated but not a bug:** the "Test connection" button reported alongside this looked faint in a phone screenshot, but its computed styles are unmodified Bootstrap `.btn-outline-secondary` (`color: #6c757d`, `opacity: 1`, not disabled) - working as designed, just a lower-contrast neutral button next to a blue primary one, not a rendering fault.
+
+**Files changed:** `myapp/static/assets/css/accessibility.css`, `myapp/static/assets/css/mobile.css`.
+
+**Verification:** live-verified via Playwright with emulated touch/mobile and desktop viewports - computed checkbox size confirmed 44px → 24-26px on narrow touch screens, unchanged 16px on desktop. Full suite: 1257 tests, 0 failures (CSS-only change, no new Django-testable behavior).
+
+---
+
 ## Upgrading an existing deployment
 
 If you're running the upstream Docker image and want to switch to this
