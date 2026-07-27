@@ -69,6 +69,9 @@
   <link href="{% static 'assets/css/animations.css' %}" rel="stylesheet">
   <link href="{% static 'assets/css/mobile.css' %}" rel="stylesheet">
 
+  <!-- Phase 4: Gestures & App Shell (Mobile UX) -->
+  <link href="{% static 'assets/css/gestures.css' %}" rel="stylesheet">
+
   <style>
     /* Network status indicator styles */
     .network-status {
@@ -760,6 +763,10 @@
   <script src="{% static 'assets/js/pwa-badge.js' %}"></script>
   <script src="{% static 'assets/js/pwa-orientation.js' %}"></script>
   <script src="{% static 'assets/js/pwa-periodic-sync.js' %}"></script>
+
+  <!-- Phase 4: Mobile Gestures & App Shell -->
+  <script src="{% static 'assets/js/gesture-controller.js' %}"></script>
+  <script src="{% static 'assets/js/app-shell.js' %}"></script>
 
   <!-- Service Worker Message Handler for PWA Updates -->
   <script nonce="{{ request.csp_nonce }}">

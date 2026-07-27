@@ -4,6 +4,7 @@ const RUNTIME_CACHE = `vouchervault-runtime-${VERSION}`;
 const DATA_CACHE = `vouchervault-data-${VERSION}`;
 const PAGE_CACHE = `vouchervault-pages-${VERSION}`;
 const IMAGE_CACHE = `vouchervault-images-${VERSION}`;
+const SHELL_CACHE = `vouchervault-shell-${VERSION}`;
 
 // Cache expiration settings
 const CACHE_DURATION = 48 * 60 * 60 * 1000; // 48 hours in milliseconds
@@ -175,7 +176,8 @@ self.addEventListener('activate', event => {
                                cacheName !== RUNTIME_CACHE &&
                                cacheName !== DATA_CACHE &&
                                cacheName !== PAGE_CACHE &&
-                               cacheName !== IMAGE_CACHE;
+                               cacheName !== IMAGE_CACHE &&
+                               cacheName !== SHELL_CACHE;
                     })
                     .map(cacheName => {
                         console.log('[ServiceWorker] Deleting old cache:', cacheName);
