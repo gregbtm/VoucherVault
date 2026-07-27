@@ -1,0 +1,550 @@
+/**
+ * VoucherVault Mobile Optimization
+ * Touch targets, responsive typography, safe areas, and mobile UX improvements
+ */
+
+/* ────────────────────────────────────────────────────────────────
+   Priority 1: Touch Targets (44×44px minimum - WCAG 2.5.5 Level AAA)
+   ──────────────────────────────────────────────────────────────── */
+
+@media (hover: none) and (pointer: coarse) {
+  /* Enforce 44×44px minimum on all interactive elements */
+  .btn,
+  .btn-sm,
+  .btn-lg,
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="date"],
+  input[type="datetime-local"],
+  input[type="month"],
+  input[type="time"],
+  input[type="week"],
+  input[type="color"],
+  input[type="file"],
+  input[type="checkbox"],
+  input[type="radio"],
+  select,
+  textarea,
+  .form-check-input,
+  .form-switch .form-check-input {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Extra padding for buttons and inputs on small screens */
+  @media (max-width: 767px) {
+    .btn {
+      min-height: 48px;
+      padding: 12px 16px;
+      font-size: 16px; /* Prevent iOS zoom-on-focus */
+    }
+
+    .btn-sm {
+      min-height: 44px;
+      padding: 10px 12px;
+      font-size: 14px;
+    }
+
+    input,
+    select,
+    textarea {
+      min-height: 48px;
+      font-size: 16px; /* Critical: prevent auto-zoom on iOS */
+      padding: 12px;
+      line-height: 1.5;
+    }
+
+    .form-check-input {
+      min-height: 24px;
+      min-width: 24px;
+      margin-top: 4px;
+    }
+
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+  }
+
+  /* Tactile feedback: active state for touch devices */
+  .btn:active {
+    transform: scale(0.98);
+    opacity: 0.85;
+  }
+
+  .btn:focus {
+    outline: 3px solid var(--accent-color, #4154f1);
+    outline-offset: 2px;
+  }
+
+  /* Disable hover effects on touch devices */
+  .btn:hover {
+    opacity: 1;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Priority 2: Form Spacing & Readability
+   ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .form-group,
+  .mb-3 {
+    margin-bottom: 20px;
+  }
+
+  label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .form-text {
+    font-size: 13px;
+    margin-top: 4px;
+  }
+
+  /* Increase spacing between form groups */
+  .form-group + .form-group {
+    margin-top: 24px;
+  }
+
+  /* Better spacing for form rows */
+  .row {
+    row-gap: 20px;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Priority 3: Responsive Typography
+   ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 575px) {
+  /* Boost base font for better mobile readability */
+  body {
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  h1 {
+    font-size: 24px;
+    line-height: 1.3;
+    margin-bottom: 16px;
+  }
+
+  h2 {
+    font-size: 20px;
+    line-height: 1.3;
+    margin-bottom: 14px;
+  }
+
+  h3 {
+    font-size: 18px;
+    margin-bottom: 12px;
+  }
+
+  h4 {
+    font-size: 16px;
+    margin-bottom: 10px;
+  }
+
+  h5,
+  h6 {
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+
+  /* Better paragraph spacing */
+  p {
+    margin-bottom: 12px;
+    line-height: 1.7;
+  }
+
+  /* Reduce padding on small screens */
+  .container,
+  .container-fluid {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  #main {
+    padding: 12px;
+  }
+
+  .card {
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  .card-body {
+    padding: 14px;
+  }
+
+  .card-title {
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Priority 4: Safe Area Insets (Notched Devices)
+   ──────────────────────────────────────────────────────────────── */
+
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .header {
+    padding-top: env(safe-area-inset-top);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+  }
+
+  /* Adjust main content to account for notch + fixed header */
+  #main {
+    margin-top: 60px;
+    padding-top: env(safe-area-inset-top);
+  }
+
+  @media (max-width: 767px) {
+    .header {
+      height: 56px;
+      padding: env(safe-area-inset-top) 12px 0;
+    }
+
+    #main {
+      margin-top: 56px;
+      padding-top: 12px;
+    }
+  }
+
+  /* Fixed footer safe area */
+  .footer {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Priority 5: Table Responsiveness
+   ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 4px;
+    box-shadow: inset -10px 0 10px -10px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Stack table on small screens */
+  .table-stack {
+    width: 100%;
+    display: block;
+    border-collapse: collapse;
+  }
+
+  .table-stack thead {
+    display: none;
+  }
+
+  .table-stack tbody {
+    display: block;
+  }
+
+  .table-stack tr {
+    display: block;
+    margin-bottom: 15px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .table-stack td {
+    display: block;
+    text-align: right;
+    padding-left: 50%;
+    padding: 12px;
+    position: relative;
+    border: none;
+    border-bottom: 1px solid var(--border-color, #eee);
+  }
+
+  .table-stack td:last-child {
+    border-bottom: none;
+  }
+
+  .table-stack td::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 12px;
+    font-weight: 600;
+    color: var(--text-muted, #666);
+    text-align: left;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Priority 6: Navigation Improvements
+   ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 1199px) {
+  .sidebar {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sidebar-nav a {
+    padding: 12px 16px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Priority 7: Modal/Overlay Mobile Improvements
+   ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .modal-dialog {
+    margin: 12px;
+  }
+
+  .modal-body {
+    padding: 16px;
+    max-height: 80vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-footer {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .modal-footer .btn {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Full-width buttons in modals on mobile */
+  .modal-footer .btn-secondary {
+    flex: 0.5;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Priority 8: Scroll & Layout Stability
+   ──────────────────────────────────────────────────────────────── */
+
+html {
+  overflow-anchor: auto;
+  scroll-behavior: smooth;
+}
+
+/* Prevent layout shift when scrollbar appears */
+body {
+  scrollbar-gutter: stable;
+}
+
+/* Smooth momentum scroll on iOS */
+.container,
+.container-fluid,
+.table-responsive,
+.sidebar {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Priority 9: Virtual Keyboard Handling
+   ──────────────────────────────────────────────────────────────── */
+
+@media (max-height: 500px) {
+  /* When keyboard is open, reduce padding */
+  body {
+    padding: 0;
+  }
+
+  .header {
+    height: 48px;
+  }
+
+  #main {
+    margin-top: 48px;
+    padding: 8px;
+  }
+
+  .form-group {
+    margin-bottom: 12px;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Priority 10: Touch Feedback & States
+   ──────────────────────────────────────────────────────────────── */
+
+@media (hover: none) {
+  /* Remove hover effects on touch */
+  .btn:hover {
+    background-color: inherit;
+    border-color: inherit;
+  }
+
+  a:hover {
+    color: inherit;
+  }
+
+  /* Add active state instead */
+  .btn:active,
+  .btn:focus {
+    transform: scale(0.98);
+  }
+
+  /* Touchable list items */
+  .list-group-item {
+    padding: 16px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Priority 11: Lazy Loading Support
+   ──────────────────────────────────────────────────────────────── */
+
+img[loading="lazy"] {
+  background-color: var(--bg-loading, #f0f0f0);
+  animation: pulse-loading 1.5s infinite;
+}
+
+@keyframes pulse-loading {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Priority 12: Utility Classes for Mobile-First Design
+   ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .d-md-none {
+    display: block !important;
+  }
+
+  .d-md-block {
+    display: none !important;
+  }
+
+  .px-md-0 {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .gap-mobile {
+    gap: 12px;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Priority 13: Accessibility Enhancements
+   ──────────────────────────────────────────────────────────────── */
+
+/* Ensure proper contrast in high contrast mode */
+@media (prefers-contrast: more) {
+  body {
+    color: #000;
+  }
+
+  a {
+    text-decoration: underline;
+  }
+
+  .btn {
+    border-width: 2px;
+  }
+}
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* High contrast mode for visibility */
+@media (prefers-color-scheme: light) {
+  .btn-outline-primary {
+    border-width: 2px;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Priority 14: Horizontal Scroll Indicator
+   ──────────────────────────────────────────────────────────────── */
+
+.table-responsive::after {
+  content: "";
+  display: block;
+  height: 4px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(65, 84, 241, 0.3),
+    transparent
+  );
+  position: relative;
+  bottom: 0;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Priority 15: iOS & Android Specific Fixes
+   ──────────────────────────────────────────────────────────────── */
+
+/* iOS: Prevent text size adjustment on orientation change */
+html {
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* iOS: Remove tap highlight */
+@media (hover: none) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Android: Disable long-press context menu on images */
+img,
+a {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Allow text selection on content */
+p,
+span,
+li {
+  -webkit-user-select: text;
+  user-select: text;
+}

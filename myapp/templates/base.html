@@ -34,7 +34,7 @@
     });
   </script>
   <meta charset="utf-8">
-  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport">
   <title>VoucherVault Plus+</title>
   <meta content="" name="description">
   <meta content="" name="keywords">
@@ -63,6 +63,8 @@
   <link href="{% static 'assets/css/color-picker.css' %}" rel="stylesheet">
   <link href="{% static 'assets/css/field-suggest.css' %}" rel="stylesheet">
   <link href="{% static 'assets/css/animations.css' %}" rel="stylesheet">
+  <!-- Mobile & PWA Optimizations -->
+  <link href="{% static 'assets/css/mobile.css' %}" rel="stylesheet">
 
   <style>
     /* Network status indicator styles */
@@ -762,6 +764,9 @@
 
   <!-- Interactive "suggest from your recent items" field buttons -->
   <script src="{% static 'assets/js/field-suggest.js' %}"></script>
+
+  <!-- Mobile UX improvements: touch targets, swipe gestures, haptic feedback -->
+  <script src="{% static 'assets/js/mobile-interactions.js' %}"></script>
 
   <script nonce="{{ request.csp_nonce }}">
     document.getElementById('languageSelect').addEventListener('change', function() {
