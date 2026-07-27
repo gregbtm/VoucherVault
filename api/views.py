@@ -39,7 +39,7 @@ from myapp.merchant_logos import remember_balance_check_url
 from myapp.models import (
     Document, Item, ItemShare, MerchantProfile, Tag, Transaction,
     UserPreference, UserProfile, UserWebhook, Wallet,
-    WalletActivity, WalletMembership,
+    WalletActivity, WalletMembership, ItemCategory, WalletBudget, ItemRecommendation,
 )
 from dms.models import DMSProvider, DMSSyncLog
 from myapp.pdf_ticket import (
@@ -70,6 +70,8 @@ from .serializers import (
     ImportJobSerializer,
     ItemSerializer,
     ItemShareSerializer,
+    ItemCategorySerializer,
+    ItemRecommendationSerializer,
     MerchantProfileSerializer,
     NotificationLogSerializer,
     NotificationRuleSerializer,
@@ -79,6 +81,7 @@ from .serializers import (
     UserProfileSerializer,
     UserWebhookSerializer,
     WalletActivitySerializer,
+    WalletBudgetSerializer,
     WalletMembershipSerializer,
     WalletSerializer,
 )
@@ -1940,3 +1943,61 @@ class EnrichmentRunViewSet(viewsets.ReadOnlyModelViewSet):
             {'status': 'triggered', 'method': method},
             status=status.HTTP_202_ACCEPTED
         )
+
+
+class ItemCategoryViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only API for item categories (auto-inferred via smart_features)."""
+    serializer_class = ItemCategorySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        from myapp.models import ItemCategory
+        return ItemCategory.objects.filter(item__user=self.request.user)
+
+
+class WalletBudgetViewSet(viewsets.ModelViewSet):
+    """API for wallet budgets: monthly limits, spending tracking, alerts."""
+    serializer_class = WalletBudgetSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ['wallet']
+    ordering_fields = ['monthly_limit', 'current_month_spent', 'updated_at']
+    ordering = ['-updated_at']
+
+    def get_queryset(self):
+        from myapp.models import WalletBudget
+        return WalletBudget.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class ItemRecommendationViewSet(viewsets.ModelViewSet):
+    """API for item recommendations with filtering by active/dismissed status."""
+    serializer_class = ItemRecommendationSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ['reason']
+    ordering_fields = ['priority', 'created_at']
+    ordering = ['-priority', '-created_at']
+
+    def get_queryset(self):
+        from myapp.models import ItemRecommendation
+        qs = ItemRecommendation.objects.filter(item__user=self.request.user)
+
+        dismissed = self.request.query_params.get('dismissed')
+        if dismissed is not None:
+            if dismissed.lower() == 'true':
+                qs = qs.filter(dismissed_at__isnull=False)
+            else:
+                qs = qs.filter(dismissed_at__isnull=True)
+
+        return qs
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def dismiss(self, request, pk=None):
+        """Mark a recommendation as dismissed."""
+        rec = self.get_object()
+        rec.dismissed_at = timezone.now()
+        rec.save(update_fields=['dismissed_at'])
+        return Response(self.get_serializer(rec).data)

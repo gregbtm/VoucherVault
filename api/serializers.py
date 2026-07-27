@@ -12,6 +12,7 @@ from myapp.models import (
     Document, Item, ItemShare, MerchantProfile, Tag, Transaction,
     UserPreference, UserProfile, UserWebhook, Wallet,
     WalletActivity, WalletMembership, EnrichmentConfig, EnrichmentRun, EnrichmentRunItem,
+    ItemCategory, WalletBudget, ItemRecommendation,
 )
 from dms.models import DMSProvider, DMSSyncLog
 from myapp.utils import generate_code_image_base64
@@ -500,3 +501,43 @@ class EnrichmentRunSerializer(serializers.ModelSerializer):
         if obj.total_items == 0:
             return 0.0
         return round(obj.successful_items / obj.total_items * 100, 1)
+
+
+class ItemCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ItemCategory
+        fields = ['id', 'item', 'category', 'confidence', 'inferred_at']
+        read_only_fields = ['id', 'category', 'confidence', 'inferred_at']
+
+
+class WalletBudgetSerializer(serializers.ModelSerializer):
+    spent_percentage = serializers.SerializerMethodField(read_only=True)
+    is_alert_threshold_reached = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = WalletBudget
+        fields = [
+            'id', 'wallet', 'monthly_limit', 'alert_threshold',
+            'current_month_spent', 'spent_percentage', 'is_alert_threshold_reached',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'current_month_spent', 'created_at', 'updated_at']
+
+    def get_spent_percentage(self, budget) -> float:
+        if budget.monthly_limit == 0:
+            return 0.0
+        return round((budget.current_month_spent / budget.monthly_limit) * 100, 1)
+
+    def get_is_alert_threshold_reached(self, budget) -> bool:
+        spent_pct = (budget.current_month_spent / budget.monthly_limit * 100) if budget.monthly_limit > 0 else 0
+        return spent_pct >= budget.alert_threshold
+
+
+class ItemRecommendationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ItemRecommendation
+        fields = [
+            'id', 'item', 'reason', 'action', 'priority',
+            'dismissed_at', 'created_at',
+        ]
+        read_only_fields = ['id', 'action', 'priority', 'created_at']

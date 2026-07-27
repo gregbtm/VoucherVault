@@ -76,3 +76,24 @@ def save_user_profile(sender, instance, **kwargs):
 def create_user_preference(sender, instance, created, **kwargs):
     if created:
         UserPreference.objects.create(user=instance)
+
+
+@receiver(post_save, sender=Item)
+def auto_categorize_item(sender, instance, created, **kwargs):
+    """Auto-categorize items on create/update using smart_features."""
+    try:
+        from .smart_features import apply_category_to_item
+        apply_category_to_item(instance)
+    except Exception:
+        pass
+
+
+@receiver(post_save, sender=Transaction)
+def update_wallet_budget_on_transaction(sender, instance, created, **kwargs):
+    """Recalculate wallet budget spending when a transaction is created/updated."""
+    try:
+        from .smart_features import update_wallet_spent_this_month
+        if instance.item and instance.item.wallet:
+            update_wallet_spent_this_month(instance.item.wallet)
+    except Exception:
+        pass
