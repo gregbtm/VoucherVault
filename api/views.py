@@ -1774,7 +1774,7 @@ class DMSSyncLogViewSet(viewsets.ReadOnlyModelViewSet):
         return qs
 
 
-class UserSearchView(views.APIView):
+class UserSearchView(APIView):
     """Search for users by partial username. Returns username + email for autocomplete."""
     permission_classes = [IsAuthenticated]
 
