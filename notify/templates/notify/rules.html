@@ -79,12 +79,12 @@
               {{ form.backend }}
             </div>
 
-            <div class="mb-3 form-check">
+            <div class="mb-3 form-check form-switch">
               {{ form.enabled }}
               <label class="form-check-label" for="{{ form.enabled.id_for_label }}">{% trans "Enabled" %}</label>
             </div>
 
-            <div class="mb-3 form-check">
+            <div class="mb-3 form-check form-switch">
               {{ form.apply_to_all }}
               <label class="form-check-label" for="{{ form.apply_to_all.id_for_label }}">
                 {% trans "Apply to all my items" %}
@@ -122,7 +122,7 @@
                 {{ form.ntfy_priority }}
               </div>
               <div class="mb-2">
-                <div class="form-check mb-1">
+                <div class="form-check form-switch mb-1">
                   <input type="checkbox" class="form-check-input" id="ntfy-private-toggle">
                   <label class="form-check-label" for="ntfy-private-toggle">{% trans "Private topic (requires access token)" %}</label>
                 </div>
@@ -141,7 +141,7 @@
                 {% if form.webhook_url.errors %}<div class="text-danger small mt-1">{{ form.webhook_url.errors }}</div>{% endif %}
               </div>
               <div class="mb-2">
-                <div class="form-check mb-1">
+                <div class="form-check form-switch mb-1">
                   <input type="checkbox" class="form-check-input" id="webhook-header-toggle">
                   <label class="form-check-label" for="webhook-header-toggle">{% trans "Add a custom request header (e.g. for auth)" %}</label>
                 </div>

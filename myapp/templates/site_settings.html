@@ -136,7 +136,7 @@
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-image me-2"></i>{% trans "Merchant Logos" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Fetches a brand logo for each item card automatically, based on the issuer name or logo domain.' %}"></i></h6>
-              <div class="form-check mb-3">
+              <div class="form-check form-switch mb-3">
                 {{ form.merchant_logos_enabled }}
                 <label class="form-check-label" for="{{ form.merchant_logos_enabled.id_for_label }}">{% trans "Auto-fetch merchant logos on item cards" %}</label>
               </div>
@@ -155,7 +155,7 @@
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-geo-alt me-2"></i>{% trans "Nearby Items" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Site-wide switch for the opt-in Nearby widget. Users still need to enable it in their own Preferences - this only controls whether the underlying OpenStreetMap lookup is available at all.' %}"></i></h6>
-              <div class="form-check mb-3">
+              <div class="form-check form-switch mb-3">
                 {{ form.nearby_places_enabled }}
                 <label class="form-check-label" for="{{ form.nearby_places_enabled.id_for_label }}">{% trans "Allow the Nearby widget to query OpenStreetMap" %}</label>
               </div>
@@ -173,7 +173,7 @@
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-send me-2"></i>{% trans "Sharing" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Controls what the Share via... button offers and how public share links behave.' %}"></i></h6>
-              <div class="form-check">
+              <div class="form-check form-switch">
                 {{ form.share_via_smart_enabled }}
                 <label class="form-check-label" for="{{ form.share_via_smart_enabled.id_for_label }}">{% trans "Offer a choice on \"Share via...\": bare link, or a rich share (merchant, code, PIN, remaining balance) via a public link" %}</label>
               </div>
@@ -186,7 +186,7 @@
                     <small class="form-text text-muted">{% trans "0 = never expires. Applies to new/regenerated links; existing links keep their original expiry." %}</small>
                   </div>
                 </div>
-                <div class="form-check">
+                <div class="form-check form-switch">
                   {{ form.share_link_pin_enabled }}
                   <label class="form-check-label" for="{{ form.share_link_pin_enabled.id_for_label }}">{% trans "Require a short access code to view a public share link" %}</label>
                 </div>
@@ -240,6 +240,57 @@
               <p class="text-muted small mb-0 ocr-fields" data-ocr-backend="tesseract">
                 {% trans "No extra configuration needed - uses the tesseract binary bundled in the image." %}
               </p>
+            </div>
+
+            <div class="settings-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-envelope me-2"></i>{% trans "Outbound Email (SMTP)" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Configure an SMTP server so VoucherVault can send password-reset emails and PocketID invite emails.' %}"></i></h6>
+              <p class="text-muted small mb-3">{% trans "Used for password resets and invite emails. Leave the host blank to disable outbound email." %}</p>
+              <div class="row">
+                <div class="col-md-8 mb-3">
+                  <label for="{{ form.email_host.id_for_label }}" class="form-label">{% trans "SMTP host" %}</label>
+                  {{ form.email_host }}
+                  <div class="form-text">{% trans "e.g. smtp.gmail.com, smtp.sendgrid.net" %}</div>
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.email_port.id_for_label }}" class="form-label">{% trans "Port" %}</label>
+                  {{ form.email_port }}
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.email_host_user.id_for_label }}" class="form-label">{% trans "Username" %}</label>
+                  {{ form.email_host_user }}
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.email_host_password.id_for_label }}" class="form-label">{% trans "Password" %}</label>
+                  {{ form.email_host_password }}
+                  <div class="form-text">{% if config.email_host_password %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %}</div>
+                </div>
+                <div class="col-12 mb-3">
+                  <label for="{{ form.email_from_address.id_for_label }}" class="form-label">{% trans "From address" %}</label>
+                  {{ form.email_from_address }}
+                  <div class="form-text">{% trans "Defaults to the username above if left blank." %}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <div class="form-check form-switch">
+                    {{ form.email_use_tls }}
+                    <label class="form-check-label" for="{{ form.email_use_tls.id_for_label }}">{% trans "Use STARTTLS" %} <span class="text-muted">({% trans "port 587" %})</span></label>
+                  </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <div class="form-check form-switch">
+                    {{ form.email_use_ssl }}
+                    <label class="form-check-label" for="{{ form.email_use_ssl.id_for_label }}">{% trans "Use SSL" %} <span class="text-muted">({% trans "port 465" %})</span></label>
+                  </div>
+                </div>
+                <div class="col-12">
+                  <button type="button" id="test-smtp-btn" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-plug me-1"></i> {% trans "Test connection" %}
+                  </button>
+                  <button type="button" id="send-test-email-btn" class="btn btn-sm btn-outline-primary ms-2">
+                    <i class="bi bi-envelope me-1"></i> {% trans "Send test email" %}
+                  </button>
+                  <span id="smtp-status" class="ms-2 small"></span>
+                </div>
+              </div>
             </div>
 
             <details class="settings-section" {% if integration_status.pkpass and integration_status.pkpass.ready %}open{% endif %}>
@@ -331,7 +382,7 @@
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-person-plus me-2"></i>{% trans "User Registration" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Controls whether the registration page accepts new signups. Existing users and SSO/OIDC logins are unaffected.' %}"></i></h6>
-              <div class="form-check mb-2">
+              <div class="form-check form-switch mb-2">
                 {{ form.allow_registration }}
                 <label class="form-check-label" for="{{ form.allow_registration.id_for_label }}">{% trans "Allow new user registrations" %}</label>
               </div>
@@ -377,15 +428,15 @@
                   {{ form.oidc_client_secret }}
                 </div>
                 <div class="col-md-6">
-                  <div class="form-check mb-2">
+                  <div class="form-check form-switch mb-2">
                     {{ form.oidc_create_user }}
                     <label class="form-check-label" for="{{ form.oidc_create_user.id_for_label }}">{% trans "Create account on first OIDC login" %}</label>
                   </div>
-                  <div class="form-check mb-2" id="oidc-autologin-row">
+                  <div class="form-check form-switch mb-2" id="oidc-autologin-row">
                     {{ form.oidc_autologin }}
                     <label class="form-check-label" for="{{ form.oidc_autologin.id_for_label }}">{% trans "Auto-redirect to OIDC on login page" %}</label>
                   </div>
-                  <div class="form-check" id="oidc-require-totp-row">
+                  <div class="form-check form-switch" id="oidc-require-totp-row">
                     {{ form.oidc_require_totp }}
                     <label class="form-check-label" for="{{ form.oidc_require_totp.id_for_label }}">{% trans "Require TOTP after OIDC login" %}</label>
                     <div class="form-text">{% trans "Users with TOTP enabled must still complete the TOTP step even after a successful OIDC authentication." %}</div>
@@ -413,57 +464,6 @@
                     <i class="bi bi-plug me-1"></i> {% trans "Test connection" %}
                   </button>
                   <span id="pocket-id-status" class="ms-2 small"></span>
-                </div>
-              </div>
-            </div>
-
-            <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-envelope me-2"></i>{% trans "Outbound Email (SMTP)" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Configure an SMTP server so VoucherVault can send password-reset emails and PocketID invite emails.' %}"></i></h6>
-              <p class="text-muted small mb-3">{% trans "Used for password resets and invite emails. Leave the host blank to disable outbound email." %}</p>
-              <div class="row">
-                <div class="col-md-8 mb-3">
-                  <label for="{{ form.email_host.id_for_label }}" class="form-label">{% trans "SMTP host" %}</label>
-                  {{ form.email_host }}
-                  <div class="form-text">{% trans "e.g. smtp.gmail.com, smtp.sendgrid.net" %}</div>
-                </div>
-                <div class="col-md-4 mb-3">
-                  <label for="{{ form.email_port.id_for_label }}" class="form-label">{% trans "Port" %}</label>
-                  {{ form.email_port }}
-                </div>
-                <div class="col-md-6 mb-3">
-                  <label for="{{ form.email_host_user.id_for_label }}" class="form-label">{% trans "Username" %}</label>
-                  {{ form.email_host_user }}
-                </div>
-                <div class="col-md-6 mb-3">
-                  <label for="{{ form.email_host_password.id_for_label }}" class="form-label">{% trans "Password" %}</label>
-                  {{ form.email_host_password }}
-                  <div class="form-text">{% if config.email_host_password %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %}</div>
-                </div>
-                <div class="col-12 mb-3">
-                  <label for="{{ form.email_from_address.id_for_label }}" class="form-label">{% trans "From address" %}</label>
-                  {{ form.email_from_address }}
-                  <div class="form-text">{% trans "Defaults to the username above if left blank." %}</div>
-                </div>
-                <div class="col-md-6 mb-3">
-                  <div class="form-check">
-                    {{ form.email_use_tls }}
-                    <label class="form-check-label" for="{{ form.email_use_tls.id_for_label }}">{% trans "Use STARTTLS" %} <span class="text-muted">({% trans "port 587" %})</span></label>
-                  </div>
-                </div>
-                <div class="col-md-6 mb-3">
-                  <div class="form-check">
-                    {{ form.email_use_ssl }}
-                    <label class="form-check-label" for="{{ form.email_use_ssl.id_for_label }}">{% trans "Use SSL" %} <span class="text-muted">({% trans "port 465" %})</span></label>
-                  </div>
-                </div>
-                <div class="col-12">
-                  <button type="button" id="test-smtp-btn" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-plug me-1"></i> {% trans "Test connection" %}
-                  </button>
-                  <button type="button" id="send-test-email-btn" class="btn btn-sm btn-outline-primary ms-2">
-                    <i class="bi bi-envelope me-1"></i> {% trans "Send test email" %}
-                  </button>
-                  <span id="smtp-status" class="ms-2 small"></span>
                 </div>
               </div>
             </div>
@@ -506,7 +506,7 @@
                   <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
               {% endif %}
-              <div class="form-check mb-2">
+              <div class="form-check form-switch mb-2">
                 {{ form.update_check_enabled }}
                 <label class="form-check-label" for="{{ form.update_check_enabled.id_for_label }}">{% trans "Check GitHub Releases and show an update banner to admins" %}</label>
               </div>
@@ -632,7 +632,7 @@
                 <i class="bi bi-archive me-2"></i>{% trans "Scheduled Local Backups" %}
                 <a href="{% url 'view_doc' 'backup-restore' %}" data-doc-url="{% url 'view_doc' 'backup-restore' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
               </h6>
-              <div class="form-check mb-2">
+              <div class="form-check form-switch mb-2">
                 {{ form.scheduled_backup_enabled }}
                 <label class="form-check-label" for="{{ form.scheduled_backup_enabled.id_for_label }}">{% trans "Run the nightly per-user backup" %}</label>
               </div>

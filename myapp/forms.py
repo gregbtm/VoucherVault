@@ -282,6 +282,7 @@ class UserPreferenceForm(forms.ModelForm):
             'oled_dark_mode': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'offline_cache_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'blur_codes_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'tilt_scan_detection_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'next_up_wallets': forms.CheckboxSelectMultiple(),
             'active_today_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'commute_home_station': forms.TextInput(attrs={

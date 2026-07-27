@@ -57,7 +57,7 @@
                   {% if form.view_mode.errors %}<div class="text-danger small">{{ form.view_mode.errors }}</div>{% endif %}
                 </div>
               </div>
-              <div class="form-check mb-3">
+              <div class="form-check form-switch mb-3">
                 {{ form.oled_dark_mode }}
                 <label class="form-check-label" for="{{ form.oled_dark_mode.id_for_label }}">{% trans "True-black dark mode (OLED)" %}</label>
                 <div class="form-text text-muted">{% trans "Pure black backgrounds in dark mode - saves battery on OLED/AMOLED screens." %}</div>
@@ -67,22 +67,22 @@
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-eye me-2"></i>{% trans "Visible Fields" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Which details each item card shows in the Inventory and Sharing Center views.' %}"></i></h6>
-              <div class="form-check mb-2">
+              <div class="form-check form-switch mb-2">
                 {{ form.show_issue_date }}
                 <label class="form-check-label" for="{{ form.show_issue_date.id_for_label }}">{% trans "Issue date" %}</label>
                 {% if form.show_issue_date.errors %}<div class="text-danger small">{{ form.show_issue_date.errors }}</div>{% endif %}
               </div>
-              <div class="form-check mb-2">
+              <div class="form-check form-switch mb-2">
                 {{ form.show_expiry_date }}
                 <label class="form-check-label" for="{{ form.show_expiry_date.id_for_label }}">{% trans "Expiry date" %}</label>
                 {% if form.show_expiry_date.errors %}<div class="text-danger small">{{ form.show_expiry_date.errors }}</div>{% endif %}
               </div>
-              <div class="form-check mb-2">
+              <div class="form-check form-switch mb-2">
                 {{ form.show_value }}
                 <label class="form-check-label" for="{{ form.show_value.id_for_label }}">{% trans "Value" %}</label>
                 {% if form.show_value.errors %}<div class="text-danger small">{{ form.show_value.errors }}</div>{% endif %}
               </div>
-              <div class="form-check mb-3">
+              <div class="form-check form-switch mb-3">
                 {{ form.show_description }}
                 <label class="form-check-label" for="{{ form.show_description.id_for_label }}">{% trans "Description" %}</label>
                 {% if form.show_description.errors %}<div class="text-danger small">{{ form.show_description.errors }}</div>{% endif %}
@@ -129,18 +129,18 @@
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-upc-scan me-2"></i>{% trans "Showing a Code" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Behavior while an item is open to be scanned at a checkout.' %}"></i></h6>
-              <div class="form-check mb-2">
+              <div class="form-check form-switch mb-2">
                 {{ form.keep_screen_awake }}
                 <label class="form-check-label" for="{{ form.keep_screen_awake.id_for_label }}">{% trans "Keep screen on while viewing an item" %}</label>
                 {% if form.keep_screen_awake.errors %}<div class="text-danger small">{{ form.keep_screen_awake.errors }}</div>{% endif %}
               </div>
-              <div class="form-check mb-3">
+              <div class="form-check form-switch mb-3">
                 {{ form.blur_codes_enabled }}
                 <label class="form-check-label" for="{{ form.blur_codes_enabled.id_for_label }}">{% trans "Blur barcodes and codes until tapped" %}</label>
                 <div class="form-text text-muted">{% trans "Privacy in public places. Turn off for faster access at point-of-sale - the code shows immediately instead of requiring a tap to reveal." %}</div>
                 {% if form.blur_codes_enabled.errors %}<div class="text-danger small">{{ form.blur_codes_enabled.errors }}</div>{% endif %}
               </div>
-              <div class="form-check mb-2">
+              <div class="form-check form-switch mb-2">
                 {{ form.tilt_scan_detection_enabled }}
                 <label class="form-check-label" for="{{ form.tilt_scan_detection_enabled.id_for_label }}">{% trans "Suggest marking Used when I tilt my phone forward" %}</label>
                 <div class="form-text text-muted">{% trans "Detects the motion of presenting a barcode to a reader (train barriers, a till scanner) and offers a one-tap 'Mark Used?' prompt - it only ever suggests, never marks an item used on its own. Asks for one-time motion access on your phone the first time it's needed." %}</div>
@@ -150,7 +150,7 @@
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-wifi-off me-2"></i>{% trans "Offline Access" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Cache items on this device so codes still open with no signal - e.g. in a basement store or on the tube.' %}"></i></h6>
-              <div class="form-check mb-3">
+              <div class="form-check form-switch mb-3">
                 {{ form.offline_cache_enabled }}
                 <label class="form-check-label" for="{{ form.offline_cache_enabled.id_for_label }}">{% trans "Allow caching pages for offline use" %}</label>
                 <div class="form-text text-muted">{% trans "Turning this off removes the 'Cache for Offline' option and purges any existing offline cache." %}</div>
@@ -183,7 +183,7 @@
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-train-front me-2"></i>{% trans "Active Today Widget" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'For daily round-trip tickets: shows the leg you actually need right now, switching from outward to return at your cutoff time.' %}"></i></h6>
               <p class="text-muted small">{% trans "For a daily round-trip ticket (e.g. a train commute): shows today's outward leg before your cutoff time, then switches to the return leg after it - only ever on the day the ticket is actually valid for. Works best with the Travel Pass item type, which fills the Journey From/To fields for you when scanned." %}</p>
-              <div class="form-check mb-3">
+              <div class="form-check form-switch mb-3">
                 {{ form.active_today_enabled }}
                 <label class="form-check-label" for="{{ form.active_today_enabled.id_for_label }}">{% trans "Enable Active Today widget" %}</label>
                 {% if form.active_today_enabled.errors %}<div class="text-danger small">{{ form.active_today_enabled.errors }}</div>{% endif %}
@@ -210,7 +210,7 @@
                 <i class="bi bi-slash-circle me-1"></i>{% trans "Nearby queries are turned off at the site level. Ask your admin to enable them in Site Settings." %}
               </div>
               <p class="text-muted small">{% trans "Checks your location once when Inventory loads and, if a nearby shop matches one of your item issuers (via OpenStreetMap), surfaces it in a \"Nearby\" card - e.g. walk into Tesco and see your Tesco gift card without searching for it. Your coordinates are used for that one lookup and never stored." %}</p>
-              <div class="form-check mb-3">
+              <div class="form-check form-switch mb-3">
                 {{ form.nearby_items_enabled }}
                 <label class="form-check-label" for="{{ form.nearby_items_enabled.id_for_label }}">{% trans "Enable Nearby widget" %}</label>
                 {% if form.nearby_items_enabled.errors %}<div class="text-danger small">{{ form.nearby_items_enabled.errors }}</div>{% endif %}
@@ -226,7 +226,7 @@
             <div class="settings-section" id="email-digest-section">
               <h6 class="text-muted mb-3"><i class="bi bi-envelope-paper me-2"></i>{% trans "Email Digest" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'A periodic email summary of your items expiring soon. Requires SMTP to be configured by your admin.' %}"></i></h6>
               <p class="text-muted small">{% trans "Opt in to receive a periodic email that lists your items expiring soon — useful if you don't check the app every day. Requires your admin to configure outbound SMTP in Site Settings." %}</p>
-              <div class="form-check mb-3">
+              <div class="form-check form-switch mb-3">
                 {{ form.email_digest_enabled }}
                 <label class="form-check-label" for="{{ form.email_digest_enabled.id_for_label }}">{% trans "Enable email digest" %}</label>
                 {% if form.email_digest_enabled.errors %}<div class="text-danger small">{{ form.email_digest_enabled.errors }}</div>{% endif %}

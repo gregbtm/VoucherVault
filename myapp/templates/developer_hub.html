@@ -308,7 +308,7 @@ print(resp.json())
               </div>
               {% endfor %}
             </div>
-            <div class="form-check mb-3">
+            <div class="form-check form-switch mb-3">
               <input class="form-check-input" type="checkbox" name="enabled" id="new_enabled" value="1" checked>
               <label class="form-check-label small" for="new_enabled">{% trans "Enabled" %}</label>
             </div>
@@ -375,7 +375,7 @@ print(resp.json())
                   {% endfor %}
                 </div>
                 <div class="d-flex align-items-center gap-3 mb-2">
-                  <div class="form-check">
+                  <div class="form-check form-switch">
                     <input class="form-check-input" type="checkbox" name="enabled" value="1"
                            {% if hook.enabled %}checked{% endif %}>
                     <label class="form-check-label small">{% trans "Enabled" %}</label>

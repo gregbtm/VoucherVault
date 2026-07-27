@@ -1,7 +1,23 @@
 /*--------------------------------------------------------------
 # Dark Mode
 --------------------------------------------------------------*/
+
+/* Tell the browser this page manages its own theme explicitly, tied to
+   the same body.dark-mode class the JS toggle already uses. Without this,
+   browsers/WebViews with their own automatic dark/"force dark" heuristics
+   (common on Android - Samsung Internet, Chrome's "Darken web pages") are
+   free to independently recolor low-contrast elements they misjudge as
+   needing adjustment - typically borders/text on transparent-background
+   outline buttons (.btn-outline-secondary etc.) - producing exactly the
+   "text goes white/invisible until you touch it" symptom: the heuristic
+   repaints on interaction, briefly "fixing" it. Declaring color-scheme
+   opts the page out of that guesswork entirely. */
+body {
+  color-scheme: light;
+}
+
 body.dark-mode {
+  color-scheme: dark;
   background: #181a1b;
   color: #e0e6eb;
 }
