@@ -64,6 +64,9 @@ from .serializers import (
     DMSProviderSerializer,
     DMSSyncLogSerializer,
     DocumentSerializer,
+    EnrichmentConfigSerializer,
+    EnrichmentRunSerializer,
+    EnrichmentRunItemSerializer,
     ImportJobSerializer,
     ItemSerializer,
     ItemShareSerializer,
@@ -1790,3 +1793,148 @@ class UserSearchView(APIView):
         ).values('id', 'username', 'email').order_by('username')[:10]
 
         return Response(list(users), status=status.HTTP_200_OK)
+
+
+class EnrichmentConfigViewSet(viewsets.ModelViewSet):
+    """API for enrichment configuration management."""
+    queryset = None
+    serializer_class = EnrichmentConfigSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'method'
+
+    def get_queryset(self):
+        from myapp.models import EnrichmentConfig
+        return EnrichmentConfig.objects.all()
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+    def perform_update(self, serializer):
+        serializer.save()
+
+
+class EnrichmentRunViewSet(viewsets.ReadOnlyModelViewSet):
+    """API for enrichment run tracking and approval."""
+    serializer_class = EnrichmentRunSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ['method', 'status']
+    ordering_fields = ['started_at', 'completed_at']
+    ordering = ['-started_at']
+
+    def get_queryset(self):
+        from myapp.models import EnrichmentRun
+        return EnrichmentRun.objects.all()
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def approve(self, request, pk=None):
+        """Approve a pending enrichment run and apply changes."""
+        from myapp.models import EnrichmentRun, EnrichmentRunItem
+        from myapp.services.enrichment import ItemEnricher, FieldChange
+
+        run = self.get_object()
+
+        if run.status != 'pending_approval':
+            return Response(
+                {'error': f'Run status is {run.status}, not pending_approval'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            enricher = ItemEnricher(created_by=request.user)
+
+            # Apply changes for all successful run items
+            run_items = EnrichmentRunItem.objects.filter(run=run, success=True)
+            for run_item in run_items:
+                item = run_item.item
+                changes_data = run_item.preview_data.get('changes', [])
+
+                if not changes_data:
+                    continue
+
+                # Reconstruct FieldChange objects from preview data
+                changes = [
+                    FieldChange(
+                        field_name=c['field_name'],
+                        old_value=c['old_value'],
+                        new_value=c['new_value'],
+                        confidence_score=c['confidence_score'],
+                        reason=c['reason']
+                    )
+                    for c in changes_data
+                ]
+
+                # Apply and log
+                success, error = enricher.apply_changes(item, changes)
+                if success:
+                    enricher.log_enrichment(item, run.id, changes, run.method)
+                    run_item.changes_applied = len(changes)
+                    run_item.save(update_fields=['changes_applied'])
+
+            # Update run status
+            run.status = 'completed'
+            run.approved_by = request.user
+            run.completed_at = timezone.now()
+            run.save()
+
+            return Response(
+                EnrichmentRunSerializer(run).data,
+                status=status.HTTP_200_OK
+            )
+        except Exception as exc:
+            return Response(
+                {'error': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def reject(self, request, pk=None):
+        """Reject a pending enrichment run (no changes applied)."""
+        from myapp.models import EnrichmentRun
+
+        run = self.get_object()
+
+        if run.status != 'pending_approval':
+            return Response(
+                {'error': f'Run status is {run.status}, not pending_approval'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        run.status = 'rejected'
+        run.completed_at = timezone.now()
+        run.save()
+
+        return Response(
+            EnrichmentRunSerializer(run).data,
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def trigger(self, request):
+        """Manually trigger an enrichment run for a given method."""
+        from myapp.models import EnrichmentConfig
+        from myapp.tasks import run_scheduled_enrichment
+
+        method = request.data.get('method')
+
+        if not method:
+            return Response(
+                {'error': 'method parameter required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            config = EnrichmentConfig.objects.get(method=method, enabled=True)
+        except EnrichmentConfig.DoesNotExist:
+            return Response(
+                {'error': f'Enrichment method {method} not found or disabled'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Queue the enrichment task
+        run_scheduled_enrichment.delay(method)
+
+        return Response(
+            {'status': 'triggered', 'method': method},
+            status=status.HTTP_202_ACCEPTED
+        )

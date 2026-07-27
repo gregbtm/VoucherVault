@@ -1,6 +1,7 @@
 import uuid
 from django.urls import path, include
 from . import views
+from . import views_enrichment
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.contrib.auth import views as auth_views
@@ -128,6 +129,14 @@ urlpatterns = (
     path('admin-tools/audit-log/', views.audit_log, name='audit_log'),
     # OIDC identity management
     path('user/security/unlink-oidc/', views.unlink_oidc, name='unlink_oidc'),
+    # Enrichment management
+    path('enrichment/', views_enrichment.enrichment_dashboard, name='enrichment_dashboard'),
+    path('enrichment/config/', views_enrichment.enrichment_config_list, name='enrichment_config_list'),
+    path('enrichment/config/<str:method>/', views_enrichment.enrichment_config_detail, name='enrichment_config_detail'),
+    path('enrichment/runs/', views_enrichment.enrichment_run_list, name='enrichment_run_list'),
+    path('enrichment/runs/<uuid:run_id>/', views_enrichment.enrichment_run_detail, name='enrichment_run_detail'),
+    path('enrichment/trigger/', views_enrichment.enrichment_trigger, name='enrichment_trigger'),
+    path('items/<uuid:item_id>/enrichment-history/', views_enrichment.item_enrichment_history, name='item_enrichment_history'),
 )
 
 admin.site.site_header = "VoucherVault Plus+"

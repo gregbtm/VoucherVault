@@ -32,6 +32,8 @@ router.register('dms/providers', views.DMSProviderViewSet, basename='dms-provide
 router.register('dms/sync-logs', views.DMSSyncLogViewSet, basename='dms-sync-log')
 router.register('help/topics', HelpTopicViewSet, basename='help-topic')
 router.register('help/access-logs', HelpAccessLogViewSet, basename='help-access-log')
+router.register('enrichment/config', views.EnrichmentConfigViewSet, basename='enrichment-config')
+router.register('enrichment/runs', views.EnrichmentRunViewSet, basename='enrichment-run')
 
 urlpatterns = [
     path('auth/token/', obtain_auth_token, name='api-token-auth'),
