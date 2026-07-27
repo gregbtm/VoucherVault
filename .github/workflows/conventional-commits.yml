@@ -178,12 +178,27 @@ jobs:
           output-file: sbom.json
           upload-artifact: false
 
+      - name: Install Grype
+        run: curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+      # anchore/scan-action's bundled grype invocation has been seen refusing
+      # to scan with "db could not be loaded: the vulnerability database was
+      # built N weeks ago (max allowed age is 5 days)" - a stale-DB guard
+      # tripping on a transient Anchore DB-hosting hiccup, not a real
+      # vulnerability finding. Updating the DB as its own step first (with a
+      # retry) means a one-off update failure doesn't take the whole job down.
+      - name: Update Grype vulnerability DB
+        run: |
+          for i in 1 2 3; do
+            grype db update && exit 0
+            echo "grype db update failed (attempt $i/3), retrying in 10s..."
+            sleep 10
+          done
+          echo "grype db update failed after 3 attempts" >&2
+          exit 1
+
       - name: Scan SBOM with Grype
-        uses: anchore/scan-action@v4
-        with:
-          sbom: sbom.json
-          fail-build: true
-          severity-cutoff: high
+        run: grype sbom:sbom.json --fail-on high
 
       - name: Upload SBOM artifact
         if: always()
