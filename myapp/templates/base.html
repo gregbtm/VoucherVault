@@ -72,6 +72,9 @@
   <!-- Phase 4: Gestures & App Shell (Mobile UX) -->
   <link href="{% static 'assets/css/gestures.css' %}" rel="stylesheet">
 
+  <!-- Phase 5: Help System -->
+  <link href="{% static 'assets/css/help-system.css' %}" rel="stylesheet">
+
   <style>
     /* Network status indicator styles */
     .network-status {
@@ -767,6 +770,9 @@
   <!-- Phase 4: Mobile Gestures & App Shell -->
   <script src="{% static 'assets/js/gesture-controller.js' %}"></script>
   <script src="{% static 'assets/js/app-shell.js' %}"></script>
+
+  <!-- Phase 5: Help System -->
+  <script src="{% static 'assets/js/help-system.js' %}"></script>
 
   <!-- Service Worker Message Handler for PWA Updates -->
   <script nonce="{{ request.csp_nonce }}">

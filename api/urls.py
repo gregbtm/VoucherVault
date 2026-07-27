@@ -6,6 +6,7 @@ from rest_framework.routers import DefaultRouter
 from csp.decorators import csp_replace
 
 from . import views
+from help.views import HelpTopicViewSet, HelpAccessLogViewSet
 
 
 # Swagger UI injects inline <script> blocks which the site-wide CSP blocks.
@@ -29,6 +30,8 @@ router.register('merchants', views.MerchantProfileViewSet, basename='merchant')
 router.register('webhooks', views.UserWebhookViewSet, basename='webhook')
 router.register('dms/providers', views.DMSProviderViewSet, basename='dms-provider')
 router.register('dms/sync-logs', views.DMSSyncLogViewSet, basename='dms-sync-log')
+router.register('help/topics', HelpTopicViewSet, basename='help-topic')
+router.register('help/access-logs', HelpAccessLogViewSet, basename='help-access-log')
 
 urlpatterns = [
     path('auth/token/', obtain_auth_token, name='api-token-auth'),
