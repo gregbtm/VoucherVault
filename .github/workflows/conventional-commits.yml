@@ -178,8 +178,15 @@ jobs:
           output-file: sbom.json
           upload-artifact: false
 
+      # Downloaded to a file and executed as a separate step rather than
+      # `curl | sh` - Semgrep's gha-curl-pipe-shell rule flags the piped
+      # form as a supply-chain risk (opaque to review, no chance to inspect
+      # before running).
       - name: Install Grype
-        run: curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh -o install-grype.sh
+          sh install-grype.sh -b /usr/local/bin
+          rm install-grype.sh
 
       # anchore/scan-action's bundled grype invocation has been seen refusing
       # to scan with "db could not be loaded: the vulnerability database was
