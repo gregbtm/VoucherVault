@@ -1,0 +1,12 @@
+{% load i18n %}
+{% if status == 'completed' or status == 'approved' %}
+<span class="badge bg-success">{{ status_display }}</span>
+{% elif status == 'pending_approval' %}
+<span class="badge bg-warning text-dark">{{ status_display }}</span>
+{% elif status == 'in_progress' %}
+<span class="badge bg-info text-dark">{{ status_display }}</span>
+{% elif status == 'rejected' or status == 'failed' %}
+<span class="badge bg-danger">{{ status_display }}</span>
+{% else %}
+<span class="badge bg-secondary">{{ status_display }}</span>
+{% endif %}

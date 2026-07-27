@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<style>
+  .change-row { border-bottom: 1px solid rgba(128,128,128,0.15); padding: 0.5rem 0; }
+  .change-row:last-child { border-bottom: none; }
+  .change-field { font-weight: 600; font-size: 0.85rem; }
+  .change-values { font-size: 0.85rem; }
+  .change-old { text-decoration: line-through; color: var(--text-muted, #6c757d); }
+  .change-new { color: #198754; font-weight: 600; }
+  .change-confidence { font-size: 0.75rem; color: var(--text-muted, #6c757d); }
+</style>
+
+<div class="pagetitle">
+  <h1>{% trans "Enrichment Run" %}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'enrichment_dashboard' %}">{% trans "Enrichment" %}</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'enrichment_run_list' %}">{% trans "Runs" %}</a></li>
+      <li class="breadcrumb-item active">{{ run.id.hex|slice:":8" }}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-2">
+        <div>
+          <h5 class="card-title mb-1">{{ run.get_method_display }}</h5>
+          <p class="text-muted small mb-0">{% trans "Started" %} {{ run.started_at|date:"d M Y, H:i" }}
+            {% if run.completed_at %} &middot; {% trans "Completed" %} {{ run.completed_at|date:"d M Y, H:i" }}{% endif %}
+          </p>
+        </div>
+        {% include "enrichment/_status_badge.html" with status=run.status status_display=run.get_status_display %}
+      </div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-6 col-md-3">
+          <div class="small text-muted">{% trans "Items processed" %}</div>
+          <div class="fw-semibold">{{ run.successful_items }}/{{ run.total_items }}</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="small text-muted">{% trans "Total changes" %}</div>
+          <div class="fw-semibold">{{ run.total_changes }}</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="small text-muted">{% trans "Avg. confidence" %}</div>
+          <div class="fw-semibold">{% widthratio run.average_confidence 1 100 %}%</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="small text-muted">{% trans "Confidence threshold" %}</div>
+          <div class="fw-semibold">{{ run.confidence_threshold }}</div>
+        </div>
+      </div>
+
+      {% if run.approved_by %}
+      <p class="text-muted small mt-3 mb-0">
+        <i class="bi bi-person-check me-1"></i>{% trans "Approved by" %} {{ run.approved_by.username }}
+        {% if run.approved_at %} {% trans "on" %} {{ run.approved_at|date:"d M Y, H:i" }}{% endif %}
+      </p>
+      {% endif %}
+      {% if run.notes %}
+      <p class="text-muted small mt-2 mb-0"><i class="bi bi-sticky me-1"></i>{{ run.notes }}</p>
+      {% endif %}
+
+      {% if can_approve or can_reject %}
+      <div class="btn-row mt-3">
+        {% if can_approve %}
+        <form method="POST" id="approve-form">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="approve">
+          <button type="submit" class="btn btn-sm btn-success">
+            <i class="bi bi-check-lg me-1"></i>{% trans "Approve & Apply Changes" %}
+          </button>
+        </form>
+        {% endif %}
+        {% if can_reject %}
+        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rejectModal">
+          <i class="bi bi-x-lg me-1"></i>{% trans "Reject" %}
+        </button>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <h5 class="card-title"><i class="bi bi-list-check me-1"></i>{% trans "Per-Item Results" %}</h5>
+      {% if items %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th>{% trans "Item" %}</th>
+              <th>{% trans "Result" %}</th>
+              <th>{% trans "Proposed changes" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for run_item in items %}
+            <tr>
+              <td>
+                {% if run_item.item %}
+                <a href="{% url 'view_item' run_item.item.id %}">{{ run_item.item.name }}</a>
+                {% else %}
+                <span class="text-muted">{% trans "Item deleted" %}</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if run_item.success %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle">{% trans "OK" %}</span>
+                {% else %}
+                <span class="badge bg-danger-subtle text-danger border border-danger-subtle" title="{{ run_item.error_message }}">{% trans "Failed" %}</span>
+                {% endif %}
+                {% if run_item.changes_applied %}
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle ms-1">{% blocktrans with n=run_item.changes_applied %}{{ n }} applied{% endblocktrans %}</span>
+                {% endif %}
+              </td>
+              <td>
+                {% with changes=run_item.preview_data.changes %}
+                {% if changes %}
+                {% for c in changes %}
+                <div class="change-row">
+                  <div class="change-field">{{ c.field_name }}</div>
+                  <div class="change-values">
+                    <span class="change-old">{{ c.old_value|default:"—" }}</span>
+                    <i class="bi bi-arrow-right mx-1"></i>
+                    <span class="change-new">{{ c.new_value|default:"—" }}</span>
+                  </div>
+                  <div class="change-confidence">{% trans "Confidence:" %} {% widthratio c.confidence_score 1 100 %}% &middot; {{ c.reason }}</div>
+                </div>
+                {% endfor %}
+                {% elif run_item.error_message %}
+                <span class="text-muted small">{{ run_item.error_message }}</span>
+                {% else %}
+                <span class="text-muted small">{% trans "No changes proposed." %}</span>
+                {% endif %}
+                {% endwith %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted mb-0">{% trans "No items have been processed by this run yet." %}</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<!-- Reject modal -->
+<div class="modal fade" id="rejectModal" tabindex="-1" aria-labelledby="rejectModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="reject">
+        <div class="modal-header">
+          <h5 class="modal-title" id="rejectModalLabel">{% trans "Reject Run" %}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small">{% trans "No changes will be applied. You can optionally note why." %}</p>
+          <textarea name="reject_reason" class="form-control form-control-sm" rows="2" placeholder="{% trans 'Reason (optional)' %}" maxlength="1000"></textarea>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+          <button type="submit" class="btn btn-sm btn-danger">{% trans "Reject Run" %}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script nonce="{{ request.csp_nonce }}">
+var approveForm = document.getElementById('approve-form');
+if (approveForm) {
+  approveForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    showConfirm(
+      '{% trans "Apply all proposed changes to these items? This updates item data immediately." %}',
+      '{% trans "Approve & Apply" %}',
+      function () { approveForm.submit(); }
+    );
+  });
+}
+</script>
+{% endblock %}

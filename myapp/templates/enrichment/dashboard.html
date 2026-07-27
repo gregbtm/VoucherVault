@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<style>
+  .enrich-stat-card {
+    border: 1px solid rgba(128, 128, 128, 0.18);
+    border-radius: 0.6rem;
+    padding: 1rem 1.1rem;
+    height: 100%;
+  }
+  .enrich-stat-value { font-size: 1.6rem; font-weight: 700; line-height: 1.2; }
+  .enrich-stat-label { color: var(--text-muted, #6c757d); font-size: 0.82rem; }
+  .enrich-method-card {
+    border: 1px solid rgba(128, 128, 128, 0.18);
+    border-radius: 0.6rem;
+    padding: 1rem 1.1rem;
+    height: 100%;
+  }
+</style>
+
+<div class="pagetitle d-flex align-items-start justify-content-between flex-wrap gap-2">
+  <div>
+    <h1>{% trans "Enrichment" %}</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'show_items' %}">{% trans "Home" %}</a></li>
+        <li class="breadcrumb-item active">{% trans "Enrichment" %}</li>
+      </ol>
+    </nav>
+  </div>
+  <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#enrichHelpModal">
+    <i class="bi bi-question-circle me-1"></i> {% trans "Help" %}
+  </button>
+</div>
+
+<section class="section">
+  <div class="row g-3 mb-1">
+    <div class="col-6 col-md-3">
+      <div class="enrich-stat-card">
+        <div class="enrich-stat-value">{{ stats.total_runs }}</div>
+        <div class="enrich-stat-label">{% trans "Total runs" %}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="enrich-stat-card">
+        <div class="enrich-stat-value">{{ stats.pending_runs }}</div>
+        <div class="enrich-stat-label">{% trans "Awaiting approval" %}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="enrich-stat-card">
+        <div class="enrich-stat-value">{{ stats.total_changes_applied }}</div>
+        <div class="enrich-stat-label">{% trans "Field changes applied" %}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="enrich-stat-card">
+        <div class="enrich-stat-value">{% widthratio stats.avg_confidence 1 100 %}%</div>
+        <div class="enrich-stat-label">{% trans "Avg. confidence" %}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mt-3">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+            <h5 class="card-title mb-0"><i class="bi bi-magic me-1"></i>{% trans "Enrichment Methods" %}</h5>
+            <a href="{% url 'enrichment_config_list' %}" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-sliders me-1"></i>{% trans "All Configuration" %}
+            </a>
+          </div>
+          <p class="text-muted small mb-3">{% trans "Scheduled runs process every non-archived item across the whole vault. Manual runs queue immediately in the background." %}</p>
+          <div class="row g-3">
+            {% for config in configs %}
+            <div class="col-md-4">
+              <div class="enrich-method-card">
+                <div class="d-flex align-items-start justify-content-between mb-1">
+                  <strong>{{ config.get_method_display }}</strong>
+                  {% if config.enabled %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle">{% trans "Enabled" %}</span>
+                  {% else %}
+                  <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{% trans "Disabled" %}</span>
+                  {% endif %}
+                </div>
+                <p class="text-muted small mb-2">{% trans "Schedule:" %} {{ config.get_schedule_display }}</p>
+                <div class="btn-row">
+                  <form method="POST" action="{% url 'enrichment_trigger' %}" class="enrich-trigger-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="method" value="{{ config.method }}">
+                    <button type="submit" class="btn btn-sm btn-primary" {% if not config.enabled %}disabled title="{% trans 'Enable this method first' %}"{% endif %}>
+                      <i class="bi bi-play-fill"></i> {% trans "Run Now" %}
+                    </button>
+                  </form>
+                  <a href="{% url 'enrichment_config_detail' config.method %}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-gear"></i> {% trans "Configure" %}
+                  </a>
+                </div>
+              </div>
+            </div>
+            {% empty %}
+            <div class="col-12">
+              <p class="text-muted mb-0">{% trans "No enrichment methods configured yet." %}</p>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mt-3">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+            <h5 class="card-title mb-0"><i class="bi bi-clock-history me-1"></i>{% trans "Recent Runs" %}</h5>
+            <a href="{% url 'enrichment_run_list' %}" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-list-ul me-1"></i>{% trans "All Runs" %}
+            </a>
+          </div>
+          {% if recent_runs %}
+          <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>{% trans "Method" %}</th>
+                  <th>{% trans "Started" %}</th>
+                  <th>{% trans "Items" %}</th>
+                  <th>{% trans "Changes" %}</th>
+                  <th>{% trans "Status" %}</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for run in recent_runs %}
+                <tr>
+                  <td>{{ run.get_method_display }}</td>
+                  <td class="small text-muted">{{ run.started_at|date:"d M Y, H:i" }}</td>
+                  <td>{{ run.successful_items }}/{{ run.total_items }}</td>
+                  <td>{{ run.total_changes }}</td>
+                  <td>
+                    {% include "enrichment/_status_badge.html" with status=run.status status_display=run.get_status_display %}
+                  </td>
+                  <td class="text-end">
+                    <a href="{% url 'enrichment_run_detail' run.id %}" class="btn btn-sm btn-outline-primary">
+                      {% trans "View" %}
+                    </a>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <p class="text-muted mb-0">{% trans "No enrichment runs yet. Trigger one above, or enable a scheduled method." %}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Help modal -->
+<div class="modal fade" id="enrichHelpModal" tabindex="-1" aria-labelledby="enrichHelpModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="enrichHelpModalLabel"><i class="bi bi-question-circle me-1"></i>{% trans "Enrichment — Help" %}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body small">
+        <h6 class="fw-bold">{% trans "What is enrichment?" %}</h6>
+        <p>{% trans "Enrichment re-examines existing items and proposes field corrections - re-reading attached documents (OCR), normalizing/validating values, or inferring missing details from similar merchants." %}</p>
+        <h6 class="fw-bold mt-3">{% trans "Methods" %}</h6>
+        <ul class="mb-0">
+          <li><strong>{% trans "OCR Rescan" %}</strong> — {% trans "re-extracts data from attached documents." %}</li>
+          <li><strong>{% trans "Validation & Normalization" %}</strong> — {% trans "corrects existing field data." %}</li>
+          <li><strong>{% trans "Merchant Lookup" %}</strong> — {% trans "infers missing details from similar items." %}</li>
+        </ul>
+        <h6 class="fw-bold mt-3">{% trans "Approval" %}</h6>
+        <p class="mb-0">{% trans "Unless a method's Auto-Apply setting is on, every run pauses for approval - review the proposed changes on the run detail page, then approve or reject." %}</p>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">{% trans "Close" %}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script nonce="{{ request.csp_nonce }}">
+document.querySelectorAll('.enrich-trigger-form').forEach(function (form) {
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var method = form.querySelector('[name=method]').value;
+    showConfirm(
+      '{% trans "Queue an enrichment run for this method? It will process every non-archived item in the background." %}',
+      '{% trans "Run Now" %}',
+      function () { form.submit(); }
+    );
+  });
+});
+</script>
+{% endblock %}
