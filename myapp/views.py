@@ -536,7 +536,7 @@ def expiry_timeline(request):
 
 @login_required
 def view_item(request, item_uuid):
-    item = get_object_or_404(Item.objects.select_related('wallet', 'user'), id=item_uuid)
+    item = get_object_or_404(Item.objects.select_related('wallet', 'user').prefetch_related('shared_with__shared_with_user'), id=item_uuid)
     if not has_item_access(item, request.user):
         return HttpResponse("Unauthorized", status=403)
 
