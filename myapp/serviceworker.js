@@ -3,9 +3,11 @@ const CACHE_NAME = `vouchervault-${VERSION}`;
 const RUNTIME_CACHE = `vouchervault-runtime-${VERSION}`;
 const DATA_CACHE = `vouchervault-data-${VERSION}`;
 const PAGE_CACHE = `vouchervault-pages-${VERSION}`;
+const IMAGE_CACHE = `vouchervault-images-${VERSION}`;
 
 // Cache expiration settings
 const CACHE_DURATION = 48 * 60 * 60 * 1000; // 48 hours in milliseconds
+const IMAGE_CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days for images
 const CACHE_KEY = 'offline_cache_timestamp';
 
 // Static assets to cache on install (only truly static assets, not dynamic pages)
@@ -169,10 +171,11 @@ self.addEventListener('activate', event => {
                                cacheName.startsWith('django-pwa-');
                     })
                     .filter(cacheName => {
-                        return cacheName !== CACHE_NAME && 
-                               cacheName !== RUNTIME_CACHE && 
+                        return cacheName !== CACHE_NAME &&
+                               cacheName !== RUNTIME_CACHE &&
                                cacheName !== DATA_CACHE &&
-                               cacheName !== PAGE_CACHE;
+                               cacheName !== PAGE_CACHE &&
+                               cacheName !== IMAGE_CACHE;
                     })
                     .map(cacheName => {
                         console.log('[ServiceWorker] Deleting old cache:', cacheName);
