@@ -1550,3 +1550,46 @@ class EnrichmentRunItem(models.Model):
     def __str__(self):
         return f"{self.item.name} in {self.run.id.hex[:8]}"
 
+
+class EnrichmentFieldPreference(models.Model):
+    """
+    User preferences for selective field enrichment.
+    Allows users to exclude specific fields from being enriched by certain methods.
+    """
+    FIELD_CHOICES = (
+        ('name', 'Name'),
+        ('issuer', 'Issuer'),
+        ('value', 'Value'),
+        ('currency', 'Currency'),
+        ('expiry_date', 'Expiry Date'),
+        ('description', 'Description'),
+        ('notes', 'Notes'),
+        ('balance_check_url', 'Balance Check URL'),
+        ('type', 'Type'),
+    )
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='enrichment_field_preferences'
+    )
+    method = models.CharField(
+        max_length=50,
+        choices=EnrichmentConfig.ENRICHMENT_METHODS,
+        help_text="Enrichment method this preference applies to."
+    )
+    field_name = models.CharField(
+        max_length=100,
+        choices=FIELD_CHOICES,
+        help_text="Field to exclude from enrichment."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'method', 'field_name')
+        indexes = [
+            models.Index(fields=['user', 'method']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.method}: exclude {self.field_name}"
+
