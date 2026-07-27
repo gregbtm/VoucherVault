@@ -798,12 +798,16 @@ def create_item(request):
                 file = request.FILES['file']
                 username = str(item.user)
                 user_folder = os.path.join('uploads', username)
-                
+
                 raw_name = os.path.basename(file.name)
                 safe_name = get_valid_filename(raw_name)
                 file_name = f"{item.id}_{safe_name}"
                 relative_path = os.path.join(user_folder, file_name)
-                item.file.save(relative_path, file)
+                try:
+                    item.file.save(relative_path, file)
+                except Exception as e:
+                    logger.error('File upload failed for item %s: %s', item.id, str(e))
+                    # File upload failure is not critical — the item is already saved
 
             if item.issuer:
                 try:
@@ -878,11 +882,14 @@ def edit_item(request, item_uuid):
                 file_name = f"{item.id}_{safe_name}"
                 relative_path = os.path.join(user_folder, file_name)
 
-                # Delete the old file if it exists and a new file is provided
-                if old_file_path and os.path.isfile(old_file_path):
-                    os.remove(old_file_path)
-
-                item.file.save(relative_path, file)
+                try:
+                    # Delete the old file if it exists and a new file is provided
+                    if old_file_path and os.path.isfile(old_file_path):
+                        os.remove(old_file_path)
+                    item.file.save(relative_path, file)
+                except Exception as e:
+                    logger.error('File upload failed for item %s: %s', item.id, str(e))
+                    # File upload failure is not critical — the item is already saved
 
             item.save()
             form.save_m2m()  # Persist the selected tags
