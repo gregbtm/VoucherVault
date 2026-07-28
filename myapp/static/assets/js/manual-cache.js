@@ -391,14 +391,40 @@ function handlePrefsSavedSignal() {
     window.history.replaceState({}, '', newUrl);
 }
 
+/**
+ * The sidebar's "Cache for Offline" / "Purge Cache" links used inline
+ * onclick="..." attributes, which the site's CSP (script-src with no
+ * 'unsafe-inline') silently refuses to execute - a tap did nothing, with
+ * only a console violation to show for it. Wired here via addEventListener
+ * instead, same fix as inventory.html's filter chips.
+ */
+function wireCacheNavButtons() {
+    const cacheBtn = document.getElementById('cache-data-btn');
+    if (cacheBtn) {
+        cacheBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            manualCacheManager.cacheData();
+        });
+    }
+    const clearBtn = document.getElementById('clear-cache-btn');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            manualCacheManager.clearCache();
+        });
+    }
+}
+
 // Initialize when DOM is ready
 let manualCacheManager;
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         manualCacheManager = new ManualCacheManager();
+        wireCacheNavButtons();
         handlePrefsSavedSignal();
     });
 } else {
     manualCacheManager = new ManualCacheManager();
+    wireCacheNavButtons();
     handlePrefsSavedSignal();
 }
