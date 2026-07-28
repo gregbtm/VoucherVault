@@ -1176,6 +1176,48 @@ class ShowItemsTagFilterTests(TestCase):
         self.assertNotIn('Bob Tag', tag_names)
 
 
+class ShowItemsCategoryFilterTests(TestCase):
+    """
+    ItemCategory is auto-inferred by the post_save signal in signals.py
+    (see smart_features.apply_category_to_item) - these items are created
+    with issuers matching CATEGORY_PATTERNS so the real end-to-end
+    categorization runs, same as a real save would produce.
+    """
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+        self.groceries_item = make_item(self.user, name='Tesco Card', issuer='Tesco')
+        self.entertainment_item = make_item(self.user, name='Netflix Sub', issuer='Netflix', redeem_code='OTHER1')
+        self.other_groceries_item = make_item(self.user, name='Aldi Card', issuer='Aldi', redeem_code='OTHER2')
+
+    def test_filter_by_category(self):
+        response = self.client.get(reverse('show_items'), {'category': 'Groceries', 'status': 'all'})
+        names = {entry['item'].name for entry in response.context['items_with_qr']}
+        self.assertEqual(names, {'Tesco Card', 'Aldi Card'})
+
+    def test_no_category_filter_shows_everything(self):
+        response = self.client.get(reverse('show_items'), {'status': 'all'})
+        names = {entry['item'].name for entry in response.context['items_with_qr']}
+        self.assertIn('Netflix Sub', names)
+
+    def test_all_categories_context_includes_item_counts(self):
+        response = self.client.get(reverse('show_items'), {'status': 'all'})
+        counts_by_category = {c['category']: c['item_count'] for c in response.context['all_categories']}
+        self.assertEqual(counts_by_category['Groceries'], 2)
+        self.assertEqual(counts_by_category['Entertainment'], 1)
+
+    def test_selected_category_reflected_in_context(self):
+        response = self.client.get(reverse('show_items'), {'category': 'Groceries', 'status': 'all'})
+        self.assertEqual(response.context['selected_category'], 'Groceries')
+
+    def test_other_users_items_not_counted(self):
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        make_item(bob, name='Bob Tesco', issuer='Tesco', redeem_code='BOB1')
+        response = self.client.get(reverse('show_items'), {'status': 'all'})
+        counts_by_category = {c['category']: c['item_count'] for c in response.context['all_categories']}
+        self.assertEqual(counts_by_category['Groceries'], 2)
+
+
 class ShowItemsNextUpWidgetTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')

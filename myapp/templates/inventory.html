@@ -1260,8 +1260,7 @@ body.dark-mode .next-up-card {
           {% endif %}
         </div>
       </div>
-      <form class="next-up-mark-used-form" method="post" action="{% url 'toggle_item_status' active_today_item.item.id %}"
-            onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Mark this item as used?" %}','{% trans "Mark as Used" %}',function(){f.submit();});">
+      <form class="next-up-mark-used-form mark-used-confirm-form" method="post" action="{% url 'toggle_item_status' active_today_item.item.id %}">
         {% csrf_token %}
         <input type="hidden" name="next" value="{% url 'show_items' %}">
         <button type="submit" class="next-up-mark-used-btn" title="{% trans 'Mark as used' %}" aria-label="{% trans 'Mark as used' %}">
@@ -1324,8 +1323,7 @@ body.dark-mode .next-up-card {
           {% endif %}
         </div>
       </div>
-      <form class="next-up-mark-used-form" method="post" action="{% url 'toggle_item_status' entry.item.id %}"
-            onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Mark this item as used?" %}','{% trans "Mark as Used" %}',function(){f.submit();});">
+      <form class="next-up-mark-used-form mark-used-confirm-form" method="post" action="{% url 'toggle_item_status' entry.item.id %}">
         {% csrf_token %}
         <input type="hidden" name="next" value="{% url 'show_items' %}">
         <button type="submit" class="next-up-mark-used-btn" title="{% trans 'Mark as used' %}" aria-label="{% trans 'Mark as used' %}">
@@ -1482,14 +1480,14 @@ body.dark-mode .next-up-card {
       <!-- Mobile Filters (Dropdowns) -->
       <div class="mobile-filters">
         <div class="mobile-filter-row">
-          <select class="mobile-filter-select" id="mobileStatusFilter" onchange="applyMobileFilters()">
+          <select class="mobile-filter-select" id="mobileStatusFilter">
             <option value="available" {% if item_status == 'available' or not item_status %}selected{% endif %}>{% trans "Available" %} ({{ available_count }})</option>
             <option value="soon_expiring" {% if item_status == 'soon_expiring' %}selected{% endif %}>{% trans "Expiring Soon" %} ({{ soon_expiring_count }})</option>
             <option value="used" {% if item_status == 'used' %}selected{% endif %}>{% trans "Used" %} ({{ used_count }})</option>
             <option value="expired" {% if item_status == 'expired' %}selected{% endif %}>{% trans "Expired" %} ({{ expired_count }})</option>
             <option value="archived" {% if item_status == 'archived' %}selected{% endif %}>{% trans "Archived" %} ({{ archived_count }})</option>
           </select>
-          <select class="mobile-filter-select" id="mobileTypeFilter" onchange="applyMobileFilters()">
+          <select class="mobile-filter-select" id="mobileTypeFilter">
             <option value="" {% if not item_type %}selected{% endif %}>{% trans "All Types" %} ({{ all_types_count }})</option>
             <option value="voucher" {% if item_type == 'voucher' %}selected{% endif %}>{% trans "Vouchers" %} ({{ voucher_count }})</option>
             <option value="giftcard" {% if item_type == 'giftcard' %}selected{% endif %}>{% trans "Gift Cards" %} ({{ giftcard_count }})</option>
@@ -1567,7 +1565,7 @@ body.dark-mode .next-up-card {
       {% if wallets %}
       <!-- Wallet Filter -->
       <div class="mobile-filters" style="margin-top: 0.5rem;">
-        <select class="mobile-filter-select" name="wallet" onchange="this.form.submit()">
+        <select class="mobile-filter-select" name="wallet" id="walletFilterSelect">
           <option value="">{% trans "All Wallets" %}</option>
           {% for wallet in wallets %}
           <option value="{{ wallet.id }}" {% if selected_wallet_id == wallet.id %}selected{% endif %}>
@@ -1610,23 +1608,48 @@ body.dark-mode .next-up-card {
         <a href="#"
            class="filter-chip tag-chip {% if tag.id in selected_tag_ids %}active{% endif %}"
            style="{% if tag.id in selected_tag_ids %}background-color: {{ tag.color }}; border-color: {{ tag.color }}; color: #fff;{% endif %}"
-           onclick="toggleTagFilter({{ tag.id }}); return false;">
+           data-tag-id="{{ tag.id }}">
           <span class="tag-dot" style="background-color: {{ tag.color }};"></span>
           {{ tag.name }}
           <span class="count">{{ tag.item_count }}</span>
         </a>
         {% endfor %}
         {% if selected_tag_ids %}
-        <a href="#" class="filter-chip" onclick="clearTagFilters(); return false;">
+        <a href="#" class="filter-chip" id="clearTagsBtn">
           <i class="bi bi-x-circle"></i> {% trans "Clear tags" %}
         </a>
         {% endif %}
       </div>
       {% endif %}
 
+      {% if all_categories %}
+      <!-- Category Filter (auto-inferred, see smart_features.py) -->
+      <div class="tag-filter-label"><i class="bi bi-magic"></i> {% trans "Filter by Category" %}</div>
+      <div class="filter-chips" id="categoryFilterChips">
+        {% for cat in all_categories %}
+        <a href="#"
+           class="filter-chip category-chip {% if cat.category == selected_category %}active{% endif %}"
+           data-category="{{ cat.category }}">
+          <i class="bi
+            {% if cat.category == 'Groceries' %}bi-basket2
+            {% elif cat.category == 'Entertainment' %}bi-film
+            {% elif cat.category == 'Dining' %}bi-cup-hot
+            {% elif cat.category == 'Fuel' %}bi-fuel-pump
+            {% elif cat.category == 'Shopping' %}bi-bag
+            {% elif cat.category == 'Travel' %}bi-airplane
+            {% elif cat.category == 'Health & Beauty' %}bi-heart-pulse
+            {% else %}bi-three-dots{% endif %}"></i>
+          {{ cat.category }}
+          <span class="count">{{ cat.item_count }}</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% endif %}
+
       <!-- Hidden inputs for form submission -->
       <input type="hidden" name="type" id="hiddenType" value="{{ item_type|default:'' }}">
       <input type="hidden" name="status" id="hiddenStatus" value="{{ item_status|default:'' }}">
+      <input type="hidden" name="category" id="hiddenCategory" value="{{ selected_category|default:'' }}">
       {% for tag_id in selected_tag_ids %}
       <input type="hidden" name="tag" value="{{ tag_id }}">
       {% endfor %}
@@ -1964,7 +1987,63 @@ function clearTagFilters() {
   window.location.href = url.toString();
 }
 
+function setCategoryFilter(category) {
+  const url = new URL(window.location.href);
+  if (url.searchParams.get('category') === category) {
+    url.searchParams.delete('category');
+  } else {
+    url.searchParams.set('category', category);
+  }
+  window.location.href = url.toString();
+}
+
 document.addEventListener("DOMContentLoaded", function () {
+  // CSP's script-src has no 'unsafe-inline', which silently no-ops inline
+  // onclick=".../onchange="... attributes (the browser logs a CSP
+  // violation and just... doesn't run them) - every interactive control
+  // in this file is wired here via addEventListener instead.
+  ['mobileStatusFilter', 'mobileTypeFilter'].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', applyMobileFilters);
+  });
+
+  const walletSelect = document.getElementById('walletFilterSelect');
+  if (walletSelect) {
+    walletSelect.addEventListener('change', function () { walletSelect.form.submit(); });
+  }
+
+  document.querySelectorAll('.tag-chip[data-tag-id]').forEach(function (chip) {
+    chip.addEventListener('click', function (e) {
+      e.preventDefault();
+      toggleTagFilter(chip.dataset.tagId);
+    });
+  });
+  const clearTagsBtn = document.getElementById('clearTagsBtn');
+  if (clearTagsBtn) {
+    clearTagsBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      clearTagFilters();
+    });
+  }
+
+  document.querySelectorAll('.category-chip[data-category]').forEach(function (chip) {
+    chip.addEventListener('click', function (e) {
+      e.preventDefault();
+      setCategoryFilter(chip.dataset.category);
+    });
+  });
+
+  document.querySelectorAll('.mark-used-confirm-form').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      showConfirm(
+        '{% trans "Mark this item as used?" %}',
+        '{% trans "Mark as Used" %}',
+        function () { form.submit(); },
+      );
+    });
+  });
+
   // Real-time search with debounce
   const searchInput = document.getElementById('searchInput');
   const filterForm = document.getElementById('filterForm');
