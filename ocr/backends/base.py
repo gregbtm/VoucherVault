@@ -153,8 +153,17 @@ class OCRBackend(ABC):
     """
 
     @abstractmethod
-    def extract(self, image_bytes: bytes, media_type: str) -> dict:
+    def extract(self, image_bytes: bytes, media_type: str, user=None) -> dict:
         """
+        `user` is optional context, not a permission check - when given, a
+        vision-model backend may use it to look up that user's past field
+        corrections (see myapp.scan_learning.build_ocr_correction_hints)
+        and mention recurring patterns in the prompt, so a value it would
+        otherwise keep misreading has a chance to come back right on the
+        first pass rather than only being fixed after the fact by
+        apply_learned_corrections. A backend that has no prompt to enrich
+        (e.g. local tesseract) accepts and ignores it.
+
         Returns a dict with keys: code, code_type, name, issuer,
         expiry_date (ISO 8601 string or None), pin, value (float or None),
         currency, card_number, logo_slug, balance_check_url, type,

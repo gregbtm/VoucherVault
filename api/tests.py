@@ -941,6 +941,10 @@ class OCRExtractApiTests(APITestCase):
         self.assertEqual(response.data['code_type'], 'code128')
         self.assertEqual(response.data['name'], 'Acme')
         mock_backend.extract.assert_called_once()
+        # user is threaded through so the backend can look up this user's
+        # past corrections and mention recurring patterns in its prompt -
+        # see myapp.scan_learning.build_ocr_correction_hints.
+        self.assertEqual(mock_backend.extract.call_args.kwargs.get('user'), self.alice)
 
     @patch('api.views.get_backend', side_effect=RuntimeError('tesseract binary missing'))
     def test_backend_unavailable_returns_503(self, mock_get_backend):

@@ -273,6 +273,50 @@ def record_enrichment_correction_feedback(user, item: Item, before_values: dict)
         logger.warning('Failed to record enrichment correction feedback', exc_info=True)
 
 
+# How many of a user's most-repeated corrections to mention in the OCR
+# prompt - enough to cover a handful of recurring patterns without
+# bloating every scan's prompt with this user's entire correction history.
+MAX_PROMPT_HINTS = 8
+
+
+def build_ocr_correction_hints(user) -> str:
+    """
+    A short natural-language addendum for the OCR vision prompt, listing
+    this user's most-repeated field corrections (across all sources - a
+    scan misread and a reverted merchant_lookup fill are the same kind of
+    signal here: "this is what this user's data actually looks like").
+    apply_learned_corrections() already fixes an exact repeat of a known
+    bad value after the fact; this is the complementary, proactive half -
+    it gives the model a chance to get a similar-but-not-identical read
+    right on the first pass, which pure post-hoc find-and-replace can't
+    catch. Best-effort: never raises, returns '' when there's nothing
+    worth mentioning or on any failure.
+    """
+    if user is None:
+        return ''
+    try:
+        corrections = (
+            ScanFieldCorrection.objects
+            .filter(user=user, field__in=LEARNABLE_FIELDS)
+            .exclude(ai_value='')
+            .order_by('-times_seen', '-updated_at')[:MAX_PROMPT_HINTS]
+        )
+        lines = [
+            f'- for "{c.field}", something that looks like "{c.ai_value}" is usually actually "{c.corrected_value}"'
+            for c in corrections
+        ]
+        if not lines:
+            return ''
+        return (
+            "\n\nThis user has corrected the following misreadings before - keep these "
+            "patterns in mind, but still report exactly what the card shows if it clearly "
+            "doesn't match:\n" + '\n'.join(lines)
+        )
+    except Exception:
+        logger.warning('Failed to build OCR correction hints', exc_info=True)
+        return ''
+
+
 def apply_learned_corrections(user, result: dict) -> list[str]:
     """
     Mutates an OCR extraction `result` in place, swapping values this user

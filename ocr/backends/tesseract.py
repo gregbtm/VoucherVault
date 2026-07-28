@@ -68,7 +68,9 @@ class TesseractOCRBackend(OCRBackend):
                 '"claude".'
             ) from exc
 
-    def extract(self, image_bytes: bytes, media_type: str) -> dict:
+    def extract(self, image_bytes: bytes, media_type: str, user=None) -> dict:
+        # Local OCR has no prompt to enrich with correction history - user
+        # is accepted for interface parity with the vision backends, unused.
         image = Image.open(io.BytesIO(image_bytes))
         data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
 

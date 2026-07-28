@@ -1051,7 +1051,7 @@ class OCRExtractView(APIView):
 
         try:
             backend = get_backend()
-            result = backend.extract(upload.read(), upload.content_type)
+            result = backend.extract(upload.read(), upload.content_type, user=request.user)
         except Exception as exc:
             logger.warning('OCR extraction failed: %s', exc, exc_info=True)
             return Response(
