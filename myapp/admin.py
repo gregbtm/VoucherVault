@@ -249,7 +249,7 @@ class EnrichmentFieldPreferenceAdmin(admin.ModelAdmin):
     no way to ever actually fire. Registering it makes it usable end to
     end without building a dedicated self-service settings page yet.
     """
-    list_display = ('user', 'get_method_display', 'get_field_name_display', 'created_at')
+    list_display = ('user', 'get_method_display', 'get_field_name_display', 'reason', 'created_at')
     list_filter = ('method', 'field_name')
     search_fields = ('user__username',)
     autocomplete_fields = ('user',)
