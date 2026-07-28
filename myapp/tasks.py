@@ -301,7 +301,15 @@ def queue_item_enrichment(self, item_id, run_id, method, auto_apply=False):
                             'reason': c.reason,
                         }
                         for c in result.changes
-                    ]
+                    ],
+                    'flags': [
+                        {
+                            'field_name': f.field_name,
+                            'value': f.current_value,
+                            'message': f.message,
+                        }
+                        for f in result.flags
+                    ],
                 }
             }
         )
@@ -317,6 +325,9 @@ def queue_item_enrichment(self, item_id, run_id, method, auto_apply=False):
             else:
                 run_item.error_message = error or 'Failed to apply changes'
                 run_item.save(update_fields=['error_message'])
+
+        if result.flags:
+            enricher.log_flags(item, result.enrichment_run_id, result.flags)
 
         _log.debug(f"Enriched item {item_id} in run {run_id.hex[:8]} with {len(result.changes)} changes")
 

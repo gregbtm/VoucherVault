@@ -2,6 +2,8 @@
 {% load i18n %}
 
 {% block content %}
+{% include "enrichment/_enrich_styles.html" %}
+
 <div class="pagetitle">
   <h1>{{ config.get_method_display }}</h1>
   <nav>
@@ -17,7 +19,7 @@
 <section class="section">
   <div class="row g-3">
     <div class="col-lg-5">
-      <div class="card">
+      <div class="card enrich-card">
         <div class="card-body">
           <h5 class="card-title"><i class="bi bi-sliders me-1"></i>{% trans "Settings" %}</h5>
           <form method="POST">
@@ -57,7 +59,7 @@
     </div>
 
     <div class="col-lg-7">
-      <div class="card">
+      <div class="card enrich-card">
         <div class="card-body">
           <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
             <h5 class="card-title mb-0"><i class="bi bi-clock-history me-1"></i>{% trans "Run History" %}</h5>
@@ -85,8 +87,8 @@
                 {% for run in runs %}
                 <tr>
                   <td class="small text-muted">{{ run.started_at|date:"d M Y, H:i" }}</td>
-                  <td>{{ run.successful_items }}/{{ run.total_items }}</td>
-                  <td>{{ run.total_changes }}</td>
+                  <td class="text-tabular">{{ run.successful_items }}/{{ run.total_items }}</td>
+                  <td class="text-tabular">{{ run.total_changes }}</td>
                   <td>{% include "enrichment/_status_badge.html" with status=run.status status_display=run.get_status_display %}</td>
                   <td class="text-end">
                     <a href="{% url 'enrichment_run_detail' run.id %}" class="btn btn-sm btn-outline-primary">{% trans "View" %}</a>

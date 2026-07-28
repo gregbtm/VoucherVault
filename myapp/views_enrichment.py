@@ -10,7 +10,7 @@ from django.db.models import Q, Count, Sum, Avg
 from decimal import Decimal
 from functools import wraps
 
-from .models import EnrichmentConfig, EnrichmentRun, EnrichmentRunItem, Item
+from .models import EnrichmentConfig, EnrichmentRun, EnrichmentRunItem, Item, ItemEnrichmentLog
 from .services.enrichment import ItemEnricher, BulkEnricher
 
 
@@ -309,25 +309,87 @@ def item_enrich_now(request, item_id):
         }
         for c in result.changes
     ]
+    flags = [
+        {
+            'field': f.field_name,
+            'value': f.current_value,
+            'message': f.message,
+            'severity': f.severity,
+        }
+        for f in result.flags
+    ]
     return JsonResponse({
         'ok': True,
         'applied': apply_changes,
         'success': result.success,
         'error_message': result.error_message,
         'changes': changes,
+        'flags': flags,
     })
 
 
 @login_required
 def item_enrichment_history(request, item_id):
-    """View enrichment history for a specific item."""
+    """
+    View enrichment history for a specific item. Merges two sources into
+    one chronological timeline: EnrichmentRunItem rows from admin
+    bulk/scheduled runs, and ItemEnrichmentLog rows from the per-item
+    on-demand "Re-scan" (item_enrich_now) - the latter never created a
+    run record, so it used to be invisible on the item's own history page.
+    """
     item = get_object_or_404(Item, id=item_id, user=request.user)
 
-    # Get all runs that touched this item
     run_items = EnrichmentRunItem.objects.filter(item=item).select_related('run').order_by('-run__started_at')
+
+    timeline = []
+    for run_item in run_items:
+        preview_changes = (run_item.preview_data or {}).get('changes', [])
+        timeline.append({
+            'timestamp': run_item.run.started_at,
+            'source': run_item.run.get_method_display(),
+            'success': run_item.success,
+            'error_message': run_item.error_message,
+            'changes': preview_changes,
+            'flags': [],
+        })
+
+    logs = list(ItemEnrichmentLog.objects.filter(item=item).order_by('created_at'))
+    logs_by_run = {}
+    for log in logs:
+        logs_by_run.setdefault(log.enrichment_run_id, []).append(log)
+
+    for run_id, group in logs_by_run.items():
+        real_changes = [g for g in group if g.enrichment_type != 'flagged']
+        flags = [g for g in group if g.enrichment_type == 'flagged']
+        if not real_changes and not flags:
+            continue
+        types_present = {g.enrichment_type for g in real_changes}
+        if len(types_present) == 1:
+            source = group[0].get_enrichment_type_display() if real_changes else _('Review flags')
+        else:
+            source = _('Re-scan')
+        timeline.append({
+            'timestamp': group[0].created_at,
+            'source': source,
+            'success': True,
+            'error_message': None,
+            'changes': [
+                {
+                    'field_name': c.field_name, 'old_value': c.old_value, 'new_value': c.new_value,
+                    'confidence_score': c.confidence_score, 'reason': c.reason,
+                }
+                for c in real_changes
+            ],
+            'flags': [
+                {'field_name': f.field_name, 'value': f.old_value, 'message': f.reason}
+                for f in flags
+            ],
+        })
+
+    timeline.sort(key=lambda entry: entry['timestamp'], reverse=True)
 
     context = {
         'item': item,
-        'run_items': run_items,
+        'timeline': timeline,
     }
     return render(request, 'enrichment/item_history.html', context)

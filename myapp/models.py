@@ -1339,6 +1339,7 @@ class ItemEnrichmentLog(models.Model):
         ('merchant_lookup', 'Merchant Lookup - Matched against merchant database'),
         ('validation', 'Validation - Normalized/corrected field values'),
         ('auto_enrich', 'Auto Enrichment - Populated from enrichment pipeline'),
+        ('flagged', 'Flagged for Review - Suspicious value noted, not auto-changed'),
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

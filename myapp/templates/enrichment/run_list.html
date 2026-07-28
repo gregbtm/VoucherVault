@@ -3,6 +3,8 @@
 {% load extras %}
 
 {% block content %}
+{% include "enrichment/_enrich_styles.html" %}
+
 <div class="pagetitle">
   <h1>{% trans "Enrichment Runs" %}</h1>
   <nav>
@@ -15,7 +17,7 @@
 </div>
 
 <section class="section">
-  <div class="card mb-3">
+  <div class="card enrich-card mb-3">
     <div class="card-body">
       <form method="GET" class="row g-2 align-items-end">
         <div class="col-auto">
@@ -48,7 +50,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card enrich-card">
     <div class="card-body">
       {% if runs %}
       <div class="table-responsive">
@@ -69,9 +71,9 @@
             <tr>
               <td>{{ run.get_method_display }}</td>
               <td class="small text-muted">{{ run.started_at|date:"d M Y, H:i" }}</td>
-              <td>{{ run.successful_items }}/{{ run.total_items }}</td>
-              <td>{{ run.total_changes }}</td>
-              <td>{% widthratio run.average_confidence 1 100 %}%</td>
+              <td class="text-tabular">{{ run.successful_items }}/{{ run.total_items }}</td>
+              <td class="text-tabular">{{ run.total_changes }}</td>
+              <td class="text-tabular">{% widthratio run.average_confidence 1 100 %}%</td>
               <td>{% include "enrichment/_status_badge.html" with status=run.status status_display=run.get_status_display %}</td>
               <td class="text-end">
                 <a href="{% url 'enrichment_run_detail' run.id %}" class="btn btn-sm btn-outline-primary">{% trans "View" %}</a>
