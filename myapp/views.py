@@ -957,7 +957,10 @@ def lookup_merchant_balance_url(request):
     issuer = request.GET.get('issuer', '')
     return JsonResponse({'balance_check_url': get_cached_balance_check_url(issuer)})
 
-_SUGGESTABLE_FIELDS = {'issuer', 'logo_slug', 'wallet', 'discount_applied', 'currency', 'code_type'}
+_SUGGESTABLE_FIELDS = {
+    'issuer', 'logo_slug', 'wallet', 'discount_applied', 'currency', 'code_type',
+    'pin', 'journey_origin', 'journey_destination',
+}
 
 
 @require_GET

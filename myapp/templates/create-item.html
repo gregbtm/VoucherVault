@@ -784,13 +784,15 @@ body.dark-mode .error-alert {
                   <label class="form-label" for="journey_origin">{% trans "Journey From" %}</label>
                   <input type="text" class="modern-input" id="journey_origin" name="journey_origin"
                          placeholder="{% trans 'e.g. Hatfield Peverel' %}"
-                         value='{{ form.journey_origin.value|default_if_none:"" }}'>
+                         value='{{ form.journey_origin.value|default_if_none:"" }}'
+                         data-vv-suggest-field="journey_origin" data-vv-suggest-url="{% url 'suggest_field_options' %}" data-vv-suggest-type-source="#type">
                 </div>
                 <div class="form-group">
                   <label class="form-label" for="journey_destination">{% trans "Journey To" %}</label>
                   <input type="text" class="modern-input" id="journey_destination" name="journey_destination"
                          placeholder="{% trans 'e.g. London Terminals' %}"
-                         value='{{ form.journey_destination.value|default_if_none:"" }}'>
+                         value='{{ form.journey_destination.value|default_if_none:"" }}'
+                         data-vv-suggest-field="journey_destination" data-vv-suggest-url="{% url 'suggest_field_options' %}" data-vv-suggest-type-source="#type">
                 </div>
               </div>
               <div class="form-group" id="travel-time-field">
@@ -853,7 +855,8 @@ body.dark-mode .error-alert {
                 <label class="form-label" for="pin">{% trans "PIN Code" %}</label>
                 <input type="text" class="modern-input" id="pin" name="pin"
                        placeholder="{% trans 'The pin code of the item' %}"
-                       value='{{ form.pin.value|default_if_none:"" }}'>
+                       value='{{ form.pin.value|default_if_none:"" }}'
+                       data-vv-suggest-field="pin" data-vv-suggest-url="{% url 'suggest_field_options' %}" data-vv-suggest-type-source="#type">
               </div>
             </div>
           </div>
