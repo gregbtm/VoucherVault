@@ -4823,21 +4823,21 @@ class OfflineCacheTogglePreferenceTests(TestCase):
 
     def test_cache_button_shown_by_default(self):
         response = self.client.get(reverse('show_items'))
-        self.assertContains(response, 'manualCacheManager.cacheData()')
+        self.assertContains(response, 'id="cache-data-btn"')
 
     def test_cache_button_hidden_when_disabled(self):
         prefs, _ = UserPreference.objects.get_or_create(user=self.user)
         prefs.offline_cache_enabled = False
         prefs.save()
         response = self.client.get(reverse('show_items'))
-        self.assertNotContains(response, 'manualCacheManager.cacheData()')
+        self.assertNotContains(response, 'id="cache-data-btn"')
 
     def test_purge_button_always_shown(self):
         prefs, _ = UserPreference.objects.get_or_create(user=self.user)
         prefs.offline_cache_enabled = False
         prefs.save()
         response = self.client.get(reverse('show_items'))
-        self.assertContains(response, 'manualCacheManager.clearCache()')
+        self.assertContains(response, 'id="clear-cache-btn"')
 
     def test_save_redirects_with_prefs_saved_signal(self):
         response = self.client.post(reverse('update_user_preferences'), data={

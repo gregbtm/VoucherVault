@@ -465,7 +465,7 @@
       <!-- Cache and Language Toggle at Bottom -->
       {% if global_preferences.offline_cache_enabled %}
       <li class="nav-item sidebar-footer-item">
-        <a class="nav-link collapsed" href="#" onclick="event.preventDefault(); manualCacheManager.cacheData();">
+        <a class="nav-link collapsed" href="#" id="cache-data-btn">
           <i class="bi bi-download"></i>
           <span id="cache-button-text">{% trans "Cache for Offline" %}</span>
           <span id="cache-status" class="badge bg-secondary ms-2" style="font-size: 0.7rem;">Not cached</span>
@@ -474,7 +474,7 @@
       {% endif %}
 
       <li class="nav-item" id="purge-cache-button">
-        <a class="nav-link collapsed" href="#" onclick="event.preventDefault(); manualCacheManager.clearCache();">
+        <a class="nav-link collapsed" href="#" id="clear-cache-btn">
           <i class="bi bi-trash"></i>
           <span id="purge-button-text">{% trans "Purge Cache" %}</span>
         </a>
