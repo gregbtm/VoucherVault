@@ -1,11 +1,22 @@
 # yourapp/management/commands/create_default_periodic_tasks.py
 from django.core.management.base import BaseCommand
 from django_celery_beat.models import PeriodicTask, CrontabSchedule
+from myapp.models import EnrichmentConfig
 
 class Command(BaseCommand):
     help = 'Create default Celery Beat periodic tasks'
 
     def handle(self, *args, **options):
+        # EnrichmentConfig rows previously only existed if someone created
+        # them by hand (e.g. via Django admin) - the Enrichment
+        # Configuration page (enrichment_config_list) only ever renders
+        # whatever's already in the database, with nothing to seed it, so
+        # on a fresh install the page showed nothing and the per-method
+        # settings/schedule were unreachable. get_or_create is safe to run
+        # on every start - it never touches a row that already exists.
+        for method, _label in EnrichmentConfig.ENRICHMENT_METHODS:
+            EnrichmentConfig.objects.get_or_create(method=method)
+
         # Create a crontab schedule (run daily at 9 o'clock)
         crontab_schedule, created = CrontabSchedule.objects.get_or_create(
             minute='0',
