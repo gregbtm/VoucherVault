@@ -40,6 +40,12 @@
   border-radius: 3px;
 }
 
+/* Momentary touch-tap feedback (mobile-interactions.js #11). Deliberately
+   not named "active" - that class is Bootstrap's own component state
+   (nav-tabs, dropdown items, list groups...) and reusing it here made
+   Bootstrap think a just-tapped, not-yet-selected tab was already active. */
+.touch-pressed { opacity: 0.65; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
