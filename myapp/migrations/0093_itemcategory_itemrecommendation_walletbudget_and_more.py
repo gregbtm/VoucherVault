@@ -104,25 +104,55 @@ class Migration(migrations.Migration):
                 ("updated_at", models.DateTimeField(auto_now=True)),
             ],
         ),
-        migrations.RemoveIndex(
-            model_name="document",
-            name="document_item",
-        ),
-        migrations.RemoveIndex(
-            model_name="loginauditlog",
-            name="loginauditlog_user_time",
-        ),
-        migrations.RemoveIndex(
-            model_name="transaction",
-            name="transaction_item_date",
-        ),
-        migrations.RemoveIndex(
-            model_name="transaction",
-            name="transaction_date_value",
-        ),
-        migrations.RemoveIndex(
-            model_name="walletactivity",
-            name="walletactivity_wallet_time",
+        # Plain RemoveIndex emits a bare DROP INDEX with no IF EXISTS guard.
+        # On at least one production deploy, 0092 (which is supposed to have
+        # created these five) never actually committed - so the DROP here
+        # hit a missing index, and since SQLite migrations are atomic, that
+        # single failure rolled back this entire migration, silently taking
+        # the ItemCategory/ItemRecommendation/WalletBudget CreateModel
+        # operations down with it every time this migration was retried.
+        # SeparateDatabaseAndState keeps Django's migration *state* in sync
+        # (so future makemigrations still sees these indexes as gone) while
+        # making the actual DB operation tolerant of the index already
+        # being absent, on both SQLite and Postgres.
+        migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.RemoveIndex(model_name="document", name="document_item"),
+                migrations.RemoveIndex(
+                    model_name="loginauditlog", name="loginauditlog_user_time"
+                ),
+                migrations.RemoveIndex(
+                    model_name="transaction", name="transaction_item_date"
+                ),
+                migrations.RemoveIndex(
+                    model_name="transaction", name="transaction_date_value"
+                ),
+                migrations.RemoveIndex(
+                    model_name="walletactivity", name="walletactivity_wallet_time"
+                ),
+            ],
+            database_operations=[
+                migrations.RunSQL(
+                    sql='DROP INDEX IF EXISTS "document_item";',
+                    reverse_sql='CREATE INDEX IF NOT EXISTS "document_item" ON "myapp_document" ("item_id");',
+                ),
+                migrations.RunSQL(
+                    sql='DROP INDEX IF EXISTS "loginauditlog_user_time";',
+                    reverse_sql='CREATE INDEX IF NOT EXISTS "loginauditlog_user_time" ON "myapp_loginauditlog" ("user_id", "timestamp");',
+                ),
+                migrations.RunSQL(
+                    sql='DROP INDEX IF EXISTS "transaction_item_date";',
+                    reverse_sql='CREATE INDEX IF NOT EXISTS "transaction_item_date" ON "myapp_transaction" ("item_id", "date");',
+                ),
+                migrations.RunSQL(
+                    sql='DROP INDEX IF EXISTS "transaction_date_value";',
+                    reverse_sql='CREATE INDEX IF NOT EXISTS "transaction_date_value" ON "myapp_transaction" ("date", "value");',
+                ),
+                migrations.RunSQL(
+                    sql='DROP INDEX IF EXISTS "walletactivity_wallet_time";',
+                    reverse_sql='CREATE INDEX IF NOT EXISTS "walletactivity_wallet_time" ON "myapp_walletactivity" ("wallet_id", "timestamp");',
+                ),
+            ],
         ),
         migrations.AddField(
             model_name="itemcategory",
