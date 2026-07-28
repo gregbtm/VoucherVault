@@ -205,12 +205,20 @@
   // ────────────────────────────────────────────────────────────────
   // 11. Enhance Touch Feedback with Active States
   // ────────────────────────────────────────────────────────────────
+  // Uses a dedicated class rather than "active" - Bootstrap uses that
+  // exact class name as its own component state (nav-tabs, dropdown
+  // items, list groups, pagination, accordions...). Adding it here too
+  // meant that as soon as a finger touched a tab, Bootstrap's Tab.show()
+  // saw the target already carrying .active and treated the switch as a
+  // no-op - the tab never changed, even though the click/tap itself was
+  // registering fine (this is why the tab strip could still be scrolled
+  // but never selected on touch-only browsers).
   (function() {
     if (window.matchMedia('(hover: none)').matches) {
       // Touch device
       document.addEventListener('touchstart', function(e) {
         if (e.target.closest('button, a, .btn')) {
-          e.target.closest('button, a, .btn').classList.add('active');
+          e.target.closest('button, a, .btn').classList.add('touch-pressed');
         }
       }, { passive: true });
 
@@ -218,7 +226,7 @@
         const elem = e.target.closest('button, a, .btn');
         if (elem) {
           setTimeout(function() {
-            elem.classList.remove('active');
+            elem.classList.remove('touch-pressed');
           }, 100);
         }
       }, { passive: true });
