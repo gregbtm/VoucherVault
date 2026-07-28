@@ -141,7 +141,7 @@ class ItemEnricher:
             )
 
         # Extract data from documents using OCR backend
-        extracted_data = self._extract_from_documents(documents, ocr_backend=ocr_backend)
+        extracted_data = self._extract_from_documents(documents, ocr_backend=ocr_backend, user=item.user)
         if not extracted_data:
             return EnrichmentResult(
                 item_id=item.id,
@@ -413,7 +413,8 @@ class ItemEnricher:
             'total_confidence': sum(c.confidence_score for c in changes) / len(changes) if changes else 0
         }
 
-    def _extract_from_documents(self, documents, ocr_backend: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def _extract_from_documents(self, documents, ocr_backend: Optional[str] = None,
+                               user: Optional[User] = None) -> Optional[Dict[str, Any]]:
         """
         Extract structured data from documents using the app's real,
         SiteConfiguration-driven OCR backend (ocr.backends.get_backend()) -
@@ -454,7 +455,7 @@ class ItemEnricher:
                     file_bytes = pdf_page_to_png_bytes(file_bytes)
                     mime_type = 'image/png'
 
-                result = get_backend().extract(file_bytes, mime_type)
+                result = get_backend().extract(file_bytes, mime_type, user=user)
             except Exception as e:
                 logger.error(f"OCR extraction failed for document {document.id}: {e}")
                 continue

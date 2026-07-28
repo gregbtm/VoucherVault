@@ -130,7 +130,7 @@ class ClaudeOCRBackend(OCRBackend):
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = config.anthropic_ocr_model or DEFAULT_MODEL
 
-    def extract(self, image_bytes: bytes, media_type: str) -> dict:
+    def extract(self, image_bytes: bytes, media_type: str, user=None) -> dict:
         empty = {
             'code': None, 'code_type': None, 'name': None, 'issuer': None, 'expiry_date': None,
             'pin': None, 'value': None, 'currency': None, 'card_number': None,
@@ -138,6 +138,9 @@ class ClaudeOCRBackend(OCRBackend):
             'description': None, 'notes': None, 'tags': [], 'journey_origin': None,
             'journey_destination': None, 'travel_time': None, 'confidence': 0.0,
         }
+
+        from myapp.scan_learning import build_ocr_correction_hints
+        prompt_text = _PROMPT + build_ocr_correction_hints(user)
 
         image_b64 = base64.standard_b64encode(image_bytes).decode()
         message = self.client.messages.create(
@@ -159,7 +162,7 @@ class ClaudeOCRBackend(OCRBackend):
                         'type': 'image',
                         'source': {'type': 'base64', 'media_type': media_type, 'data': image_b64},
                     },
-                    {'type': 'text', 'text': _PROMPT},
+                    {'type': 'text', 'text': prompt_text},
                 ],
             }],
         )
