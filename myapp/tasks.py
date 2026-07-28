@@ -204,6 +204,20 @@ def mark_expired_commute_outward_tickets():
 
 
 @shared_task
+def run_scheduled_enrichment_if_due(method):
+    """
+    Fired by the 'biweekly' Celery Beat entry (see myapp/enrichment_scheduling.py)
+    every Monday, same as 'weekly' - cron has no native "every 2 weeks"
+    expression, so this gates the actual run to even ISO weeks, giving a
+    genuine ~14-day cadence instead of firing weekly regardless.
+    """
+    from django.utils import timezone
+    if timezone.now().isocalendar()[1] % 2 != 0:
+        return
+    run_scheduled_enrichment(method)
+
+
+@shared_task
 def run_scheduled_enrichment(method):
     """
     Celery Beat task to run scheduled enrichment for a given method.

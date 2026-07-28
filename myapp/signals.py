@@ -102,3 +102,23 @@ def refresh_item_recommendations(sender, instance, created, **kwargs):
         generate_item_recommendations(instance)
     except Exception:
         pass
+
+
+@receiver(post_save, sender=EnrichmentConfig)
+def sync_enrichment_periodic_task(sender, instance, **kwargs):
+    """
+    EnrichmentConfig.schedule (daily/weekly/biweekly/monthly/disabled) used
+    to be admin-editable but had zero effect - nothing ever read it, so
+    changing it in Site Settings silently did nothing. This keeps a
+    matching django_celery_beat PeriodicTask in sync every time a config
+    is saved, whether that save comes from the Django admin or the
+    enrichment_config_detail view.
+    """
+    try:
+        from .enrichment_scheduling import sync_periodic_task_for_config
+        sync_periodic_task_for_config(instance)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "Failed to sync Celery Beat schedule for EnrichmentConfig(method=%s)", instance.method
+        )
