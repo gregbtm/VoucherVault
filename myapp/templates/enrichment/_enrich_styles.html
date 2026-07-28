@@ -23,8 +23,27 @@
   .enrich-stat-card.changes .enrich-stat-icon { background: rgba(34, 197, 94, 0.12); color: #22c55e; }
   .enrich-stat-card.confidence .enrich-stat-icon { background: rgba(139, 92, 246, 0.14); color: #8b5cf6; }
   .enrich-stat-value { font-size: 1.6rem; font-weight: 700; line-height: 1.2; color: var(--text-color, #212529); font-variant-numeric: tabular-nums; }
-  .enrich-stat-label { color: var(--text-muted, #6c757d); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+  .enrich-stat-label { color: var(--text-muted, #6c757d); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; line-height: 1.35; }
   .enrich-stat-sub { font-size: 0.78rem; color: var(--text-muted, #6c757d); margin-top: 0.15rem; }
+
+  /* On phones, two stat cards share a row that's barely wider than the
+     icon plus a couple of words - "Field changes applied" beside a 46px
+     icon had nowhere to go but a cramped three-line wrap, and the row
+     height then stretched every other card in the grid to match it. Icon
+     above the number/label instead of beside it gives the label the
+     card's full width, so it wraps at most once and the four tiles stay
+     visually even. */
+  @media (max-width: 767.98px) {
+    .enrich-stat-card {
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 1.1rem 1.15rem;
+      gap: 0.7rem;
+    }
+    .enrich-stat-icon { width: 42px; height: 42px; font-size: 1.2rem; }
+    .enrich-stat-value { font-size: 1.5rem; }
+    .enrich-stat-label { font-size: 0.72rem; letter-spacing: 0.3px; }
+  }
 
   .enrich-method-card {
     background: var(--card-bg, #fff);
