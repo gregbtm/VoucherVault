@@ -1206,6 +1206,7 @@ body.dark-mode .next-up-card {
           {% elif rec.reason == 'expires_soon' %}<i class="bi bi-calendar-event"></i>
           {% elif rec.reason == 'low_balance' %}<i class="bi bi-wallet2"></i>
           {% elif rec.reason == 'unused' %}<i class="bi bi-moon-stars"></i>
+          {% elif rec.reason == 'needs_review' %}<i class="bi bi-flag"></i>
           {% else %}<i class="bi bi-lightbulb"></i>{% endif %}
         </div>
         <div class="smart-sugg-body">
