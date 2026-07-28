@@ -4042,6 +4042,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
             'Email Expiry Digest',
             'Process Webhook Retries',
             'Refresh Smart Suggestions',
+            'Database Integrity Check',
         })
 
     def test_update_check_and_upstream_check_run_hourly_not_daily(self):

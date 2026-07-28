@@ -126,6 +126,13 @@ class Command(BaseCommand):
             # A post_save signal already keeps these current on every item
             # save; this is the sweep for everything else.
             {'name': 'Refresh Smart Suggestions', 'task': 'myapp.tasks.refresh_recommendations_task', 'crontab': crontab_schedule, 'enabled': True},
+            # Sweeps every model's table for the class of failure behind the
+            # myapp_itemrecommendation outage - a migration that silently
+            # rolled back, leaving a table missing with nothing surfacing it
+            # until a user hit a 500. A no-op unless a table is actually
+            # missing; alerts via security_alert_ntfy_topic same as Login
+            # Spike Alert above. A no-op unless that topic is configured.
+            {'name': 'Database Integrity Check', 'task': 'myapp.tasks.check_database_integrity_task', 'crontab': weekly_schedule, 'enabled': True},
         ]
 
         for task_data in tasks:
