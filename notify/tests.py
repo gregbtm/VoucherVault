@@ -131,6 +131,26 @@ class BackendTests(TestCase):
         backend = NtfyBackend({'server': 'https://ntfy.example.com', 'topic': 'vv'})
         self.assertFalse(backend.send('title', 'message'))
 
+    @patch('notify.backends.ntfy.requests.post')
+    def test_ntfy_click_url_resolves_to_view_item(self, mock_post):
+        # Regression test: the Click/Actions header URL was hardcoded with a
+        # trailing slash (`.../items/view/<id>/`) while the view_item route
+        # takes none, so tapping the notification 404'd every time.
+        from urllib.parse import urlsplit
+        from django.urls import resolve
+        mock_post.return_value = MagicMock(status_code=200)
+        user = User.objects.create_user(username='ntfy_click', password='pw12345!')
+        item = make_item(user)
+        set_site_config(vv_base_url='https://voucher.example.com')
+
+        backend = NtfyBackend({'server': 'https://ntfy.example.com', 'topic': 'vv'})
+        backend.send('title', 'message', item=item)
+
+        click_url = mock_post.call_args.kwargs['headers']['Click']
+        match = resolve(urlsplit(click_url).path)
+        self.assertEqual(match.url_name, 'view_item')
+        self.assertEqual(str(match.kwargs['item_uuid']), str(item.id))
+
     def test_webhook_rejects_non_http_url(self):
         backend = WebhookBackend({'url': 'file:///etc/passwd'})
         self.assertFalse(backend.send('title', 'message'))
