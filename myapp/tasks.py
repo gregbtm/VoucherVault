@@ -262,14 +262,33 @@ def run_scheduled_enrichment(method):
             run.save()
 
 
+# queue_item_enrichment gives up after 2 retries without ever creating an
+# EnrichmentRunItem row for that item (the row is only written on a
+# successful pass) - previously check_and_finalize_run had no cap, so a
+# single permanently-failing item left it rescheduling itself every
+# minute forever, and the run sat at status='in_progress' indefinitely
+# with no error ever surfaced. 30 attempts at the existing 60s cadence
+# gives 30 minutes, generously past the ~5 minute happy-path window this
+# was originally tuned for.
+MAX_FINALIZE_ATTEMPTS = 30
+# Halfway through the wait, re-queue whichever items still have no
+# EnrichmentRunItem row at all - the one bounded retry this task owes
+# them (queue_item_enrichment's own per-task retries only cover
+# transient failures within a single attempt, not the item being
+# dropped entirely if the worker itself was down).
+RETRY_MISSING_ITEMS_AT_ATTEMPT = 15
+
+
 @shared_task
-def check_and_finalize_run(run_id):
+def check_and_finalize_run(run_id, attempt=0):
     """
     Check if an enrichment run has completed all items and finalize if so.
-    Retries every minute until all items are done.
+    Retries every minute until all items are done, up to MAX_FINALIZE_ATTEMPTS,
+    at which point the run is marked failed and an admin is alerted rather
+    than retrying forever.
     """
     import logging
-    from .models import EnrichmentRun, EnrichmentRunItem
+    from .models import EnrichmentRun, EnrichmentRunItem, Item
 
     _log = logging.getLogger(__name__)
 
@@ -282,18 +301,111 @@ def check_and_finalize_run(run_id):
         if completed_count >= run.total_items:
             # All items complete, finalize
             finalize_enrichment_run.delay(run_id)
-        else:
-            # Not done yet, check again in 1 minute
-            from celery import current_app
-            current_app.send_task(
-                'myapp.tasks.check_and_finalize_run',
-                args=[run_id],
-                countdown=60
+            return
+
+        if attempt == RETRY_MISSING_ITEMS_AT_ATTEMPT:
+            missing_items = Item.objects.filter(is_archived=False).exclude(
+                enrichment_run_results__run=run
             )
-            _log.debug(f"Run {run_id.hex[:8]} has {completed_count}/{run.total_items} items, will recheck")
+            for item in missing_items:
+                queue_item_enrichment.delay(item.id, str(run.id), run.method, False)
+            _log.warning(
+                "Run %s stalled at %d/%d items after %d minutes - re-queued %d missing item(s)",
+                run_id, completed_count, run.total_items,
+                attempt, missing_items.count(),
+            )
+
+        if attempt >= MAX_FINALIZE_ATTEMPTS:
+            _fail_stuck_run(run, completed_count)
+            return
+
+        # Not done yet, check again in 1 minute
+        from celery import current_app
+        current_app.send_task(
+            'myapp.tasks.check_and_finalize_run',
+            args=[run_id, attempt + 1],
+            countdown=60
+        )
+        _log.debug(f"Run {run_id} has {completed_count}/{run.total_items} items, will recheck")
 
     except Exception as exc:
         _log.error(f"Error checking finalization for run {run_id}: {exc}", exc_info=True)
+
+
+def _fail_stuck_run(run, completed_count):
+    """
+    Shared by check_and_finalize_run's own cap and enrichment_run_watchdog_task.
+    Marks the run failed with the true completed/total counts visible in
+    `notes` - unlike finalize_enrichment_run, which overwrites total_items
+    with just the completed count, silently hiding that some items never
+    finished at all.
+    """
+    import logging
+    _log = logging.getLogger(__name__)
+
+    run.status = 'failed'
+    run.completed_at = timezone.now()
+    run.notes = (
+        f"{run.notes}\n" if run.notes else ''
+    ) + f"Watchdog: only {completed_count}/{run.total_items} items completed - marked failed."
+    run.save(update_fields=['status', 'completed_at', 'notes'])
+    _log.error(
+        "Enrichment run %s marked failed by watchdog: %d/%d items completed",
+        run.id.hex[:8], completed_count, run.total_items,
+    )
+    _alert_stuck_enrichment_run(run, completed_count)
+
+
+def _alert_stuck_enrichment_run(run, completed_count):
+    import logging
+    import requests as _requests
+    from .models import SiteConfiguration
+
+    _log = logging.getLogger(__name__)
+    config = SiteConfiguration.load()
+    topic = config.security_alert_ntfy_topic.strip()
+    if not topic:
+        return
+
+    server = (config.ntfy_default_server or 'https://ntfy.sh').rstrip('/')
+    try:
+        _requests.post(
+            f'{server}/{topic}',
+            data=(
+                f'Enrichment run {run.id.hex[:8]} ({run.get_method_display()}) stalled: '
+                f'only {completed_count}/{run.total_items} items completed and was marked failed.'
+            ).encode('utf-8'),
+            headers={
+                'Title': 'VoucherVault Enrichment Run Failed'.encode('utf-8'),
+                'Priority': 'high',
+                'Tags': 'warning',
+            },
+            timeout=10,
+        )
+    except Exception:
+        _log.warning('Failed to send enrichment run failure alert', exc_info=True)
+
+
+@shared_task
+def enrichment_run_watchdog_task():
+    """
+    Belt-and-braces sweep for stuck runs, independent of
+    check_and_finalize_run's own countdown chain - if a Redis restart (or
+    any broker hiccup) drops a scheduled countdown task, that chain can go
+    silently dead with nothing left to ever reschedule it, leaving the run
+    at status='in_progress' forever with no further sign of life. Anything
+    still in_progress after 2 hours (comfortably past the 30-minute cap
+    check_and_finalize_run enforces on its own happy path) gets the same
+    treatment.
+    """
+    from datetime import timedelta
+    from .models import EnrichmentRun, EnrichmentRunItem
+
+    cutoff = timezone.now() - timedelta(hours=2)
+    stuck_runs = EnrichmentRun.objects.filter(status='in_progress', started_at__lt=cutoff)
+    for run in stuck_runs:
+        completed_count = EnrichmentRunItem.objects.filter(run=run).count()
+        _fail_stuck_run(run, completed_count)
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=60)
@@ -375,7 +487,7 @@ def queue_item_enrichment(self, item_id, run_id, method, auto_apply=False):
         if result.flags:
             enricher.log_flags(item, result.enrichment_run_id, result.flags)
 
-        _log.debug(f"Enriched item {item_id} in run {run_id.hex[:8]} with {len(result.changes)} changes")
+        _log.debug(f"Enriched item {item_id} in run {run_id} with {len(result.changes)} changes")
 
     except Exception as exc:
         _log.error(f"Error enriching item {item_id}: {exc}", exc_info=True)

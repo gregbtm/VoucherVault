@@ -133,6 +133,11 @@ class Command(BaseCommand):
             # missing; alerts via security_alert_ntfy_topic same as Login
             # Spike Alert above. A no-op unless that topic is configured.
             {'name': 'Database Integrity Check', 'task': 'myapp.tasks.check_database_integrity_task', 'crontab': weekly_schedule, 'enabled': True},
+            # Belt-and-braces sweep for EnrichmentRuns stuck in_progress past
+            # their expected completion window - see
+            # myapp.tasks.enrichment_run_watchdog_task. A no-op unless a run
+            # is actually stuck.
+            {'name': 'Enrichment Run Watchdog', 'task': 'myapp.tasks.enrichment_run_watchdog_task', 'crontab': hourly_schedule, 'enabled': True},
         ]
 
         for task_data in tasks:
