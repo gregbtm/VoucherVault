@@ -653,6 +653,25 @@ class SuggestFieldOptionsTests(TestCase):
             options = response.json()['options']
             self.assertGreater(len(options), 0)
 
+    def test_pin_and_journey_fields_in_allowlist(self):
+        Item.objects.create(
+            type='travelpass', name='Season Ticket', issuer='Great Anglia',
+            redeem_code='TICKET1', expiry_date=date.today(), value=Decimal('1.00'),
+            currency='GBP', pin='4321', journey_origin='Hatfield Peverel',
+            journey_destination='London Terminals', user=self.user,
+        )
+        for field, expected in (
+            ('pin', '4321'),
+            ('journey_origin', 'Hatfield Peverel'),
+            ('journey_destination', 'London Terminals'),
+        ):
+            response = self.client.get(
+                reverse('suggest_field_options'), {'type': 'travelpass', 'field': field},
+            )
+            self.assertEqual(response.status_code, 200)
+            options = response.json()['options']
+            self.assertEqual(options, [{'value': expected, 'label': expected}])
+
     def test_context_boosts_matching_issuer(self):
         # Two items with different issuers; context_issuer matches one.
         import json as _json
