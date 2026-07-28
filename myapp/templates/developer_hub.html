@@ -98,6 +98,39 @@
   margin: 0.75rem 0 0.35rem;
 }
 
+/* On phones, a section header's icon + title shared one row with a "Guide"
+   button squeezed on the end - .dev-section-header h4 truncated with an
+   ellipsis rather than wrap, and .conn-card's "Test" button ate enough
+   width that a longer integration name (e.g. "VoucherVault REST API")
+   wrapped into a cramped 2-3 line column beside the icon. Dropping the
+   trailing button to a full-width row of its own gives the title the
+   rest of the row to itself, so it wraps normally instead of being
+   clipped or squeezed - same treatment as the Enrichment dashboard's
+   stat tiles. */
+@media (max-width: 575.98px) {
+  .dev-section-header {
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+  }
+  .dev-section-header h4 {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .dev-section-header > .help-link,
+  .dev-section-header > .btn {
+    flex-basis: 100%;
+    margin-left: 0 !important;
+  }
+  .conn-card {
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+  }
+  .conn-card > .btn {
+    flex-basis: 100%;
+  }
+}
+
 /* Quick ref table */
 .api-ref-table td:first-child { font-family: monospace; font-size: 0.8rem; white-space: nowrap; }
 .method-badge {
@@ -493,7 +526,7 @@ print(resp.json())
         <div class="conn-card mb-2">
           <div class="conn-card-icon">🏛️</div>
           <div class="flex-grow-1">
-            <div class="fw-semibold small">{% trans "Companies House" %}</div>
+            <div class="fw-semibold small">{% trans "Companies House" %} <a href="{% url 'view_doc' 'gift-card-health' %}" class="help-link text-muted" data-doc-url="{% url 'view_doc' 'gift-card-health' %}" title="{% trans 'Merchant health guide' %}" style="font-size:0.8em;"><i class="bi bi-question-circle"></i></a></div>
             <div class="text-muted" style="font-size:0.78rem;">
               {% if ch_key_set %}
                 <span class="int-ok"><i class="bi bi-check-circle me-1"></i>{% trans "Key configured" %}</span> ·
@@ -515,7 +548,7 @@ print(resp.json())
         <div class="conn-card mb-2">
           <div class="conn-card-icon">🖼️</div>
           <div class="flex-grow-1">
-            <div class="fw-semibold small">{% trans "logo.dev — merchant logos" %}</div>
+            <div class="fw-semibold small">{% trans "logo.dev — merchant logos" %} <a href="{% url 'view_doc' 'merchant-logos' %}" class="help-link text-muted" data-doc-url="{% url 'view_doc' 'merchant-logos' %}" title="{% trans 'Merchant logos guide' %}" style="font-size:0.8em;"><i class="bi bi-question-circle"></i></a></div>
             <div class="text-muted" style="font-size:0.78rem;">
               {% if logo_dev_key_set %}
                 <span class="int-ok"><i class="bi bi-check-circle me-1"></i>{% trans "Key configured" %}</span> ·
@@ -598,7 +631,7 @@ print(resp.json())
         <div class="conn-card mb-2">
           <div class="conn-card-icon">🔑</div>
           <div class="flex-grow-1">
-            <div class="fw-semibold small">{% trans "VoucherVault REST API" %}</div>
+            <div class="fw-semibold small">{% trans "VoucherVault REST API" %} <a href="{% url 'view_doc' 'api-access' %}" class="help-link text-muted" data-doc-url="{% url 'view_doc' 'api-access' %}" title="{% trans 'API access guide' %}" style="font-size:0.8em;"><i class="bi bi-question-circle"></i></a></div>
             <div class="text-muted" style="font-size:0.78rem;">
               {{ request.scheme }}://{{ request.get_host }}/api/v1/
               {% if token %}
@@ -619,7 +652,7 @@ print(resp.json())
         <div class="conn-card mb-2">
           <div class="conn-card-icon">💱</div>
           <div class="flex-grow-1">
-            <div class="fw-semibold small">{% trans "Fixer.io — currency rates" %}</div>
+            <div class="fw-semibold small">{% trans "Fixer.io — currency rates" %} <a href="{% url 'view_doc' 'fixer-io' %}" class="help-link text-muted" data-doc-url="{% url 'view_doc' 'fixer-io' %}" title="{% trans 'Fixer.io setup guide' %}" style="font-size:0.8em;"><i class="bi bi-question-circle"></i></a></div>
             <div class="text-muted" style="font-size:0.78rem;">
               {% if fixer_key_set %}
                 <span class="int-ok"><i class="bi bi-check-circle me-1"></i>{% trans "Key configured" %}</span> ·

@@ -37,6 +37,14 @@ DOCS = {
     'security-settings':  ('Security settings & hardening', 'SECURITY_SETTINGS.md'),
     'field-map-doc':      ('Field map & suggestion system', 'FIELD_MAP.md'),
     'gift-card-health':   ('Gift Card Health & Merchant Alerts', 'GIFT_CARD_HEALTH.md'),
+    'merchant-logos':     ('Merchant logos', 'MERCHANT_LOGOS.md'),
+    'nearby-items':       ('Nearby items widget', 'NEARBY_ITEMS.md'),
+    'sharing':            ('Sharing settings', 'SHARING_SETTINGS.md'),
+    'smtp-settings':      ('Outbound email (SMTP)', 'SMTP_SETTINGS.md'),
+    'user-registration':  ('User registration & invites', 'USER_REGISTRATION.md'),
+    'pocketid-admin-api': ('PocketID Admin API', 'POCKETID_ADMIN_API.md'),
+    'analytics-tuning':   ('Analytics & duplicate detection tuning', 'ANALYTICS_TUNING.md'),
+    'fixer-io':           ('Fixer.io currency rates', 'FIXER_IO_SETUP.md'),
 }
 
 # Categories for the Help Center index page.
@@ -49,10 +57,12 @@ CATEGORIES = [
         ('telegram-discord-email', 'Send alerts directly to Telegram, a Discord channel, or email'),
         ('api-access',     'Generate an API token and use the REST API or MCP server'),
         ('pwa-offline',    'Install as a PWA, browse offline, and share items directly from Android'),
+        ('nearby-items',   'Show nearby usable vouchers on the Inventory page using your location'),
     ]),
     ('Wallet & Sharing', 'bi-wallet2', [
         ('google-wallet',  'Export vouchers to Google Wallet on Android'),
         ('apple-wallet',   'Export vouchers to Apple Wallet on iOS & macOS'),
+        ('sharing',        'Share an item via a public link, with optional expiry and access code'),
     ]),
     ('Scanning & OCR', 'bi-camera', [
         ('ocr',            'Enable AI-powered document scanning to extract voucher details automatically'),
@@ -66,6 +76,8 @@ CATEGORIES = [
         ('rail-ticket',    'Automatically import UK rail eTickets from your inbox via n8n'),
         ('mcp-server',     'Give Claude, Claude Code, or any MCP client direct access to your vault'),
         ('firefly',        'Post voucher spend automatically to your Firefly III ledger'),
+        ('merchant-logos', 'Fetch real merchant logos via logo.dev, with automatic fallback'),
+        ('fixer-io',       'Combine mixed-currency item totals on the Dashboard using live exchange rates'),
     ]),
     ('Storage & Backup', 'bi-hdd', [
         ('backup-restore', 'Nightly automated backups with one-command restore'),
@@ -80,9 +92,15 @@ CATEGORIES = [
         ('oidc-setup',        'Set up PocketID or any OIDC provider for single sign-on'),
         ('security-settings', 'Login spike alerts, API token expiry, CSP, and system-check warnings'),
     ]),
+    ('Site Administration', 'bi-sliders', [
+        ('user-registration',  'Open or close registration and manage invite links'),
+        ('smtp-settings',      'Configure outbound email for password resets and invites'),
+        ('pocketid-admin-api', 'Provision new PocketID accounts and one-click invite links'),
+    ]),
     ('Reference', 'bi-layout-text-sidebar-reverse', [
         ('field-map-doc',     'Every form field, when it appears, and which ones have context-aware suggestion buttons'),
         ('gift-card-health',  'Inactivity reminders, Companies House merchant health alerts, and the Developer Hub'),
+        ('analytics-tuning',  'Tune Dashboard widget limits and duplicate-photo detection sensitivity'),
     ]),
 ]
 
