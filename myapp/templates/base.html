@@ -42,7 +42,33 @@
   {% progressive_web_app_meta %}
   <script nonce="{{ request.csp_nonce }}">
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/serviceworker.js', { scope: '/' });
+      navigator.serviceWorker.register('/serviceworker.js', { scope: '/' }).then((registration) => {
+        // Chrome throttles the byte-for-byte staleness check on the SW
+        // script to once per 24h *unless* something explicitly asks -
+        // without this, a plain page reload after a redeploy can silently
+        // keep running the old worker (and its old versioned caches) for
+        // up to a day even though the server already has a new version.
+        registration.update();
+      });
+
+      // The old (pre-update) worker still owns every already-open tab
+      // until each one gets a fresh navigation - serviceworker.js calls
+      // skipWaiting() + clients.claim() so the new worker takes over
+      // instantly, but that alone doesn't repaint stale HTML/JS already
+      // sitting in the page. Reload once, the moment control actually
+      // changes hands, so a resumed/backgrounded tab always ends up on
+      // the version that's actually installed rather than requiring the
+      // user to notice something's broken and manually refresh.
+      // Guarded by hadController: a brand-new visitor's first-ever install
+      // also fires 'controllerchange' (no controller -> a controller),
+      // which is not an update and must not trigger a reload loop.
+      const hadController = !!navigator.serviceWorker.controller;
+      let reloadedForUpdate = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController || reloadedForUpdate) return;
+        reloadedForUpdate = true;
+        window.location.reload();
+      });
     }
   </script>
 
