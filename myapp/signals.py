@@ -102,14 +102,3 @@ def refresh_item_recommendations(sender, instance, created, **kwargs):
         generate_item_recommendations(instance)
     except Exception:
         pass
-
-
-@receiver(post_save, sender=Transaction)
-def update_wallet_budget_on_transaction(sender, instance, created, **kwargs):
-    """Recalculate wallet budget spending when a transaction is created/updated."""
-    try:
-        from .smart_features import update_wallet_spent_this_month
-        if instance.item and instance.item.wallet:
-            update_wallet_spent_this_month(instance.item.wallet)
-    except Exception:
-        pass
