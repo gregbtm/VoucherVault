@@ -1604,6 +1604,11 @@ class EnrichmentFieldPreference(models.Model):
         choices=FIELD_CHOICES,
         help_text="Field to exclude from enrichment."
     )
+    reason = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="Set automatically when the enrichment circuit breaker auto-disables a "
+                   "field after repeated corrections; blank when a user chose this manually."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

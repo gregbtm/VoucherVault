@@ -38,6 +38,90 @@ LEARNABLE_FIELDS = (
 # value (as opposed to 'flagged', which never changed anything).
 ENRICHMENT_LOG_TYPES = ('ocr_rescan', 'validation', 'merchant_lookup', 'auto_enrich')
 
+# ItemEnrichmentLog.enrichment_type (and ScanFieldCorrection.enrichment_method,
+# which mirrors it) uses a different vocabulary from
+# EnrichmentConfig.ENRICHMENT_METHODS / EnrichmentFieldPreference.method
+# ('ocr' vs 'ocr_rescan') - this is what ItemEnricher._excluded_fields()
+# actually queries against, so the circuit breaker below has to translate
+# before it can opt a user out of a method for a field. 'auto_enrich' has
+# no per-method opt-out surface at all, so it can never trip the breaker.
+_LOG_TYPE_TO_PREFERENCE_METHOD = {
+    'ocr_rescan': 'ocr',
+    'validation': 'validation',
+    'merchant_lookup': 'merchant_lookup',
+}
+
+# Once a (user, method, field) combo has racked up this many corrected-away
+# auto-fills, self-tuning the confidence threshold up (see
+# ItemEnricher._effective_confidence_threshold) isn't cutting it - stop the
+# method from touching this field for this user at all, the same way a
+# manual EnrichmentFieldPreference opt-out would, until a human clears it.
+CIRCUIT_BREAKER_TRIP_THRESHOLD = 5
+
+
+def _maybe_trip_circuit_breaker(user, enrichment_method: str, field: str) -> None:
+    """
+    Best-effort: called right after an enrichment-sourced correction is
+    recorded/incremented, since that's the only moment the trip count can
+    change. Never raises - this must never be why a save fails.
+    """
+    from .models import EnrichmentFieldPreference
+
+    preference_method = _LOG_TYPE_TO_PREFERENCE_METHOD.get(enrichment_method)
+    if preference_method is None:
+        return
+    if field not in dict(EnrichmentFieldPreference.FIELD_CHOICES):
+        return
+    if EnrichmentFieldPreference.objects.filter(
+        user=user, method=preference_method, field_name=field,
+    ).exists():
+        return
+
+    correction_count = ScanFieldCorrection.objects.filter(
+        user=user, field=field, source='enrichment', enrichment_method=enrichment_method,
+    ).count()
+    if correction_count < CIRCUIT_BREAKER_TRIP_THRESHOLD:
+        return
+
+    EnrichmentFieldPreference.objects.get_or_create(
+        user=user, method=preference_method, field_name=field,
+        defaults={'reason': f'Auto-disabled: corrected {correction_count} auto-applied values in a row'},
+    )
+    logger.warning(
+        'Circuit breaker tripped: disabled %s enrichment for %s field %r after %d corrections',
+        preference_method, user, field, correction_count,
+    )
+    _alert_circuit_breaker_tripped(user, preference_method, field, correction_count)
+
+
+def _alert_circuit_breaker_tripped(user, method: str, field: str, correction_count: int) -> None:
+    import requests
+    from .models import SiteConfiguration
+
+    config = SiteConfiguration.load()
+    topic = config.security_alert_ntfy_topic.strip()
+    if not topic:
+        return
+
+    server = (config.ntfy_default_server or 'https://ntfy.sh').rstrip('/')
+    try:
+        requests.post(
+            f'{server}/{topic}',
+            data=(
+                f"Enrichment circuit breaker tripped for {user}: '{method}' auto-disabled for "
+                f"field '{field}' after {correction_count} corrections in a row. "
+                f"Re-enable it in Django admin under Enrichment Field Preferences if this was a mistake."
+            ).encode('utf-8'),
+            headers={
+                'Title': 'VoucherVault Enrichment Circuit Breaker'.encode('utf-8'),
+                'Priority': 'default',
+                'Tags': 'electric_plug',
+            },
+            timeout=10,
+        )
+    except Exception:
+        logger.warning('Failed to send circuit breaker alert', exc_info=True)
+
 # Blank-fill corrections (AI left it empty, user typed something) replay
 # only once the same fill has been seen this many times - one occurrence
 # could be item-specific, a repeat is a pattern.
@@ -177,6 +261,7 @@ def record_enrichment_correction_feedback(user, item: Item, before_values: dict)
                         correction.corrected_value = final_value
                         correction.times_seen = 1
                     correction.save()
+                _maybe_trip_circuit_breaker(user, log.enrichment_type, field)
             elif final_value and final_value.lower() == logged_value.lower():
                 # The enrichment pipeline got it right and the user kept it -
                 # any old enrichment-sourced correction mapping this exact
