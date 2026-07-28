@@ -111,6 +111,29 @@ def validate_and_score(extraction: dict) -> dict:
         if suggested_tags:
             extraction['tags'] = suggested_tags
 
+    # Independent per-field confidence (see the OCR prompt's second-pass
+    # self-consistency re-read for these two fields) - unlike the overall
+    # "confidence" above, these aren't dragged down by an unrelated
+    # field's problems: an unreadable expiry_date shouldn't make
+    # enrichment (or anything else reading *_confidence) distrust a
+    # perfectly legible value, and vice versa. Falls back to the overall
+    # confidence when the backend didn't supply a self-consistency read.
+    if extraction.get('expiry_date') is not None:
+        expiry_confidence = extraction.get('expiry_date_confidence', confidence)
+        if not _validate_iso_date(extraction['expiry_date']):
+            expiry_confidence *= 0.5
+        elif _is_expired(extraction['expiry_date']):
+            expiry_confidence *= 0.9
+        extraction['expiry_date_confidence'] = min(1.0, expiry_confidence)
+
+    if extraction.get('value') is not None:
+        value_confidence = extraction.get('value_confidence', confidence)
+        try:
+            float(extraction['value'])
+        except (TypeError, ValueError):
+            value_confidence *= 0.5
+        extraction['value_confidence'] = min(1.0, value_confidence)
+
     extraction['confidence'] = min(1.0, confidence)
     extraction['_validation_issues'] = validation_issues
     return extraction
