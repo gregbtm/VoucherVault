@@ -1645,6 +1645,7 @@ class ItemRecommendation(models.Model):
         ('low_balance', 'Balance below £5'),
         ('unused', 'Unused for 6+ months'),
         ('budget_overspend', 'Category overspending'),
+        ('needs_review', 'Enrichment flagged a field for review'),
     ]
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='recommendations')
     reason = models.CharField(max_length=30, choices=REASON_CHOICES)

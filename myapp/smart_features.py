@@ -44,7 +44,7 @@ def apply_category_to_item(item):
 # these and retires them once their condition no longer holds. Excludes
 # 'budget_overspend' - that condition is wallet-level, not item-level, and
 # doesn't fit this model's per-item FK.
-MANAGED_REASONS = ('expires_soon', 'expires_very_soon', 'low_balance', 'unused')
+MANAGED_REASONS = ('expires_soon', 'expires_very_soon', 'low_balance', 'unused', 'needs_review')
 
 
 def generate_item_recommendations(item):
@@ -63,6 +63,26 @@ def generate_item_recommendations(item):
 
     today = timezone.localtime().date()
     applicable = set()
+
+    # Cross-pollinated from the enrichment pipeline: a field the
+    # validation pass considered too risky to auto-correct (an ambiguous
+    # redeem_code character, a non-numeric pin - see
+    # ItemEnricher._detect_review_flags) surfaces here too, not just as
+    # the separate inline flag icon (view-item/Inventory), so it also
+    # shows up wherever a user already checks Smart Suggestions.
+    from .services.enrichment import get_active_flags_for_items
+    flags = get_active_flags_for_items([item]).get(item.id, [])
+    if flags:
+        fields = ', '.join(sorted({f['field_name'] for f in flags}))
+        ItemRecommendation.objects.update_or_create(
+            item=item,
+            reason='needs_review',
+            defaults={
+                'action': f'Enrichment flagged {fields} for review',
+                'priority': 3,
+            }
+        )
+        applicable.add('needs_review')
 
     # Expiry-based recommendations
     if item.expiry_date:
