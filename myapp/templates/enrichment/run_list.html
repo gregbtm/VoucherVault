@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load i18n %}
+{% load extras %}
 
 {% block content %}
 <div class="pagetitle">
@@ -22,7 +23,7 @@
           <select name="method" class="form-select form-select-sm">
             <option value="">{% trans "All methods" %}</option>
             {% for m in methods %}
-            <option value="{{ m }}" {% if filters.method == m %}selected{% endif %}>{{ m }}</option>
+            <option value="{{ m }}" {% if filters.method == m %}selected{% endif %}>{{ method_choices|get_item:m|default:m }}</option>
             {% endfor %}
           </select>
         </div>

@@ -2,6 +2,25 @@
 {% load i18n %}
 
 {% block content %}
+<style>
+  .enrich-timeline { position: relative; padding-left: 2rem; }
+  .enrich-timeline::before {
+    content: ''; position: absolute; left: 0.6rem; top: 0.4rem; bottom: 0.4rem;
+    width: 2px; background: rgba(128, 128, 128, 0.2);
+  }
+  .enrich-timeline-item { position: relative; padding-bottom: 1.5rem; }
+  .enrich-timeline-item:last-child { padding-bottom: 0; }
+  .enrich-timeline-dot {
+    position: absolute; left: -2rem; top: 0.15rem; width: 1.25rem; height: 1.25rem;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; color: #fff;
+  }
+  .enrich-timeline-dot.ok { background: #22c55e; }
+  .enrich-timeline-dot.failed { background: #ef4444; }
+  .enrich-timeline-changes { font-size: 0.85rem; margin-top: 0.35rem; }
+  .enrich-timeline-changes li { margin-bottom: 0.15rem; }
+</style>
+
 <div class="pagetitle">
   <h1>{% trans "Enrichment History" %}</h1>
   <nav>
@@ -18,51 +37,37 @@
     <div class="card-body">
       <h5 class="card-title">{{ item.name }}</h5>
       {% if run_items %}
-      <div class="table-responsive">
-        <table class="table table-sm align-middle">
-          <thead>
-            <tr>
-              <th>{% trans "Date" %}</th>
-              <th>{% trans "Method" %}</th>
-              <th>{% trans "Result" %}</th>
-              <th>{% trans "Changes" %}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for run_item in run_items %}
-            <tr>
-              <td class="small text-muted">{{ run_item.run.started_at|date:"d M Y, H:i" }}</td>
-              <td>{{ run_item.run.get_method_display }}</td>
-              <td>
-                {% if run_item.success %}
-                <span class="badge bg-success-subtle text-success border border-success-subtle">{% trans "OK" %}</span>
-                {% else %}
-                <span class="badge bg-danger-subtle text-danger border border-danger-subtle">{% trans "Failed" %}</span>
-                {% endif %}
-                {% if run_item.changes_applied %}
-                <span class="badge bg-primary-subtle text-primary border border-primary-subtle ms-1">{% blocktrans with n=run_item.changes_applied %}{{ n }} applied{% endblocktrans %}</span>
-                {% endif %}
-              </td>
-              <td>
-                {% with changes=run_item.preview_data.changes %}
-                {% if changes %}
-                <ul class="list-unstyled small mb-0">
-                  {% for c in changes %}
-                  <li><strong>{{ c.field_name }}</strong>:
-                    <span class="text-muted text-decoration-line-through">{{ c.old_value|default:"—" }}</span>
-                    <i class="bi bi-arrow-right mx-1"></i>{{ c.new_value|default:"—" }}
-                  </li>
-                  {% endfor %}
-                </ul>
-                {% else %}
-                <span class="text-muted small">{% trans "No changes proposed." %}</span>
-                {% endif %}
-                {% endwith %}
-              </td>
-            </tr>
+      <div class="enrich-timeline mt-4">
+        {% for run_item in run_items %}
+        <div class="enrich-timeline-item">
+          <div class="enrich-timeline-dot {% if run_item.success %}ok{% else %}failed{% endif %}">
+            <i class="bi {% if run_item.success %}bi-check-lg{% else %}bi-x-lg{% endif %}"></i>
+          </div>
+          <div class="d-flex align-items-center flex-wrap gap-2">
+            <strong class="small">{{ run_item.run.get_method_display }}</strong>
+            <span class="text-muted small">{{ run_item.run.started_at|date:"d M Y, H:i" }}</span>
+            {% if run_item.changes_applied %}
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle">{% blocktrans with n=run_item.changes_applied %}{{ n }} applied{% endblocktrans %}</span>
+            {% endif %}
+          </div>
+          {% with changes=run_item.preview_data.changes %}
+          {% if changes %}
+          <ul class="list-unstyled enrich-timeline-changes mb-0">
+            {% for c in changes %}
+            <li><strong>{{ c.field_name }}</strong>:
+              <span class="text-muted text-decoration-line-through">{{ c.old_value|default:"—" }}</span>
+              <i class="bi bi-arrow-right mx-1"></i>{{ c.new_value|default:"—" }}
+            </li>
             {% endfor %}
-          </tbody>
-        </table>
+          </ul>
+          {% elif not run_item.success and run_item.error_message %}
+          <div class="text-muted small mt-1">{{ run_item.error_message }}</div>
+          {% else %}
+          <div class="text-muted small mt-1">{% trans "No changes proposed." %}</div>
+          {% endif %}
+          {% endwith %}
+        </div>
+        {% endfor %}
       </div>
       {% else %}
       <p class="text-muted mb-0">{% trans "This item has not been through an enrichment run yet." %}</p>

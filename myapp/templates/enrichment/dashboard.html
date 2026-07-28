@@ -1,22 +1,75 @@
 {% extends "base.html" %}
 {% load i18n %}
+{% load extras %}
 
 {% block content %}
 <style>
   .enrich-stat-card {
-    border: 1px solid rgba(128, 128, 128, 0.18);
-    border-radius: 0.6rem;
-    padding: 1rem 1.1rem;
+    background: var(--card-bg, #fff);
+    border-radius: 16px;
+    padding: 1.25rem;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    transition: all 0.25s ease;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.9rem;
     height: 100%;
   }
-  .enrich-stat-value { font-size: 1.6rem; font-weight: 700; line-height: 1.2; }
-  .enrich-stat-label { color: var(--text-muted, #6c757d); font-size: 0.82rem; }
+  .enrich-stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+  .enrich-stat-icon {
+    width: 46px; height: 46px; border-radius: 12px; flex: none;
+    display: flex; align-items: center; justify-content: center; font-size: 1.35rem;
+  }
+  .enrich-stat-card.runs .enrich-stat-icon { background: rgba(59, 130, 246, 0.12); color: #3b82f6; }
+  .enrich-stat-card.pending .enrich-stat-icon { background: rgba(245, 158, 11, 0.14); color: #f59e0b; }
+  .enrich-stat-card.changes .enrich-stat-icon { background: rgba(34, 197, 94, 0.12); color: #22c55e; }
+  .enrich-stat-card.confidence .enrich-stat-icon { background: rgba(139, 92, 246, 0.14); color: #8b5cf6; }
+  .enrich-stat-value { font-size: 1.6rem; font-weight: 700; line-height: 1.2; color: var(--text-color, #212529); font-variant-numeric: tabular-nums; }
+  .enrich-stat-label { color: var(--text-muted, #6c757d); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+  .enrich-stat-sub { font-size: 0.78rem; color: var(--text-muted, #6c757d); margin-top: 0.15rem; }
+
   .enrich-method-card {
-    border: 1px solid rgba(128, 128, 128, 0.18);
-    border-radius: 0.6rem;
-    padding: 1rem 1.1rem;
+    background: var(--card-bg, #fff);
+    border-radius: 14px;
+    border: 1px solid rgba(128, 128, 128, 0.14);
+    padding: 1.1rem 1.2rem;
     height: 100%;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
   }
+  .enrich-method-card:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.08); transform: translateY(-2px); }
+  .enrich-method-icon {
+    width: 38px; height: 38px; border-radius: 10px; flex: none;
+    display: flex; align-items: center; justify-content: center; font-size: 1.05rem;
+    background: rgba(65, 84, 241, 0.1); color: #4154f1;
+  }
+  body.dark-mode .enrich-method-icon { background: rgba(90, 108, 241, 0.18); }
+  .enrich-progress { height: 6px; border-radius: 999px; background: rgba(128,128,128,0.15); overflow: hidden; margin-top: 0.6rem; }
+  .enrich-progress-bar { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #22c55e, #16a34a); transition: width 0.6s ease; }
+
+  .enrich-chart-card { background: var(--card-bg, #fff); border-radius: 16px; padding: 1.5rem; box-shadow: 0 2px 12px rgba(0,0,0,0.06); height: 100%; }
+  .enrich-donut { width: 100%; height: 220px; }
+  .enrich-legend { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; }
+  .enrich-legend-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; }
+  .enrich-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .enrich-legend-label { color: var(--text-muted, #6c757d); flex: 1; }
+  .enrich-legend-count { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .enrich-empty-state { text-align: center; padding: 2.5rem 1rem; color: var(--text-muted, #6c757d); }
+  .enrich-empty-state i { font-size: 2.2rem; opacity: 0.5; display: block; margin-bottom: 0.5rem; }
+
+  body.dark-mode .enrich-stat-card,
+  body.dark-mode .enrich-method-card,
+  body.dark-mode .enrich-chart-card {
+    background-color: #21262d;
+    box-shadow: 0px 0 30px rgba(0, 0, 0, 0.5);
+  }
+  body.dark-mode .enrich-method-card { border-color: rgba(255, 255, 255, 0.08); }
+  body.dark-mode .enrich-stat-value,
+  body.dark-mode .enrich-method-card strong { color: #e0e6eb; }
+  body.dark-mode .enrich-stat-label,
+  body.dark-mode .enrich-legend-label,
+  body.dark-mode .enrich-empty-state { color: #9aa5b1; }
+  body.dark-mode .enrich-progress { background: rgba(255, 255, 255, 0.1); }
 </style>
 
 <div class="pagetitle d-flex align-items-start justify-content-between flex-wrap gap-2">
@@ -37,34 +90,46 @@
 <section class="section">
   <div class="row g-3 mb-1">
     <div class="col-6 col-md-3">
-      <div class="enrich-stat-card">
-        <div class="enrich-stat-value">{{ stats.total_runs }}</div>
-        <div class="enrich-stat-label">{% trans "Total runs" %}</div>
+      <div class="enrich-stat-card runs">
+        <div class="enrich-stat-icon"><i class="bi bi-arrow-repeat"></i></div>
+        <div>
+          <div class="enrich-stat-value">{{ stats.total_runs }}</div>
+          <div class="enrich-stat-label">{% trans "Total runs" %}</div>
+        </div>
       </div>
     </div>
     <div class="col-6 col-md-3">
-      <div class="enrich-stat-card">
-        <div class="enrich-stat-value">{{ stats.pending_runs }}</div>
-        <div class="enrich-stat-label">{% trans "Awaiting approval" %}</div>
+      <div class="enrich-stat-card pending">
+        <div class="enrich-stat-icon"><i class="bi bi-hourglass-split"></i></div>
+        <div>
+          <div class="enrich-stat-value">{{ stats.pending_runs }}</div>
+          <div class="enrich-stat-label">{% trans "Awaiting approval" %}</div>
+        </div>
       </div>
     </div>
     <div class="col-6 col-md-3">
-      <div class="enrich-stat-card">
-        <div class="enrich-stat-value">{{ stats.total_changes_applied }}</div>
-        <div class="enrich-stat-label">{% trans "Field changes applied" %}</div>
+      <div class="enrich-stat-card changes">
+        <div class="enrich-stat-icon"><i class="bi bi-pencil-square"></i></div>
+        <div>
+          <div class="enrich-stat-value">{{ stats.total_changes_applied }}</div>
+          <div class="enrich-stat-label">{% trans "Field changes applied" %}</div>
+        </div>
       </div>
     </div>
     <div class="col-6 col-md-3">
-      <div class="enrich-stat-card">
-        <div class="enrich-stat-value">{% widthratio stats.avg_confidence 1 100 %}%</div>
-        <div class="enrich-stat-label">{% trans "Avg. confidence" %}</div>
+      <div class="enrich-stat-card confidence">
+        <div class="enrich-stat-icon"><i class="bi bi-speedometer2"></i></div>
+        <div>
+          <div class="enrich-stat-value">{% widthratio stats.avg_confidence 1 100 %}%</div>
+          <div class="enrich-stat-label">{% trans "Avg. confidence" %}</div>
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="row mt-3">
-    <div class="col-12">
-      <div class="card">
+  <div class="row mt-3 g-3">
+    <div class="col-lg-8">
+      <div class="card h-100">
         <div class="card-body">
           <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
             <h5 class="card-title mb-0"><i class="bi bi-magic me-1"></i>{% trans "Enrichment Methods" %}</h5>
@@ -75,18 +140,37 @@
           <p class="text-muted small mb-3">{% trans "Scheduled runs process every non-archived item across the whole vault. Manual runs queue immediately in the background." %}</p>
           <div class="row g-3">
             {% for config in configs %}
-            <div class="col-md-4">
+            <div class="col-md-6 col-xl-4">
               <div class="enrich-method-card">
-                <div class="d-flex align-items-start justify-content-between mb-1">
-                  <strong>{{ config.get_method_display }}</strong>
-                  {% if config.enabled %}
-                  <span class="badge bg-success-subtle text-success border border-success-subtle">{% trans "Enabled" %}</span>
-                  {% else %}
-                  <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{% trans "Disabled" %}</span>
-                  {% endif %}
+                <div class="d-flex align-items-start justify-content-between mb-2">
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="enrich-method-icon">
+                      {% if config.method == 'ocr' %}<i class="bi bi-camera"></i>
+                      {% elif config.method == 'validation' %}<i class="bi bi-check2-circle"></i>
+                      {% elif config.method == 'merchant_lookup' %}<i class="bi bi-shop"></i>
+                      {% else %}<i class="bi bi-magic"></i>{% endif %}
+                    </div>
+                    <strong class="small">{{ config.get_method_display }}</strong>
+                  </div>
                 </div>
-                <p class="text-muted small mb-2">{% trans "Schedule:" %} {{ config.get_schedule_display }}</p>
-                <div class="btn-row">
+                {% if config.enabled %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle">{% trans "Enabled" %}</span>
+                {% else %}
+                <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{% trans "Disabled" %}</span>
+                {% endif %}
+                <p class="text-muted small mb-1 mt-2">{% trans "Schedule:" %} {{ config.get_schedule_display }}</p>
+                {% with cs=method_stats|get_item:config.method %}
+                {% if cs.total_runs %}
+                <div class="d-flex justify-content-between align-items-baseline">
+                  <span class="text-muted" style="font-size:0.75rem;">{% blocktrans with n=cs.total_runs %}{{ n }} runs{% endblocktrans %}</span>
+                  <span class="fw-semibold" style="font-size:0.75rem;">{{ cs.success_rate }}% {% trans "success" %}</span>
+                </div>
+                <div class="enrich-progress"><div class="enrich-progress-bar" style="width: {{ cs.success_rate }}%;"></div></div>
+                {% else %}
+                <p class="text-muted mb-0" style="font-size:0.75rem;">{% trans "No runs yet" %}</p>
+                {% endif %}
+                {% endwith %}
+                <div class="btn-row mt-3">
                   <form method="POST" action="{% url 'enrichment_trigger' %}" class="enrich-trigger-form">
                     {% csrf_token %}
                     <input type="hidden" name="method" value="{{ config.method }}">
@@ -107,6 +191,29 @@
             {% endfor %}
           </div>
         </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="enrich-chart-card">
+        <h6 class="fw-semibold mb-2"><i class="bi bi-pie-chart me-1"></i>{% trans "Run Outcomes" %}</h6>
+        {% if status_breakdown %}
+        <div id="enrichStatusDonut" class="enrich-donut"></div>
+        <div class="enrich-legend">
+          {% for row in status_breakdown %}
+          <div class="enrich-legend-row">
+            <span class="enrich-legend-dot" data-status="{{ row.status }}"></span>
+            <span class="enrich-legend-label">{{ row.label }}</span>
+            <span class="enrich-legend-count">{{ row.count }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="enrich-empty-state">
+          <i class="bi bi-pie-chart"></i>
+          <div class="small">{% trans "No runs yet - trigger one to see outcomes here." %}</div>
+        </div>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -155,7 +262,10 @@
             </table>
           </div>
           {% else %}
-          <p class="text-muted mb-0">{% trans "No enrichment runs yet. Trigger one above, or enable a scheduled method." %}</p>
+          <div class="enrich-empty-state">
+            <i class="bi bi-clock-history"></i>
+            <div>{% trans "No enrichment runs yet. Trigger one above, or enable a scheduled method." %}</div>
+          </div>
           {% endif %}
         </div>
       </div>
@@ -201,6 +311,62 @@ document.querySelectorAll('.enrich-trigger-form').forEach(function (form) {
       function () { form.submit(); }
     );
   });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+  var el = document.getElementById('enrichStatusDonut');
+  if (!el || typeof echarts === 'undefined') return;
+
+  var statusColors = {
+    completed: '#22c55e',
+    approved: '#22c55e',
+    pending_approval: '#f59e0b',
+    in_progress: '#3b82f6',
+    rejected: '#6c757d',
+    failed: '#ef4444',
+  };
+  var data = [
+    {% for row in status_breakdown %}
+    { name: '{{ row.label|escapejs }}', value: {{ row.count }}, status: '{{ row.status }}' }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+  ];
+  data.forEach(function (d) {
+    var dot = document.querySelector('.enrich-legend-dot[data-status="' + d.status + '"]');
+    if (dot) dot.style.background = statusColors[d.status] || '#6c757d';
+  });
+
+  var isDarkMode = localStorage.getItem('darkMode') === 'enabled';
+  var chart = echarts.init(el);
+  function render() {
+    chart.setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+      series: [{
+        type: 'pie',
+        radius: ['58%', '82%'],
+        avoidLabelOverlap: true,
+        itemStyle: { borderRadius: 6, borderColor: isDarkMode ? '#21262d' : '#fff', borderWidth: 3 },
+        label: { show: false },
+        labelLine: { show: false },
+        data: data.map(function (d) {
+          return { name: d.name, value: d.value, itemStyle: { color: statusColors[d.status] || '#6c757d' } };
+        }),
+      }],
+    });
+  }
+  render();
+  window.addEventListener('resize', function () { chart.resize(); });
+  var darkModeToggle = document.getElementById('darkModeToggle');
+  if (darkModeToggle) {
+    darkModeToggle.addEventListener('click', function () {
+      setTimeout(function () {
+        isDarkMode = localStorage.getItem('darkMode') === 'enabled';
+        chart.dispose();
+        chart = echarts.init(el);
+        render();
+      }, 100);
+    });
+  }
 });
 </script>
 {% endblock %}

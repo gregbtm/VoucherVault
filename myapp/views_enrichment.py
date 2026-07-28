@@ -50,9 +50,30 @@ def enrichment_dashboard(request):
         average_confidence__isnull=False
     ).aggregate(Avg('average_confidence'))['average_confidence__avg']
 
+    # Status breakdown for the donut chart - human label + raw status as the
+    # JS-side key, since get_status_display() isn't available on a .values() dict.
+    status_labels = dict(EnrichmentRun.STATUS_CHOICES)
+    status_breakdown = [
+        {'status': row['status'], 'label': status_labels.get(row['status'], row['status']), 'count': row['count']}
+        for row in EnrichmentRun.objects.values('status').annotate(count=Count('id')).order_by('-count')
+    ]
+
+    # Per-method success rate for the method cards' mini progress bar.
+    method_stats = {}
+    for config in configs:
+        runs = EnrichmentRun.objects.filter(method=config.method)
+        total = runs.count()
+        completed = runs.filter(status='completed').count()
+        method_stats[config.method] = {
+            'total_runs': total,
+            'success_rate': round(100 * completed / total) if total else None,
+        }
+
     context = {
         'configs': configs,
         'recent_runs': recent_runs,
+        'method_stats': method_stats,
+        'status_breakdown': status_breakdown,
         'stats': {
             'total_runs': total_runs,
             'completed_runs': completed_runs,
@@ -74,11 +95,14 @@ def enrichment_config_list(request):
     stats = {}
     for config in configs:
         runs = EnrichmentRun.objects.filter(method=config.method)
+        total = runs.count()
+        completed = runs.filter(status='completed').count()
         stats[config.method] = {
-            'total_runs': runs.count(),
-            'completed_runs': runs.filter(status='completed').count(),
+            'total_runs': total,
+            'completed_runs': completed,
             'pending_runs': runs.filter(status='pending_approval').count(),
             'last_run': runs.order_by('-started_at').first(),
+            'success_rate': round(100 * completed / total) if total else None,
         }
 
     context = {
@@ -152,6 +176,7 @@ def enrichment_run_list(request):
             'has_next': (page * per_page) < total,
         },
         'methods': list(EnrichmentConfig.objects.values_list('method', flat=True)),
+        'method_choices': dict(EnrichmentConfig.ENRICHMENT_METHODS),
         'statuses': EnrichmentRun.STATUS_CHOICES,
     }
     return render(request, 'enrichment/run_list.html', context)
