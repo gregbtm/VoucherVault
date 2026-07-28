@@ -81,6 +81,11 @@
   width: 2rem; height: 2rem; font-size: 1.2rem; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
 }
+/* Flex items default to min-width: auto, which lets an unbroken URL/token
+   string in this middle column force the whole row (and the Test button
+   past it) wider than the viewport instead of wrapping - min-width: 0 lets
+   it actually shrink, and overflow-wrap breaks the URL itself if needed. */
+.conn-card > .flex-grow-1 { min-width: 0; overflow-wrap: break-word; }
 .conn-status { font-size: 0.78rem; margin-top: 0.35rem; }
 .conn-card > .btn { align-self: center; }
 .conn-ok  { color: #2e7d32; }
