@@ -333,6 +333,7 @@ def show_items(request):
     search_query = request.GET.get('query', '')
     wallet_id = request.GET.get('wallet')
     tag_ids = [t for t in request.GET.getlist('tag') if t.isdigit()]
+    category = request.GET.get('category', '')
 
     # Retrieve or create user preferences (only once)
     preferences, _ = UserPreference.objects.get_or_create(user=user)
@@ -413,6 +414,10 @@ def show_items(request):
     # is included (OR), which is what users expect from clickable tag chips
     if tag_ids:
         items = items.filter(tags__id__in=tag_ids).distinct()
+
+    # Apply the category filter if provided (auto-inferred, see smart_features.py)
+    if category:
+        items = items.filter(category__category=category)
 
     # Apply search query filter if provided
     if search_query:
@@ -499,6 +504,11 @@ def show_items(request):
         # status or type doesn't silently drop the active tag filter.
         # tag_ids is already validated as digit-only strings, safe to mark.
         'tag_query_params': mark_safe(''.join(f'&tag={t}' for t in tag_ids)),  # nosec
+        # Category is auto-inferred (see smart_features.apply_category_to_item),
+        # never user-entered, so counting/filtering by the raw string is safe.
+        'all_categories': ItemCategory.objects.filter(item__in=user_items).values('category')
+            .annotate(item_count=Count('item', distinct=True)).order_by('-item_count', 'category'),
+        'selected_category': category,
         'active_recommendations': active_recommendations,
     }
     return render(request, 'inventory.html', context)
