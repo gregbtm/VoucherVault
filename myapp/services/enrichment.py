@@ -596,3 +596,37 @@ class BulkEnricher:
             'average_confidence': float(avg_confidence),
             'errors': [r.error_message for r in results.values() if not r.success and r.error_message]
         }
+
+
+def get_active_flags_for_items(items) -> Dict[Any, List[Dict[str, str]]]:
+    """
+    Reads the 'flagged' ItemEnrichmentLog entries (see
+    ItemEnricher._detect_review_flags) for a batch of items and returns
+    {item_id: [{'field_name': ..., 'message': ...}, ...]}. Only the most
+    recent flag per (item, field) is considered, and only if the flagged
+    value still matches what's actually stored - once a user edits the
+    field, that flag no longer describes reality and is dropped rather
+    than shown as a stale warning. A single query regardless of how many
+    items are passed in.
+    """
+    items_by_id = {item.id: item for item in items}
+    if not items_by_id:
+        return {}
+
+    logs = (
+        ItemEnrichmentLog.objects
+        .filter(item_id__in=items_by_id.keys(), enrichment_type='flagged')
+        .order_by('-created_at')
+    )
+    latest_per_field = {}
+    for log in logs:
+        key = (log.item_id, log.field_name)
+        latest_per_field.setdefault(key, log)
+
+    result: Dict[Any, List[Dict[str, str]]] = {}
+    for (item_id, field_name), log in latest_per_field.items():
+        item = items_by_id[item_id]
+        if getattr(item, field_name, None) != log.new_value:
+            continue
+        result.setdefault(item_id, []).append({'field_name': field_name, 'message': log.reason})
+    return result

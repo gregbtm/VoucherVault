@@ -449,12 +449,16 @@ def show_items(request):
         issuers.append(active_today_item.issuer)
     merchant_logos = get_cached_logos_for_issuers(issuers)
 
+    from .services.enrichment import get_active_flags_for_items
+    flags_by_item_id = get_active_flags_for_items(items)
+
     for item in items:
         items_with_qr.append({
             'item': item,
             'qr_code_base64': item.qr_code_base64,
             'current_value': item.current_balance,
             'merchant_logo_url': merchant_logos.get(item.issuer.strip().lower()),
+            'has_flags': item.id in flags_by_item_id,
         })
 
     next_up_with_logos = [
@@ -664,6 +668,7 @@ def view_item(request, item_uuid):
         )
 
     from notify.models import NotificationRule
+    from .services.enrichment import get_active_flags_for_items
     balance_history = list(
         BalanceHistory.objects.filter(item=item).order_by('recorded_at').values('balance', 'recorded_at', 'note')
     )
@@ -703,8 +708,15 @@ def view_item(request, item_uuid):
         'balance_history': balance_history,
         'update_balance_url': reverse('update_item_balance', args=[item.id]),
         'journey_siblings': journey_siblings,
+        'active_flags': _flags_by_field(get_active_flags_for_items([item]).get(item.id, [])),
     }
     return render(request, 'view-item.html', context)
+
+def _flags_by_field(flags):
+    """[{'field_name': 'pin', 'message': ...}, ...] -> {'pin': message, ...} -
+    lets templates do a plain dict lookup (active_flags.pin) instead of
+    looping to find the one flag for a specific field."""
+    return {f['field_name']: f['message'] for f in flags}
 
 
 def _known_issuers(user):

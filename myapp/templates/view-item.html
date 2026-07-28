@@ -822,6 +822,31 @@ body.dark-mode a.more-action-row-danger:hover {
   max-height: none;
 }
 
+/* Static, read-only note from the enrichment review-flag pass (see
+   myapp/services/enrichment.py _detect_review_flags) - deliberately never
+   an interactive control, since there's nothing to "fix" here except by
+   hand against the physical card. */
+.field-review-flag {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  padding: 0.4rem 0.65rem;
+  width: 100%;
+  text-align: center;
+  justify-content: center;
+}
+
+body.dark-mode .field-review-flag {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
 .copied-flash {
   position: absolute;
   top: 50%;
@@ -2563,9 +2588,14 @@ body.dark-mode .tilt-scan-enable-btn {
           {% if item.redeem_code|length > 80 %}
           <button type="button" class="code-expand-toggle" id="redeem-code-expand-btn">{% trans "Show full code" %}</button>
           {% endif %}
+          {% if active_flags.redeem_code %}
+          <div class="field-review-flag" title="{{ active_flags.redeem_code }}">
+            <i class="bi bi-flag-fill"></i> {% trans "Worth double-checking against the physical barcode" %}
+          </div>
+          {% endif %}
         </div>
       </div>
-      
+
       {% if item.pin %}
       <div class="pin-card">
         <div class="pin-card-title">
@@ -2578,6 +2608,11 @@ body.dark-mode .tilt-scan-enable-btn {
           </button>
           <button type="button" id="toggle-pin" class="pin-toggle-btn">{% trans "Show PIN" %}</button>
         </div>
+        {% if active_flags.pin %}
+        <div class="field-review-flag" title="{{ active_flags.pin }}">
+          <i class="bi bi-flag-fill"></i> {% trans "Worth double-checking against the physical PIN" %}
+        </div>
+        {% endif %}
       </div>
       {% endif %}
     </div>

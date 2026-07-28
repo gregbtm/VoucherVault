@@ -483,6 +483,23 @@ body.dark-mode .item-description {
   opacity: 1;
 }
 
+.flag-indicator {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+  z-index: 10;
+}
+
 .share-btn:hover {
   background: #fff;
   transform: scale(1.1);
@@ -1689,6 +1706,13 @@ body.dark-mode .next-up-card {
               data-public-share-url="{% url 'get_public_share_link' item_id=entry.item.id %}">
         <i class="bi bi-send"></i>
       </button>
+
+      {% if entry.has_flags %}
+      <!-- Review Flag Indicator (see myapp/services/enrichment.py _detect_review_flags) -->
+      <span class="flag-indicator" title="{% trans 'A field on this item is flagged for review' %}">
+        <i class="bi bi-flag-fill"></i>
+      </span>
+      {% endif %}
 
       <!-- Bulk Select Checkbox -->
       <input type="checkbox" class="select-checkbox" title="{% trans 'Select' %}">
