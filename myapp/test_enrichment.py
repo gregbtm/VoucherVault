@@ -4,7 +4,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.contrib.auth.models import User
 from django.urls import reverse
-from myapp.models import Item, Document, ItemEnrichmentLog
+from myapp.models import Item, Document, ItemEnrichmentLog, EnrichmentFieldPreference
 from myapp.services.enrichment import ItemEnricher, BulkEnricher, FieldChange, get_active_flags_for_items
 from datetime import date
 import uuid
@@ -648,3 +648,95 @@ class ReviewFlagsViewIntegrationTestCase(TestCase):
         entries = {e['item'].id: e['has_flags'] for e in response.context['items_with_qr']}
         self.assertTrue(entries[flagged_item.id])
         self.assertFalse(entries[clean_item.id])
+
+
+class EnrichmentFieldPreferenceTestCase(TestCase):
+    """
+    EnrichmentFieldPreference lets a user opt a specific field out of a
+    specific enrichment method. The model and its migration have existed
+    since Phase 97 but nothing ever read it - every pass ran against every
+    enrichable field regardless of what a user had opted out of. These
+    tests cover the fix: each of the three enrichment methods should skip
+    any field the user has an EnrichmentFieldPreference row for.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user('prefuser', 'pref@example.com', 'password123')
+        self.enricher = ItemEnricher(created_by=self.user)
+
+    def _create_test_item(self, **kwargs):
+        defaults = {
+            'user': self.user,
+            'name': 'Test Item',
+            'type': 'giftcard',
+            'redeem_code': 'TEST123',
+            'issuer': 'Test Issuer',
+            'expiry_date': date(2025, 12, 31),
+            'value': Decimal('50.00'),
+        }
+        defaults.update(kwargs)
+        return Item.objects.create(**defaults)
+
+    def test_validation_skips_excluded_issuer(self):
+        EnrichmentFieldPreference.objects.create(user=self.user, method='validation', field_name='issuer')
+        item = self._create_test_item(issuer='COSTA COFFEE')
+
+        result = self.enricher.validate_and_normalize(item)
+
+        self.assertFalse(any(c.field_name == 'issuer' for c in result.changes))
+
+    def test_validation_still_enriches_non_excluded_fields(self):
+        """Excluding one field must not silently suppress every field."""
+        EnrichmentFieldPreference.objects.create(user=self.user, method='validation', field_name='issuer')
+        item = self._create_test_item(issuer='COSTA COFFEE', notes='line   with    extra   spaces  ')
+
+        result = self.enricher.validate_and_normalize(item)
+
+        self.assertTrue(any(c.field_name == 'notes' for c in result.changes))
+
+    def test_validation_skips_excluded_value(self):
+        EnrichmentFieldPreference.objects.create(user=self.user, method='validation', field_name='value')
+        item = self._create_test_item(value=Decimal('50.005'))
+
+        result = self.enricher.validate_and_normalize(item)
+
+        self.assertFalse(any(c.field_name == 'value' for c in result.changes))
+
+    def test_preference_is_scoped_to_its_own_method(self):
+        """An opt-out for 'validation' must not bleed into 'ocr'."""
+        EnrichmentFieldPreference.objects.create(user=self.user, method='validation', field_name='issuer')
+        item = self._create_test_item(issuer='')
+        Document.objects.create(item=item, file=SimpleUploadedFile('receipt.png', b'fake-image-bytes', content_type='image/png'))
+
+        with patch('ocr.backends.ocr_enabled', return_value=True), \
+             patch('ocr.backends.get_backend') as mock_get_backend:
+            mock_backend = MagicMock()
+            mock_backend.extract.return_value = {'issuer': 'Costa Coffee', 'confidence': 0.9}
+            mock_get_backend.return_value = mock_backend
+            result = self.enricher.enrich_from_ocr(item, confidence_threshold=Decimal('0.5'))
+
+        self.assertTrue(any(c.field_name == 'issuer' for c in result.changes))
+
+    def test_other_users_preference_does_not_apply(self):
+        other_user = User.objects.create_user('otheruser', 'other@example.com', 'password123')
+        EnrichmentFieldPreference.objects.create(user=other_user, method='validation', field_name='issuer')
+        item = self._create_test_item(issuer='COSTA COFFEE')
+
+        result = self.enricher.validate_and_normalize(item)
+
+        self.assertTrue(any(c.field_name == 'issuer' for c in result.changes))
+
+    def test_bulk_enricher_respects_preference_across_multiple_items(self):
+        """Confidence-cache reuse in ItemEnricher must not leak between users
+        or cause a stale/incorrect exclusion set on later items."""
+        EnrichmentFieldPreference.objects.create(user=self.user, method='validation', field_name='issuer')
+        item1 = self._create_test_item(issuer='COSTA COFFEE')
+        item2 = self._create_test_item(issuer='COSTA COFFEE', notes='extra   spaces  ')
+
+        bulk = BulkEnricher(created_by=self.user)
+        results = bulk.enrich_selected_items([item1.id, item2.id], enrichment_mode='validation')
+
+        self.assertFalse(any(c.field_name == 'issuer' for c in results[item1.id].changes))
+        self.assertFalse(any(c.field_name == 'issuer' for c in results[item2.id].changes))
+        self.assertTrue(any(c.field_name == 'notes' for c in results[item2.id].changes))
+

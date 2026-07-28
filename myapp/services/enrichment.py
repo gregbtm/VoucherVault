@@ -62,6 +62,25 @@ class ItemEnricher:
 
     def __init__(self, created_by: Optional[User] = None):
         self.created_by = created_by
+        # (user_id, method) -> set of field names that user has opted out
+        # of for that method. Populated lazily and reused across calls so a
+        # BulkEnricher run over many items of the same user(s) doesn't issue
+        # one EnrichmentFieldPreference query per item per method.
+        self._field_pref_cache: Dict[Tuple[int, str], set] = {}
+
+    def _excluded_fields(self, user: Optional[User], method: str) -> set:
+        """Fields this user has opted out of for a given enrichment method."""
+        if user is None:
+            return set()
+        cache_key = (user.id, method)
+        if cache_key not in self._field_pref_cache:
+            from myapp.models import EnrichmentFieldPreference
+            self._field_pref_cache[cache_key] = set(
+                EnrichmentFieldPreference.objects
+                .filter(user=user, method=method)
+                .values_list('field_name', flat=True)
+            )
+        return self._field_pref_cache[cache_key]
 
     def enrich_from_ocr(self, item: Item, confidence_threshold: Decimal = Decimal('0.5'),
                        ocr_backend: Optional[str] = None) -> EnrichmentResult:
@@ -91,11 +110,15 @@ class ItemEnricher:
                 error_message="Failed to extract data from documents"
             )
 
-        # Generate field changes, respecting protected fields
+        # Generate field changes, respecting protected fields and the
+        # item owner's own per-field opt-outs (EnrichmentFieldPreference).
+        excluded = self._excluded_fields(item.user, 'ocr')
         for field_name, extracted_value in extracted_data.items():
             if field_name not in self.ENRICHABLE_FIELDS:
                 continue
             if field_name in self.PROTECTED_FIELDS:
+                continue
+            if field_name in excluded:
                 continue
 
             current_value = getattr(item, field_name, None)
@@ -135,9 +158,10 @@ class ItemEnricher:
         """
         enrichment_run_id = uuid.uuid4()
         changes = []
+        excluded = self._excluded_fields(item.user, 'validation')
 
         for field_name in self.WHITESPACE_ONLY_FIELDS:
-            if field_name in self.PROTECTED_FIELDS:
+            if field_name in self.PROTECTED_FIELDS or field_name in excluded:
                 continue
             current_value = getattr(item, field_name, None)
             if not isinstance(current_value, str) or not current_value:
@@ -154,6 +178,8 @@ class ItemEnricher:
         # curated merchants database; name gets whitespace + casing only
         # (there's no "known name" database to canonicalize against).
         for field_name, use_merchant_lookup in (('issuer', True), ('name', False)):
+            if field_name in excluded:
+                continue
             original = getattr(item, field_name, None)
             if not original:
                 continue
@@ -174,7 +200,8 @@ class ItemEnricher:
         # before comparing rather than risk a TypeError against a real record.
         issue_date = item.issue_date.date() if hasattr(item.issue_date, 'date') and callable(item.issue_date.date) else item.issue_date
         expiry_date = item.expiry_date.date() if hasattr(item.expiry_date, 'date') and callable(item.expiry_date.date) else item.expiry_date
-        if issue_date and expiry_date and issue_date > expiry_date:
+        if (issue_date and expiry_date and issue_date > expiry_date
+                and 'issue_date' not in excluded and 'expiry_date' not in excluded):
             changes.append(FieldChange(
                 field_name='issue_date', old_value=str(item.issue_date), new_value=str(expiry_date),
                 confidence_score=Decimal('0.9'), reason="Issue date was after expiry date - dates appear swapped",
@@ -184,7 +211,7 @@ class ItemEnricher:
                 confidence_score=Decimal('0.9'), reason="Issue date was after expiry date - dates appear swapped",
             ))
 
-        if item.value is not None:
+        if item.value is not None and 'value' not in excluded:
             normalized_value, value_confidence = self._normalize_value(item.value)
             if normalized_value != item.value and value_confidence >= confidence_threshold:
                 changes.append(FieldChange(
@@ -197,6 +224,8 @@ class ItemEnricher:
         if item.type == 'travelpass':
             from ocr.enrichment import normalize_station
             for field_name in ('journey_origin', 'journey_destination'):
+                if field_name in excluded:
+                    continue
                 original = getattr(item, field_name, None)
                 if not original:
                     continue
@@ -240,6 +269,7 @@ class ItemEnricher:
             )
 
         # Generate field changes from merchant lookup
+        excluded = self._excluded_fields(item.user, 'merchant_lookup')
         for field_name, field_value in enrichment_data.items():
             if field_name.endswith('_confidence'):
                 continue
@@ -247,6 +277,8 @@ class ItemEnricher:
             if field_name not in self.ENRICHABLE_FIELDS:
                 continue
             if field_name in self.PROTECTED_FIELDS:
+                continue
+            if field_name in excluded:
                 continue
 
             current_value = getattr(item, field_name, None)

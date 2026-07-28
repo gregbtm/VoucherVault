@@ -241,6 +241,20 @@ class EnrichmentRunItemInline(admin.TabularInline):
     preview_changes.short_description = _('Preview')
 
 
+class EnrichmentFieldPreferenceAdmin(admin.ModelAdmin):
+    """
+    Admin interface for per-user field opt-outs. The model previously had
+    no admin registration and no other UI, so nothing could ever create a
+    row here - the pipeline-side exclusion check that reads this table had
+    no way to ever actually fire. Registering it makes it usable end to
+    end without building a dedicated self-service settings page yet.
+    """
+    list_display = ('user', 'get_method_display', 'get_field_name_display', 'created_at')
+    list_filter = ('method', 'field_name')
+    search_fields = ('user__username',)
+    autocomplete_fields = ('user',)
+
+
 class EnrichmentRunAdmin(admin.ModelAdmin):
     """Admin interface for enrichment run tracking and approval."""
     list_display = ('run_id', 'get_method_display', 'get_status_display', 'total_items', 'successful_items', 'total_changes', 'average_confidence', 'started_at', 'actions_buttons')
@@ -427,3 +441,4 @@ admin.site.register(Tag, TagAdmin)
 admin.site.register(Document, DocumentAdmin)
 admin.site.register(EnrichmentConfig, EnrichmentConfigAdmin)
 admin.site.register(EnrichmentRun, EnrichmentRunAdmin)
+admin.site.register(EnrichmentFieldPreference, EnrichmentFieldPreferenceAdmin)
