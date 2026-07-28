@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.contrib.auth.models import User
 from django.urls import reverse
 from myapp.models import Item, Document, ItemEnrichmentLog
-from myapp.services.enrichment import ItemEnricher, BulkEnricher, FieldChange
+from myapp.services.enrichment import ItemEnricher, BulkEnricher, FieldChange, get_active_flags_for_items
 from datetime import date
 import uuid
 
@@ -507,3 +507,144 @@ class ItemEnrichmentHistoryViewTestCase(TestCase):
         response = self.client.get(reverse('item_enrichment_history', args=[item.id]))
         timeline = response.context['timeline']
         self.assertTrue(any(entry['flags'] for entry in timeline))
+
+
+class GetActiveFlagsForItemsTestCase(TestCase):
+    """Test the get_active_flags_for_items batch helper used by the review-flags UI."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('flaguser', 'flag@example.com', 'password123')
+
+    def _create_test_item(self, **kwargs):
+        defaults = {
+            'user': self.user,
+            'name': 'Test Item',
+            'type': 'giftcard',
+            'redeem_code': 'TEST123',
+            'issuer': 'Test Issuer',
+            'expiry_date': date(2025, 12, 31),
+            'value': Decimal('50.00'),
+        }
+        defaults.update(kwargs)
+        return Item.objects.create(**defaults)
+
+    def _flag(self, item, field_name, new_value, reason='Worth checking'):
+        ItemEnrichmentLog.objects.create(
+            item=item,
+            enrichment_run_id=str(uuid.uuid4()),
+            field_name=field_name,
+            old_value=new_value,
+            new_value=new_value,
+            enrichment_type='flagged',
+            reason=reason,
+        )
+
+    def test_returns_flag_when_current_value_still_matches(self):
+        item = self._create_test_item(pin='12AB')
+        self._flag(item, 'pin', '12AB', reason='Non-numeric PIN')
+
+        result = get_active_flags_for_items([item])
+
+        self.assertEqual(result, {item.id: [{'field_name': 'pin', 'message': 'Non-numeric PIN'}]})
+
+    def test_drops_stale_flag_after_field_is_edited(self):
+        item = self._create_test_item(pin='12AB')
+        self._flag(item, 'pin', '12AB', reason='Non-numeric PIN')
+        item.pin = '1234'
+        item.save()
+
+        result = get_active_flags_for_items([item])
+
+        self.assertEqual(result, {})
+
+    def test_only_most_recent_flag_per_field_is_kept(self):
+        item = self._create_test_item(pin='12AB')
+        self._flag(item, 'pin', '9999', reason='Old flag, no longer accurate')
+        self._flag(item, 'pin', '12AB', reason='Latest flag')
+
+        result = get_active_flags_for_items([item])
+
+        self.assertEqual(result[item.id], [{'field_name': 'pin', 'message': 'Latest flag'}])
+
+    def test_items_with_no_flags_are_excluded(self):
+        flagged_item = self._create_test_item(pin='12AB')
+        self._flag(flagged_item, 'pin', '12AB')
+        clean_item = self._create_test_item(name='Clean Item')
+
+        result = get_active_flags_for_items([flagged_item, clean_item])
+
+        self.assertNotIn(clean_item.id, result)
+        self.assertIn(flagged_item.id, result)
+
+    def test_batches_across_multiple_items_in_one_query(self):
+        item1 = self._create_test_item(pin='12AB')
+        item2 = self._create_test_item(name='Item Two', redeem_code='ABCDEFGHIJKLMNOPQRST' * 5)
+        self._flag(item1, 'pin', '12AB', reason='pin flag')
+        self._flag(item2, 'redeem_code', item2.redeem_code, reason='redeem_code flag')
+
+        with self.assertNumQueries(1):
+            result = get_active_flags_for_items([item1, item2])
+
+        self.assertEqual(result[item1.id], [{'field_name': 'pin', 'message': 'pin flag'}])
+        self.assertEqual(result[item2.id], [{'field_name': 'redeem_code', 'message': 'redeem_code flag'}])
+
+    def test_empty_item_list_returns_empty_dict(self):
+        self.assertEqual(get_active_flags_for_items([]), {})
+
+
+class ReviewFlagsViewIntegrationTestCase(TestCase):
+    """Test that view_item and show_items surface active flags in context."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('flagviewuser', 'flagview@example.com', 'password123')
+        self.client.force_login(self.user)
+
+    def _create_test_item(self, **kwargs):
+        defaults = {
+            'user': self.user,
+            'name': 'Test Item',
+            'type': 'giftcard',
+            'redeem_code': 'TEST123',
+            'issuer': 'Test Issuer',
+            'expiry_date': date(2025, 12, 31),
+            'value': Decimal('50.00'),
+        }
+        defaults.update(kwargs)
+        return Item.objects.create(**defaults)
+
+    def _flag(self, item, field_name, new_value, reason='Worth checking'):
+        ItemEnrichmentLog.objects.create(
+            item=item,
+            enrichment_run_id=str(uuid.uuid4()),
+            field_name=field_name,
+            old_value=new_value,
+            new_value=new_value,
+            enrichment_type='flagged',
+            reason=reason,
+        )
+
+    def test_view_item_context_has_active_flags_for_flagged_item(self):
+        item = self._create_test_item(pin='12AB')
+        self._flag(item, 'pin', '12AB', reason='Non-numeric PIN')
+
+        response = self.client.get(reverse('view_item', args=[item.id]))
+
+        self.assertEqual(response.context['active_flags'], {'pin': 'Non-numeric PIN'})
+
+    def test_view_item_context_active_flags_empty_for_unflagged_item(self):
+        item = self._create_test_item()
+
+        response = self.client.get(reverse('view_item', args=[item.id]))
+
+        self.assertEqual(response.context['active_flags'], {})
+
+    def test_show_items_marks_has_flags_true_only_for_flagged_items(self):
+        flagged_item = self._create_test_item(pin='12AB')
+        self._flag(flagged_item, 'pin', '12AB')
+        clean_item = self._create_test_item(name='Clean Item')
+
+        response = self.client.get(reverse('show_items'), {'status': 'all'})
+
+        entries = {e['item'].id: e['has_flags'] for e in response.context['items_with_qr']}
+        self.assertTrue(entries[flagged_item.id])
+        self.assertFalse(entries[clean_item.id])
