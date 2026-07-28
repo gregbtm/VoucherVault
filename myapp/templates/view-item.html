@@ -156,15 +156,16 @@
   color: #842029;
 }
 
-/* Journey Navigator */
+/* Journey Navigator - label sits above the pills (its own row) rather
+   than beside them, so the pills get the full card width to work with
+   instead of squeezing into whatever's left of a fixed-width label column. */
 .journey-nav-strip {
   display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
+  flex-direction: column;
+  gap: 0.5rem;
   padding: 0.75rem 0;
   margin-bottom: 1.25rem;
   border-bottom: 1px solid var(--border-color, #eee);
-  flex-wrap: wrap;
 }
 .journey-nav-label {
   font-size: 0.7rem;
@@ -172,7 +173,6 @@
   letter-spacing: 0.5px;
   color: #6c757d;
   white-space: nowrap;
-  padding-top: 0.35rem;
 }
 .journey-nav-legs {
   display: flex;

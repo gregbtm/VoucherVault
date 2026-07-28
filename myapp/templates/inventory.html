@@ -814,6 +814,8 @@ body.dark-mode .mobile-filter-select {
   gap: 0.65rem;
   min-width: 0;
   flex: 1 1 0;
+  color: inherit;
+  text-decoration: none;
 }
 
 .next-up-logo {
@@ -886,6 +888,23 @@ body.dark-mode .mobile-filter-select {
   align-items: center;
   justify-content: center;
   max-width: 90px;
+  border: none;
+  text-decoration: none;
+}
+
+.next-up-code-zoom {
+  cursor: zoom-in;
+  transition: transform 0.15s ease;
+}
+
+.next-up-code-zoom:hover,
+.next-up-code-zoom:focus-visible {
+  transform: scale(1.05);
+}
+
+.next-up-code-zoom:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
 }
 
 .next-up-barcode-img {
@@ -931,6 +950,58 @@ body.dark-mode .mobile-filter-select {
 @media (max-width: 400px) {
   .next-up-barcode-img { width: 64px; max-width: 64px; }
   .next-up-code { max-width: 74px; }
+}
+
+/* Barcode zoom overlay - tapping the QR/barcode thumbnail on a Next Up /
+   Active Today card enlarges it instead of navigating to the item, since
+   scanning a thumbnail-sized code is often impractical. */
+.qr-zoom-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.92);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 2rem;
+}
+
+.qr-zoom-overlay.show {
+  display: flex;
+}
+
+body.no-scroll {
+  overflow: hidden;
+}
+
+.qr-zoom-overlay img {
+  width: min(90vw, 420px);
+  height: auto;
+  border-radius: 12px;
+  background: #fff;
+  padding: 1rem;
+}
+
+.qr-zoom-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 1.5rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.qr-zoom-close:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 body.dark-mode .next-up-card {
@@ -1041,9 +1112,9 @@ body.dark-mode .next-up-card {
   <div class="next-up-queue">
     <div class="next-up-label"><i class="bi bi-train-front"></i> {% trans "Active Today" %}</div>
     <div class="next-up-card-wrapper">
-      <a href="{% url 'view_item' item_uuid=active_today_item.item.id %}" class="next-up-card">
+      <div class="next-up-card">
         <div class="next-up-body">
-          <div class="next-up-info">
+          <a href="{% url 'view_item' item_uuid=active_today_item.item.id %}" class="next-up-info">
             {% if active_today_item.item.logo_slug and logo_dev_api_key %}
             <img class="next-up-logo"
                  src="https://img.logo.dev/{{ active_today_item.item.logo_slug }}?token={{ logo_dev_api_key }}"
@@ -1062,16 +1133,18 @@ body.dark-mode .next-up-card {
                 {% if active_today_item.item.expiry_date %}<span class="next-up-meta-pill"><i class="bi bi-calendar3"></i> {{ active_today_item.item.expiry_date|date:"d M" }}</span>{% endif %}
               </div>
             </div>
-          </div>
-          <div class="next-up-code">
-            {% if active_today_item.item.code_type != "none" %}
+          </a>
+          {% if active_today_item.item.code_type != "none" %}
+          <button type="button" class="next-up-code next-up-code-zoom" data-qr-src="data:image/png;base64,{{ active_today_item.item.qr_code_base64 }}" aria-label="{% trans 'Enlarge barcode' %}">
             <img src="data:image/png;base64,{{ active_today_item.item.qr_code_base64 }}" alt="{% trans 'Barcode' %}" class="next-up-barcode-img">
-            {% else %}
+          </button>
+          {% else %}
+          <a href="{% url 'view_item' item_uuid=active_today_item.item.id %}" class="next-up-code">
             <div class="next-up-redeem-code">{{ active_today_item.item.redeem_code }}</div>
-            {% endif %}
-          </div>
+          </a>
+          {% endif %}
         </div>
-      </a>
+      </div>
       <form class="next-up-mark-used-form" method="post" action="{% url 'toggle_item_status' active_today_item.item.id %}"
             onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Mark this item as used?" %}','{% trans "Mark as Used" %}',function(){f.submit();});">
         {% csrf_token %}
@@ -1090,9 +1163,9 @@ body.dark-mode .next-up-card {
     <div class="next-up-label"><i class="bi bi-pin-angle-fill"></i> {% trans "Next Up" %}</div>
     {% for entry in next_up_items %}
     <div class="next-up-card-wrapper">
-      <a href="{% url 'view_item' item_uuid=entry.item.id %}" class="next-up-card">
+      <div class="next-up-card">
         <div class="next-up-body">
-          <div class="next-up-info">
+          <a href="{% url 'view_item' item_uuid=entry.item.id %}" class="next-up-info">
             {% if entry.item.logo_slug and logo_dev_api_key %}
             <img class="next-up-logo"
                  src="https://img.logo.dev/{{ entry.item.logo_slug }}?token={{ logo_dev_api_key }}"
@@ -1124,16 +1197,18 @@ body.dark-mode .next-up-card {
                 <span class="next-up-meta-pill"><i class="bi bi-{{ entry.item.type|lower }}-card"></i> {{ entry.item.get_type_display }}</span>
               </div>
             </div>
-          </div>
-          <div class="next-up-code">
-            {% if entry.item.code_type != "none" %}
+          </a>
+          {% if entry.item.code_type != "none" %}
+          <button type="button" class="next-up-code next-up-code-zoom" data-qr-src="data:image/png;base64,{{ entry.item.qr_code_base64 }}" aria-label="{% trans 'Enlarge barcode' %}">
             <img src="data:image/png;base64,{{ entry.item.qr_code_base64 }}" alt="{% trans 'Barcode' %}" class="next-up-barcode-img">
-            {% else %}
+          </button>
+          {% else %}
+          <a href="{% url 'view_item' item_uuid=entry.item.id %}" class="next-up-code">
             <div class="next-up-redeem-code">{{ entry.item.redeem_code }}</div>
-            {% endif %}
-          </div>
+          </a>
+          {% endif %}
         </div>
-      </a>
+      </div>
       <form class="next-up-mark-used-form" method="post" action="{% url 'toggle_item_status' entry.item.id %}"
             onsubmit="var f=this;event.preventDefault();showConfirm('{% trans "Mark this item as used?" %}','{% trans "Mark as Used" %}',function(){f.submit();});">
         {% csrf_token %}
@@ -1146,6 +1221,47 @@ body.dark-mode .next-up-card {
     {% endfor %}
   </div>
   {% endif %}
+
+  <!-- Barcode zoom overlay (Next Up / Active Today cards) -->
+  <div id="qr-zoom-overlay" class="qr-zoom-overlay" aria-hidden="true">
+    <button type="button" class="qr-zoom-close" id="qr-zoom-close" aria-label="{% trans 'Close' %}">&times;</button>
+    <img id="qr-zoom-img" alt="{% trans 'Barcode' %}">
+  </div>
+  <script nonce="{{ request.csp_nonce }}">
+  document.addEventListener('DOMContentLoaded', function () {
+    var overlay = document.getElementById('qr-zoom-overlay');
+    var overlayImg = document.getElementById('qr-zoom-img');
+    var closeBtn = document.getElementById('qr-zoom-close');
+    if (!overlay || !overlayImg || !closeBtn) return;
+
+    function openZoom(src) {
+      overlayImg.src = src;
+      overlay.classList.add('show');
+      overlay.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('no-scroll');
+    }
+    function closeZoom() {
+      overlay.classList.remove('show');
+      overlay.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('no-scroll');
+    }
+
+    document.querySelectorAll('.next-up-code-zoom').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        openZoom(btn.dataset.qrSrc);
+      });
+    });
+
+    closeBtn.addEventListener('click', closeZoom);
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeZoom();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && overlay.classList.contains('show')) closeZoom();
+    });
+  });
+  </script>
 
   <!-- Filter Bar -->
   <div class="filter-bar">
