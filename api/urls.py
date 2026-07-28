@@ -35,7 +35,6 @@ router.register('help/access-logs', HelpAccessLogViewSet, basename='help-access-
 router.register('enrichment/config', views.EnrichmentConfigViewSet, basename='enrichment-config')
 router.register('enrichment/runs', views.EnrichmentRunViewSet, basename='enrichment-run')
 router.register('item-categories', views.ItemCategoryViewSet, basename='item-category')
-router.register('wallet-budgets', views.WalletBudgetViewSet, basename='wallet-budget')
 router.register('recommendations', views.ItemRecommendationViewSet, basename='recommendation')
 
 urlpatterns = [

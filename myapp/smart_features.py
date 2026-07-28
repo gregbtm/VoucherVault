@@ -1,9 +1,8 @@
 """Smart features: auto-categorization, budget tracking, recommendations."""
 from decimal import Decimal
 from django.utils import timezone
-from django.db.models import Sum, Q, F
-from datetime import timedelta
-from .models import Item, ItemCategory, WalletBudget, ItemRecommendation, Transaction
+from django.db.models import Q
+from .models import Item, ItemCategory, ItemRecommendation
 
 # Category patterns: (regex_patterns, category, confidence)
 CATEGORY_PATTERNS = [
@@ -41,38 +40,10 @@ def apply_category_to_item(item):
     return ItemCategory.objects.get(item=item)
 
 
-def get_or_create_wallet_budget(wallet, user, monthly_limit=None):
-    """Create or retrieve a budget for a wallet."""
-    budget, created = WalletBudget.objects.get_or_create(
-        wallet=wallet,
-        user=user,
-        defaults={'monthly_limit': monthly_limit or Decimal('100.00')}
-    )
-    return budget, created
-
-
-def update_wallet_spent_this_month(wallet):
-    """Recalculate current month spending for a wallet's budget."""
-    today = timezone.localtime().date()
-    month_start = today.replace(day=1)
-
-    spent = Transaction.objects.filter(
-        item__wallet=wallet,
-        value__lt=0,
-        date__gte=month_start
-    ).aggregate(total=Sum('value'))['total'] or Decimal('0')
-
-    budget = wallet.budget
-    budget.current_month_spent = abs(spent).quantize(Decimal('0.01'))
-    budget.save(update_fields=['current_month_spent'])
-
-    return budget
-
-
 # Reasons generate_item_recommendations owns end-to-end: it both creates
 # these and retires them once their condition no longer holds. Excludes
 # 'budget_overspend' - that condition is wallet-level, not item-level, and
-# doesn't fit this model's per-item FK; see get_budget_alerts() instead.
+# doesn't fit this model's per-item FK.
 MANAGED_REASONS = ('expires_soon', 'expires_very_soon', 'low_balance', 'unused')
 
 
@@ -188,22 +159,3 @@ def get_user_recommendations(user, dismissed=False):
         return query.filter(dismissed_at__isnull=False).order_by('-dismissed_at')
     else:
         return query.filter(dismissed_at__isnull=True).order_by('-priority', '-created_at')
-
-
-def get_budget_alerts(user):
-    """Get wallets where spending has reached alert threshold."""
-    budgets = WalletBudget.objects.filter(
-        user=user,
-        alert_threshold__lte=F('current_month_spent')  # Simplified; ideally calculate percentage
-    ).select_related('wallet')
-
-    alerts = []
-    for budget in budgets:
-        if budget.is_alert_threshold_reached:
-            alerts.append({
-                'wallet': budget.wallet.name,
-                'spent': str(budget.current_month_spent),
-                'limit': str(budget.monthly_limit),
-                'percentage': budget.spent_percentage
-            })
-    return alerts
