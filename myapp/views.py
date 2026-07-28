@@ -342,6 +342,9 @@ def show_items(request):
         user, preferences.active_today_enabled, preferences.commute_home_station, preferences.active_today_cutoff_time,
     )
 
+    from .smart_features import get_user_recommendations
+    active_recommendations = list(get_user_recommendations(user).select_related('item')[:5])
+
     # Calculate counts for filters (owned items plus items in wallets shared with the
     # user; archived items are hidden from every default view/count, only reachable
     # via the dedicated "Archived" filter)
@@ -496,6 +499,7 @@ def show_items(request):
         # status or type doesn't silently drop the active tag filter.
         # tag_ids is already validated as digit-only strings, safe to mark.
         'tag_query_params': mark_safe(''.join(f'&tag={t}' for t in tag_ids)),  # nosec
+        'active_recommendations': active_recommendations,
     }
     return render(request, 'inventory.html', context)
 
@@ -1447,6 +1451,22 @@ def toggle_item_status(request, item_id):
     if next_url:
         return redirect(next_url)
     return redirect('view_item', item_uuid=item.id)
+
+@require_POST
+@login_required
+def dismiss_recommendation(request, recommendation_id):
+    """
+    Dismiss a Smart Suggestion (see myapp/smart_features.py) from the
+    Inventory page widget. Session-authenticated web counterpart to the
+    DRF ItemRecommendationViewSet's dismiss action, kept separate so the
+    widget's AJAX call doesn't need DRF token auth from a plain session page.
+    """
+    recommendation = get_object_or_404(ItemRecommendation, id=recommendation_id, item__user=request.user)
+    recommendation.dismissed_at = timezone.now()
+    recommendation.save(update_fields=['dismissed_at'])
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({'success': True})
+    return redirect('show_items')
 
 @login_required
 def update_apprise_urls(request):

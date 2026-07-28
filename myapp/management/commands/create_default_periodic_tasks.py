@@ -121,6 +121,11 @@ class Command(BaseCommand):
             # Retries failed webhook notifications with exponential backoff (1m, 5m, 15m, 1h, 4h).
             # Max 5 retries over 24 hours. A no-op until a user creates a webhook NotificationRule.
             {'name': 'Process Webhook Retries', 'task': 'notify.tasks.process_webhook_retries', 'crontab': five_min_schedule, 'enabled': True},
+            # Refreshes Smart Suggestions (expiring soon, low balance, unused)
+            # for conditions that change with time alone - see myapp/tasks.py.
+            # A post_save signal already keeps these current on every item
+            # save; this is the sweep for everything else.
+            {'name': 'Refresh Smart Suggestions', 'task': 'myapp.tasks.refresh_recommendations_task', 'crontab': crontab_schedule, 'enabled': True},
         ]
 
         for task_data in tasks:

@@ -3,6 +3,7 @@
 {% load extras %}
 
 {% block content %}
+{% include "enrichment/_enrich_styles.html" %}
 <style>
   .enrich-cfg-card { border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); border: none; transition: transform 0.2s ease, box-shadow 0.2s ease; }
   .enrich-cfg-card:hover { transform: translateY(-3px); box-shadow: 0 8px 22px rgba(0,0,0,0.1); }
@@ -28,7 +29,15 @@
       <div class="card enrich-cfg-card h-100">
         <div class="card-body d-flex flex-column">
           <div class="d-flex align-items-start justify-content-between mb-1">
-            <h5 class="card-title mb-0">{{ config.get_method_display }}</h5>
+            <div class="d-flex align-items-center gap-2">
+              <span class="enrich-method-icon">
+                {% if config.method == 'ocr' %}<i class="bi bi-camera"></i>
+                {% elif config.method == 'validation' %}<i class="bi bi-check2-square"></i>
+                {% elif config.method == 'merchant_lookup' %}<i class="bi bi-shop"></i>
+                {% else %}<i class="bi bi-magic"></i>{% endif %}
+              </span>
+              <h5 class="card-title mb-0">{{ config.get_method_display }}</h5>
+            </div>
             {% if config.enabled %}
             <span class="badge bg-success-subtle text-success border border-success-subtle">{% trans "Enabled" %}</span>
             {% else %}

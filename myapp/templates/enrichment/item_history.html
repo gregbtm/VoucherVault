@@ -2,6 +2,7 @@
 {% load i18n %}
 
 {% block content %}
+{% include "enrichment/_enrich_styles.html" %}
 <style>
   .enrich-timeline { position: relative; padding-left: 2rem; }
   .enrich-timeline::before {
@@ -33,39 +34,46 @@
 </div>
 
 <section class="section">
-  <div class="card">
+  <div class="card enrich-card">
     <div class="card-body">
       <h5 class="card-title">{{ item.name }}</h5>
-      {% if run_items %}
+      {% if timeline %}
       <div class="enrich-timeline mt-4">
-        {% for run_item in run_items %}
+        {% for entry in timeline %}
         <div class="enrich-timeline-item">
-          <div class="enrich-timeline-dot {% if run_item.success %}ok{% else %}failed{% endif %}">
-            <i class="bi {% if run_item.success %}bi-check-lg{% else %}bi-x-lg{% endif %}"></i>
+          <div class="enrich-timeline-dot {% if entry.success %}ok{% else %}failed{% endif %}">
+            <i class="bi {% if entry.success %}bi-check-lg{% else %}bi-x-lg{% endif %}"></i>
           </div>
           <div class="d-flex align-items-center flex-wrap gap-2">
-            <strong class="small">{{ run_item.run.get_method_display }}</strong>
-            <span class="text-muted small">{{ run_item.run.started_at|date:"d M Y, H:i" }}</span>
-            {% if run_item.changes_applied %}
-            <span class="badge bg-primary-subtle text-primary border border-primary-subtle">{% blocktrans with n=run_item.changes_applied %}{{ n }} applied{% endblocktrans %}</span>
+            <strong class="small">{{ entry.source }}</strong>
+            <span class="text-muted small">{{ entry.timestamp|date:"d M Y, H:i" }}</span>
+            {% if entry.changes %}
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle">{% blocktrans with n=entry.changes|length %}{{ n }} applied{% endblocktrans %}</span>
+            {% endif %}
+            {% if entry.flags %}
+            <span class="badge bg-warning-subtle text-warning border border-warning-subtle">{% blocktrans with n=entry.flags|length %}{{ n }} flagged{% endblocktrans %}</span>
             {% endif %}
           </div>
-          {% with changes=run_item.preview_data.changes %}
-          {% if changes %}
+          {% if entry.changes %}
           <ul class="list-unstyled enrich-timeline-changes mb-0">
-            {% for c in changes %}
+            {% for c in entry.changes %}
             <li><strong>{{ c.field_name }}</strong>:
               <span class="text-muted text-decoration-line-through">{{ c.old_value|default:"—" }}</span>
               <i class="bi bi-arrow-right mx-1"></i>{{ c.new_value|default:"—" }}
             </li>
             {% endfor %}
           </ul>
-          {% elif not run_item.success and run_item.error_message %}
-          <div class="text-muted small mt-1">{{ run_item.error_message }}</div>
-          {% else %}
+          {% elif not entry.success and entry.error_message %}
+          <div class="text-muted small mt-1">{{ entry.error_message }}</div>
+          {% elif not entry.flags %}
           <div class="text-muted small mt-1">{% trans "No changes proposed." %}</div>
           {% endif %}
-          {% endwith %}
+          {% for flag in entry.flags %}
+          <div class="enrich-flag-row">
+            <i class="bi bi-flag-fill"></i>
+            <div><span class="enrich-flag-field">{{ flag.field_name }}</span>: {{ flag.message }}</div>
+          </div>
+          {% endfor %}
         </div>
         {% endfor %}
       </div>

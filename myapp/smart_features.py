@@ -69,27 +69,44 @@ def update_wallet_spent_this_month(wallet):
     return budget
 
 
+# Reasons generate_item_recommendations owns end-to-end: it both creates
+# these and retires them once their condition no longer holds. Excludes
+# 'budget_overspend' - that condition is wallet-level, not item-level, and
+# doesn't fit this model's per-item FK; see get_budget_alerts() instead.
+MANAGED_REASONS = ('expires_soon', 'expires_very_soon', 'low_balance', 'unused')
+
+
 def generate_item_recommendations(item):
-    """Generate action recommendations for a single item."""
+    """
+    Generate (or refresh) action recommendations for a single item, and
+    retire any previously-generated recommendation whose condition no
+    longer holds - e.g. the balance was topped back up, the item got used,
+    or an "expires in 3 days" item is now simply expired. Idempotent and
+    cheap enough to call on every save (see myapp/signals.py) as well as
+    from the daily sweep (myapp/tasks.py) that catches time-only changes
+    no save would ever trigger.
+    """
+    if item.is_used or item.is_archived:
+        ItemRecommendation.objects.filter(item=item, reason__in=MANAGED_REASONS).delete()
+        return []
+
     today = timezone.localtime().date()
-    recommendations = []
+    applicable = set()
 
     # Expiry-based recommendations
     if item.expiry_date:
         days_left = (item.expiry_date - today).days
-        if days_left < 0:
-            pass  # Don't recommend on expired items
-        elif days_left <= 1:
+        if 0 <= days_left <= 1:
             ItemRecommendation.objects.update_or_create(
                 item=item,
                 reason='expires_very_soon',
                 defaults={
-                    'action': f'Expires tomorrow—use now!',
+                    'action': 'Expires today—use now!' if days_left == 0 else 'Expires tomorrow—use now!',
                     'priority': 3
                 }
             )
-            recommendations.append('expires_very_soon')
-        elif days_left <= 7:
+            applicable.add('expires_very_soon')
+        elif 2 <= days_left <= 7:
             ItemRecommendation.objects.update_or_create(
                 item=item,
                 reason='expires_soon',
@@ -98,12 +115,13 @@ def generate_item_recommendations(item):
                     'priority': 2
                 }
             )
-            recommendations.append('expires_soon')
+            applicable.add('expires_soon')
 
-    # Balance-based recommendations
-    if item.value_type == 'money' and item.value and not item.is_used:
+    # Balance-based recommendations - excludes a fully-drained (£0 or
+    # negative) balance, which isn't "low", it's just spent.
+    if item.value_type == 'money' and item.value:
         current_balance = item.get_current_balance()
-        if current_balance and current_balance < Decimal('5.00'):
+        if current_balance and 0 < current_balance < Decimal('5.00'):
             ItemRecommendation.objects.update_or_create(
                 item=item,
                 reason='low_balance',
@@ -112,7 +130,7 @@ def generate_item_recommendations(item):
                     'priority': 2
                 }
             )
-            recommendations.append('low_balance')
+            applicable.add('low_balance')
 
     # Unused items
     if item.last_used_at:
@@ -126,9 +144,13 @@ def generate_item_recommendations(item):
                     'priority': 1
                 }
             )
-            recommendations.append('unused')
+            applicable.add('unused')
 
-    return recommendations
+    stale = set(MANAGED_REASONS) - applicable
+    if stale:
+        ItemRecommendation.objects.filter(item=item, reason__in=stale).delete()
+
+    return list(applicable)
 
 
 def generate_all_recommendations(user):
@@ -141,6 +163,20 @@ def generate_all_recommendations(user):
         all_recommendations.extend(recs)
 
     return all_recommendations
+
+
+def cleanup_recommendations_for_inactive_items():
+    """
+    Belt-and-braces sweep: deletes any managed recommendation left behind
+    on an item that's since become used/archived. generate_item_recommendations
+    already clears these the moment it runs against such an item (from the
+    post_save signal), but this catches the rare case where that best-effort
+    signal failed silently - see myapp/signals.py.
+    """
+    ItemRecommendation.objects.filter(
+        Q(item__is_used=True) | Q(item__is_archived=True),
+        reason__in=MANAGED_REASONS,
+    ).delete()
 
 
 def get_user_recommendations(user, dismissed=False):

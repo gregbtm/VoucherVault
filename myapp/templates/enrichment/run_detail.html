@@ -2,6 +2,7 @@
 {% load i18n %}
 
 {% block content %}
+{% include "enrichment/_enrich_styles.html" %}
 <style>
   .change-row { border-bottom: 1px solid rgba(128,128,128,0.15); padding: 0.5rem 0; }
   .change-row:last-child { border-bottom: none; }
@@ -25,7 +26,7 @@
 </div>
 
 <section class="section">
-  <div class="card mb-3">
+  <div class="card enrich-card mb-3">
     <div class="card-body">
       <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-2">
         <div>
@@ -87,7 +88,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card enrich-card">
     <div class="card-body">
       <h5 class="card-title"><i class="bi bi-list-check me-1"></i>{% trans "Per-Item Results" %}</h5>
       {% if items %}
@@ -121,7 +122,7 @@
                 {% endif %}
               </td>
               <td>
-                {% with changes=run_item.preview_data.changes %}
+                {% with changes=run_item.preview_data.changes flags=run_item.preview_data.flags %}
                 {% if changes %}
                 {% for c in changes %}
                 <div class="change-row">
@@ -139,6 +140,12 @@
                 {% else %}
                 <span class="text-muted small">{% trans "No changes proposed." %}</span>
                 {% endif %}
+                {% for flag in flags %}
+                <div class="enrich-flag-row">
+                  <i class="bi bi-flag-fill"></i>
+                  <div><span class="enrich-flag-field">{{ flag.field_name }}</span>: {{ flag.message }}</div>
+                </div>
+                {% endfor %}
                 {% endwith %}
               </td>
             </tr>
