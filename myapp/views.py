@@ -344,7 +344,11 @@ def show_items(request):
     )
 
     from .smart_features import get_user_recommendations
-    active_recommendations = list(get_user_recommendations(user).select_related('item')[:5])
+    from .db_health import tolerate_missing_table
+    active_recommendations = []
+    with tolerate_missing_table('smart_suggestions') as _health:
+        if _health.available:
+            active_recommendations = list(get_user_recommendations(user).select_related('item')[:5])
 
     # Calculate counts for filters (owned items plus items in wallets shared with the
     # user; archived items are hidden from every default view/count, only reachable

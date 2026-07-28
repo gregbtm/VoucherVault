@@ -80,6 +80,52 @@ def extract_document_text_task(document_id):
 
 
 @shared_task
+def check_database_integrity_task():
+    """
+    Weekly sweep for the exact failure class behind the
+    myapp_itemrecommendation outage: a migration silently rolls back (or a
+    table is otherwise dropped/missing) and nothing surfaces it until a
+    user hits a 500 and sends a screenshot. tolerate_missing_table()
+    covers individual request-time call sites gracefully, but this task
+    is the belt-and-braces catch-all - it checks *every* model's table,
+    not just the ones someone remembered to wrap, and alerts an admin
+    the same way a login spike does.
+    """
+    import logging
+    import requests as _requests
+    from .models import SiteConfiguration
+    from .db_health import missing_tables
+
+    _log = logging.getLogger(__name__)
+    missing = missing_tables()
+    if not missing:
+        return
+
+    _log.error("Database integrity check found missing tables: %s", missing)
+
+    config = SiteConfiguration.load()
+    topic = config.security_alert_ntfy_topic.strip()
+    if not topic:
+        return
+
+    summary = '\n'.join(f'{model} -> {table}' for model, table in missing)
+    server = (config.ntfy_default_server or 'https://ntfy.sh').rstrip('/')
+    try:
+        _requests.post(
+            f'{server}/{topic}',
+            data=f'Database tables missing for {len(missing)} model(s):\n{summary}'.encode('utf-8'),
+            headers={
+                'Title': 'VoucherVault Database Integrity Alert'.encode('utf-8'),
+                'Priority': 'urgent',
+                'Tags': 'rotating_light',
+            },
+            timeout=10,
+        )
+    except Exception:
+        _log.warning('Failed to send database integrity alert', exc_info=True)
+
+
+@shared_task
 def check_login_spike_task():
     """
     Hourly check: if failed login attempts in the last 60 minutes exceed
