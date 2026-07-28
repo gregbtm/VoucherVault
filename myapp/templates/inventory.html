@@ -974,12 +974,51 @@ body.no-scroll {
   overflow: hidden;
 }
 
+.qr-zoom-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  max-width: 100%;
+}
+
 .qr-zoom-overlay img {
   width: min(90vw, 420px);
   height: auto;
   border-radius: 12px;
   background: #fff;
   padding: 1rem;
+}
+
+/* Deliberately the odd one out in this dark overlay - a bright, high-
+   contrast action is exactly what "you're done with this code, mark it
+   used" should look like, and yellow reads as neither "safe" (green,
+   easy to tap without thinking) nor "delete" (red). */
+.qr-zoom-mark-used-btn {
+  background: #ffc107;
+  color: #1a1a2e;
+  border: none;
+  border-radius: 999px;
+  padding: 0.75rem 1.75rem;
+  font-size: 1rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(255, 193, 7, 0.35);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.qr-zoom-mark-used-btn:hover {
+  background: #ffca2c;
+  transform: translateY(-1px);
+}
+
+.qr-zoom-mark-used-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+  transform: none;
 }
 
 .qr-zoom-close {
@@ -1135,7 +1174,7 @@ body.dark-mode .next-up-card {
             </div>
           </a>
           {% if active_today_item.item.code_type != "none" %}
-          <button type="button" class="next-up-code next-up-code-zoom" data-qr-src="data:image/png;base64,{{ active_today_item.item.qr_code_base64 }}" aria-label="{% trans 'Enlarge barcode' %}">
+          <button type="button" class="next-up-code next-up-code-zoom" data-qr-src="data:image/png;base64,{{ active_today_item.item.qr_code_base64 }}" data-toggle-url="{% url 'toggle_item_status' active_today_item.item.id %}" data-item-name="{{ active_today_item.item.name }}" aria-label="{% trans 'Enlarge barcode' %}">
             <img src="data:image/png;base64,{{ active_today_item.item.qr_code_base64 }}" alt="{% trans 'Barcode' %}" class="next-up-barcode-img">
           </button>
           {% else %}
@@ -1199,7 +1238,7 @@ body.dark-mode .next-up-card {
             </div>
           </a>
           {% if entry.item.code_type != "none" %}
-          <button type="button" class="next-up-code next-up-code-zoom" data-qr-src="data:image/png;base64,{{ entry.item.qr_code_base64 }}" aria-label="{% trans 'Enlarge barcode' %}">
+          <button type="button" class="next-up-code next-up-code-zoom" data-qr-src="data:image/png;base64,{{ entry.item.qr_code_base64 }}" data-toggle-url="{% url 'toggle_item_status' entry.item.id %}" data-item-name="{{ entry.item.name }}" aria-label="{% trans 'Enlarge barcode' %}">
             <img src="data:image/png;base64,{{ entry.item.qr_code_base64 }}" alt="{% trans 'Barcode' %}" class="next-up-barcode-img">
           </button>
           {% else %}
@@ -1225,17 +1264,30 @@ body.dark-mode .next-up-card {
   <!-- Barcode zoom overlay (Next Up / Active Today cards) -->
   <div id="qr-zoom-overlay" class="qr-zoom-overlay" aria-hidden="true">
     <button type="button" class="qr-zoom-close" id="qr-zoom-close" aria-label="{% trans 'Close' %}">&times;</button>
-    <img id="qr-zoom-img" alt="{% trans 'Barcode' %}">
+    <div class="qr-zoom-content">
+      <img id="qr-zoom-img" alt="{% trans 'Barcode' %}">
+      <button type="button" id="qr-zoom-mark-used-btn" class="qr-zoom-mark-used-btn" style="display:none;">
+        <i class="bi bi-check2-circle"></i>{% trans "Mark as Used" %}
+      </button>
+    </div>
   </div>
   <script nonce="{{ request.csp_nonce }}">
   document.addEventListener('DOMContentLoaded', function () {
     var overlay = document.getElementById('qr-zoom-overlay');
     var overlayImg = document.getElementById('qr-zoom-img');
     var closeBtn = document.getElementById('qr-zoom-close');
-    if (!overlay || !overlayImg || !closeBtn) return;
+    var markUsedBtn = document.getElementById('qr-zoom-mark-used-btn');
+    if (!overlay || !overlayImg || !closeBtn || !markUsedBtn) return;
 
-    function openZoom(src) {
+    function openZoom(src, toggleUrl, itemName) {
       overlayImg.src = src;
+      if (toggleUrl) {
+        markUsedBtn.style.display = '';
+        markUsedBtn.dataset.toggleUrl = toggleUrl;
+        markUsedBtn.dataset.itemName = itemName || '';
+      } else {
+        markUsedBtn.style.display = 'none';
+      }
       overlay.classList.add('show');
       overlay.setAttribute('aria-hidden', 'false');
       document.body.classList.add('no-scroll');
@@ -1249,7 +1301,7 @@ body.dark-mode .next-up-card {
     document.querySelectorAll('.next-up-code-zoom').forEach(function (btn) {
       btn.addEventListener('click', function (e) {
         e.preventDefault();
-        openZoom(btn.dataset.qrSrc);
+        openZoom(btn.dataset.qrSrc, btn.dataset.toggleUrl, btn.dataset.itemName);
       });
     });
 
@@ -1259,6 +1311,44 @@ body.dark-mode .next-up-card {
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && overlay.classList.contains('show')) closeZoom();
+    });
+
+    markUsedBtn.addEventListener('click', function () {
+      var url = markUsedBtn.dataset.toggleUrl;
+      if (!url) return;
+      var itemName = markUsedBtn.dataset.itemName;
+      var message = itemName
+        ? '{% trans "Mark" %} “' + itemName + '” {% trans "as used?" %}'
+        : '{% trans "Mark this item as used?" %}';
+      // The confirm modal renders at Bootstrap's default z-index, well
+      // below this overlay's 10000 - closing first avoids the overlay
+      // swallowing clicks meant for the confirm dialog underneath it.
+      closeZoom();
+      showConfirm(message, '{% trans "Mark as Used" %}', function () {
+        var csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (typeof setButtonLoading === 'function') setButtonLoading(markUsedBtn, true);
+        fetch(url, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': csrfInput ? csrfInput.value : '',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data && data.success) {
+              if (typeof showToast === 'function') showToast('{% trans "Item marked as used." %}', 'success');
+              window.location.reload();
+            } else {
+              if (typeof setButtonLoading === 'function') setButtonLoading(markUsedBtn, false);
+              if (typeof showToast === 'function') showToast('{% trans "Could not mark item as used." %}', 'danger');
+            }
+          })
+          .catch(function () {
+            if (typeof setButtonLoading === 'function') setButtonLoading(markUsedBtn, false);
+            if (typeof showToast === 'function') showToast('{% trans "Request failed - please try again." %}', 'danger');
+          });
+      });
     });
   });
   </script>
