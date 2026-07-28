@@ -60,6 +60,18 @@ class ItemEnricher:
         'initial_value', 'seat_number'
     }
 
+    # Each corrected-away enrichment fill nudges that field+method's
+    # required confidence up - a method that's proven unreliable for a
+    # given field needs to be more sure of itself before it's allowed to
+    # touch it again, for this user specifically. Capped so a determined
+    # run of corrections never fully disables the field outright (an
+    # EnrichmentFieldPreference opt-out still exists for that); it just
+    # means only very-high-confidence fills get applied automatically from
+    # here on, while shakier ones fall back to being surfaced for review.
+    CONFIDENCE_PENALTY_PER_CORRECTION = Decimal('0.1')
+    MAX_CONFIDENCE_PENALTY = Decimal('0.4')
+    MAX_EFFECTIVE_THRESHOLD = Decimal('0.95')
+
     def __init__(self, created_by: Optional[User] = None):
         self.created_by = created_by
         # (user_id, method) -> set of field names that user has opted out
@@ -67,6 +79,9 @@ class ItemEnricher:
         # BulkEnricher run over many items of the same user(s) doesn't issue
         # one EnrichmentFieldPreference query per item per method.
         self._field_pref_cache: Dict[Tuple[int, str], set] = {}
+        # (user_id, method, field_name) -> confidence penalty accrued from
+        # past corrections, same caching rationale as above.
+        self._threshold_penalty_cache: Dict[Tuple[int, str, str], Decimal] = {}
 
     def _excluded_fields(self, user: Optional[User], method: str) -> set:
         """Fields this user has opted out of for a given enrichment method."""
@@ -81,6 +96,32 @@ class ItemEnricher:
                 .values_list('field_name', flat=True)
             )
         return self._field_pref_cache[cache_key]
+
+    def _effective_confidence_threshold(self, user: Optional[User], method: str,
+                                       field_name: str, base_threshold: Decimal) -> Decimal:
+        """
+        Self-tuning counterpart to the flat confidence_threshold callers
+        pass in: raises it for this specific (user, method, field) combo
+        based on how many times this user has corrected away a value this
+        exact method previously auto-applied for this exact field (see
+        ScanFieldCorrection.source='enrichment' and
+        myapp.scan_learning.record_enrichment_correction_feedback). A field
+        this method has never gotten wrong for this user keeps the caller's
+        base threshold unchanged.
+        """
+        if user is None:
+            return base_threshold
+        cache_key = (user.id, method, field_name)
+        if cache_key not in self._threshold_penalty_cache:
+            from myapp.models import ScanFieldCorrection
+            correction_count = ScanFieldCorrection.objects.filter(
+                user=user, field=field_name, source='enrichment', enrichment_method=method,
+            ).count()
+            self._threshold_penalty_cache[cache_key] = min(
+                self.MAX_CONFIDENCE_PENALTY, self.CONFIDENCE_PENALTY_PER_CORRECTION * correction_count,
+            )
+        penalty = self._threshold_penalty_cache[cache_key]
+        return min(self.MAX_EFFECTIVE_THRESHOLD, base_threshold + penalty)
 
     def enrich_from_ocr(self, item: Item, confidence_threshold: Decimal = Decimal('0.5'),
                        ocr_backend: Optional[str] = None) -> EnrichmentResult:
@@ -124,7 +165,10 @@ class ItemEnricher:
             current_value = getattr(item, field_name, None)
             if current_value != extracted_value and extracted_value is not None:
                 confidence = extracted_data.get(f'{field_name}_confidence', Decimal('0.7'))
-                if confidence >= confidence_threshold:
+                effective_threshold = self._effective_confidence_threshold(
+                    item.user, 'ocr_rescan', field_name, confidence_threshold,
+                )
+                if confidence >= effective_threshold:
                     changes.append(FieldChange(
                         field_name=field_name,
                         old_value=str(current_value) if current_value else None,
@@ -213,7 +257,10 @@ class ItemEnricher:
 
         if item.value is not None and 'value' not in excluded:
             normalized_value, value_confidence = self._normalize_value(item.value)
-            if normalized_value != item.value and value_confidence >= confidence_threshold:
+            effective_threshold = self._effective_confidence_threshold(
+                item.user, 'validation', 'value', confidence_threshold,
+            )
+            if normalized_value != item.value and value_confidence >= effective_threshold:
                 changes.append(FieldChange(
                     field_name='value', old_value=str(item.value), new_value=str(normalized_value),
                     confidence_score=value_confidence, reason="Normalized monetary value to 2 decimal places",
@@ -285,7 +332,10 @@ class ItemEnricher:
             if current_value is None or current_value == '':
                 confidence_key = f'{field_name}_confidence'
                 confidence = enrichment_data.get(confidence_key, Decimal('0.5'))
-                if confidence >= confidence_threshold:
+                effective_threshold = self._effective_confidence_threshold(
+                    item.user, 'merchant_lookup', field_name, confidence_threshold,
+                )
+                if confidence >= effective_threshold:
                     changes.append(FieldChange(
                         field_name=field_name,
                         old_value=None,
