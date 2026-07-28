@@ -53,6 +53,23 @@ def parse_float_or_none(value) -> float | None:
         return None
 
 
+def sanitize_confidence(value, default: float) -> float:
+    """
+    Clamps a model-reported per-field confidence (e.g. "value_confidence",
+    "expiry_date_confidence" - see the self-consistency re-read
+    instructions in the OCR prompt) into [0.0, 1.0]. Falls back to
+    `default` (normally the overall "confidence") when the model omits
+    the field entirely or returns something unparseable, rather than
+    silently treating a missing self-consistency read as zero confidence.
+    """
+    if value is None:
+        return default
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return default
+
+
 _DOMAIN_RE = re.compile(r'^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$')
 
 

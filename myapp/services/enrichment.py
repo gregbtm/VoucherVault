@@ -469,12 +469,18 @@ class ItemEnricher:
                 if value is None or value == '':
                     continue
                 conf_key = f'{field_name}_confidence'
+                # A field with its own self-consistency-checked confidence
+                # (see the OCR prompt's second-pass re-read for
+                # expiry_date/value - ocr/validation.py) uses that
+                # independently of the overall read; everything else still
+                # falls back to it, same as before.
+                field_confidence = Decimal(str(result.get(conf_key, confidence) or 0))
                 # Prefer the value from whichever document OCR'd with higher
-                # overall confidence - later documents don't just overwrite
-                # earlier, better ones.
-                if field_name not in merged_data or confidence > merged_data.get(conf_key, Decimal('0')):
+                # confidence for this specific field - later documents don't
+                # just overwrite earlier, better ones.
+                if field_name not in merged_data or field_confidence > merged_data.get(conf_key, Decimal('0')):
                     merged_data[field_name] = value
-                    merged_data[conf_key] = confidence
+                    merged_data[conf_key] = field_confidence
 
         return merged_data if merged_data else None
 

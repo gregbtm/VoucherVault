@@ -9,7 +9,7 @@ from ocr.validation import validate_and_score
 
 from .base import (
     OCRBackend, VALID_CODE_TYPES, VALID_CURRENCIES, VALID_ITEM_TYPES,
-    parse_float_or_none, sanitize_domain_slug, sanitize_free_text,
+    parse_float_or_none, sanitize_confidence, sanitize_domain_slug, sanitize_free_text,
     sanitize_tag_suggestions, sanitize_time_or_none, sanitize_url,
     strip_json_fences,
 )
@@ -79,7 +79,7 @@ _PROMPT = (
     '"balance_check_url": "...", "type": "...", "description": "...", '
     '"notes": "...", "tags": ["...", "..."], "journey_origin": "...", '
     '"journey_destination": "...", "travel_time": "...", '
-    '"confidence": 0.0}\n'
+    '"confidence": 0.0, "expiry_date_confidence": 0.0, "value_confidence": 0.0}\n'
     f'"code_type" must be exactly one of: {_CODE_TYPE_OPTIONS}, "none" '
     '(ONLY when there is genuinely no barcode, QR code, or any other '
     'machine-readable symbol visible anywhere on the card — if any '
@@ -108,7 +108,16 @@ _PROMPT = (
     'ambiguous at the image\'s resolution, prefer the reading you are '
     'more confident in and reflect that uncertainty in "confidence" '
     'rather than silently picking one. "confidence" is your own estimate '
-    '(0.0-1.0) of how reliable the "code" extraction specifically is.'
+    '(0.0-1.0) of how reliable the "code" extraction specifically is. '
+    'Do the same independent second-pass re-read for "expiry_date" and '
+    '"value" - a smudged or low-resolution digit in a date or a price is '
+    'just as easy to misread as a code character (e.g. "3" vs "8", "1" '
+    'vs "7", a "/" mistaken for the date separator changing day and '
+    'month) - and report your own confidence in each as '
+    '"expiry_date_confidence" and "value_confidence" (0.0-1.0), '
+    'independently of "confidence" and of each other - a clearly-printed '
+    'date on a card with an ambiguous code should still get a high '
+    '"expiry_date_confidence" even if "confidence" is low.'
 )
 
 
@@ -225,4 +234,11 @@ class OpenAIOCRBackend(OCRBackend):
             'travel_time': sanitize_time_or_none(result.get('travel_time')),
             'confidence': float(result.get('confidence') or 0.0),
         }
+        overall_confidence = extraction['confidence']
+        extraction['expiry_date_confidence'] = sanitize_confidence(
+            result.get('expiry_date_confidence'), overall_confidence,
+        )
+        extraction['value_confidence'] = sanitize_confidence(
+            result.get('value_confidence'), overall_confidence,
+        )
         return validate_and_score(extraction)
