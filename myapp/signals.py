@@ -88,6 +88,22 @@ def auto_categorize_item(sender, instance, created, **kwargs):
         pass
 
 
+@receiver(post_save, sender=Item)
+def refresh_item_recommendations(sender, instance, created, **kwargs):
+    """
+    Keep Smart Suggestions in sync with the item the moment something
+    save-worthy changes about it (balance topped up, marked used, expiry
+    corrected) rather than waiting for the next daily sweep - see
+    myapp/smart_features.py. The sweep (myapp/tasks.py) still runs daily
+    to catch conditions that change with time alone, with no save involved.
+    """
+    try:
+        from .smart_features import generate_item_recommendations
+        generate_item_recommendations(instance)
+    except Exception:
+        pass
+
+
 @receiver(post_save, sender=Transaction)
 def update_wallet_budget_on_transaction(sender, instance, created, **kwargs):
     """Recalculate wallet budget spending when a transaction is created/updated."""

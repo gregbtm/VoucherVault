@@ -22,6 +22,7 @@ urlpatterns = (
     path('items/duplicate/<uuid:item_uuid>', views.duplicate_item, name='duplicate_item'),
     path('items/delete/<uuid:item_uuid>', views.delete_item, name='delete_item'),
     path('items/toggle_status/<uuid:item_id>', views.toggle_item_status, name='toggle_item_status'),
+    path('recommendations/<int:recommendation_id>/dismiss/', views.dismiss_recommendation, name='dismiss_recommendation'),
     path('items/toggle_pin/<uuid:item_uuid>', views.toggle_pin_item, name='toggle_pin_item'),
     path('items/toggle_archive/<uuid:item_uuid>', views.toggle_archive_item, name='toggle_archive_item'),
     path('items/toggle_mute/<uuid:item_uuid>', views.toggle_mute_notifications, name='toggle_mute_notifications'),

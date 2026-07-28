@@ -394,3 +394,27 @@ def finalize_enrichment_run(run_id):
         _log.error(f"Enrichment run {run_id} not found")
     except Exception as exc:
         _log.error(f"Error finalizing run {run_id}: {exc}", exc_info=True)
+
+
+@shared_task
+def refresh_recommendations_task():
+    """
+    Daily sweep for Smart Suggestions (myapp/smart_features.py). The
+    post_save signal (myapp/signals.py) already keeps recommendations in
+    sync the moment an item changes, but conditions like "expires in N
+    days" or "unused for 6+ months" shift purely with the passage of time,
+    with no save to trigger off - this is what catches those. Also runs
+    the inactive-item cleanup as a second line of defense in case the
+    signal ever failed silently for a used/archived item.
+    """
+    import logging
+    from django.contrib.auth.models import User
+    from .smart_features import generate_all_recommendations, cleanup_recommendations_for_inactive_items
+
+    _log = logging.getLogger(__name__)
+    cleanup_recommendations_for_inactive_items()
+    for user in User.objects.filter(is_active=True):
+        try:
+            generate_all_recommendations(user)
+        except Exception:
+            _log.warning('Failed to refresh recommendations for user %s', user.username, exc_info=True)
