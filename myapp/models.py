@@ -532,7 +532,23 @@ class ScanFieldCorrection(models.Model):
     filled it in" - those are replayed more cautiously (only after being
     seen twice, and only for the same item type) since a blank can be
     filled with something item-specific once without it being a pattern.
+
+    This is the single unified ledger for "the machine guessed wrong and
+    the user fixed it" - OCR scans, accepted-then-edited field suggestions,
+    and reverted enrichment-pipeline auto-fills all record here (see
+    myapp/scan_learning.py). `source`/`enrichment_method` capture where a
+    row first came from, so per-method self-tuning (confidence thresholds,
+    circuit breakers) can tell "this user's OCR keeps misreading issuer"
+    apart from "the merchant_lookup enrichment method keeps getting
+    journey_origin wrong for this user" even though both replay the same
+    way through apply_learned_corrections.
     """
+    SOURCE_CHOICES = (
+        ('scan', 'AI Photo Scan'),
+        ('suggestion', 'Accepted Field Suggestion'),
+        ('enrichment', 'Enrichment Pipeline'),
+    )
+
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='scan_corrections')
     item_type = models.CharField(max_length=100, blank=True, default='')
     field = models.CharField(max_length=50)
@@ -540,6 +556,12 @@ class ScanFieldCorrection(models.Model):
     corrected_value = models.CharField(max_length=255)
     times_seen = models.PositiveIntegerField(default=1)
     updated_at = models.DateTimeField(auto_now=True)
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='scan')
+    enrichment_method = models.CharField(
+        max_length=50, blank=True, default='',
+        help_text="Which enrichment method (ocr_rescan/validation/merchant_lookup/auto_enrich) "
+                   "produced the corrected-away value, if source='enrichment'.",
+    )
 
     class Meta:
         unique_together = ('user', 'item_type', 'field', 'ai_value')

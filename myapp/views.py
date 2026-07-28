@@ -18,7 +18,7 @@ from .ics_calendar import build_ics_calendar
 from .models import *
 from .utils import generate_code_image_base64, get_fixer_rates, convert_currency, levenshtein_distance
 from .imagehash import compute_dhash, hamming_distance
-from .scan_learning import record_scan_corrections
+from .scan_learning import record_scan_corrections, record_enrichment_correction_feedback, LEARNABLE_FIELDS, _saved_value
 from django.db.models import Sum
 from django.utils import timezone
 from django.http import Http404, HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
@@ -891,6 +891,10 @@ def edit_item(request, item_uuid):
     original_redeem_code = item.redeem_code # Store the original redeem code
     original_code_type = item.code_type  # Store the original code type
     old_file_path = item.file.path if item.file else None  # Store the old file path
+    # Snapshot before the form overwrites `item`'s in-memory fields, so any
+    # field the enrichment pipeline auto-filled can be checked against what
+    # it actually was just before this save - see record_enrichment_correction_feedback.
+    pre_edit_values = {field: _saved_value(item, field) for field in LEARNABLE_FIELDS}
 
     if request.method == 'POST':
         form = ItemForm(request.POST, request.FILES, instance=item, user=request.user)
@@ -940,6 +944,7 @@ def edit_item(request, item_uuid):
             remember_balance_check_url(item.issuer, item.balance_check_url)
             _record_scan_learning(request, item)
             _record_suggestion_feedback(request, item)
+            record_enrichment_correction_feedback(request.user, item, pre_edit_values)
             _queue_google_wallet_update(item)
             _log_wallet_activity(item.wallet, request.user, 'item_edited', item=item)
 
