@@ -1,7 +1,23 @@
 /*--------------------------------------------------------------
 # Dark Mode
 --------------------------------------------------------------*/
+
+/* Tell the browser this page manages its own theme explicitly, tied to
+   the same body.dark-mode class the JS toggle already uses. Without this,
+   browsers/WebViews with their own automatic dark/"force dark" heuristics
+   (common on Android - Samsung Internet, Chrome's "Darken web pages") are
+   free to independently recolor low-contrast elements they misjudge as
+   needing adjustment - typically borders/text on transparent-background
+   outline buttons (.btn-outline-secondary etc.) - producing exactly the
+   "text goes white/invisible until you touch it" symptom: the heuristic
+   repaints on interaction, briefly "fixing" it. Declaring color-scheme
+   opts the page out of that guesswork entirely. */
+body {
+  color-scheme: light;
+}
+
 body.dark-mode {
+  color-scheme: dark;
   background: #181a1b;
   color: #e0e6eb;
 }
@@ -376,6 +392,18 @@ body.dark-mode .default-tile {
 /* Dark mode for description */
 body.dark-mode .content {
   color: #e0e6eb;
+}
+
+/* Plain (non-striped) tables set --bs-table-bg: var(--bs-body-bg) per cell,
+   the same never-repointed-for-dark-mode variable behind the modal/toast
+   fix above - every td/th on a plain table rendered as a solid white box
+   regardless of the surrounding .card being dark. */
+body.dark-mode .table {
+  --bs-table-bg: #21262d;
+  --bs-table-color: #e0e6eb;
+  --bs-table-border-color: #30363d;
+  --bs-table-hover-bg: #2a2f38;
+  --bs-table-hover-color: #e0e6eb;
 }
 
 body.dark-mode .table-striped th{

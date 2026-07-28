@@ -1,0 +1,107 @@
+/*
+ * Canonical sitewide checkbox/switch system.
+ *
+ * Bootstrap's .form-check reserves space for the input via
+ * `padding-left: 1.5em` on the wrapper plus `margin-left: -1.5em; float:
+ * left;` on the input itself - a layout that only holds together if the
+ * checkbox stays at Bootstrap's default ~1em size. mobile.css and
+ * accessibility.css both grow checkboxes to a 24-44px touch target on
+ * touch devices, which no longer matches that fixed 1.5em gutter: the
+ * checkbox either overlaps the label or crowds it into a narrower column
+ * than the input reserved for it. This rebuilds .form-check on flexbox so
+ * the input and label are independent flex items with a fixed gap - the
+ * checkbox can be any size, on any viewport, without ever stealing width
+ * from the label.
+ *
+ * Load order: linked in base.html AFTER buttons.css, so it wins ties with
+ * mobile.css/accessibility.css's touch-sizing rules without !important.
+ */
+.form-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding-left: 0;
+  min-height: 44px;
+  margin-bottom: 0.75rem;
+}
+
+.form-check:last-child {
+  margin-bottom: 0;
+}
+
+.form-check .form-check-input {
+  flex-shrink: 0;
+  float: none;
+  margin: 0;
+  margin-top: 0.2em; /* optically aligns the box with the label's first line */
+}
+
+.form-check .form-check-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-top: 0.15em;
+}
+
+/* Some .form-check blocks include a third child - a help/description line
+   right inside the wrapper instead of below it. As a bare flex item it
+   would compete with the label for the same row and squeeze it into a
+   narrow column; force it onto its own full-width line, indented to align
+   under the label rather than the input. */
+.form-check > .form-text,
+.form-check > .invalid-feedback,
+.form-check > .text-danger {
+  flex-basis: 100%;
+  width: 100%;
+  margin-top: 0.35rem;
+  margin-left: calc(1.5em + 0.6rem);
+}
+
+.form-switch > .form-text,
+.form-switch > .invalid-feedback,
+.form-switch > .text-danger {
+  margin-left: calc(2.75em + 0.6rem);
+}
+
+.form-check-inline {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 1.1rem;
+  min-height: auto;
+}
+
+/* ---- Modern toggle switches for on/off settings ----
+   A checkbox is the right control for picking items from a list (bulk
+   actions, event subscriptions); a single standalone on/off preference
+   reads more clearly as a switch - the pattern iOS, Android, and most
+   modern web dashboards use, and it sidesteps the touch-target-vs-label
+   sizing fight above entirely since a switch's own footprint is fixed by
+   design, not stretched to a square touch target. Bootstrap already ships
+   .form-switch (a pill-shaped slider drawn via a background-image mask on
+   the same <input type="checkbox">) - it only needed a fixed size of its
+   own so it doesn't inherit the checkbox touch-sizing rules. The extra
+   type/attribute selectors below are deliberate: they out-specificity
+   mobile.css's `.form-switch .form-check-input` touch rule so the slider
+   never gets stretched into a fat square block on phones. */
+.form-switch {
+  padding-left: 0;
+}
+
+.form-switch input.form-check-input[type="checkbox"] {
+  width: 2.75em;
+  height: 1.5em;
+  min-width: 2.75em;
+  min-height: 1.5em;
+  flex-shrink: 0;
+  margin-top: 0;
+  background-position: left center;
+  transition: background-position 0.15s ease-in-out;
+}
+
+.form-switch input.form-check-input[type="checkbox"]:checked {
+  background-position: right center;
+}
+
+.form-switch .form-check-label {
+  padding-top: 0.28em;
+}

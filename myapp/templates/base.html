@@ -35,6 +35,7 @@
   </script>
   <meta charset="utf-8">
   <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport">
+  <meta name="color-scheme" content="light dark">
   <title>VoucherVault Plus+</title>
   <meta content="" name="description">
   <meta content="" name="keywords">
@@ -68,6 +69,9 @@
   <!-- Canonical sitewide button system - loads last so it wins the cascade
        over any older per-page button overrides that haven't been cleaned up yet -->
   <link href="{% static 'assets/css/buttons.css' %}" rel="stylesheet">
+  <!-- Canonical sitewide checkbox/switch system - loads after buttons.css so
+       it wins ties with mobile.css's touch-target sizing rules -->
+  <link href="{% static 'assets/css/forms.css' %}" rel="stylesheet">
 
   <style>
     /* Network status indicator styles */

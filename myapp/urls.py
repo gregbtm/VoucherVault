@@ -137,6 +137,7 @@ urlpatterns = (
     path('enrichment/runs/<uuid:run_id>/', views_enrichment.enrichment_run_detail, name='enrichment_run_detail'),
     path('enrichment/trigger/', views_enrichment.enrichment_trigger, name='enrichment_trigger'),
     path('items/<uuid:item_id>/enrichment-history/', views_enrichment.item_enrichment_history, name='item_enrichment_history'),
+    path('items/<uuid:item_id>/enrich-now/', views_enrichment.item_enrich_now, name='item_enrich_now'),
 )
 
 admin.site.site_header = "VoucherVault Plus+"

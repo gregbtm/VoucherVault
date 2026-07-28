@@ -12,17 +12,46 @@
     padding: 1.1rem 1.25rem 0.6rem;
     margin-bottom: 1.25rem;
   }
-  .settings-group-label {
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: var(--text-muted, #6c757d);
-    margin: 1.75rem 0 0.75rem;
-  }
-  .settings-group-label:first-of-type { margin-top: 0.5rem; }
   /* Inline "?" tooltip icon for sections without a full setup guide. */
   .help-hint { color: var(--text-muted, #6c757d); margin-left: 0.35rem; cursor: help; }
+
+  /* Settings tab bar: scrolls horizontally instead of wrapping onto a
+     second row on narrow screens - each tab keeps its full label
+     (icon-only tabs on a 5-way settings nav would be unreadable/ambiguous
+     without a legend), and a horizontally-scrolling strip is a familiar,
+     well-established mobile pattern (iOS Settings top nav, GitHub's
+     mobile repo tabs) rather than a novelty. */
+  .settings-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    border-bottom-color: rgba(128, 128, 128, 0.25);
+  }
+  .settings-tabs::-webkit-scrollbar { height: 4px; }
+  .settings-tabs .nav-link {
+    white-space: nowrap;
+    flex-shrink: 0;
+    color: var(--text-muted, #6c757d);
+    border: none;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    padding: 0.7rem 1rem;
+    font-weight: 500;
+  }
+  .settings-tabs .nav-link:hover {
+    border-bottom-color: rgba(65, 84, 241, 0.35);
+    color: var(--text-color, #212529);
+  }
+  .settings-tabs .nav-link.active {
+    color: var(--primary-color, #4154f1);
+    background: transparent;
+    border-bottom-color: var(--primary-color, #4154f1);
+  }
+  body.dark-mode .settings-tabs .nav-link.active { color: #5a6cf1; border-bottom-color: #5a6cf1; }
+  body.dark-mode .settings-tabs .nav-link:hover { color: #e0e6eb; }
+  #settingsTabContent { padding-top: 1.5rem; }
 </style>
 <div class="pagetitle">
   <h1>{% trans "Site Settings" %}</h1>
@@ -54,10 +83,39 @@
           </div>
           {% endif %}
 
+          <ul class="nav nav-tabs settings-tabs" id="settingsTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="tab-notifications-btn" data-bs-toggle="tab" data-bs-target="#tab-notifications" type="button" role="tab" aria-controls="tab-notifications" aria-selected="true">
+                <i class="bi bi-bell me-1"></i>{% trans "Notifications" %}
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-integrations-btn" data-bs-toggle="tab" data-bs-target="#tab-integrations" type="button" role="tab" aria-controls="tab-integrations" aria-selected="false">
+                <i class="bi bi-puzzle me-1"></i>{% trans "Features & Integrations" %}
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-access-btn" data-bs-toggle="tab" data-bs-target="#tab-access" type="button" role="tab" aria-controls="tab-access" aria-selected="false">
+                <i class="bi bi-shield-lock me-1"></i>{% trans "Access Control" %}
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-deployment-btn" data-bs-toggle="tab" data-bs-target="#tab-deployment" type="button" role="tab" aria-controls="tab-deployment" aria-selected="false">
+                <i class="bi bi-tools me-1"></i>{% trans "Maintenance & Deployment" %}
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-analytics-btn" data-bs-toggle="tab" data-bs-target="#tab-analytics" type="button" role="tab" aria-controls="tab-analytics" aria-selected="false">
+                <i class="bi bi-bar-chart me-1"></i>{% trans "Dashboard & Analytics" %}
+              </button>
+            </li>
+          </ul>
+
           <form method="POST" action="" id="site-settings-form">
             {% csrf_token %}
 
-            <div class="settings-group-label"><i class="bi bi-bell me-1"></i> {% trans "Notifications & Expiry" %}</div>
+            <div class="tab-content" id="settingsTabContent">
+            <div class="tab-pane fade show active" id="tab-notifications" role="tabpanel" aria-labelledby="tab-notifications-btn">
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-clock-history me-2"></i>{% trans "Expiry & Notifications" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'How many days before an item expires the first and final expiry notifications fire, unless an item sets its own override.' %}"></i><a href="{% url 'view_doc' 'notifications' %}" data-doc-url="{% url 'view_doc' 'notifications' %}" class="help-link ms-1" title="{% trans 'Notification rules & expiry alerts guide' %}"><i class="bi bi-question-circle"></i></a></h6>
@@ -132,11 +190,12 @@
               </div>
             </div>
 
-            <div class="settings-group-label"><i class="bi bi-puzzle me-1"></i> {% trans "Features & Integrations" %}</div>
+            </div><!-- /tab-notifications -->
+            <div class="tab-pane fade" id="tab-integrations" role="tabpanel" aria-labelledby="tab-integrations-btn">
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-image me-2"></i>{% trans "Merchant Logos" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Fetches a brand logo for each item card automatically, based on the issuer name or logo domain.' %}"></i></h6>
-              <div class="form-check mb-3">
+              <div class="form-check form-switch mb-3">
                 {{ form.merchant_logos_enabled }}
                 <label class="form-check-label" for="{{ form.merchant_logos_enabled.id_for_label }}">{% trans "Auto-fetch merchant logos on item cards" %}</label>
               </div>
@@ -155,7 +214,7 @@
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-geo-alt me-2"></i>{% trans "Nearby Items" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Site-wide switch for the opt-in Nearby widget. Users still need to enable it in their own Preferences - this only controls whether the underlying OpenStreetMap lookup is available at all.' %}"></i></h6>
-              <div class="form-check mb-3">
+              <div class="form-check form-switch mb-3">
                 {{ form.nearby_places_enabled }}
                 <label class="form-check-label" for="{{ form.nearby_places_enabled.id_for_label }}">{% trans "Allow the Nearby widget to query OpenStreetMap" %}</label>
               </div>
@@ -173,7 +232,7 @@
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-send me-2"></i>{% trans "Sharing" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Controls what the Share via... button offers and how public share links behave.' %}"></i></h6>
-              <div class="form-check">
+              <div class="form-check form-switch">
                 {{ form.share_via_smart_enabled }}
                 <label class="form-check-label" for="{{ form.share_via_smart_enabled.id_for_label }}">{% trans "Offer a choice on \"Share via...\": bare link, or a rich share (merchant, code, PIN, remaining balance) via a public link" %}</label>
               </div>
@@ -186,7 +245,7 @@
                     <small class="form-text text-muted">{% trans "0 = never expires. Applies to new/regenerated links; existing links keep their original expiry." %}</small>
                   </div>
                 </div>
-                <div class="form-check">
+                <div class="form-check form-switch">
                   {{ form.share_link_pin_enabled }}
                   <label class="form-check-label" for="{{ form.share_link_pin_enabled.id_for_label }}">{% trans "Require a short access code to view a public share link" %}</label>
                 </div>
@@ -240,6 +299,57 @@
               <p class="text-muted small mb-0 ocr-fields" data-ocr-backend="tesseract">
                 {% trans "No extra configuration needed - uses the tesseract binary bundled in the image." %}
               </p>
+            </div>
+
+            <div class="settings-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-envelope me-2"></i>{% trans "Outbound Email (SMTP)" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Configure an SMTP server so VoucherVault can send password-reset emails and PocketID invite emails.' %}"></i></h6>
+              <p class="text-muted small mb-3">{% trans "Used for password resets and invite emails. Leave the host blank to disable outbound email." %}</p>
+              <div class="row">
+                <div class="col-md-8 mb-3">
+                  <label for="{{ form.email_host.id_for_label }}" class="form-label">{% trans "SMTP host" %}</label>
+                  {{ form.email_host }}
+                  <div class="form-text">{% trans "e.g. smtp.gmail.com, smtp.sendgrid.net" %}</div>
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="{{ form.email_port.id_for_label }}" class="form-label">{% trans "Port" %}</label>
+                  {{ form.email_port }}
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.email_host_user.id_for_label }}" class="form-label">{% trans "Username" %}</label>
+                  {{ form.email_host_user }}
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="{{ form.email_host_password.id_for_label }}" class="form-label">{% trans "Password" %}</label>
+                  {{ form.email_host_password }}
+                  <div class="form-text">{% if config.email_host_password %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %}</div>
+                </div>
+                <div class="col-12 mb-3">
+                  <label for="{{ form.email_from_address.id_for_label }}" class="form-label">{% trans "From address" %}</label>
+                  {{ form.email_from_address }}
+                  <div class="form-text">{% trans "Defaults to the username above if left blank." %}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <div class="form-check form-switch">
+                    {{ form.email_use_tls }}
+                    <label class="form-check-label" for="{{ form.email_use_tls.id_for_label }}">{% trans "Use STARTTLS" %} <span class="text-muted">({% trans "port 587" %})</span></label>
+                  </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <div class="form-check form-switch">
+                    {{ form.email_use_ssl }}
+                    <label class="form-check-label" for="{{ form.email_use_ssl.id_for_label }}">{% trans "Use SSL" %} <span class="text-muted">({% trans "port 465" %})</span></label>
+                  </div>
+                </div>
+                <div class="col-12">
+                  <button type="button" id="test-smtp-btn" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-plug me-1"></i> {% trans "Test connection" %}
+                  </button>
+                  <button type="button" id="send-test-email-btn" class="btn btn-sm btn-outline-primary ms-2">
+                    <i class="bi bi-envelope me-1"></i> {% trans "Send test email" %}
+                  </button>
+                  <span id="smtp-status" class="ms-2 small"></span>
+                </div>
+              </div>
             </div>
 
             <details class="settings-section" {% if integration_status.pkpass and integration_status.pkpass.ready %}open{% endif %}>
@@ -327,11 +437,12 @@
               </div>
             </details>
 
-            <div class="settings-group-label"><i class="bi bi-shield-lock me-1"></i> {% trans "Access Control" %}</div>
+            </div><!-- /tab-integrations -->
+            <div class="tab-pane fade" id="tab-access" role="tabpanel" aria-labelledby="tab-access-btn">
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-person-plus me-2"></i>{% trans "User Registration" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Controls whether the registration page accepts new signups. Existing users and SSO/OIDC logins are unaffected.' %}"></i></h6>
-              <div class="form-check mb-2">
+              <div class="form-check form-switch mb-2">
                 {{ form.allow_registration }}
                 <label class="form-check-label" for="{{ form.allow_registration.id_for_label }}">{% trans "Allow new user registrations" %}</label>
               </div>
@@ -377,15 +488,15 @@
                   {{ form.oidc_client_secret }}
                 </div>
                 <div class="col-md-6">
-                  <div class="form-check mb-2">
+                  <div class="form-check form-switch mb-2">
                     {{ form.oidc_create_user }}
                     <label class="form-check-label" for="{{ form.oidc_create_user.id_for_label }}">{% trans "Create account on first OIDC login" %}</label>
                   </div>
-                  <div class="form-check mb-2" id="oidc-autologin-row">
+                  <div class="form-check form-switch mb-2" id="oidc-autologin-row">
                     {{ form.oidc_autologin }}
                     <label class="form-check-label" for="{{ form.oidc_autologin.id_for_label }}">{% trans "Auto-redirect to OIDC on login page" %}</label>
                   </div>
-                  <div class="form-check" id="oidc-require-totp-row">
+                  <div class="form-check form-switch" id="oidc-require-totp-row">
                     {{ form.oidc_require_totp }}
                     <label class="form-check-label" for="{{ form.oidc_require_totp.id_for_label }}">{% trans "Require TOTP after OIDC login" %}</label>
                     <div class="form-text">{% trans "Users with TOTP enabled must still complete the TOTP step even after a successful OIDC authentication." %}</div>
@@ -418,57 +529,6 @@
             </div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-envelope me-2"></i>{% trans "Outbound Email (SMTP)" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Configure an SMTP server so VoucherVault can send password-reset emails and PocketID invite emails.' %}"></i></h6>
-              <p class="text-muted small mb-3">{% trans "Used for password resets and invite emails. Leave the host blank to disable outbound email." %}</p>
-              <div class="row">
-                <div class="col-md-8 mb-3">
-                  <label for="{{ form.email_host.id_for_label }}" class="form-label">{% trans "SMTP host" %}</label>
-                  {{ form.email_host }}
-                  <div class="form-text">{% trans "e.g. smtp.gmail.com, smtp.sendgrid.net" %}</div>
-                </div>
-                <div class="col-md-4 mb-3">
-                  <label for="{{ form.email_port.id_for_label }}" class="form-label">{% trans "Port" %}</label>
-                  {{ form.email_port }}
-                </div>
-                <div class="col-md-6 mb-3">
-                  <label for="{{ form.email_host_user.id_for_label }}" class="form-label">{% trans "Username" %}</label>
-                  {{ form.email_host_user }}
-                </div>
-                <div class="col-md-6 mb-3">
-                  <label for="{{ form.email_host_password.id_for_label }}" class="form-label">{% trans "Password" %}</label>
-                  {{ form.email_host_password }}
-                  <div class="form-text">{% if config.email_host_password %}{% trans "Currently set." %}{% else %}{% trans "Not set." %}{% endif %}</div>
-                </div>
-                <div class="col-12 mb-3">
-                  <label for="{{ form.email_from_address.id_for_label }}" class="form-label">{% trans "From address" %}</label>
-                  {{ form.email_from_address }}
-                  <div class="form-text">{% trans "Defaults to the username above if left blank." %}</div>
-                </div>
-                <div class="col-md-6 mb-3">
-                  <div class="form-check">
-                    {{ form.email_use_tls }}
-                    <label class="form-check-label" for="{{ form.email_use_tls.id_for_label }}">{% trans "Use STARTTLS" %} <span class="text-muted">({% trans "port 587" %})</span></label>
-                  </div>
-                </div>
-                <div class="col-md-6 mb-3">
-                  <div class="form-check">
-                    {{ form.email_use_ssl }}
-                    <label class="form-check-label" for="{{ form.email_use_ssl.id_for_label }}">{% trans "Use SSL" %} <span class="text-muted">({% trans "port 465" %})</span></label>
-                  </div>
-                </div>
-                <div class="col-12">
-                  <button type="button" id="test-smtp-btn" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-plug me-1"></i> {% trans "Test connection" %}
-                  </button>
-                  <button type="button" id="send-test-email-btn" class="btn btn-sm btn-outline-primary ms-2">
-                    <i class="bi bi-envelope me-1"></i> {% trans "Send test email" %}
-                  </button>
-                  <span id="smtp-status" class="ms-2 small"></span>
-                </div>
-              </div>
-            </div>
-
-            <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-shield-exclamation me-2"></i>{% trans "Security Alerts" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Send an ntfy alert when a failed-login spike is detected. Uses the Default ntfy Server configured above.' %}"></i><a href="{% url 'view_doc' 'security-settings' %}" data-doc-url="{% url 'view_doc' 'security-settings' %}" class="help-link" title="{% trans 'Security guide' %}"><i class="bi bi-question-circle"></i></a></h6>
               <div class="row">
                 <div class="col-md-6 mb-3">
@@ -484,7 +544,8 @@
               </div>
             </div>
 
-            <div class="settings-group-label"><i class="bi bi-tools me-1"></i> {% trans "Maintenance & Deployment" %}</div>
+            </div><!-- /tab-access -->
+            <div class="tab-pane fade" id="tab-deployment" role="tabpanel" aria-labelledby="tab-deployment-btn">
 
             <div class="settings-section">
               <h6 class="text-muted mb-3">
@@ -506,7 +567,7 @@
                   <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
               {% endif %}
-              <div class="form-check mb-2">
+              <div class="form-check form-switch mb-2">
                 {{ form.update_check_enabled }}
                 <label class="form-check-label" for="{{ form.update_check_enabled.id_for_label }}">{% trans "Check GitHub Releases and show an update banner to admins" %}</label>
               </div>
@@ -632,7 +693,7 @@
                 <i class="bi bi-archive me-2"></i>{% trans "Scheduled Local Backups" %}
                 <a href="{% url 'view_doc' 'backup-restore' %}" data-doc-url="{% url 'view_doc' 'backup-restore' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a>
               </h6>
-              <div class="form-check mb-2">
+              <div class="form-check form-switch mb-2">
                 {{ form.scheduled_backup_enabled }}
                 <label class="form-check-label" for="{{ form.scheduled_backup_enabled.id_for_label }}">{% trans "Run the nightly per-user backup" %}</label>
               </div>
@@ -644,7 +705,8 @@
               </div>
             </div>
 
-            <div class="settings-group-label"><i class="bi bi-bar-chart me-1"></i> {% trans "Dashboard & Analytics" %}</div>
+            </div><!-- /tab-deployment -->
+            <div class="tab-pane fade" id="tab-analytics" role="tabpanel" aria-labelledby="tab-analytics-btn">
 
             <div class="settings-section">
               <h6 class="text-muted mb-3"><i class="bi bi-sliders me-2"></i>{% trans "Analytics & Duplicate Detection" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Tuning knobs for the Dashboard widgets and the duplicate-photo detector on the item form.' %}"></i></h6>
@@ -672,6 +734,9 @@
               </div>
             </div>
 
+            </div><!-- /tab-analytics -->
+            </div><!-- /settingsTabContent -->
+
             <div class="mt-4 text-muted small" id="autosave-status">
               <i class="bi bi-cloud-check me-1"></i>{% trans "Changes save automatically." %}
             </div>
@@ -685,6 +750,25 @@
 
 <script nonce="{{ request.csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function () {
+  // ── Deep-link routing ─────────────────────────────────────────────────
+  // Settings used to be one long scroll, so links like
+  // {% url 'site_settings' %}#gift-card-health (see developer_hub.html)
+  // just relied on the browser's normal anchor-jump. Now that section
+  // lives inside a Bootstrap tab pane that's hidden unless active - jumping
+  // straight to the hash would land on an invisible element. Activate the
+  // owning tab first, then let the browser complete the anchor scroll.
+  if (window.location.hash) {
+    var target = document.querySelector(window.location.hash);
+    var pane = target ? target.closest('.tab-pane') : null;
+    if (pane) {
+      var tabBtn = document.getElementById(pane.id + '-btn');
+      if (tabBtn && window.bootstrap && window.bootstrap.Tab) {
+        window.bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+      }
+      setTimeout(function () { target.scrollIntoView({ block: 'start' }); }, 50);
+    }
+  }
+
   // ── Conditional sub-field visibility ─────────────────────────────────
   // nearby_places_enabled → overpass_api_url row
   var nearbyToggle = document.getElementById('{{ form.nearby_places_enabled.id_for_label }}');

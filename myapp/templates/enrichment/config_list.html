@@ -3,6 +3,13 @@
 {% load extras %}
 
 {% block content %}
+<style>
+  .enrich-cfg-card { border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); border: none; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+  .enrich-cfg-card:hover { transform: translateY(-3px); box-shadow: 0 8px 22px rgba(0,0,0,0.1); }
+  .enrich-cfg-progress { height: 6px; border-radius: 999px; background: rgba(128,128,128,0.15); overflow: hidden; margin: 0.5rem 0 0.75rem; }
+  .enrich-cfg-progress-bar { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #22c55e, #16a34a); }
+</style>
+
 <div class="pagetitle">
   <h1>{% trans "Enrichment Configuration" %}</h1>
   <nav>
@@ -18,7 +25,7 @@
   <div class="row g-3">
     {% for config in configs %}
     <div class="col-md-4">
-      <div class="card h-100">
+      <div class="card enrich-cfg-card h-100">
         <div class="card-body d-flex flex-column">
           <div class="d-flex align-items-start justify-content-between mb-1">
             <h5 class="card-title mb-0">{{ config.get_method_display }}</h5>
@@ -28,19 +35,27 @@
             <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{% trans "Disabled" %}</span>
             {% endif %}
           </div>
-          <ul class="list-unstyled small text-muted mb-3">
+          <ul class="list-unstyled small text-muted mb-2">
             <li>{% trans "Schedule:" %} {{ config.get_schedule_display }}</li>
             <li>{% trans "Confidence threshold:" %} {{ config.confidence_threshold }}</li>
             <li>{% trans "Auto-apply:" %} {% if config.auto_apply %}{% trans "Yes" %}{% else %}{% trans "No (requires approval)" %}{% endif %}</li>
           </ul>
           {% with cs=stats|get_item:config.method %}
+          {% if cs.total_runs %}
+          <div class="d-flex justify-content-between align-items-baseline small">
+            <span class="text-muted">{% blocktrans with n=cs.total_runs %}{{ n }} runs{% endblocktrans %}</span>
+            <span class="fw-semibold">{{ cs.success_rate }}% {% trans "success" %}</span>
+          </div>
+          <div class="enrich-cfg-progress"><div class="enrich-cfg-progress-bar" style="width: {{ cs.success_rate }}%;"></div></div>
           <div class="small text-muted mb-3">
-            {% trans "Total runs:" %} {{ cs.total_runs }}
-            &middot; {% trans "Pending:" %} {{ cs.pending_runs }}
+            {% trans "Pending:" %} {{ cs.pending_runs }}
             {% if cs.last_run %}
-            <br>{% trans "Last run:" %} {{ cs.last_run.started_at|date:"d M Y" }}
+            &middot; {% trans "Last run:" %} {{ cs.last_run.started_at|date:"d M Y" }}
             {% endif %}
           </div>
+          {% else %}
+          <p class="small text-muted mb-3">{% trans "No runs yet" %}</p>
+          {% endif %}
           {% endwith %}
           <a href="{% url 'enrichment_config_detail' config.method %}" class="btn btn-sm btn-outline-primary mt-auto">
             <i class="bi bi-gear me-1"></i>{% trans "Configure" %}

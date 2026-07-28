@@ -6889,3 +6889,65 @@ class EnrichmentWebUITests(TestCase):
         self.client.login(username='other', password='pw12345!')
         resp = self.client.get(reverse('item_enrichment_history', args=[self.item.id]))
         self.assertEqual(resp.status_code, 404)
+
+
+class ItemEnrichNowViewTests(TestCase):
+    """
+    The on-demand "Re-scan documents" button on the item detail page - a
+    per-user complement to the app-wide admin/scheduled enrichment. Scoped
+    to whoever can edit the item (owner or shared-wallet editor), not
+    superuser-only, since it only ever touches the one item the button
+    lives on.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner', password='pw12345!')
+        self.other = User.objects.create_user(username='other', password='pw12345!')
+        self.item = make_item(self.owner, issuer='')
+        Document.objects.create(item=self.item, file=SimpleUploadedFile('receipt.png', b'fake-bytes', content_type='image/png'))
+
+    def test_denied_for_non_owner(self):
+        self.client.login(username='other', password='pw12345!')
+        resp = self.client.post(reverse('item_enrich_now', args=[self.item.id]))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_get_not_allowed(self):
+        self.client.login(username='owner', password='pw12345!')
+        resp = self.client.get(reverse('item_enrich_now', args=[self.item.id]))
+        self.assertEqual(resp.status_code, 405)
+
+    @patch('ocr.backends.get_backend')
+    @patch('ocr.backends.ocr_enabled', return_value=True)
+    def test_preview_does_not_modify_item(self, mock_enabled, mock_get_backend):
+        mock_backend = MagicMock()
+        mock_backend.extract.return_value = {'issuer': 'Costa Coffee', 'confidence': 0.9}
+        mock_get_backend.return_value = mock_backend
+
+        self.client.login(username='owner', password='pw12345!')
+        resp = self.client.post(reverse('item_enrich_now', args=[self.item.id]))
+
+        data = resp.json()
+        self.assertTrue(data['ok'])
+        self.assertFalse(data['applied'])
+        self.assertEqual(data['changes'][0]['field'], 'issuer')
+        self.assertEqual(data['changes'][0]['new_value'], 'Costa Coffee')
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.issuer, '')
+
+    @patch('ocr.backends.get_backend')
+    @patch('ocr.backends.ocr_enabled', return_value=True)
+    def test_apply_writes_the_change(self, mock_enabled, mock_get_backend):
+        mock_backend = MagicMock()
+        mock_backend.extract.return_value = {'issuer': 'Costa Coffee', 'confidence': 0.9}
+        mock_get_backend.return_value = mock_backend
+
+        self.client.login(username='owner', password='pw12345!')
+        resp = self.client.post(reverse('item_enrich_now', args=[self.item.id]), {'apply': '1'})
+
+        data = resp.json()
+        self.assertTrue(data['ok'])
+        self.assertTrue(data['applied'])
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.issuer, 'Costa Coffee')

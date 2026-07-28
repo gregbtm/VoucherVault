@@ -94,6 +94,33 @@
   }
 }
 
+/* ---- Belt-and-braces contrast for outline buttons ----
+   The color-scheme fix in dark-mode.css addresses the root cause of
+   buttons going white/invisible until touched (browsers' own forced-dark
+   heuristics repainting elements they judge low-contrast). This is the
+   second line of defense: Bootstrap's outline buttons are fully
+   transparent by default - just a border and text floating on the card
+   background - which is precisely the shape those heuristics target.
+   Giving every outline variant a faint, permanent tint of its own color
+   means there's always a real, painted background behind the text, not
+   just "whatever the browser decides a transparent area should look
+   like." Colors/borders/hover states are otherwise untouched - this only
+   fills in --bs-btn-bg, which Bootstrap already defines as `transparent`
+   and every outline button already consumes. */
+.btn-outline-primary { --bs-btn-bg: rgba(65, 84, 241, 0.06); }
+.btn-outline-secondary { --bs-btn-bg: rgba(108, 117, 125, 0.06); }
+.btn-outline-success { --bs-btn-bg: rgba(25, 135, 84, 0.06); }
+.btn-outline-danger { --bs-btn-bg: rgba(220, 53, 69, 0.06); }
+.btn-outline-warning { --bs-btn-bg: rgba(255, 193, 7, 0.08); }
+.btn-outline-info { --bs-btn-bg: rgba(13, 202, 240, 0.08); }
+
+body.dark-mode .btn-outline-primary { --bs-btn-bg: rgba(90, 108, 241, 0.12); }
+body.dark-mode .btn-outline-secondary { --bs-btn-bg: rgba(173, 181, 189, 0.1); }
+body.dark-mode .btn-outline-success { --bs-btn-bg: rgba(47, 158, 92, 0.12); }
+body.dark-mode .btn-outline-danger { --bs-btn-bg: rgba(230, 90, 105, 0.12); }
+body.dark-mode .btn-outline-warning { --bs-btn-bg: rgba(255, 202, 44, 0.12); }
+body.dark-mode .btn-outline-info { --bs-btn-bg: rgba(60, 213, 245, 0.12); }
+
 /* ---- Disabled state ----
    Bootstrap already dims disabled buttons via --bs-btn-disabled-opacity,
    but on touch devices a dimmed-but-still-full-color button can still read
