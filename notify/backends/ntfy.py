@@ -59,7 +59,7 @@ class NtfyBackend(NotificationBackend):
         if not base_url:
             return
 
-        item_url = f'{base_url}/en/items/view/{item.id}/'
+        item_url = f'{base_url}/en/items/view/{item.id}'
         # Tap anywhere on the notification to open the item
         headers['Click'] = item_url
         # Explicit action button visible in the ntfy app's expanded view

@@ -156,15 +156,16 @@
   color: #842029;
 }
 
-/* Journey Navigator */
+/* Journey Navigator - label sits above the pills (its own row) rather
+   than beside them, so the pills get the full card width to work with
+   instead of squeezing into whatever's left of a fixed-width label column. */
 .journey-nav-strip {
   display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
+  flex-direction: column;
+  gap: 0.5rem;
   padding: 0.75rem 0;
   margin-bottom: 1.25rem;
   border-bottom: 1px solid var(--border-color, #eee);
-  flex-wrap: wrap;
 }
 .journey-nav-label {
   font-size: 0.7rem;
@@ -172,25 +173,43 @@
   letter-spacing: 0.5px;
   color: #6c757d;
   white-space: nowrap;
-  padding-top: 0.35rem;
 }
 .journey-nav-legs {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.5rem;
   flex: 1;
 }
 .journey-leg {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.35rem 0.75rem;
+  gap: 0.5rem;
+  padding: 0.5rem 0.9rem;
   border-radius: 999px;
   font-size: 0.8rem;
   font-weight: 600;
   text-decoration: none;
   transition: background 0.15s, color 0.15s;
   white-space: nowrap;
+}
+/* A full route name ("Hatfield Peverel -> London Terminals") plus the seq
+   badge and time barely fit a pill on a phone-width screen - everything
+   read as squashed together edge-to-edge. Below 480px, drop the pill
+   shape for a full-width row per leg instead of forcing it all into one
+   cramped nowrap line. */
+@media (max-width: 480px) {
+  .journey-nav-legs {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .journey-leg {
+    border-radius: 0.6rem;
+    white-space: normal;
+    justify-content: flex-start;
+  }
+  .journey-leg-route {
+    flex: 1;
+  }
 }
 .journey-leg-current {
   background: #4154f1;
@@ -1047,25 +1066,28 @@ body.dark-mode a.more-action-row-danger:hover {
   flex: 1 1 0;
 }
 
-.shared-user-info .doc-filename {
-  word-break: break-all;
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
-
-/* Shared With rows specifically stack the Unshare button beneath the
-   shared person's name/email rather than beside it - a long username +
-   email left little room for the button on the same line, especially on
-   narrow screens. Scoped to .shared-users-card only so the visually
-   identical Documents list (which reuses .shared-user-item/.unshare-btn)
-   keeps its existing inline layout. */
-.shared-users-card .shared-user-item {
+/* Both Shared With rows (long username + email) and Documents rows
+   (long system-generated filenames) stack their label above the action
+   button(s) rather than beside them - inline left too little room for
+   both on narrow screens, and letting the filename wrap word-by-word
+   (its previous behavior) shattered UUID-style filenames into an ugly
+   multi-line tower with the buttons stranded mid-way down it. */
+.shared-users-card .shared-user-item,
+.documents-card .shared-user-item {
   flex-direction: column;
   align-items: flex-start;
   gap: 0.5rem;
 }
 
 .shared-users-card .shared-user-item form {
+  align-self: flex-end;
+}
+
+.documents-card .shared-user-item .shared-user-info {
+  width: 100%;
+}
+
+.documents-card .shared-user-item .doc-actions {
   align-self: flex-end;
 }
 
@@ -2225,7 +2247,7 @@ body.dark-mode .tilt-scan-enable-btn {
                 <span class="doc-filename ms-1">{{ document.file.name|basename }}</span>
                 <small class="text-muted text-nowrap ms-1">({{ document.uploaded_at|date:"Y-m-d H:i" }})</small>
               </a>
-              <div class="d-flex gap-2 align-items-center flex-wrap">
+              <div class="d-flex gap-2 align-items-center flex-wrap doc-actions">
                 {% if document.file.name|is_image_file %}
                 <button type="button" class="btn btn-outline-secondary unshare-btn" data-preview-url="{% url 'view_document_file' document.id %}" data-preview-kind="image">
                   <i class="bi bi-eye"></i> {% trans "View" %}

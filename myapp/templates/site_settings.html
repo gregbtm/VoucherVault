@@ -769,6 +769,20 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
+  // ── Keep the active tab centered in the horizontally-scrolling strip ──
+  // Bootstrap only shows/hides tab panes; it never scrolls the tab bar
+  // itself. On mobile, tapping a tab near either edge leaves it half-cut
+  // off (the browser's default focus-scroll only nudges it "into view",
+  // not centered), so the active tab's label reads as truncated.
+  var settingsTabs = document.getElementById('settingsTabs');
+  if (settingsTabs) {
+    settingsTabs.addEventListener('shown.bs.tab', function (e) {
+      var btn = e.target;
+      var targetScroll = btn.offsetLeft - (settingsTabs.clientWidth - btn.offsetWidth) / 2;
+      settingsTabs.scrollTo({ left: Math.max(0, targetScroll), behavior: 'smooth' });
+    });
+  }
+
   // ── Conditional sub-field visibility ─────────────────────────────────
   // nearby_places_enabled → overpass_api_url row
   var nearbyToggle = document.getElementById('{{ form.nearby_places_enabled.id_for_label }}');
