@@ -43,13 +43,32 @@
 .scan-chip:nth-child(3) { animation-delay: 0.16s; }
 
 /* Tactile press feedback on the app's tap targets - a barely-there
-   scale-down that makes taps feel acknowledged on mobile. */
+   scale-down that makes taps feel acknowledged on mobile.
+
+   This list started as just `.btn` plus a handful of one-off classes: the
+   app has ~10 independent hand-rolled button systems living in per-template
+   inline <style> blocks (.action-btn on view-item.html, .toolbar-btn on the
+   same page's Edit/Duplicate/Share bar, .crop-btn on the scan-crop dialog,
+   .view-toggle-btn/.pin-btn/.share-btn/.qr-zoom-mark-used-btn on inventory,
+   .page-btn on the field map) that predate buttons.css and were never
+   migrated onto plain `.btn` - so they got none of this feedback even
+   though every one of them is a real tap target. Centralizing the list
+   here (rather than re-declaring the same three lines in each template)
+   means a newly discovered gap is a one-line fix, not a per-page hunt. */
 .btn,
 .filter-chip,
 .more-action-row,
 .swap-fields-btn,
 .input-addon-btn,
-.next-up-mark-used-btn {
+.next-up-mark-used-btn,
+.action-btn,
+.toolbar-btn,
+.crop-btn,
+.view-toggle-btn,
+.pin-btn,
+.share-btn,
+.qr-zoom-mark-used-btn,
+.page-btn {
   transition: transform 0.12s ease;
 }
 .btn:active,
@@ -57,7 +76,15 @@
 .more-action-row:active,
 .swap-fields-btn:active,
 .input-addon-btn:active,
-.next-up-mark-used-btn:active {
+.next-up-mark-used-btn:active,
+.action-btn:active,
+.toolbar-btn:active,
+.crop-btn:active,
+.view-toggle-btn:active,
+.pin-btn:active,
+.share-btn:active,
+.qr-zoom-mark-used-btn:active,
+.page-btn:active {
   transform: scale(0.97);
 }
 

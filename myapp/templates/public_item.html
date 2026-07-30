@@ -27,6 +27,13 @@
     <meta name="twitter:card" content="summary">
 
     <style>
+        /* This is a standalone public share page (no login, no app chrome) -
+           it never extends base.html and never loads mobile.css, so it
+           needs its own copy of the tap-highlight-color fix rather than
+           inheriting the site-wide one. */
+        @media (hover: none) {
+            * { -webkit-tap-highlight-color: transparent; }
+        }
         :root {
             color-scheme: light dark;
             --bg: #f2f4f7;
