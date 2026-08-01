@@ -7008,6 +7008,23 @@ Net effect: checkboxes stay at Bootstrap's normal ~16-20px on desktop (mouse/tra
 
 ---
 
+## Cleanup: removed a dead help subsystem and 8 unwired JS files
+
+**Removes:** the `help` Django app (models, API views, admin, serializers, migrations, `seed_help_topics` management command, and 4 leftover `.md` content files) and 8 JS files in `myapp/static/assets/js/` that no template, script, or the service worker's precache list ever loaded.
+
+**Why:** an audit for outstanding overhaul candidates found that `help/`'s `HelpTopic`/`HelpAccessLog` models + `/api/v1/help/topics/` API were fully built (registered in `api/urls.py`, wired into `INSTALLED_APPS`) but the seed command that would populate `HelpTopic` was never called from anywhere - not `docker/entrypoint.sh`, not a data migration, not CI - so the table was empty in any real deployment. Its only consumer, `myapp/static/assets/js/help-system.js`, was itself never referenced by any template. The app was superseded early on by the simpler `myapp/help_docs.py` (`DOCS` dict → `docs/*.md` files) + `help_center.html`/`doc_viewer.html` modal system that's actually live today, without the old code ever being deleted.
+
+Same investigation turned up 7 more orphaned JS files, none loaded by any template, imported by another script, or listed in `myapp/serviceworker.js`'s precache array or `package.json`'s esbuild build list: `accessibility.js` (its sibling `accessibility.css` is very much still in use - only the JS half was dead), `app-shell.js`, `gesture-controller.js`, `offline-sync-manager.js` (a superseded duplicate of the JS file that's actually wired in, `offline-sync.js`), `pwa-badge.js`, `pwa-orientation.js`, `pwa-periodic-sync.js`.
+
+**Scope note:** existing deployments that already ran `help`'s migration will keep two small, empty, now-orphaned tables (`help_helptopic`, `help_helpaccesslog`) after this deploys - Django no longer knows the app exists once it's out of `INSTALLED_APPS`, so nothing drops them automatically. Harmless (empty tables, no FK from any other app), but flagging rather than silently leaving it unsaid; a follow-up raw-SQL cleanup migration could drop them if that residue is ever worth removing.
+
+**Files changed (deleted):** `help/` (entire app), `myapp/static/assets/js/{accessibility,app-shell,gesture-controller,help-system,offline-sync-manager,pwa-badge,pwa-orientation,pwa-periodic-sync}.js`.
+**Files changed (modified):** `myproject/settings.py` (`INSTALLED_APPS`), `api/urls.py` (removed the `help.views` import and its two router registrations).
+
+**Verification:** `manage.py check` clean, full suite 1406 tests / 0 failures (the `help` app's own `tests.py` was empty boilerplate, so the count is unchanged), `npm test` 53/53. Live-verified with a fresh migrate (no `help` tables created on a clean install) and a running dev server: `/api/v1/help/topics/` now 404s as expected, `/api/v1/docs/` and `/api/v1/schema/` still render correctly (schema no longer mentions the removed routes), and the *live* help center (`/en/help/`, `/en/help/field-map/`) still works unaffected.
+
+---
+
 ## Upgrading an existing deployment
 
 If you're running the upstream Docker image and want to switch to this
