@@ -18,16 +18,10 @@ function loadMain() {
   (0, eval)(source);
 }
 
-function stubMatchMedia(reducedMotion) {
-  window.matchMedia = vi.fn().mockImplementation((query) => ({
-    matches: query === '(prefers-reduced-motion: reduce)' ? reducedMotion : false,
-  }));
-}
-
 beforeEach(() => {
   document.body.innerHTML = '';
   document.body.className = '';
-  stubMatchMedia(false);
+  window.VVPrefersReducedMotion = false;
   vi.useRealTimers();
 });
 
@@ -110,7 +104,7 @@ describe('internal-link page-transition fade', () => {
     // handler) rather than the end-to-end click effect, which would be
     // contaminated by earlier tests' still-attached, non-reduced-motion
     // listeners in this same shared jsdom document.
-    stubMatchMedia(true);
+    window.VVPrefersReducedMotion = true;
     const addEventListenerSpy = vi.spyOn(document, 'addEventListener');
     loadMain();
     // main.js registers exactly one other permanent document 'click'

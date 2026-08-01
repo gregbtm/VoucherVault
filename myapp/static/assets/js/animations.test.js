@@ -27,17 +27,10 @@ function stubMotion({ inViewImmediately = false } = {}) {
   return { animate, inView, stagger, inViewCalls };
 }
 
-function stubMatchMedia(reducedMotion) {
-  window.matchMedia = vi.fn().mockImplementation((query) => ({
-    matches: query === '(prefers-reduced-motion: reduce)' ? reducedMotion : false,
-    media: query,
-  }));
-}
-
 beforeEach(() => {
   document.body.innerHTML = '';
   delete window.Motion;
-  stubMatchMedia(false);
+  window.VVPrefersReducedMotion = false;
   vi.useRealTimers();
 });
 
@@ -47,7 +40,7 @@ afterEach(() => {
 
 describe('defensive guards', () => {
   it('does nothing when the OS asks for reduced motion, even with Motion present', () => {
-    stubMatchMedia(true);
+    window.VVPrefersReducedMotion = true;
     const { animate, inView } = stubMotion();
     document.body.innerHTML = '<div class="items-grid"><div class="item-card"></div></div>';
     expect(() => loadAnimations()).not.toThrow();

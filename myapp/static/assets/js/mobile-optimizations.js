@@ -8,8 +8,8 @@
 (function() {
   'use strict';
 
-  // Detect if user prefers reduced motion
-  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Shared across scripts - see motion-preference.js
+  const prefersReducedMotion = window.VVPrefersReducedMotion;
 
   /**
    * Lazy load images using Intersection Observer

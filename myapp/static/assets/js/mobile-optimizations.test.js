@@ -16,15 +16,9 @@ function loadMobileOptimizations() {
   (0, eval)(source);
 }
 
-function stubMatchMedia(reducedMotion) {
-  window.matchMedia = vi.fn().mockImplementation((query) => ({
-    matches: query === '(prefers-reduced-motion: reduce)' ? reducedMotion : false,
-  }));
-}
-
 beforeEach(() => {
   document.body.innerHTML = '';
-  stubMatchMedia(false);
+  window.VVPrefersReducedMotion = false;
 });
 
 describe('window.MobileOptimizations export', () => {
@@ -37,7 +31,7 @@ describe('window.MobileOptimizations export', () => {
   });
 
   it('captures prefers-reduced-motion at load time', () => {
-    stubMatchMedia(true);
+    window.VVPrefersReducedMotion = true;
     loadMobileOptimizations();
     expect(window.MobileOptimizations.prefersReducedMotion).toBe(true);
   });
