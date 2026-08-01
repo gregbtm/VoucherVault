@@ -1,30 +1,21 @@
-## [1.1.135](https://github.com/gregbtm/VoucherVault/compare/v1.1.134...v1.1.135) (2026-07-27)
-
-
-### Bug Fixes
-
-* Add missing help app to Docker COPY commands ([986d08f](https://github.com/gregbtm/VoucherVault/commit/986d08f52a5d1ba001c2055b694e2bdf0f6eb716))
-
-## [1.1.134](https://github.com/gregbtm/VoucherVault/compare/v1.1.133...v1.1.134) (2026-07-27)
-
-## [1.1.133](https://github.com/gregbtm/VoucherVault/compare/v1.1.132...v1.1.133) (2026-07-27)
-
-## [1.1.132](https://github.com/gregbtm/VoucherVault/compare/v1.1.131...v1.1.132) (2026-07-27)
-
-
-### Bug Fixes
-
-* Normalize currency to uppercase in validation module ([10e1aa2](https://github.com/gregbtm/VoucherVault/commit/10e1aa2bbef0231b9c22f4bd9eeca27738277e39))
-
-## [1.1.131](https://github.com/gregbtm/VoucherVault/compare/v1.1.130...v1.1.131) (2026-07-27)
+## [1.2.0](https://github.com/gregbtm/VoucherVault/compare/v1.1.168...v1.2.0) (2026-08-01)
 
 
 ### Features
 
-* enhance invite provisioning with cleanup, animations, and random avatars ([4125429](https://github.com/gregbtm/VoucherVault/commit/4125429e12a2ec41f9a3f2dcea5812cd15dcd4c7))
+* allow positive values in transaction history ([498321d](https://github.com/gregbtm/VoucherVault/commit/498321dc2356752c94b61de20146aa832418d93d))
 
 
 ### Bug Fixes
 
-* ntfy notification links and shared users display ([43b15da](https://github.com/gregbtm/VoucherVault/commit/43b15da10059e5a3f66ff793b6557eb9be4ba7b4))
+* cloning an item uses the old currency; fixes [#143](https://github.com/gregbtm/VoucherVault/issues/143) ([eabd14d](https://github.com/gregbtm/VoucherVault/commit/eabd14de21c61721eb1800bea03f019fe6dba274))
+* sort transaction history entries ([766614b](https://github.com/gregbtm/VoucherVault/commit/766614b9aa4187d7133db9023775705f003a6efc))
+
+## [1.1.168](https://github.com/gregbtm/VoucherVault/compare/v1.1.167...v1.1.168) (2026-08-01)
+
+## [1.1.167](https://github.com/gregbtm/VoucherVault/compare/v1.1.166...v1.1.167) (2026-08-01)
+
+## [1.1.166](https://github.com/gregbtm/VoucherVault/compare/v1.1.165...v1.1.166) (2026-08-01)
+
+## [1.1.165](https://github.com/gregbtm/VoucherVault/compare/v1.1.164...v1.1.165) (2026-07-28)
 
