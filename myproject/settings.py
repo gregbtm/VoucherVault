@@ -128,7 +128,6 @@ INSTALLED_APPS = [
     'imports',
     'ocr',
     'dms',
-    'help',
     'django_celery_beat',
     'axes',
     'django.contrib.admin',
