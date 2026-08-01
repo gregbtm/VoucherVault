@@ -4883,6 +4883,66 @@ class OfflineCacheTogglePreferenceTests(TestCase):
         self.assertRedirects(response, reverse('show_items') + '?prefs_saved=1')
 
 
+class CustomRecommendationThresholdsPreferenceTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def _minimal_post_data(self, **overrides):
+        data = {
+            'show_expiry_date': 'on', 'show_value': 'on', 'show_description': 'on',
+            'sort_by': 'expiry_date', 'sort_order': 'asc', 'view_mode': 'compact', 'next_up_max_items': '1',
+            'default_currency': 'GBP', 'keep_screen_awake': 'on', 'offline_cache_enabled': 'on',
+        }
+        data.update(overrides)
+        return data
+
+    def test_defaults_to_disabled(self):
+        prefs, _ = UserPreference.objects.get_or_create(user=self.user)
+        self.assertFalse(prefs.custom_recommendation_thresholds_enabled)
+        self.assertEqual(prefs.recommendation_expiry_soon_days, 7)
+        self.assertEqual(prefs.recommendation_expiry_urgent_days, 1)
+        self.assertEqual(prefs.recommendation_low_balance_threshold, Decimal('5.00'))
+        self.assertEqual(prefs.recommendation_unused_months, 6)
+
+    def test_enabling_and_setting_custom_thresholds_via_the_preferences_form(self):
+        response = self.client.post(reverse('update_user_preferences'), data=self._minimal_post_data(
+            custom_recommendation_thresholds_enabled='on',
+            recommendation_expiry_soon_days='14',
+            recommendation_expiry_urgent_days='3',
+            recommendation_low_balance_threshold='10.50',
+            recommendation_unused_months='3',
+        ))
+        self.assertRedirects(response, reverse('show_items') + '?prefs_saved=1')
+        prefs = UserPreference.objects.get(user=self.user)
+        self.assertTrue(prefs.custom_recommendation_thresholds_enabled)
+        self.assertEqual(prefs.recommendation_expiry_soon_days, 14)
+        self.assertEqual(prefs.recommendation_expiry_urgent_days, 3)
+        self.assertEqual(prefs.recommendation_low_balance_threshold, Decimal('10.50'))
+        self.assertEqual(prefs.recommendation_unused_months, 3)
+
+    def test_omitted_threshold_fields_fall_back_to_model_defaults_not_validation_errors(self):
+        response = self.client.post(reverse('update_user_preferences'), data=self._minimal_post_data(
+            custom_recommendation_thresholds_enabled='on',
+            # every recommendation_* field omitted
+        ))
+        self.assertRedirects(response, reverse('show_items') + '?prefs_saved=1')
+        prefs = UserPreference.objects.get(user=self.user)
+        self.assertEqual(prefs.recommendation_expiry_soon_days, 7)
+        self.assertEqual(prefs.recommendation_expiry_urgent_days, 1)
+
+    def test_urgent_days_of_zero_is_not_silently_replaced_by_the_default(self):
+        """0 is a valid, meaningful value (only 'expires today' counts as urgent) -
+        `value or default` would wrongly treat 0 as falsy and replace it with 1."""
+        response = self.client.post(reverse('update_user_preferences'), data=self._minimal_post_data(
+            custom_recommendation_thresholds_enabled='on',
+            recommendation_expiry_urgent_days='0',
+        ))
+        self.assertRedirects(response, reverse('show_items') + '?prefs_saved=1')
+        prefs = UserPreference.objects.get(user=self.user)
+        self.assertEqual(prefs.recommendation_expiry_urgent_days, 0)
+
+
 class BlurCodesTogglePreferenceTests(TestCase):
     """
     The tap-to-reveal blur on barcodes/redeem codes used to be hardcoded

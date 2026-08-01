@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from django.utils import timezone
 
-from myapp.models import Item, ItemRecommendation
+from myapp.models import Item, ItemRecommendation, UserPreference
 from myapp.smart_features import (
     generate_item_recommendations, generate_all_recommendations,
     cleanup_recommendations_for_inactive_items, MANAGED_REASONS,
@@ -198,6 +198,72 @@ class DismissRecommendationViewTestCase(TestCase):
         self.recommendation.save()
         response = self.client.get(reverse('show_items'))
         self.assertNotIn(self.recommendation, response.context['active_recommendations'])
+
+
+class CustomRecommendationThresholdsTestCase(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user('thresholduser', 'threshold@example.com', 'password123')
+
+    def _create_item(self, **kwargs):
+        defaults = {
+            'user': self.user,
+            'name': 'Test Item',
+            'type': 'giftcard',
+            'redeem_code': 'CODE1',
+            'issuer': 'Test Issuer',
+            'expiry_date': timezone.localtime().date() + timedelta(days=30),
+            'value': Decimal('50.00'),
+        }
+        defaults.update(kwargs)
+        return Item.objects.create(**defaults)
+
+    def test_defaults_used_when_no_preference_row_exists_at_all(self):
+        """A brand-new user with no UserPreference row yet shouldn't 500 - falls back to defaults."""
+        item = self._create_item(expiry_date=timezone.localtime().date() + timedelta(days=5))
+        recs = generate_item_recommendations(item)
+        self.assertIn('expires_soon', recs)
+
+    def test_defaults_used_when_custom_thresholds_disabled(self):
+        UserPreference.objects.update_or_create(user=self.user, defaults=dict(custom_recommendation_thresholds_enabled=False,
+                                       recommendation_expiry_soon_days=2))
+        item = self._create_item(expiry_date=timezone.localtime().date() + timedelta(days=5))
+        recs = generate_item_recommendations(item)
+        # Site default (7 days) applies, not the stored-but-unused override (2).
+        self.assertIn('expires_soon', recs)
+
+    def test_custom_expiry_soon_threshold_applied(self):
+        UserPreference.objects.update_or_create(user=self.user, defaults=dict(custom_recommendation_thresholds_enabled=True,
+                                       recommendation_expiry_soon_days=3))
+        item = self._create_item(expiry_date=timezone.localtime().date() + timedelta(days=5))
+        recs = generate_item_recommendations(item)
+        # 5 days > the custom 3-day "soon" window - no recommendation at all.
+        self.assertNotIn('expires_soon', recs)
+        self.assertEqual(recs, [])
+
+    def test_custom_expiry_urgent_threshold_applied(self):
+        UserPreference.objects.update_or_create(user=self.user, defaults=dict(custom_recommendation_thresholds_enabled=True,
+                                       recommendation_expiry_urgent_days=3, recommendation_expiry_soon_days=10))
+        item = self._create_item(expiry_date=timezone.localtime().date() + timedelta(days=2))
+        recs = generate_item_recommendations(item)
+        # 2 days <= the custom 3-day "urgent" window - very_soon, not soon.
+        self.assertIn('expires_very_soon', recs)
+        self.assertNotIn('expires_soon', recs)
+
+    def test_custom_low_balance_threshold_applied(self):
+        UserPreference.objects.update_or_create(user=self.user, defaults=dict(custom_recommendation_thresholds_enabled=True,
+                                       recommendation_low_balance_threshold=Decimal('20.00')))
+        item = self._create_item(value=Decimal('15.00'), value_type='money')
+        recs = generate_item_recommendations(item)
+        # £15 is below the custom £20 threshold, though above the site default of £5.
+        self.assertIn('low_balance', recs)
+
+    def test_custom_unused_months_threshold_applied(self):
+        UserPreference.objects.update_or_create(user=self.user, defaults=dict(custom_recommendation_thresholds_enabled=True,
+                                       recommendation_unused_months=2))
+        item = self._create_item(last_used_at=timezone.now() - timedelta(days=70))  # ~2.3 months
+        recs = generate_item_recommendations(item)
+        # Site default (6 months) would never flag this; the custom 2-month one does.
+        self.assertIn('unused', recs)
 
 
 class GenerateAllRecommendationsTestCase(TestCase):

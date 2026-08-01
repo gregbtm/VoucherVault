@@ -238,6 +238,38 @@
               </div>
             </div>
 
+            <div class="settings-section" id="recommendation-thresholds-section">
+              <h6 class="text-muted mb-3"><i class="bi bi-lightbulb me-2"></i>{% trans "Smart Suggestions Thresholds" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Controls when an item shows up under Smart Suggestions on Inventory - expiring soon, low balance, or unused for a while. Off by default, using the site-wide defaults (7 days, 1 day urgent, £5, 6 months).' %}"></i></h6>
+              <p class="text-muted small">{% trans "Smart Suggestions surface items that are expiring soon, running low on balance, or haven't been used in a while. Turn this on to set your own thresholds instead of the defaults." %}</p>
+              <div class="form-check form-switch mb-3">
+                {{ form.custom_recommendation_thresholds_enabled }}
+                <label class="form-check-label" for="{{ form.custom_recommendation_thresholds_enabled.id_for_label }}">{% trans "Use custom thresholds" %}</label>
+                {% if form.custom_recommendation_thresholds_enabled.errors %}<div class="text-danger small">{{ form.custom_recommendation_thresholds_enabled.errors }}</div>{% endif %}
+              </div>
+              <div class="row" id="recommendation-thresholds-div">
+                <div class="col-md-3 mb-3">
+                  <label for="{{ form.recommendation_expiry_soon_days.id_for_label }}" class="form-label">{% trans "Expiring soon (days)" %}</label>
+                  {{ form.recommendation_expiry_soon_days }}
+                  {% if form.recommendation_expiry_soon_days.errors %}<div class="text-danger small">{{ form.recommendation_expiry_soon_days.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-3 mb-3">
+                  <label for="{{ form.recommendation_expiry_urgent_days.id_for_label }}" class="form-label">{% trans "Urgent (days)" %}</label>
+                  {{ form.recommendation_expiry_urgent_days }}
+                  {% if form.recommendation_expiry_urgent_days.errors %}<div class="text-danger small">{{ form.recommendation_expiry_urgent_days.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-3 mb-3">
+                  <label for="{{ form.recommendation_low_balance_threshold.id_for_label }}" class="form-label">{% trans "Low balance" %}</label>
+                  {{ form.recommendation_low_balance_threshold }}
+                  {% if form.recommendation_low_balance_threshold.errors %}<div class="text-danger small">{{ form.recommendation_low_balance_threshold.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-3 mb-3">
+                  <label for="{{ form.recommendation_unused_months.id_for_label }}" class="form-label">{% trans "Unused (months)" %}</label>
+                  {{ form.recommendation_unused_months }}
+                  {% if form.recommendation_unused_months.errors %}<div class="text-danger small">{{ form.recommendation_unused_months.errors }}</div>{% endif %}
+                </div>
+              </div>
+            </div>
+
             <div class="mt-4 text-muted small" id="autosave-status">
               <i class="bi bi-cloud-check me-1"></i>{% trans "Changes save automatically." %}
             </div>
@@ -376,6 +408,14 @@
     }
     if (nearbyItemsToggle) { nearbyItemsToggle.addEventListener('change', syncNearbyRadius); syncNearbyRadius(); }
   }
+
+  // custom_recommendation_thresholds_enabled → show/hide threshold fields
+  var thresholdsToggle = document.getElementById('{{ form.custom_recommendation_thresholds_enabled.id_for_label }}');
+  var thresholdsDiv = document.getElementById('recommendation-thresholds-div');
+  function syncThresholds() {
+    if (thresholdsDiv) thresholdsDiv.style.display = thresholdsToggle && thresholdsToggle.checked ? '' : 'none';
+  }
+  if (thresholdsToggle) { thresholdsToggle.addEventListener('change', syncThresholds); syncThresholds(); }
 })();
 </script>
 {% endblock content %}

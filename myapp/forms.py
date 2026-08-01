@@ -267,6 +267,9 @@ class UserPreferenceForm(forms.ModelForm):
             'active_today_enabled', 'commute_home_station', 'active_today_cutoff_time',
             'nearby_items_enabled', 'nearby_radius_m',
             'email_digest_enabled', 'email_digest_frequency',
+            'custom_recommendation_thresholds_enabled',
+            'recommendation_expiry_soon_days', 'recommendation_expiry_urgent_days',
+            'recommendation_low_balance_threshold', 'recommendation_unused_months',
         ]
         widgets = {
             'show_issue_date': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
@@ -294,6 +297,11 @@ class UserPreferenceForm(forms.ModelForm):
             'nearby_radius_m': forms.NumberInput(attrs={'class': 'form-control', 'min': 25, 'max': 1000}),
             'email_digest_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'email_digest_frequency': forms.Select(attrs={'class': 'form-select form-select-sm'}),
+            'custom_recommendation_thresholds_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'recommendation_expiry_soon_days': forms.NumberInput(attrs={'class': 'form-control', 'min': 2, 'max': 90}),
+            'recommendation_expiry_urgent_days': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'max': 30}),
+            'recommendation_low_balance_threshold': forms.NumberInput(attrs={'class': 'form-control', 'min': 0.01, 'max': 1000, 'step': '0.01'}),
+            'recommendation_unused_months': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 36}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -309,6 +317,12 @@ class UserPreferenceForm(forms.ModelForm):
         # A select always submits a value in the real form; optional here so
         # tests that don't include it fall back to the model default.
         self.fields['email_digest_frequency'].required = False
+        # Same reasoning as nearby_radius_m above - plain <input type="number">
+        # fields always submit a value from the real form.
+        self.fields['recommendation_expiry_soon_days'].required = False
+        self.fields['recommendation_expiry_urgent_days'].required = False
+        self.fields['recommendation_low_balance_threshold'].required = False
+        self.fields['recommendation_unused_months'].required = False
         # Scoped to wallets the user can actually see (own or shared with
         # them) - the instance always has a user by the time this form is
         # built (update_user_preferences creates the UserPreference first).
@@ -328,6 +342,19 @@ class UserPreferenceForm(forms.ModelForm):
 
     def clean_email_digest_frequency(self):
         return self.cleaned_data.get('email_digest_frequency') or UserPreference._meta.get_field('email_digest_frequency').default
+
+    def clean_recommendation_expiry_soon_days(self):
+        return self.cleaned_data.get('recommendation_expiry_soon_days') or UserPreference._meta.get_field('recommendation_expiry_soon_days').default
+
+    def clean_recommendation_expiry_urgent_days(self):
+        value = self.cleaned_data.get('recommendation_expiry_urgent_days')
+        return value if value is not None else UserPreference._meta.get_field('recommendation_expiry_urgent_days').default
+
+    def clean_recommendation_low_balance_threshold(self):
+        return self.cleaned_data.get('recommendation_low_balance_threshold') or UserPreference._meta.get_field('recommendation_low_balance_threshold').default
+
+    def clean_recommendation_unused_months(self):
+        return self.cleaned_data.get('recommendation_unused_months') or UserPreference._meta.get_field('recommendation_unused_months').default
 
 class DocumentForm(forms.ModelForm):
     class Meta:

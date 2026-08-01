@@ -2,7 +2,7 @@
 from decimal import Decimal
 from django.utils import timezone
 from django.db.models import Q
-from .models import Item, ItemCategory, ItemRecommendation
+from .models import Item, ItemCategory, ItemRecommendation, UserPreference
 
 # Category patterns: (regex_patterns, category, confidence)
 CATEGORY_PATTERNS = [
@@ -56,6 +56,11 @@ def generate_item_recommendations(item):
     cheap enough to call on every save (see myapp/signals.py) as well as
     from the daily sweep (myapp/tasks.py) that catches time-only changes
     no save would ever trigger.
+
+    Thresholds (expiry-soon/urgent days, low-balance amount, unused months)
+    come from the item's owner's UserPreference when they've opted into
+    custom_recommendation_thresholds_enabled; otherwise the site-wide
+    defaults below apply, unchanged from before per-user overrides existed.
     """
     if item.is_used or item.is_archived:
         ItemRecommendation.objects.filter(item=item, reason__in=MANAGED_REASONS).delete()
@@ -63,6 +68,26 @@ def generate_item_recommendations(item):
 
     today = timezone.localtime().date()
     applicable = set()
+
+    expiry_soon_days = 7
+    expiry_urgent_days = 1
+    low_balance_threshold = Decimal('5.00')
+    unused_months_threshold = 6
+    # A direct query rather than item.user.userpreference: Django caches a
+    # OneToOneField's reverse accessor on the User instance the moment it's
+    # first read OR the related row is created via
+    # UserPreference.objects.create(user=...) (see the post_save signal that
+    # creates one for every new user) - a later change via .save()/
+    # .update_or_create() elsewhere never invalidates that cached Python
+    # object, so item.user.userpreference can silently serve stale field
+    # values whenever `item.user` is a long-lived object reused across saves
+    # (exactly what happens call-to-call in this module and in tests).
+    prefs = UserPreference.objects.filter(user_id=item.user_id).first()
+    if prefs and prefs.custom_recommendation_thresholds_enabled:
+        expiry_soon_days = prefs.recommendation_expiry_soon_days
+        expiry_urgent_days = prefs.recommendation_expiry_urgent_days
+        low_balance_threshold = prefs.recommendation_low_balance_threshold
+        unused_months_threshold = prefs.recommendation_unused_months
 
     # Cross-pollinated from the enrichment pipeline: a field the
     # validation pass considered too risky to auto-correct (an ambiguous
@@ -87,7 +112,7 @@ def generate_item_recommendations(item):
     # Expiry-based recommendations
     if item.expiry_date:
         days_left = (item.expiry_date - today).days
-        if 0 <= days_left <= 1:
+        if 0 <= days_left <= expiry_urgent_days:
             ItemRecommendation.objects.update_or_create(
                 item=item,
                 reason='expires_very_soon',
@@ -97,7 +122,7 @@ def generate_item_recommendations(item):
                 }
             )
             applicable.add('expires_very_soon')
-        elif 2 <= days_left <= 7:
+        elif expiry_urgent_days < days_left <= expiry_soon_days:
             ItemRecommendation.objects.update_or_create(
                 item=item,
                 reason='expires_soon',
@@ -112,7 +137,7 @@ def generate_item_recommendations(item):
     # negative) balance, which isn't "low", it's just spent.
     if item.value_type == 'money' and item.value:
         current_balance = item.get_current_balance()
-        if current_balance and 0 < current_balance < Decimal('5.00'):
+        if current_balance and 0 < current_balance < low_balance_threshold:
             ItemRecommendation.objects.update_or_create(
                 item=item,
                 reason='low_balance',
@@ -126,7 +151,7 @@ def generate_item_recommendations(item):
     # Unused items
     if item.last_used_at:
         months_unused = (today - item.last_used_at.date()).days // 30
-        if months_unused >= 6:
+        if months_unused >= unused_months_threshold:
             ItemRecommendation.objects.update_or_create(
                 item=item,
                 reason='unused',
