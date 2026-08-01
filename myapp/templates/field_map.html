@@ -50,6 +50,12 @@
   --muted: #7e85a8;
   --hover: #252942;
 }
+/* Standalone internal dev-reference page (fully self-contained, no
+   static-file links at all) - needs its own copy of the site-wide
+   tap-highlight suppression rather than inheriting it from mobile.css. */
+@media (hover: none) {
+  * { -webkit-tap-highlight-color: transparent; }
+}
 *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; font-size: 13px; }
 a { color: var(--accent); text-decoration: none; }
@@ -93,6 +99,7 @@ a { color: var(--accent); text-decoration: none; }
   border-left: 2px solid transparent; transition: all 0.1s; width: 100%; background: none; border-right: none;
   border-top: none; border-bottom: none; text-align: left; }
 .page-btn:hover { background: var(--hover); }
+.page-btn:active { transform: scale(0.98); }
 .page-btn.active { border-left-color: var(--accent); background: var(--hover); }
 .page-btn .icon { font-size: 14px; width: 18px; text-align: center; flex-shrink: 0; }
 .page-btn .label { font-size: 12px; font-weight: 500; color: var(--text); flex: 1; }

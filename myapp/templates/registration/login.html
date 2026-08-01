@@ -17,6 +17,21 @@
     <link href="{% static 'assets/vendor/bootstrap/css/bootstrap.min.css' %}" rel="stylesheet">
     <link href="{% static 'assets/vendor/bootstrap-icons/bootstrap-icons.css' %}" rel="stylesheet">
     <style>
+        /* The login page can't extend base.html (there's no session yet),
+           so it never loads mobile.css/animations.css - meaning the
+           highest-traffic page in the app was getting neither the site-wide
+           tap-highlight suppression nor :active press feedback on its own
+           .btn/.btn-social buttons. Own copy of both, same pattern as
+           public_item.html/offline.html. */
+        @media (hover: none) {
+            * { -webkit-tap-highlight-color: transparent; }
+        }
+        .btn, .toggle-sidebar-btn {
+            transition: transform 0.12s ease;
+        }
+        .btn:active, .toggle-sidebar-btn:active {
+            transform: scale(0.97);
+        }
         body {
             display: flex;
             justify-content: center;

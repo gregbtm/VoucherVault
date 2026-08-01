@@ -16,6 +16,18 @@
     <link href="{% static 'assets/vendor/bootstrap/css/bootstrap.min.css' %}" rel="stylesheet">
     <link href="{% static 'assets/vendor/bootstrap-icons/bootstrap-icons.css' %}" rel="stylesheet">
     <style>
+        /* Post-logout page can't extend base.html (session is already gone),
+           so it never loads mobile.css/animations.css. Same tap-highlight +
+           press-feedback gap as login.html - own copy of both. */
+        @media (hover: none) {
+            * { -webkit-tap-highlight-color: transparent; }
+        }
+        .btn, .toggle-sidebar-btn {
+            transition: transform 0.12s ease;
+        }
+        .btn:active, .toggle-sidebar-btn:active {
+            transform: scale(0.97);
+        }
         body {
             display: flex;
             justify-content: center;

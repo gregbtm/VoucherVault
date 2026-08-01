@@ -13,6 +13,16 @@
     <link href="{% static 'assets/vendor/bootstrap/css/bootstrap.min.css' %}" rel="stylesheet">
     <link href="{% static 'assets/vendor/bootstrap-icons/bootstrap-icons.css' %}" rel="stylesheet">
     <style>
+        /* Standalone 2FA page (no full session yet, so it can't extend
+           base.html) - never loads mobile.css/animations.css, so its
+           .btn-primary gets neither the site-wide tap-highlight suppression
+           nor the :active press feedback every other .btn gets. Own copy of
+           both, same pattern as public_item.html/offline.html. */
+        @media (hover: none) {
+            * { -webkit-tap-highlight-color: transparent; }
+        }
+        .btn { transition: transform 0.12s ease; }
+        .btn:active { transform: scale(0.97); }
         body { display:flex; justify-content:center; align-items:flex-start; height:100vh; margin:0; background-color:#0f0f0f; }
         .container { margin-top:10vh; width:340px; padding:28px; background:linear-gradient(145deg,#1b1b1b,#1f1f1f); border-radius:12px; position:relative; }
         .container::before { content:''; position:absolute; top:-2px; left:-2px; right:-2px; bottom:-2px; border-radius:12px; background:linear-gradient(45deg,#ff0057,#0099ff,#00ff99,#ffcc00); background-size:400% 400%; animation:neon-border 8s infinite; z-index:-1; }
