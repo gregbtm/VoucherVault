@@ -677,6 +677,41 @@ def send_email_digests():
     logger.info('send_email_digests: done. %d digest(s) sent.', sent)
 
 
+def attempt_webhook_retry(retry):
+    """
+    Attempt delivery for a single WebhookRetry. On success the row is
+    deleted and 'success' is returned. On failure, the attempt count is
+    incremented and the row is either rescheduled per RETRY_BACKOFF
+    ('rescheduled') or, once exhausted, deleted ('exhausted').
+
+    Shared between the periodic sweep below (process_webhook_retries) and
+    the manual "Retry Now" action a user can trigger from the webhook retry
+    queue page (notify/views.py::retry_webhook_now) - both need the exact
+    same attempt/backoff/exhaustion behavior, just on a different trigger.
+    """
+    import requests
+
+    url = retry.rule.config.get('url')
+    headers = retry.rule.config.get('headers') or {}
+
+    try:
+        response = requests.post(url, json=retry.payload, headers=headers, timeout=10)
+        response.raise_for_status()
+        retry.delete()
+        return 'success'
+    except requests.RequestException as exc:
+        retry.last_error = str(exc)
+        retry.attempt += 1
+        if retry.attempt < len(retry.RETRY_BACKOFF):
+            delay = retry.RETRY_BACKOFF[retry.attempt]
+            retry.next_retry_at = timezone.now() + timedelta(seconds=delay)
+            retry.save()
+            return 'rescheduled'
+        else:
+            retry.delete()
+            return 'exhausted'
+
+
 @shared_task
 def process_webhook_retries():
     """
@@ -685,7 +720,6 @@ def process_webhook_retries():
     is attempted; on failure, increments attempt and reschedules.
     """
     from .models import WebhookRetry
-    import requests
 
     now = timezone.now()
     pending = WebhookRetry.objects.filter(
@@ -698,25 +732,15 @@ def process_webhook_retries():
 
     for retry in pending:
         attempted += 1
-        url = retry.rule.config.get('url')
-        headers = retry.rule.config.get('headers') or {}
-
-        try:
-            response = requests.post(url, json=retry.payload, headers=headers, timeout=10)
-            response.raise_for_status()
-            retry.delete()
+        attempt_before = retry.attempt
+        rule = retry.rule
+        result = attempt_webhook_retry(retry)
+        if result == 'success':
             succeeded += 1
-            logger.info('webhook retry #%d succeeded for rule %s', retry.attempt + 1, retry.rule)
-        except requests.RequestException as exc:
-            retry.last_error = str(exc)
-            retry.attempt += 1
-            if retry.attempt < len(WebhookRetry.RETRY_BACKOFF):
-                delay = WebhookRetry.RETRY_BACKOFF[retry.attempt]
-                retry.next_retry_at = now + timedelta(seconds=delay)
-                retry.save()
-                logger.warning('webhook retry #%d failed, scheduled retry #%d', retry.attempt, retry.attempt + 1)
-            else:
-                retry.delete()
-                logger.error('webhook retry exhausted after 5 attempts for rule %s', retry.rule)
+            logger.info('webhook retry #%d succeeded for rule %s', attempt_before + 1, rule)
+        elif result == 'rescheduled':
+            logger.warning('webhook retry #%d failed, scheduled retry #%d', attempt_before, attempt_before + 1)
+        else:
+            logger.error('webhook retry exhausted after 5 attempts for rule %s', rule)
 
     logger.info('process_webhook_retries: %d attempted, %d succeeded', attempted, succeeded)
