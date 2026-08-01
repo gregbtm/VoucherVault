@@ -10,8 +10,8 @@ from django.views.decorators.http import require_POST
 
 from .backends.webpush import get_vapid_public_key, webpush_enabled
 from .forms import NotificationRuleForm
-from .models import NotificationLog, NotificationRule, WebPushSubscription
-from .tasks import send_test_notification
+from .models import NotificationLog, NotificationRule, WebhookRetry, WebPushSubscription
+from .tasks import attempt_webhook_retry, send_test_notification
 
 
 @login_required
@@ -105,7 +105,30 @@ def firefly_test_connection(request):
 @login_required
 def notification_log(request):
     logs = NotificationLog.objects.filter(user=request.user).select_related('rule', 'item')[:200]
-    return render(request, 'notify/log.html', {'logs': logs})
+    webhook_retries = WebhookRetry.objects.filter(
+        rule__user=request.user,
+    ).select_related('rule', 'item')[:200]
+    return render(request, 'notify/log.html', {'logs': logs, 'webhook_retries': webhook_retries})
+
+
+@require_POST
+@login_required
+def retry_webhook_now(request, retry_id):
+    """
+    Manually attempt a queued webhook retry immediately instead of waiting
+    for the next scheduled attempt (see WebhookRetry.next_retry_at /
+    notify/tasks.py::process_webhook_retries). Uses the exact same
+    attempt/backoff/exhaustion logic as the periodic sweep.
+    """
+    retry = get_object_or_404(WebhookRetry, id=retry_id, rule__user=request.user)
+    result = attempt_webhook_retry(retry)
+    if result == 'success':
+        messages.success(request, _('Webhook delivered successfully.'))
+    elif result == 'rescheduled':
+        messages.warning(request, _('Webhook retry failed again; it remains queued for its next scheduled attempt.'))
+    else:
+        messages.error(request, _('Webhook retry failed and has exhausted all attempts; it has been removed from the queue.'))
+    return redirect('notification_log')
 
 
 @require_POST

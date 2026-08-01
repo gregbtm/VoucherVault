@@ -19,6 +19,49 @@
   </nav>
 </div><!-- End Page Title -->
 
+{% if webhook_retries %}
+<section class="section">
+  <div class="card">
+    <div class="card-body">
+      <h5 class="card-title">{% trans "Pending Webhook Retries" %}</h5>
+      <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead>
+          <tr>
+            <th>{% trans "Rule" %}</th>
+            <th>{% trans "Event" %}</th>
+            <th>{% trans "Attempt" %}</th>
+            <th>{% trans "Next Retry" %}</th>
+            <th>{% trans "Last Error" %}</th>
+            <th>{% trans "Action" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for retry in webhook_retries %}
+          <tr>
+            <td>{{ retry.rule.name|default:"—" }}</td>
+            <td>{{ retry.event_type }}</td>
+            <td>{{ retry.attempt }} / {{ retry.RETRY_BACKOFF|length }}</td>
+            <td><small>{{ retry.next_retry_at|date:"Y-m-d H:i" }}</small></td>
+            <td><small class="text-muted">{{ retry.last_error|truncatechars:80 }}</small></td>
+            <td>
+              <form method="post" action="{% url 'retry_webhook_now' retry.id %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-arrow-clockwise"></i> {% trans "Retry Now" %}
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
 <section class="section">
   <div class="card">
     <div class="card-body">
