@@ -173,9 +173,7 @@
    * that made Settings render blank on load (see animations.js). This
    * only ever touches the page that's leaving.
    */
-  const prefersReducedMotion = window.matchMedia
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (!prefersReducedMotion) {
+  if (!window.VVPrefersReducedMotion) {
     document.addEventListener('click', (e) => {
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       const link = e.target.closest('a[href]');

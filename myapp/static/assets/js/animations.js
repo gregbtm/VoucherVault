@@ -21,9 +21,7 @@
 (function () {
     'use strict';
 
-    var prefersReduced = window.matchMedia
-        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (prefersReduced) return;
+    if (window.VVPrefersReducedMotion) return;
     if (!window.Motion || typeof window.Motion.animate !== 'function'
         || typeof window.Motion.inView !== 'function') return;
 
