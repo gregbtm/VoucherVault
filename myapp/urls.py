@@ -109,6 +109,8 @@ urlpatterns = (
     # #5: Bulk export
     path('items/export/csv/', views.export_selected_csv, name='export_selected_csv'),
     path('items/export/json/', views.export_selected_json, name='export_selected_json'),
+    path('items/export/qif/', views.export_selected_qif, name='export_selected_qif'),
+    path('items/export/ofx/', views.export_selected_ofx, name='export_selected_ofx'),
     # #11: Inline balance editing
     path('items/<uuid:item_uuid>/update-balance/', views.update_item_balance, name='update_item_balance'),
     # #16: Regenerate TOTP backup codes
