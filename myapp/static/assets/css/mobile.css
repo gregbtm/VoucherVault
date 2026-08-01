@@ -530,9 +530,19 @@ html {
   text-size-adjust: 100%;
 }
 
-/* iOS: Remove tap highlight */
+/* Remove the browser's native tap-highlight overlay (the translucent
+   grey/white flash Android Chrome/Samsung Internet and iOS Safari paint on
+   top of any tapped/long-pressed element) on touch devices. This was
+   previously written as a bare declaration directly inside @media with no
+   selector - invalid CSS that every browser silently drops - so the flash
+   was never actually suppressed anywhere. .touch-pressed (see
+   mobile-interactions.js / style.css) already provides deliberate tap
+   feedback, so the native overlay on top of that just looked like a
+   rendering glitch. */
 @media (hover: none) {
-  -webkit-tap-highlight-color: transparent;
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
 }
 
 /* Android: Disable long-press context menu on images */

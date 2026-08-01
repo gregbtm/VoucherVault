@@ -194,7 +194,7 @@
             <div class="tab-pane fade" id="tab-integrations" role="tabpanel" aria-labelledby="tab-integrations-btn">
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-image me-2"></i>{% trans "Merchant Logos" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Fetches a brand logo for each item card automatically, based on the issuer name or logo domain.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-image me-2"></i>{% trans "Merchant Logos" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Fetches a brand logo for each item card automatically, based on the issuer name or logo domain.' %}"></i><a href="{% url 'view_doc' 'merchant-logos' %}" data-doc-url="{% url 'view_doc' 'merchant-logos' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a></h6>
               <div class="form-check form-switch mb-3">
                 {{ form.merchant_logos_enabled }}
                 <label class="form-check-label" for="{{ form.merchant_logos_enabled.id_for_label }}">{% trans "Auto-fetch merchant logos on item cards" %}</label>
@@ -213,7 +213,7 @@
             </div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-geo-alt me-2"></i>{% trans "Nearby Items" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Site-wide switch for the opt-in Nearby widget. Users still need to enable it in their own Preferences - this only controls whether the underlying OpenStreetMap lookup is available at all.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-geo-alt me-2"></i>{% trans "Nearby Items" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Site-wide switch for the opt-in Nearby widget. Users still need to enable it in their own Preferences - this only controls whether the underlying OpenStreetMap lookup is available at all.' %}"></i><a href="{% url 'view_doc' 'nearby-items' %}" data-doc-url="{% url 'view_doc' 'nearby-items' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a></h6>
               <div class="form-check form-switch mb-3">
                 {{ form.nearby_places_enabled }}
                 <label class="form-check-label" for="{{ form.nearby_places_enabled.id_for_label }}">{% trans "Allow the Nearby widget to query OpenStreetMap" %}</label>
@@ -231,7 +231,7 @@
             </div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-send me-2"></i>{% trans "Sharing" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Controls what the Share via... button offers and how public share links behave.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-send me-2"></i>{% trans "Sharing" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Controls what the Share via... button offers and how public share links behave.' %}"></i><a href="{% url 'view_doc' 'sharing' %}" data-doc-url="{% url 'view_doc' 'sharing' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a></h6>
               <div class="form-check form-switch">
                 {{ form.share_via_smart_enabled }}
                 <label class="form-check-label" for="{{ form.share_via_smart_enabled.id_for_label }}">{% trans "Offer a choice on \"Share via...\": bare link, or a rich share (merchant, code, PIN, remaining balance) via a public link" %}</label>
@@ -302,7 +302,7 @@
             </div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-envelope me-2"></i>{% trans "Outbound Email (SMTP)" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Configure an SMTP server so VoucherVault can send password-reset emails and PocketID invite emails.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-envelope me-2"></i>{% trans "Outbound Email (SMTP)" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Configure an SMTP server so VoucherVault can send password-reset emails and PocketID invite emails.' %}"></i><a href="{% url 'view_doc' 'smtp-settings' %}" data-doc-url="{% url 'view_doc' 'smtp-settings' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a></h6>
               <p class="text-muted small mb-3">{% trans "Used for password resets and invite emails. Leave the host blank to disable outbound email." %}</p>
               <div class="row">
                 <div class="col-md-8 mb-3">
@@ -441,7 +441,7 @@
             <div class="tab-pane fade" id="tab-access" role="tabpanel" aria-labelledby="tab-access-btn">
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-person-plus me-2"></i>{% trans "User Registration" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Controls whether the registration page accepts new signups. Existing users and SSO/OIDC logins are unaffected.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-person-plus me-2"></i>{% trans "User Registration" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Controls whether the registration page accepts new signups. Existing users and SSO/OIDC logins are unaffected.' %}"></i><a href="{% url 'view_doc' 'user-registration' %}" data-doc-url="{% url 'view_doc' 'user-registration' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a></h6>
               <div class="form-check form-switch mb-2">
                 {{ form.allow_registration }}
                 <label class="form-check-label" for="{{ form.allow_registration.id_for_label }}">{% trans "Allow new user registrations" %}</label>
@@ -506,7 +506,7 @@
             </div>
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-key me-2"></i>{% trans "PocketID Admin API" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Optional: configure the PocketID admin API so you can provision new OIDC users and generate one-click onboarding links directly from the Manage Invites page.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-key me-2"></i>{% trans "PocketID Admin API" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Optional: configure the PocketID admin API so you can provision new OIDC users and generate one-click onboarding links directly from the Manage Invites page.' %}"></i><a href="{% url 'view_doc' 'pocketid-admin-api' %}" data-doc-url="{% url 'view_doc' 'pocketid-admin-api' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a></h6>
               <p class="text-muted small mb-3">{% trans "When configured, the Manage Invites page gains a 'Provision & Invite via PocketID' form. Fill in the partner's details, and VoucherVault creates a PocketID account and generates a single link that sets up their passkey and drops them straight into the invite acceptance flow." %}</p>
               <div class="row">
                 <div class="col-12 mb-3">
@@ -709,7 +709,7 @@
             <div class="tab-pane fade" id="tab-analytics" role="tabpanel" aria-labelledby="tab-analytics-btn">
 
             <div class="settings-section">
-              <h6 class="text-muted mb-3"><i class="bi bi-sliders me-2"></i>{% trans "Analytics & Duplicate Detection" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Tuning knobs for the Dashboard widgets and the duplicate-photo detector on the item form.' %}"></i></h6>
+              <h6 class="text-muted mb-3"><i class="bi bi-sliders me-2"></i>{% trans "Analytics & Duplicate Detection" %}<i class="bi bi-info-circle help-hint" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" title="{% trans 'Tuning knobs for the Dashboard widgets and the duplicate-photo detector on the item form.' %}"></i><a href="{% url 'view_doc' 'analytics-tuning' %}" data-doc-url="{% url 'view_doc' 'analytics-tuning' %}" class="help-link" title="{% trans 'Setup guide' %}"><i class="bi bi-question-circle"></i></a></h6>
               <div class="row">
                 <div class="col-md-3 mb-3">
                   <label for="{{ form.expiring_soon_limit.id_for_label }}" class="form-label">{% trans "Expiring Soon list length" %}</label>
