@@ -61,85 +61,8 @@
   box-shadow: 0 0 0 3px rgba(65, 84, 241, 0.1);
 }
 
-/* Filter Chips */
-.filter-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.filter-chip {
-  padding: 0.4rem 0.85rem;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid var(--border-color, #dee2e6);
-  background: var(--chip-bg, #f8f9fa);
-  color: var(--text-color, #495057);
-  transition: all 0.2s ease;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.filter-chip:hover {
-  background: var(--chip-hover, #e9ecef);
-  transform: translateY(-1px);
-  color: var(--text-color, #495057);
-}
-
-.filter-chip.active {
-  background: var(--primary-color, #4154f1);
-  color: white;
-  border-color: var(--primary-color, #4154f1);
-}
-
-.filter-chip i {
-  font-size: 0.85rem;
-}
-
-.filter-chip .count {
-  background: rgba(0,0,0,0.1);
-  padding: 0.1rem 0.4rem;
-  border-radius: 10px;
-  font-size: 0.7rem;
-  margin-left: 0.25rem;
-}
-
-.filter-chip.active .count {
-  background: rgba(255,255,255,0.2);
-}
-
-/* Mobile Filter Dropdowns */
-.mobile-filters {
-  display: none;
-}
-
-.mobile-filter-row {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.mobile-filter-select {
-  flex: 1;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid var(--border-color, #dee2e6);
-  border-radius: 8px;
-  font-size: 0.85rem;
-  background: var(--input-bg, #fff);
-  color: var(--text-color, #495057);
-}
-
-@media (max-width: 768px) {
-  .filter-chips {
-    display: none;
-  }
-  .mobile-filters {
-    display: block;
-  }
-}
+/* Filter chips + mobile-filter-dropdown component now lives in
+   assets/css/filters.css (shared with inventory.html). */
 
 /* Items Count */
 .items-count {
@@ -479,7 +402,7 @@ body.dark-mode .status-badge.expired {
       <!-- Mobile Filters (Dropdowns) -->
       <div class="mobile-filters">
         <div class="mobile-filter-row">
-          <select class="mobile-filter-select" id="mobileFilterSelect" onchange="applyMobileFilter()">
+          <select class="mobile-filter-select" id="mobileFilterSelect">
             <option value="all" {% if not current_filter or current_filter == 'all' %}selected{% endif %}>{% trans "All" %} ({{ total_count }})</option>
             <option value="with_me" {% if current_filter == 'with_me' %}selected{% endif %}>{% trans "Shared With Me" %} ({{ with_me_count }})</option>
             <option value="by_me" {% if current_filter == 'by_me' %}selected{% endif %}>{% trans "Shared By Me" %} ({{ by_me_count }})</option>
@@ -641,17 +564,21 @@ body.dark-mode .status-badge.expired {
 
 <script nonce="{{ request.csp_nonce }}">
 document.addEventListener("DOMContentLoaded", function () {
+  // CSP's script-src has no 'unsafe-inline', which silently no-ops inline
+  // onchange="..." attributes - wired here via addEventListener instead
+  // (this mobile filter dropdown was previously non-functional because of
+  // exactly this - see inventory.html's applyMobileFilters wiring).
+  const mobileFilterSelect = document.getElementById('mobileFilterSelect');
+  if (mobileFilterSelect) {
+    mobileFilterSelect.addEventListener('change', applyMobileFilter);
+  }
+
   // Real-time search with debounce
   const searchInput = document.getElementById('searchInput');
   let searchTimeout;
-  const isDesktop = window.innerWidth > 768;
 
   if (searchInput) {
-    // Auto-focus on desktop or if has value (to maintain cursor position after search)
-    if (isDesktop || searchInput.value) {
-      searchInput.focus();
-      searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
-    }
+    window.autoFocusSearchOnDesktop(searchInput);
 
     searchInput.addEventListener('input', function() {
       clearTimeout(searchTimeout);
@@ -672,15 +599,9 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 });
 
-// Mobile filter change
+// Mobile filter change - see window.applyMobileDropdownFilters in filter-ui.js
 function applyMobileFilter() {
-  const filterValue = document.getElementById('mobileFilterSelect').value;
-  const searchQuery = document.getElementById('searchInput').value;
-  let url = '?filter=' + filterValue;
-  if (searchQuery) {
-    url += '&query=' + encodeURIComponent(searchQuery);
-  }
-  window.location.href = url;
+  window.applyMobileDropdownFilters({ filter: 'mobileFilterSelect' });
 }
 </script>
 {% endblock content %}
