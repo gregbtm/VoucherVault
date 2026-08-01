@@ -54,7 +54,20 @@
    migrated onto plain `.btn` - so they got none of this feedback even
    though every one of them is a real tap target. Centralizing the list
    here (rather than re-declaring the same three lines in each template)
-   means a newly discovered gap is a one-line fix, not a per-page hunt. */
+   means a newly discovered gap is a one-line fix, not a per-page hunt.
+
+   A follow-up sweep across every template (not just the ones from the
+   original bug report) turned up a second wave of the same gap:
+   .toggle-sidebar-btn (the header hamburger/dark-mode icon - on literally
+   every logged-in page, and previously had no transition or :active state
+   at all, not even a hover), .submit-btn/.cancel-btn/.color-reset-btn (the
+   create/edit item form's own Save/Cancel/reset-color buttons - arguably
+   the single most-tapped button in the app), and
+   .fullscreen-btn/.zoom-btn/.copy-pin-btn/.pin-toggle-btn/.file-btn/
+   .tilt-scan-enable-btn (all on view-item.html - fullscreen preview, barcode
+   zoom controls, PIN reveal/copy, document open/download, tilt-to-scan
+   prompt). Each already had its own :hover-only affordance, just no
+   equivalent for touch. */
 .btn,
 .filter-chip,
 .more-action-row,
@@ -68,7 +81,17 @@
 .pin-btn,
 .share-btn,
 .qr-zoom-mark-used-btn,
-.page-btn {
+.page-btn,
+.toggle-sidebar-btn,
+.submit-btn,
+.cancel-btn,
+.color-reset-btn,
+.fullscreen-btn,
+.zoom-btn,
+.copy-pin-btn,
+.pin-toggle-btn,
+.file-btn,
+.tilt-scan-enable-btn {
   transition: transform 0.12s ease;
 }
 .btn:active,
@@ -84,7 +107,17 @@
 .pin-btn:active,
 .share-btn:active,
 .qr-zoom-mark-used-btn:active,
-.page-btn:active {
+.page-btn:active,
+.toggle-sidebar-btn:active,
+.submit-btn:active,
+.cancel-btn:active,
+.color-reset-btn:active,
+.fullscreen-btn:active,
+.zoom-btn:active,
+.copy-pin-btn:active,
+.pin-toggle-btn:active,
+.file-btn:active,
+.tilt-scan-enable-btn:active {
   transform: scale(0.97);
 }
 

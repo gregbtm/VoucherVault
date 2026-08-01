@@ -19,6 +19,14 @@
     <link href="{% static 'assets/css/dark-mode.css' %}" rel="stylesheet">
     
     <style>
+        /* This is the PWA's offline fallback page - served straight from the
+           service worker cache with no Django request behind it, so it never
+           extends base.html and never loads mobile.css/animations.css. Same
+           gap public_item.html had: needs its own copy of the tap-highlight
+           fix rather than inheriting the site-wide one. */
+        @media (hover: none) {
+            * { -webkit-tap-highlight-color: transparent; }
+        }
         body {
             display: flex;
             align-items: center;
@@ -98,13 +106,17 @@
             margin: 0.25rem;
             min-width: 180px;
         }
-        
+
         .retry-button:hover {
             background: #5568d3;
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         }
-        
+
+        .retry-button:active {
+            transform: scale(0.97);
+        }
+
         .inventory-button {
             background: #28a745;
             color: white;
@@ -119,12 +131,16 @@
             display: inline-block;
             min-width: 180px;
         }
-        
+
         .inventory-button:hover {
             background: #218838;
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
             color: white;
+        }
+
+        .inventory-button:active {
+            transform: scale(0.97);
         }
         
         .button-group {
