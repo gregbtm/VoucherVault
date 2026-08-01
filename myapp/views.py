@@ -4052,6 +4052,34 @@ def export_selected_json(request):
     return response
 
 
+def _selected_transactions(request):
+    data = json.loads(request.body)
+    item_ids = data.get('item_ids', [])
+    return Transaction.objects.filter(
+        item__user=request.user, item_id__in=item_ids,
+    ).select_related('item').order_by('date')[:2000]
+
+
+@require_POST
+@login_required
+def export_selected_qif(request):
+    from .export_formats import QIFExporter
+    transactions = _selected_transactions(request)
+    response = HttpResponse(QIFExporter.export(transactions), content_type='application/qif')
+    response['Content-Disposition'] = 'attachment; filename="vouchervault-export.qif"'
+    return response
+
+
+@require_POST
+@login_required
+def export_selected_ofx(request):
+    from .export_formats import OFXExporter
+    transactions = _selected_transactions(request)
+    response = HttpResponse(OFXExporter.export(transactions), content_type='application/x-ofx')
+    response['Content-Disposition'] = 'attachment; filename="vouchervault-export.ofx"'
+    return response
+
+
 # --- #11: Inline balance editing ---
 
 @require_POST

@@ -101,6 +101,76 @@ class SpreadsheetExporter:
         return output.getvalue()
 
 
+class QIFExporter:
+    """Export item transaction history as QIF (Quicken Interchange Format).
+
+    Unlike YNABExporter/FireflyExporter above (both dead code - never
+    imported outside this module), this one backs a live, wired export
+    button (myapp/views.py::export_selected_qif). It exports the actual
+    Transaction ledger for the selected items, not item metadata - the CSV/
+    JSON bulk export already covers that, so a QIF/OFX import into desktop
+    finance software (GnuCash, Quicken) is only useful if it carries the
+    real spend/top-up history.
+    """
+
+    @staticmethod
+    def export(transactions):
+        lines = ['!Type:Cash']
+        for tx in transactions:
+            lines.append(f"D{tx.date.strftime('%m/%d/%Y')}")
+            lines.append(f"T{tx.value}")
+            lines.append(f"P{tx.item.name}")
+            if tx.description:
+                lines.append(f"M{tx.description}")
+            lines.append('^')
+        return '\n'.join(lines) + '\n'
+
+
+class OFXExporter:
+    """Export item transaction history as OFX 1.02 (SGML) bank statement."""
+
+    @staticmethod
+    def export(transactions):
+        transactions = list(transactions)
+        now = timezone.now().strftime('%Y%m%d%H%M%S')
+        if transactions:
+            dates = [tx.date for tx in transactions]
+            dtstart = min(dates).strftime('%Y%m%d')
+            dtend = max(dates).strftime('%Y%m%d')
+            currency = getattr(transactions[0].item, 'currency', None) or 'USD'
+        else:
+            dtstart = dtend = timezone.now().strftime('%Y%m%d')
+            currency = 'USD'
+
+        stmttrns = []
+        for tx in transactions:
+            trntype = 'DEBIT' if tx.value < 0 else 'CREDIT'
+            name = (tx.item.name or 'VoucherVault')[:32]
+            stmttrns.append(
+                f"<STMTTRN>\n<TRNTYPE>{trntype}\n"
+                f"<DTPOSTED>{tx.date.strftime('%Y%m%d%H%M%S')}\n"
+                f"<TRNAMT>{tx.value}\n<FITID>{tx.id}\n<NAME>{name}\n"
+                f"<MEMO>{tx.description}\n</STMTTRN>"
+            )
+        body = '\n'.join(stmttrns)
+
+        return (
+            "OFXHEADER:100\nDATA:OFXSGML\nVERSION:102\nSECURITY:NONE\n"
+            "ENCODING:USASCII\nCHARSET:1252\nCOMPRESSION:NONE\n"
+            "OLDFILEUID:NONE\nNEWFILEUID:NONE\n\n"
+            "<OFX>\n<SIGNONMSGSRSV1>\n<SONRS>\n<STATUS>\n<CODE>0\n"
+            "<SEVERITY>INFO\n</STATUS>\n"
+            f"<DTSERVER>{now}\n<LANGUAGE>ENG\n</SONRS>\n</SIGNONMSGSRSV1>\n"
+            "<BANKMSGSRSV1>\n<STMTTRNRS>\n<TRNUID>1\n<STATUS>\n<CODE>0\n"
+            "<SEVERITY>INFO\n</STATUS>\n<STMTRS>\n"
+            f"<CURDEF>{currency}\n<BANKACCTFROM>\n<BANKID>000000000\n"
+            "<ACCTID>VoucherVault\n<ACCTTYPE>CHECKING\n</BANKACCTFROM>\n"
+            f"<BANKTRANLIST>\n<DTSTART>{dtstart}\n<DTEND>{dtend}\n"
+            f"{body}\n</BANKTRANLIST>\n</STMTRS>\n</STMTTRNRS>\n"
+            "</BANKMSGSRSV1>\n</OFX>\n"
+        )
+
+
 class BankStatementParser:
     """Parse bank/credit card statements to extract transaction patterns."""
 
