@@ -1,4 +1,5 @@
 # myapp/tasks.py
+from decimal import Decimal, InvalidOperation
 from celery import shared_task
 from django.core.management import call_command
 from django.utils import timezone
@@ -34,6 +35,12 @@ def extract_document_text_task(document_id):
     Run OCR on a Document file and store the result in Document.extracted_text.
     Silently no-ops when OCR is disabled; logs and exits on any extraction error
     so a failure never blocks the upload response.
+
+    Also logs a spend Transaction when the OCR backend's structured
+    extraction includes a plausible amount (see _record_receipt_amount) -
+    every backend (Claude/OpenAI vision, Tesseract's regex-based guess)
+    already computes a 'value' field for this same extract() call, it was
+    just discarded here previously.
     """
     import logging
     _log = logging.getLogger(__name__)
@@ -75,8 +82,56 @@ def extract_document_text_task(document_id):
             parts.append(result['code'])
         text = '\n'.join(parts)
         Document.objects.filter(pk=document_id).update(extracted_text=text)
+        _record_receipt_amount(document, result, _log)
     except Exception:
         _log.warning('Document OCR failed for document %s', document_id, exc_info=True)
+
+
+def _record_receipt_amount(document, ocr_result, log):
+    """
+    Log a spend Transaction against document.item when the OCR result
+    includes a plausible amount - additive (never touches Item.value
+    directly), so a bad OCR read is just a wrong transaction to delete,
+    not corrupted canonical item data. Mirrors the existing pattern in
+    notify/signals.py::handle_item_value_change (create a Transaction, then
+    notify_balance_changed) for an automated system recording a balance
+    change outside the normal view_item POST flow.
+
+    Skipped for non-money items (loyalty cards/travel passes have no
+    balance concept), amounts that aren't a sane positive number, and
+    documents already processed once (re-running OCR on the same document
+    - e.g. a retry - must not log the same spend twice).
+    """
+    item = document.item
+    if item.value_type != 'money':
+        return
+
+    raw_value = ocr_result.get('value')
+    if raw_value is None:
+        return
+    try:
+        amount = Decimal(str(raw_value))
+    except (InvalidOperation, ValueError, TypeError):
+        return
+    if amount <= 0 or amount > Decimal('100000'):
+        return
+
+    from .models import Transaction
+    description = f'Auto-extracted from receipt (document #{document.id})'
+    if Transaction.objects.filter(item=item, description=description).exists():
+        return
+
+    try:
+        tx = Transaction.objects.create(
+            item=item,
+            description=description,
+            value=-amount,
+            date=timezone.now(),
+        )
+        from notify.tasks import notify_balance_changed
+        notify_balance_changed(item, tx)
+    except Exception:
+        log.warning('Failed to log receipt-extracted transaction for document %s', document.id, exc_info=True)
 
 
 @shared_task
