@@ -147,6 +147,32 @@ class UserPreference(models.Model):
         choices=DIGEST_FREQUENCY_CHOICES,
         default='weekly',
     )
+    custom_recommendation_thresholds_enabled = models.BooleanField(
+        default=False,
+        help_text="Override the default Smart Suggestions thresholds below. When off, the "
+                   "site-wide defaults are used (expiring within 7 days, expiring within 1 day "
+                   "as urgent, balance under £5, unused for 6 months).",
+    )
+    recommendation_expiry_soon_days = models.PositiveSmallIntegerField(
+        default=7,
+        validators=[MinValueValidator(2), MaxValueValidator(90)],
+        help_text="Suggest using an item when it expires within this many days.",
+    )
+    recommendation_expiry_urgent_days = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[MinValueValidator(0), MaxValueValidator(30)],
+        help_text="Flag an item as urgent (expires very soon) within this many days.",
+    )
+    recommendation_low_balance_threshold = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('5.00'),
+        validators=[MinValueValidator(Decimal('0.01')), MaxValueValidator(Decimal('1000.00'))],
+        help_text="Suggest using a gift card/voucher when its balance drops below this amount.",
+    )
+    recommendation_unused_months = models.PositiveSmallIntegerField(
+        default=6,
+        validators=[MinValueValidator(1), MaxValueValidator(36)],
+        help_text="Suggest archiving an item once it hasn't been used for this many months.",
+    )
 
 class Wallet(models.Model):
     """
