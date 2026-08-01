@@ -6,11 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(join(__dirname, 'mobile-optimizations.js'), 'utf-8');
 
-// mobile-optimizations.js exposes window.MobileOptimizations = { lazyLoad,
-// touchOptimize, virtualScroll, prefersReducedMotion } for manual re-use,
-// and also auto-runs lazyLoad/touchOptimize/motion-prefs once at load time
-// (document.readyState is 'complete' in jsdom by default, so the immediate
-// branch runs, not the DOMContentLoaded-deferred one).
+// mobile-optimizations.js exposes window.MobileOptimizations = { virtualScroll,
+// prefersReducedMotion } for manual re-use, and also auto-runs the
+// motion-prefs pass once at load time (document.readyState is 'complete'
+// in jsdom by default, so the immediate branch runs, not the
+// DOMContentLoaded-deferred one).
 function loadMobileOptimizations() {
   delete window.MobileOptimizations;
   (0, eval)(source);
@@ -28,10 +28,8 @@ beforeEach(() => {
 });
 
 describe('window.MobileOptimizations export', () => {
-  it('exposes lazyLoad/touchOptimize/virtualScroll/prefersReducedMotion', () => {
+  it('exposes virtualScroll/prefersReducedMotion', () => {
     loadMobileOptimizations();
-    expect(typeof window.MobileOptimizations.lazyLoad).toBe('function');
-    expect(typeof window.MobileOptimizations.touchOptimize).toBe('function');
     expect(typeof window.MobileOptimizations.virtualScroll).toBe('function');
     expect(window.MobileOptimizations.prefersReducedMotion).toBe(false);
   });
@@ -40,56 +38,6 @@ describe('window.MobileOptimizations export', () => {
     stubMatchMedia(true);
     loadMobileOptimizations();
     expect(window.MobileOptimizations.prefersReducedMotion).toBe(true);
-  });
-});
-
-describe('lazyLoad', () => {
-  it('does nothing when there are no img[data-src] elements', () => {
-    loadMobileOptimizations();
-    expect(() => window.MobileOptimizations.lazyLoad()).not.toThrow();
-  });
-
-  it('observes every img[data-src] with an IntersectionObserver', () => {
-    document.body.innerHTML = '<img data-src="/real.jpg" id="lazy-img">';
-    const observeSpy = vi.fn();
-    const OriginalIO = window.IntersectionObserver;
-    window.IntersectionObserver = vi.fn().mockImplementation(() => ({ observe: observeSpy, unobserve: vi.fn() }));
-
-    loadMobileOptimizations();
-
-    expect(observeSpy).toHaveBeenCalledWith(document.getElementById('lazy-img'));
-    window.IntersectionObserver = OriginalIO;
-  });
-
-  it('swaps in the real src and drops data-src once an image intersects', () => {
-    document.body.innerHTML = '<img data-src="/real.jpg" id="lazy-img">';
-    let capturedCallback;
-    const unobserveSpy = vi.fn();
-    const OriginalIO = window.IntersectionObserver;
-    window.IntersectionObserver = vi.fn().mockImplementation((callback) => {
-      capturedCallback = callback;
-      return { observe: vi.fn(), unobserve: unobserveSpy };
-    });
-
-    loadMobileOptimizations();
-    const img = document.getElementById('lazy-img');
-    capturedCallback([{ isIntersecting: true, target: img }], { unobserve: unobserveSpy });
-
-    expect(img.src).toContain('/real.jpg');
-    expect(img.hasAttribute('data-src')).toBe(false);
-    expect(unobserveSpy).toHaveBeenCalledWith(img);
-    window.IntersectionObserver = OriginalIO;
-  });
-});
-
-describe('touchOptimize', () => {
-  it('enlarges a clickable element smaller than the 44px touch target', () => {
-    document.body.innerHTML = '<button id="tiny-btn" style="height:20px;width:20px;"></button>';
-    loadMobileOptimizations();
-    window.MobileOptimizations.touchOptimize();
-    const btn = document.getElementById('tiny-btn');
-    expect(btn.style.minHeight).toBe('44px');
-    expect(btn.style.minWidth).toBe('44px');
   });
 });
 
