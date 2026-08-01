@@ -1,8 +1,17 @@
 /**
  * Mobile Performance Optimizations
- * - Lazy-load images and components
- * - Optimize for touch interactions
  * - Reduce motion for users who prefer reduced motion
+ * - Virtual scrolling / passive listeners for long lists
+ *
+ * Lazy-loading and touch-target sizing used to live here too, but both
+ * were dead weight:
+ * - initLazyLoading() targeted img[data-src], an attribute no template
+ *   ever sets (the site uses native loading="lazy" instead - see
+ *   mobile-interactions.js's fallback for browsers without it).
+ * - initTouchOptimization() duplicated, at runtime via getComputedStyle,
+ *   the same 44x44px minimum mobile.css already enforces declaratively
+ *   via @media (hover: none) and (pointer: coarse) - the CSS rule applies
+ *   before JS even runs and costs no layout thrashing.
  */
 
 (function() {
@@ -10,48 +19,6 @@
 
   // Shared across scripts - see motion-preference.js
   const prefersReducedMotion = window.VVPrefersReducedMotion;
-
-  /**
-   * Lazy load images using Intersection Observer
-   */
-  function initLazyLoading() {
-    const images = document.querySelectorAll('img[data-src]');
-    if (!images.length) return;
-
-    const imageObserver = new IntersectionObserver((entries, observer) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          const img = entry.target;
-          img.src = img.dataset.src;
-          img.removeAttribute('data-src');
-          observer.unobserve(img);
-        }
-      });
-    }, {
-      rootMargin: '50px'
-    });
-
-    images.forEach(img => imageObserver.observe(img));
-  }
-
-  /**
-   * Optimize touch interactions: increase touch target sizes
-   */
-  function initTouchOptimization() {
-    // Ensure buttons and clickable elements are at least 44x44 pixels
-    const clickableElements = document.querySelectorAll('button, a, [role="button"], .btn');
-    clickableElements.forEach(el => {
-      const style = window.getComputedStyle(el);
-      const height = parseFloat(style.height);
-      const width = parseFloat(style.width);
-
-      if (height < 44 || width < 44) {
-        el.style.minHeight = '44px';
-        el.style.minWidth = '44px';
-        el.style.padding = 'max(0.5rem, calc((44px - ' + style.fontSize + ') / 2))';
-      }
-    });
-  }
 
   /**
    * Respect prefers-reduced-motion by removing animations
@@ -137,22 +104,16 @@
   // Initialize all optimizations when DOM is ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-      initLazyLoading();
-      initTouchOptimization();
       initMotionPreferences();
       initPassiveEventListeners();
     });
   } else {
-    initLazyLoading();
-    initTouchOptimization();
     initMotionPreferences();
     initPassiveEventListeners();
   }
 
   // Expose for manual use
   window.MobileOptimizations = {
-    lazyLoad: initLazyLoading,
-    touchOptimize: initTouchOptimization,
     virtualScroll: initVirtualScrolling,
     prefersReducedMotion
   };
