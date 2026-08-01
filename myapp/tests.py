@@ -3083,6 +3083,11 @@ class CardNumberDisplayTests(TestCase):
         response = self.client.get(reverse('duplicate_item', args=[item.id]))
         self.assertEqual(response.context['form'].initial['card_number'], 'MEMBER-123')
 
+    def test_duplicate_item_carries_currency(self):
+        item = make_item(self.user, currency='USD')
+        response = self.client.get(reverse('duplicate_item', args=[item.id]))
+        self.assertEqual(response.context['form'].initial['currency'], 'USD')
+
 
 class ServeImageFileTests(TestCase):
     """
