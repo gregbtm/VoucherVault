@@ -1,0 +1,193 @@
+{% load i18n %}
+{% comment %}
+Shared item-card markup for inventory.html and sharing_center.html.
+
+Required context: entry, current_date, preferences, logo_dev_api_key,
+description_words_compact, description_words_standard.
+Optional flags (all default falsy if omitted): show_pin, show_share,
+show_checkbox, show_wallet_tags, show_sharing_badge,
+hide_value_for_travelpass, value_highlight.
+{% endcomment %}
+<div class="item-card
+            {% if entry.item.is_used %}is-used{% endif %}
+            {% if entry.item.expiry_date|date:'Y-m-d' < current_date|date:'Y-m-d' and not entry.item.is_used %}is-expired{% endif %}"
+     data-tile-color="{{ entry.item.tile_color|default:'#4154f1' }}"
+     data-item-id="{{ entry.item.id }}">
+
+  <!-- Color Strip -->
+  <div class="card-color-strip" style="background-color: {{ entry.item.tile_color|default:'#4154f1' }};"></div>
+
+  {% if show_pin %}
+  <!-- Pin Button -->
+  <form class="pin-form" method="POST" action="{% url 'toggle_pin_item' item_uuid=entry.item.id %}">
+    {% csrf_token %}
+    <button type="submit" class="pin-btn {% if entry.item.is_pinned %}pinned{% endif %}" title="{% if entry.item.is_pinned %}{% trans 'Unpin' %}{% else %}{% trans 'Pin to top' %}{% endif %}">
+      <i class="bi {% if entry.item.is_pinned %}bi-pin-fill{% else %}bi-pin{% endif %}"></i>
+    </button>
+  </form>
+  {% endif %}
+
+  {% if show_share %}
+  <!-- Share Button -->
+  <button type="button" class="share-btn share-voucher-btn" title="{% trans 'Share via...' %}"
+          data-item-id="{{ entry.item.id }}" data-title="{{ entry.item.name }}" data-merchant="{{ entry.item.issuer }}"
+          data-url="{{ request.scheme }}://{{ request.get_host }}{% url 'view_item' item_uuid=entry.item.id %}"
+          data-public-share-url="{% url 'get_public_share_link' item_id=entry.item.id %}">
+    <i class="bi bi-send"></i>
+  </button>
+  {% endif %}
+
+  {% if entry.has_flags %}
+  <!-- Review Flag Indicator (see myapp/services/enrichment.py _detect_review_flags) -->
+  <span class="flag-indicator" title="{% trans 'A field on this item is flagged for review' %}">
+    <i class="bi bi-flag-fill"></i>
+  </span>
+  {% endif %}
+
+  {% if show_checkbox %}
+  <!-- Bulk Select Checkbox -->
+  <input type="checkbox" class="select-checkbox" title="{% trans 'Select' %}">
+  {% endif %}
+
+  <!-- Card Link -->
+  <a href="{% url 'view_item' item_uuid=entry.item.id %}" class="item-card-link">
+    <div class="item-card-content">
+      <!-- Top Row: Logo + Info -->
+      <div class="card-top-row">
+        {% if entry.item.logo_slug and logo_dev_api_key %}
+        <img class="item-logo"
+             loading="lazy"
+             src="https://img.logo.dev/{{ entry.item.logo_slug }}?token={{ logo_dev_api_key }}"
+             alt="{{ entry.item.issuer }}"
+             onerror="this.onerror=null;this.src='data:image/png;base64,{{ entry.item.qr_code_base64 }}';this.style.filter='blur(2px)';">
+        {% elif entry.merchant_logo_url %}
+        <img class="item-logo"
+             loading="lazy"
+             src="{{ entry.merchant_logo_url }}"
+             alt="{{ entry.item.issuer }}"
+             onerror="this.onerror=null;this.src='data:image/png;base64,{{ entry.item.qr_code_base64 }}';this.style.filter='blur(2px)';">
+        {% else %}
+        <img class="item-logo"
+             loading="lazy"
+             src="data:image/png;base64,{{ entry.item.qr_code_base64 }}"
+             alt="QR Code"
+             style="filter: blur(2px);">
+        {% endif %}
+
+        <div class="item-main-info">
+          <div class="item-issuer">{{ entry.item.issuer }}</div>
+          <h3 class="item-name">{{ entry.item.name }}</h3>
+
+          <div class="status-badges">
+            {% if show_sharing_badge %}
+            {% if entry.shared_with_me %}
+            <span class="status-badge shared-with-me">
+              <i class="bi bi-box-arrow-in-down"></i> {% trans "Shared With Me" %}
+            </span>
+            {% else %}
+            <span class="status-badge shared-by-me">
+              <i class="bi bi-box-arrow-up"></i> {% trans "Shared By Me" %}
+            </span>
+            {% endif %}
+            {% endif %}
+
+            {% if entry.item.is_archived %}
+            <span class="status-badge used"><i class="bi bi-archive"></i> {% trans "Archived" %}</span>
+            {% endif %}
+            {% if entry.item.is_used %}
+            <span class="status-badge used">{% trans "Used" %}</span>
+            {% elif entry.item.expiry_date|date:"Y-m-d" < current_date|date:"Y-m-d" %}
+            <span class="status-badge expired">{% trans "Expired" %}</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Meta Row -->
+      <div class="card-meta-row">
+        {% if entry.item.type != "loyaltycard" and preferences.show_value %}
+        {% if not hide_value_for_travelpass or entry.item.type != "travelpass" %}
+        <div class="meta-item{% if value_highlight %} value-highlight{% endif %}">
+          {% if entry.item.value_type == "percentage" %}
+          <i class="bi bi-percent"></i> {{ entry.current_value|floatformat:0 }}%
+          {% elif entry.item.value_type == "multiplier" %}
+          <i class="bi bi-x-lg"></i> {{ entry.current_value|floatformat:1 }}
+          {% else %}
+          <i class="bi bi-wallet2"></i> {{ entry.current_value|floatformat:2 }} {{ entry.item.currency }}
+          {% endif %}
+        </div>
+        {% endif %}
+        {% endif %}
+
+        {% if preferences.show_issue_date %}
+        <div class="meta-item">
+          <i class="bi bi-calendar-plus"></i>
+          {{ entry.item.issue_date|date:"M d, Y" }}
+        </div>
+        {% endif %}
+
+        {% if preferences.show_expiry_date %}
+        <div class="meta-item {% if entry.item.expiry_date|date:'Y-m-d' < current_date|date:'Y-m-d' %}expiry-danger{% endif %}">
+          <i class="bi bi-calendar-x"></i>
+          {{ entry.item.expiry_date|date:"M d, Y" }}
+        </div>
+        {% endif %}
+
+        <div class="meta-item">
+          {% if entry.item.type == 'voucher' %}
+          <i class="bi bi-ticket-perforated"></i>
+          {% elif entry.item.type == 'giftcard' %}
+          <i class="bi bi-gift"></i>
+          {% elif entry.item.type == 'coupon' %}
+          <i class="bi bi-percent"></i>
+          {% elif entry.item.type == 'loyaltycard' %}
+          <i class="bi bi-star"></i>
+          {% endif %}
+          {% if entry.item.type == "giftcard" %}{% trans "Gift Card" %}{% elif entry.item.type == "coupon" %}{% trans "Coupon" %}{% elif entry.item.type == "loyaltycard" %}{% trans "Loyalty Card" %}{% elif entry.item.type == "voucher" %}{% trans "Voucher" %}{% else %}{{ entry.item.get_type_display }}{% endif %}
+        </div>
+      </div>
+
+      {% if show_sharing_badge %}
+      <!-- Shared Info -->
+      <div class="shared-info">
+        <i class="bi bi-people"></i>
+        {% if entry.shared_with_me %}
+        <span class="shared-label">{% trans "From" %}:</span>
+        <span class="shared-user">{{ entry.shared_by.username }}</span>
+        {% else %}
+        <span class="shared-label">{% trans "You shared this item" %}</span>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Description -->
+      {% if preferences.show_description and entry.item.description %}
+      <div class="item-description">
+        <small>
+          {% if preferences.view_mode == 'compact' %}
+          {{ entry.item.description|truncatewords:description_words_compact }}
+          {% else %}
+          {{ entry.item.description|truncatewords:description_words_standard }}
+          {% endif %}
+        </small>
+      </div>
+      {% endif %}
+
+      {% if show_wallet_tags %}
+      <!-- Wallet + Tags -->
+      {% if entry.item.wallet or entry.item.tags.all %}
+      <div class="item-tag-row" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem;">
+        {% if entry.item.wallet %}
+        <span class="badge rounded-pill" style="background-color: {{ entry.item.wallet.color }}; color: #fff;">
+          <i class="bi {{ entry.item.wallet.icon|default:'bi-wallet2' }}"></i> {{ entry.item.wallet.name }}{% if entry.item.wallet.user_id != request.user.id %} <i class="bi bi-people" title="{% trans 'Shared wallet' %}"></i>{% endif %}
+        </span>
+        {% endif %}
+        {% for tag in entry.item.tags.all %}
+        <span class="badge rounded-pill" style="background-color: {{ tag.color }}; color: #fff;">{{ tag.name }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endif %}
+    </div>
+  </a>
+</div>

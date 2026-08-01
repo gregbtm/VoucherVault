@@ -151,65 +151,13 @@
   }
 }
 
-/* Item Card - Compact */
-.item-card {
-  background: var(--card-bg, #fff);
-  border-radius: 12px;
-  overflow: hidden;
-  transition: all 0.25s ease;
-  border: 1px solid var(--border-color, #eee);
-  position: relative;
-}
-
-.item-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
-}
-
-.item-card.is-used {
-  opacity: 0.7;
-}
-
-.item-card.is-expired {
-  opacity: 0.65;
-}
-
-.item-card-link {
-  text-decoration: none;
-  color: inherit;
-  display: block;
-}
-
-/* Card Header with Color Strip */
-.card-color-strip {
-  height: 4px;
-  width: 100%;
-}
-
-/* Card Content */
-.item-card-content {
-  padding: 1rem;
-}
-
+/* Item Card - Compact
+   Shared .item-card rules (base sizing, colors, empty-state, fadeIn
+   animation) now live in assets/css/item-card.css. Only inventory's own
+   compact/standard view-mode overrides and pin/share/select-mode
+   additions stay here. */
 .compact-view .item-card-content {
   padding: 0.875rem;
-}
-
-/* Card Top Row */
-.card-top-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-.item-logo {
-  width: 48px;
-  height: 48px;
-  border-radius: 10px;
-  object-fit: cover;
-  flex-shrink: 0;
-  background: #f5f5f5;
 }
 
 .compact-view .item-logo {
@@ -226,64 +174,12 @@
    opacity:1 on touch devices (see the touch media query below), where
    there's no hover state to time an overlap around. */
 .item-main-info {
-  flex: 1;
-  min-width: 0;
   padding-right: 96px;
-}
-
-.item-issuer {
-  font-size: 0.75rem;
-  color: #6c757d;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 0.15rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.item-name {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-color, #1e1e1e);
-  margin: 0;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 .compact-view .item-name {
   font-size: 0.9rem;
   -webkit-line-clamp: 1;
-}
-
-/* Status Badges */
-.status-badges {
-  display: flex;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-  margin-top: 0.35rem;
-}
-
-.status-badge {
-  font-size: 0.65rem;
-  padding: 0.15rem 0.5rem;
-  border-radius: 4px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.status-badge.used {
-  background: #cfe2ff;
-  color: #084298;
-}
-
-.status-badge.expired {
-  background: #f8d7da;
-  color: #842029;
 }
 
 .status-badge.pinned {
@@ -296,70 +192,23 @@
   color: #41464b;
 }
 
-/* Card Meta Row */
-.card-meta-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--border-color, #eee);
-}
-
 .compact-view .card-meta-row {
   gap: 0.5rem;
   padding-top: 0.5rem;
-}
-
-.meta-item {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.8rem;
-  color: #6c757d;
 }
 
 .compact-view .meta-item {
   font-size: 0.75rem;
 }
 
-.meta-item i {
-  font-size: 0.9rem;
-  opacity: 0.8;
-}
-
 .meta-item.expiry-warning {
   color: var(--warning-color, #fd7e14);
-}
-
-.meta-item.expiry-danger {
-  color: var(--danger-color, #dc3545);
-}
-
-/* Item Description */
-.item-description {
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--border-color, #eee);
-  font-size: 0.8rem;
-  line-height: 1.4;
-  color: var(--text-muted, #6c757d);
-  overflow-wrap: break-word;
-  word-break: break-word;
-}
-
-.item-description small {
-  display: block;
-  color: inherit;
 }
 
 .compact-view .item-description {
   font-size: 0.75rem;
   margin-top: 0.5rem;
   padding-top: 0.5rem;
-}
-
-body.dark-mode .item-description {
-  color: #999;
 }
 
 /* Pin Button */
@@ -523,27 +372,8 @@ body.bulk-select-mode .share-btn {
   padding-right: 0.25rem;
 }
 
-/* Empty State */
-.empty-state {
-  text-align: center;
-  padding: 3rem 1rem;
-  color: #6c757d;
-}
-
-.empty-state i {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  opacity: 0.5;
-}
-
-.empty-state h3 {
-  margin-bottom: 0.5rem;
-  color: var(--text-color, #1e1e1e);
-}
-
-.empty-state p {
-  margin-bottom: 1.5rem;
-}
+/* .empty-state and its dark-mode override now live in
+   assets/css/item-card.css. */
 
 /* Dark Mode Adjustments */
 body.dark-mode {
@@ -558,10 +388,6 @@ body.dark-mode {
 
 body.dark-mode .search-input {
   color: #e0e0e0;
-}
-
-body.dark-mode .item-issuer {
-  color: #999;
 }
 
 body.dark-mode .pin-btn {
@@ -596,16 +422,6 @@ body.dark-mode .share-btn:hover {
   background: #2a2a2a;
 }
 
-body.dark-mode .status-badge.used {
-  background: #1e3a5f;
-  color: #7dd3fc;
-}
-
-body.dark-mode .status-badge.expired {
-  background: #5c2626;
-  color: #fca5a5;
-}
-
 body.dark-mode .status-badge.pinned {
   background: #4a3f1f;
   color: #ffc107;
@@ -614,14 +430,6 @@ body.dark-mode .status-badge.pinned {
 body.dark-mode .status-badge.type-badge {
   background: #333;
   color: #ccc;
-}
-
-body.dark-mode .meta-item {
-  color: #999;
-}
-
-body.dark-mode .empty-state h3 {
-  color: #e0e0e0;
 }
 
 /* Mobile Optimizations */
@@ -659,22 +467,8 @@ body.dark-mode .empty-state h3 {
   }
 }
 
-/* Animations */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.item-card {
-  animation: fadeIn 0.3s ease forwards;
-}
-
-.items-grid .item-card:nth-child(1) { animation-delay: 0.02s; }
-.items-grid .item-card:nth-child(2) { animation-delay: 0.04s; }
-.items-grid .item-card:nth-child(3) { animation-delay: 0.06s; }
-.items-grid .item-card:nth-child(4) { animation-delay: 0.08s; }
-.items-grid .item-card:nth-child(5) { animation-delay: 0.10s; }
-.items-grid .item-card:nth-child(6) { animation-delay: 0.12s; }
+/* .item-card's entrance fadeIn animation now lives in
+   assets/css/item-card.css. */
 
 /* Next Up Widget */
 .next-up-queue {
@@ -1589,154 +1383,7 @@ body.dark-mode .next-up-card {
   {% if items_with_qr %}
   <div class="items-grid {% if preferences.view_mode == 'compact' %}compact-view{% else %}standard-view{% endif %}">
     {% for entry in items_with_qr %}
-    <div class="item-card 
-                {% if entry.item.is_used %}is-used{% endif %}
-                {% if entry.item.expiry_date|date:'Y-m-d' < current_date|date:'Y-m-d' and not entry.item.is_used %}is-expired{% endif %}"
-         data-tile-color="{{ entry.item.tile_color|default:'#4154f1' }}"
-         data-item-id="{{ entry.item.id }}">
-      
-      <!-- Color Strip -->
-      <div class="card-color-strip" style="background-color: {{ entry.item.tile_color|default:'#4154f1' }};"></div>
-      
-      <!-- Pin Button -->
-      <form class="pin-form" method="POST" action="{% url 'toggle_pin_item' item_uuid=entry.item.id %}">
-        {% csrf_token %}
-        <button type="submit" class="pin-btn {% if entry.item.is_pinned %}pinned{% endif %}" title="{% if entry.item.is_pinned %}{% trans 'Unpin' %}{% else %}{% trans 'Pin to top' %}{% endif %}">
-          <i class="bi {% if entry.item.is_pinned %}bi-pin-fill{% else %}bi-pin{% endif %}"></i>
-        </button>
-      </form>
-
-      <!-- Share Button -->
-      <button type="button" class="share-btn share-voucher-btn" title="{% trans 'Share via...' %}"
-              data-item-id="{{ entry.item.id }}" data-title="{{ entry.item.name }}" data-merchant="{{ entry.item.issuer }}"
-              data-url="{{ request.scheme }}://{{ request.get_host }}{% url 'view_item' item_uuid=entry.item.id %}"
-              data-public-share-url="{% url 'get_public_share_link' item_id=entry.item.id %}">
-        <i class="bi bi-send"></i>
-      </button>
-
-      {% if entry.has_flags %}
-      <!-- Review Flag Indicator (see myapp/services/enrichment.py _detect_review_flags) -->
-      <span class="flag-indicator" title="{% trans 'A field on this item is flagged for review' %}">
-        <i class="bi bi-flag-fill"></i>
-      </span>
-      {% endif %}
-
-      <!-- Bulk Select Checkbox -->
-      <input type="checkbox" class="select-checkbox" title="{% trans 'Select' %}">
-
-      <!-- Card Link -->
-      <a href="{% url 'view_item' item_uuid=entry.item.id %}" class="item-card-link">
-        <div class="item-card-content">
-          <!-- Top Row: Logo + Info -->
-          <div class="card-top-row">
-            {% if entry.item.logo_slug and logo_dev_api_key %}
-            <img class="item-logo"
-                 loading="lazy"
-                 src="https://img.logo.dev/{{ entry.item.logo_slug }}?token={{ logo_dev_api_key }}"
-                 alt="{{ entry.item.issuer }}"
-                 onerror="this.onerror=null;this.src='data:image/png;base64,{{ entry.item.qr_code_base64 }}';this.style.filter='blur(2px)';">
-            {% elif entry.merchant_logo_url %}
-            <img class="item-logo"
-                 loading="lazy"
-                 src="{{ entry.merchant_logo_url }}"
-                 alt="{{ entry.item.issuer }}"
-                 onerror="this.onerror=null;this.src='data:image/png;base64,{{ entry.item.qr_code_base64 }}';this.style.filter='blur(2px)';">
-            {% else %}
-            <img class="item-logo"
-                 loading="lazy"
-                 src="data:image/png;base64,{{ entry.item.qr_code_base64 }}"
-                 alt="QR Code"
-                 style="filter: blur(2px);">
-            {% endif %}
-            
-            <div class="item-main-info">
-              <div class="item-issuer">{{ entry.item.issuer }}</div>
-              <h3 class="item-name">{{ entry.item.name }}</h3>
-              
-              <div class="status-badges">
-                {% if entry.item.is_archived %}
-                <span class="status-badge used"><i class="bi bi-archive"></i> {% trans "Archived" %}</span>
-                {% endif %}
-                {% if entry.item.is_used %}
-                <span class="status-badge used">{% trans "Used" %}</span>
-                {% elif entry.item.expiry_date|date:"Y-m-d" < current_date|date:"Y-m-d" %}
-                <span class="status-badge expired">{% trans "Expired" %}</span>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-          
-          <!-- Meta Row -->
-          <div class="card-meta-row">
-            {% if entry.item.type != "loyaltycard" and entry.item.type != "travelpass" and preferences.show_value %}
-            <div class="meta-item">
-              {% if entry.item.value_type == "percentage" %}
-              <i class="bi bi-percent"></i> {{ entry.current_value|floatformat:0 }}%
-              {% elif entry.item.value_type == "multiplier" %}
-              <i class="bi bi-x-lg"></i> {{ entry.current_value|floatformat:1 }}
-              {% else %}
-              <i class="bi bi-wallet2"></i> {{ entry.current_value|floatformat:2 }} {{ entry.item.currency }}
-              {% endif %}
-            </div>
-            {% endif %}
-            
-            {% if preferences.show_issue_date %}
-            <div class="meta-item">
-              <i class="bi bi-calendar-plus"></i> 
-              {{ entry.item.issue_date|date:"M d, Y" }}
-            </div>
-            {% endif %}
-            
-            {% if preferences.show_expiry_date %}
-            <div class="meta-item {% if entry.item.expiry_date|date:'Y-m-d' < current_date|date:'Y-m-d' %}expiry-danger{% endif %}">
-              <i class="bi bi-calendar-x"></i> 
-              {{ entry.item.expiry_date|date:"M d, Y" }}
-            </div>
-            {% endif %}
-            
-            <div class="meta-item">
-              {% if entry.item.type == 'voucher' %}
-              <i class="bi bi-ticket-perforated"></i>
-              {% elif entry.item.type == 'giftcard' %}
-              <i class="bi bi-gift"></i>
-              {% elif entry.item.type == 'coupon' %}
-              <i class="bi bi-percent"></i>
-              {% elif entry.item.type == 'loyaltycard' %}
-              <i class="bi bi-star"></i>
-              {% endif %}
-              {% translate entry.item.type %}
-            </div>
-          </div>
-          
-          <!-- Description -->
-          {% if preferences.show_description and entry.item.description %}
-          <div class="item-description">
-            <small>
-              {% if preferences.view_mode == 'compact' %}
-              {{ entry.item.description|truncatewords:10 }}
-              {% else %}
-              {{ entry.item.description|truncatewords:25 }}
-              {% endif %}
-            </small>
-          </div>
-          {% endif %}
-
-          <!-- Wallet + Tags -->
-          {% if entry.item.wallet or entry.item.tags.all %}
-          <div class="item-tag-row" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem;">
-            {% if entry.item.wallet %}
-            <span class="badge rounded-pill" style="background-color: {{ entry.item.wallet.color }}; color: #fff;">
-              <i class="bi {{ entry.item.wallet.icon|default:'bi-wallet2' }}"></i> {{ entry.item.wallet.name }}{% if entry.item.wallet.user_id != request.user.id %} <i class="bi bi-people" title="{% trans 'Shared wallet' %}"></i>{% endif %}
-            </span>
-            {% endif %}
-            {% for tag in entry.item.tags.all %}
-            <span class="badge rounded-pill" style="background-color: {{ tag.color }}; color: #fff;">{{ tag.name }}</span>
-            {% endfor %}
-          </div>
-          {% endif %}
-        </div>
-      </a>
-    </div>
+    {% include "partials/item_card.html" with entry=entry show_pin=True show_share=True show_checkbox=True show_wallet_tags=True hide_value_for_travelpass=True description_words_compact=10 description_words_standard=25 %}
     {% endfor %}
   </div>
   {% else %}
