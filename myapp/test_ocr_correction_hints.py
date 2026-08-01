@@ -119,5 +119,5 @@ class ClaudeBackendUsesCorrectionHintsTestCase(TestCase):
         ClaudeOCRBackend().extract(b'fake-bytes', 'image/jpeg', user=self.user)
 
         sent_text = mock_client.messages.create.call_args.kwargs['messages'][0]['content'][1]['text']
-        from ocr.backends.claude_backend import _PROMPT
-        self.assertEqual(sent_text, _PROMPT)
+        from ocr.backends.base import VISION_PROMPT
+        self.assertEqual(sent_text, VISION_PROMPT)
