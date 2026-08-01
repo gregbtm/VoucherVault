@@ -97,56 +97,8 @@
   box-shadow: 0 0 0 3px rgba(65, 84, 241, 0.1);
 }
 
-/* Filter Chips */
-.filter-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.filter-chip {
-  padding: 0.4rem 0.85rem;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid var(--border-color, #dee2e6);
-  background: var(--chip-bg, #f8f9fa);
-  color: var(--text-color, #495057);
-  transition: all 0.2s ease;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.filter-chip:hover {
-  background: var(--chip-hover, #e9ecef);
-  transform: translateY(-1px);
-  color: var(--text-color, #495057);
-}
-
-.filter-chip.active {
-  background: var(--primary-color, #4154f1);
-  color: white;
-  border-color: var(--primary-color, #4154f1);
-}
-
-.filter-chip i {
-  font-size: 0.85rem;
-}
-
-.filter-chip .count {
-  background: rgba(0,0,0,0.1);
-  padding: 0.1rem 0.4rem;
-  border-radius: 10px;
-  font-size: 0.7rem;
-  margin-left: 0.25rem;
-}
-
-.filter-chip.active .count {
-  background: rgba(255,255,255,0.2);
-}
+/* Filter chips + mobile-filter-dropdown component now lives in
+   assets/css/filters.css (shared with sharing_center.html). */
 
 .filter-divider {
   width: 1px;
@@ -672,65 +624,18 @@ body.dark-mode .empty-state h3 {
   color: #e0e0e0;
 }
 
-/* Mobile Filter Dropdowns */
-.mobile-filters {
-  display: none;
-}
-
-.mobile-filter-row {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-
-.mobile-filter-select {
-  flex: 1;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid var(--border-color, #dee2e6);
-  border-radius: 8px;
-  font-size: 0.85rem;
-  background: var(--input-bg, #fff);
-  color: var(--text-color, #495057);
-  cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236c757d' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.75rem center;
-  padding-right: 2rem;
-}
-
-.mobile-filter-select:focus {
-  outline: none;
-  border-color: var(--primary-color, #4154f1);
-}
-
-body.dark-mode .mobile-filter-select {
-  background-color: var(--input-bg, #2a2a2a);
-  color: #e0e0e0;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-}
-
 /* Mobile Optimizations */
 @media (max-width: 768px) {
   .inventory-header {
     flex-direction: column;
     align-items: flex-start;
   }
-  
+
   .view-controls {
     width: 100%;
     justify-content: flex-end;
   }
-  
-  /* Hide desktop chips, show mobile dropdowns */
-  .filter-chips {
-    display: none;
-  }
-  
-  .mobile-filters {
-    display: block;
-  }
-  
+
   /* Both rely on .item-card:hover to appear on desktop, a state that
      never fires on a touch device - forced visible here. Size itself is
      already 44x44 at every breakpoint (see the base .pin-btn/.share-btn
@@ -1957,34 +1862,9 @@ body.dark-mode .next-up-card {
 </div>
 
 <script nonce="{{ request.csp_nonce }}">
-// Mobile filter function
+// Mobile filter function - see window.applyMobileDropdownFilters in filter-ui.js
 function applyMobileFilters() {
-  const statusSelect = document.getElementById('mobileStatusFilter');
-  const typeSelect = document.getElementById('mobileTypeFilter');
-  const searchInput = document.getElementById('searchInput');
-  
-  const url = new URL(window.location.href);
-  
-  // Set status
-  if (statusSelect.value) {
-    url.searchParams.set('status', statusSelect.value);
-  } else {
-    url.searchParams.delete('status');
-  }
-  
-  // Set type
-  if (typeSelect.value) {
-    url.searchParams.set('type', typeSelect.value);
-  } else {
-    url.searchParams.delete('type');
-  }
-  
-  // Preserve search query
-  if (searchInput && searchInput.value.trim()) {
-    url.searchParams.set('query', searchInput.value.trim());
-  }
-  
-  window.location.href = url.toString();
+  window.applyMobileDropdownFilters({ status: 'mobileStatusFilter', type: 'mobileTypeFilter' });
 }
 
 // Toggle a tag in/out of the active tag filter set, preserving every
@@ -2077,14 +1957,9 @@ document.addEventListener("DOMContentLoaded", function () {
   const searchInput = document.getElementById('searchInput');
   const filterForm = document.getElementById('filterForm');
   let searchTimeout;
-  const isDesktop = window.innerWidth > 768;
 
   if (searchInput) {
-    // Auto-focus on desktop or if has value (to maintain cursor position after search)
-    if (isDesktop || searchInput.value) {
-      searchInput.focus();
-      searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
-    }
+    window.autoFocusSearchOnDesktop(searchInput);
 
     searchInput.addEventListener('input', function() {
       clearTimeout(searchTimeout);
