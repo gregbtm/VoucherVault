@@ -6,6 +6,7 @@ from django.utils import timezone
 from django.contrib.auth.models import User
 from django.contrib.auth import views as auth_views
 from django.contrib import admin
+from django.views.generic import RedirectView
 
 urlpatterns = (
     path("dashboard", views.dashboard, name="dashboard"),
@@ -60,7 +61,7 @@ urlpatterns = (
     path('shared-items/', views.sharing_center, name='sharing_center'),
     path('api/get/stats', views.get_stats, name='get_stats'),
     path('user/edit/preferences', views.update_user_preferences, name='update_user_preferences'),
-    path('user/api-access/', views.api_access, name='api_access'),
+    path('user/api-access/', RedirectView.as_view(pattern_name='developer_hub', permanent=False)),
     path('developer/', views.developer_hub, name='developer_hub'),
     path('developer/webhook/create/', views.developer_hub_webhook_create, name='developer_hub_webhook_create'),
     path('developer/webhook/<int:webhook_id>/edit/', views.developer_hub_webhook_edit, name='developer_hub_webhook_edit'),

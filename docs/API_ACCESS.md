@@ -4,7 +4,7 @@ VoucherVault Plus+ ships a full REST API at `/api/v1/`. It uses token authentica
 
 ## Getting your API token
 
-Go to **Profile → API Access** (top-right user menu). From there you can:
+Go to **Profile → Developer** (top-right user menu). From there you can:
 
 - **Generate** a new token (shown once — copy it immediately)
 - **Regenerate** to revoke the old token and issue a new one
