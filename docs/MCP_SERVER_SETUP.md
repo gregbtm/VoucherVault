@@ -52,7 +52,7 @@ access and no special privileges of its own.
 
 ## Step 1 — Generate an API token for yourself
 
-Easiest: log in to VoucherVault, open the **alice ▾ → API Access** menu
+Easiest: log in to VoucherVault, open the **alice ▾ → Developer** menu
 (top right), and click **Generate API Token**. The token is shown once —
 copy it now.
 

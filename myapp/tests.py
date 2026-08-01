@@ -4742,7 +4742,7 @@ class HelpDocViewerTests(TestCase):
 
     def test_regular_user_can_view_integration_docs(self):
         """Integration docs must be reachable by non-superusers — they link from
-        the API Access and Notification pages which aren't superuser-gated."""
+        the Developer hub and Notification pages which aren't superuser-gated."""
         self.client.login(username='alice', password='pw12345!')
         for slug in ('n8n', 'mcp-server', 'rail-ticket', 'firefly'):
             response = self.client.get(reverse('view_doc', args=[slug]))
@@ -4759,9 +4759,10 @@ class HelpDocViewerTests(TestCase):
             self.assertContains(response, '<h1', msg_prefix=f'{slug} missing rendered heading')
 
 
-class ApiAccessViewTests(TestCase):
-    """The self-service API token page (GUI alternative to
-    drf_create_token / POSTing a password to /api/v1/auth/token/)."""
+class DeveloperHubTokenTests(TestCase):
+    """API token management on the developer hub (formerly its own
+    standalone api_access page, retired in favor of this one - see
+    myapp/urls.py's redirect from the old /user/api-access/ URL)."""
 
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')
@@ -4769,30 +4770,30 @@ class ApiAccessViewTests(TestCase):
 
     def test_requires_login(self):
         self.client.logout()
-        response = self.client.get(reverse('api_access'))
+        response = self.client.get(reverse('developer_hub'))
         self.assertEqual(response.status_code, 302)
         self.assertIn('/accounts/login/', response.url)
 
     def test_no_token_shows_generate_button(self):
-        response = self.client.get(reverse('api_access'))
+        response = self.client.get(reverse('developer_hub'))
         self.assertContains(response, 'Generate API Token')
         self.assertNotContains(response, 'Regenerate')
 
     def test_generate_creates_token_and_reveals_it_once(self):
-        response = self.client.post(reverse('api_access'), {'action': 'generate'}, follow=True)
+        response = self.client.post(reverse('developer_hub'), {'action': 'generate'}, follow=True)
         token = Token.objects.get(user=self.user)
         self.assertContains(response, f'Token {token.key}')
 
         # A second GET must not still show the raw key - it was a one-shot reveal.
-        response = self.client.get(reverse('api_access'))
+        response = self.client.get(reverse('developer_hub'))
         self.assertNotContains(response, token.key)
-        self.assertContains(response, 'Active token')
+        self.assertContains(response, 'Active')
 
     def test_regenerate_replaces_the_key(self):
         old_token = Token.objects.create(user=self.user)
         old_key = old_token.key
 
-        response = self.client.post(reverse('api_access'), {'action': 'regenerate'}, follow=True)
+        response = self.client.post(reverse('developer_hub'), {'action': 'regenerate'}, follow=True)
         new_token = Token.objects.get(user=self.user)
 
         self.assertNotEqual(new_token.key, old_key)
@@ -4801,12 +4802,12 @@ class ApiAccessViewTests(TestCase):
 
     def test_revoke_deletes_the_token(self):
         Token.objects.create(user=self.user)
-        response = self.client.post(reverse('api_access'), {'action': 'revoke'}, follow=True)
+        response = self.client.post(reverse('developer_hub'), {'action': 'revoke'}, follow=True)
         self.assertFalse(Token.objects.filter(user=self.user).exists())
         self.assertContains(response, 'Generate API Token')
 
     def test_revoke_with_no_token_is_a_harmless_noop(self):
-        response = self.client.post(reverse('api_access'), {'action': 'revoke'}, follow=True)
+        response = self.client.post(reverse('developer_hub'), {'action': 'revoke'}, follow=True)
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Token.objects.filter(user=self.user).exists())
 
@@ -4814,9 +4815,25 @@ class ApiAccessViewTests(TestCase):
         bob = User.objects.create_user(username='bob', password='pw12345!')
         bob_token = Token.objects.create(user=bob)
 
-        response = self.client.get(reverse('api_access'))
+        response = self.client.get(reverse('developer_hub'))
         self.assertContains(response, 'Generate API Token')
         self.assertNotContains(response, bob_token.key)
+
+
+class ApiAccessUrlRedirectsTests(TestCase):
+    """The retired /user/api-access/ URL redirects to the developer hub so
+    any bookmarks/external links from before the consolidation still work."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_old_url_redirects_to_developer_hub(self):
+        # Two hops: LocaleMiddleware first adds the /en/ prefix, then our
+        # RedirectView sends it on to the developer hub.
+        response = self.client.get('/user/api-access/', follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.redirect_chain[-1][0], reverse('developer_hub'))
 
 
 class OfflineCacheTogglePreferenceTests(TestCase):
