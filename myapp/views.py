@@ -587,7 +587,7 @@ def view_item(request, item_uuid):
     # Check if the item has been shared
     is_shared = item.shared_with.exists()
 
-    transactions = item.transactions.all()
+    transactions = item.transactions.order_by('date')
     total_value = item.get_current_balance(transactions)
 
     if request.method == 'POST':
@@ -614,6 +614,10 @@ def view_item(request, item_uuid):
                 item.save()
                 notify_item_used(item)
                 fire_user_webhooks(item.user, 'item_used', item)
+            elif item.is_used:
+                # Reload brought the balance back above zero
+                item.is_used = False
+                item.save()
             _queue_google_wallet_update(item)
             return redirect('view_item', item_uuid=item.id)
     else:
@@ -1219,6 +1223,7 @@ def duplicate_item(request, item_uuid):
         'value_type': original_item.value_type,
         'code_type': original_item.code_type,
         'tile_color': original_item.tile_color,
+        'currency': original_item.currency,
     }
 
     form = ItemForm(initial=initial_data)
