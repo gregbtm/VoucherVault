@@ -12,7 +12,13 @@ A wallet is a named group — think of it like a physical card wallet or a drawe
 
 ### Shared wallets
 
-A wallet can be shared with other registered users. Anyone in a shared wallet can see all items in it. Share a wallet at **Manage Wallets → Share**. Useful for a household where both partners want to see the same gift cards.
+A wallet can be shared with other registered users, as either an **Editor** (can view, add, edit, and delete every item in the wallet) or a **Viewer** (read-only). Share a wallet at **Manage Wallets → Share**, entering the collaborator's exact username and picking their role. Useful for a household where both partners want to see - and for an Editor, manage - the same gift cards. Both being added to, and removed from, a shared wallet send the other person a notification (if they have a matching notification rule set up).
+
+## Sharing individual items
+
+Rather than an entire wallet, you can share a single item with one other registered user from that item's page: **More actions → Share with Users**. Same idea as sharing a wallet - an exact username and an Editor/Viewer role choice - just scoped to one item instead of everything in a wallet. The owner can see (and revoke) everyone an item is shared with from the item's own page; both sharing and unsharing notify the other person the same way a wallet invite does.
+
+This is different from the **public share link** ("Share via…" button, see [Sharing settings](SHARING_SETTINGS.md)): sharing with a user gives *that specific VoucherVault account* ongoing access, while a public share link is an anonymous, no-account-needed, read-only page you hand to anyone.
 
 ### Next Up widget
 

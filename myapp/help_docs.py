@@ -51,7 +51,7 @@ DOCS = {
 # Each entry: (category_title, icon, [(slug, description)])
 CATEGORIES = [
     ('Getting Started', 'bi-house', [
-        ('wallets-tags',   'Organise items into wallets and apply tags for filtering'),
+        ('wallets-tags',   'Organise items into wallets, apply tags for filtering, and share a wallet or a single item with another user'),
         ('balance-tracking', 'Log transactions, track remaining balance, and view spend analytics'),
         ('notifications',  'Set up expiry alerts via ntfy, webhook, web push, or Apprise'),
         ('telegram-discord-email', 'Send alerts directly to Telegram, a Discord channel, or email'),
