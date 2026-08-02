@@ -645,3 +645,23 @@ def refresh_recommendations_task():
             generate_all_recommendations(user)
         except Exception:
             _log.warning('Failed to refresh recommendations for user %s', user.username, exc_info=True)
+
+
+@shared_task
+def purge_expired_public_shares():
+    """
+    Deletes ItemPublicShare rows past their expiry. They already 410 on
+    access (see ItemPublicShare.is_expired() / public_item_share), so this
+    is data hygiene rather than a behavior fix - without it, an expired
+    share's view_count/access_pin/failed_pin_attempts history sits in the
+    database indefinitely until an owner happens to click Regenerate or
+    Revoke. Never-expire links (expires_at=None, i.e.
+    SiteConfiguration.share_link_expiry_days=0 at the time they were
+    created) are untouched - there's nothing to purge for those.
+    """
+    from .models import ItemPublicShare
+
+    deleted, _ = ItemPublicShare.objects.filter(
+        expires_at__isnull=False, expires_at__lt=timezone.now(),
+    ).delete()
+    return deleted
