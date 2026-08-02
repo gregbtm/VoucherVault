@@ -1036,13 +1036,20 @@ body.dark-mode .error-alert {
                         rows="3">{{ form.notes.value|default_if_none:"" }}</textarea>
             </div>
 
-            <div class="form-group">
-              <label class="form-label" for="share_message">{% trans "Share Message" %}</label>
-              <textarea class="modern-textarea" id="share_message" name="share_message"
-                        placeholder="{% trans 'Optional note shown on the public share page (e.g. valid until Dec, buy in store only)' %}"
-                        rows="2">{{ form.share_message.value|default_if_none:"" }}</textarea>
-              <small class="form-text text-muted">{% trans "Visible to anyone with your public share link." %}</small>
-            </div>
+            <details class="vv-advanced-toggle mt-1 mb-2" {% if form.share_message.value %}open{% endif %}>
+              <summary class="text-muted small" style="cursor:pointer;user-select:none;">
+                <i class="bi bi-chat-quote me-1"></i>{% trans "Add a share message" %}
+              </summary>
+              <div class="pt-2">
+                <div class="form-group">
+                  <label class="form-label" for="share_message">{% trans "Share Message" %}</label>
+                  <textarea class="modern-textarea" id="share_message" name="share_message"
+                            placeholder="{% trans 'Optional note shown on the public share page (e.g. valid until Dec, buy in store only)' %}"
+                            rows="2">{{ form.share_message.value|default_if_none:"" }}</textarea>
+                  <small class="form-text text-muted">{% trans "Visible to anyone with your public share link." %}</small>
+                </div>
+              </div>
+            </details>
 
             <div class="form-group">
               <div class="d-flex align-items-center gap-2">

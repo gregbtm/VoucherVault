@@ -6198,13 +6198,23 @@ class ViewItemPhase116FieldsTests(TestCase):
         resp = self._get(item)
         self.assertContains(resp, 'Gold')
 
-    def test_share_message_shown_to_owner(self):
+    def test_share_message_hidden_before_item_is_actually_shared(self):
+        # A share message is only meaningful once someone can actually view
+        # it via a public link - writing one shouldn't surface a preview
+        # before the owner has opted into sharing at all.
         item = make_item(self.user, share_message='Use code SAVE20 at checkout.')
+        resp = self._get(item)
+        self.assertNotContains(resp, 'Use code SAVE20 at checkout.')
+
+    def test_share_message_shown_to_owner_once_shared(self):
+        item = make_item(self.user, share_message='Use code SAVE20 at checkout.')
+        ItemPublicShare.objects.create(item=item, created_by=self.user)
         resp = self._get(item)
         self.assertContains(resp, 'Use code SAVE20 at checkout.')
 
     def test_share_message_hidden_when_empty(self):
         item = make_item(self.user)
+        ItemPublicShare.objects.create(item=item, created_by=self.user)
         resp = self._get(item)
         self.assertNotContains(resp, 'bi-chat-quote')
 
@@ -6215,6 +6225,49 @@ class ViewItemPhase116FieldsTests(TestCase):
         self.assertNotContains(resp, 'Face Value')
         self.assertNotContains(resp, 'Minimum Spend')
         self.assertNotContains(resp, 'Points Balance')
+
+
+class ShareMessageFieldDisclosureTests(TestCase):
+    """
+    The Share Message form field is collapsed behind a details/summary
+    toggle by default (progressive disclosure, matching the existing Logo
+    Slug "Advanced" pattern) - only auto-expanded when there's already a
+    message to show, so the create/edit forms don't surface it before the
+    user has any reason to care about sharing at all.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_create_form_share_message_collapsed_by_default(self):
+        resp = self.client.get(reverse('create_item'))
+        self.assertContains(resp, 'id="share_message"')
+        # The <details> wrapper around share_message must not carry `open`.
+        content = resp.content.decode()
+        details_start = content.index('Add a share message')
+        details_tag_start = content.rindex('<details', 0, details_start)
+        details_tag = content[details_tag_start:content.index('>', details_tag_start) + 1]
+        self.assertNotIn('open', details_tag)
+
+    def test_edit_form_share_message_collapsed_when_empty(self):
+        item = make_item(self.user)
+        resp = self.client.get(reverse('edit_item', args=[item.id]))
+        content = resp.content.decode()
+        details_start = content.index('Add a share message')
+        details_tag_start = content.rindex('<details', 0, details_start)
+        details_tag = content[details_tag_start:content.index('>', details_tag_start) + 1]
+        self.assertNotIn('open', details_tag)
+
+    def test_edit_form_share_message_expanded_when_already_set(self):
+        item = make_item(self.user, share_message='Use code SAVE20 at checkout.')
+        resp = self.client.get(reverse('edit_item', args=[item.id]))
+        content = resp.content.decode()
+        self.assertContains(resp, 'Use code SAVE20 at checkout.')
+        details_start = content.index('Add a share message')
+        details_tag_start = content.rindex('<details', 0, details_start)
+        details_tag = content[details_tag_start:content.index('>', details_tag_start) + 1]
+        self.assertIn('open', details_tag)
 
 
 class ItemDocumentAPITests(TestCase):
