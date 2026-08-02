@@ -374,6 +374,49 @@ class WalletShareForm(forms.Form):
         return username
 
 
+class ItemShareForm(forms.Form):
+    """
+    Shares a single item with one other VoucherVault user by exact
+    username, matching WalletShareForm's pattern - the item detail page
+    previously listed every user's username *and email* in a searchable
+    checklist, which leaked the whole instance's user directory to anyone
+    wanting to share an item. Requiring the exact username (like wallet
+    sharing already does) avoids enumerating anyone.
+    """
+    username = forms.CharField(
+        label=_('Username'),
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': _('Username to share with')}),
+    )
+    role = forms.ChoiceField(
+        label=_('Access'),
+        choices=ItemShare.ROLE_CHOICES,
+        initial=ItemShare.ROLE_EDITOR,
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+
+    def __init__(self, *args, item=None, **kwargs):
+        self.item = item
+        super().__init__(*args, **kwargs)
+
+    def clean_role(self):
+        return self.cleaned_data.get('role') or ItemShare.ROLE_EDITOR
+
+    def clean_username(self):
+        username = self.cleaned_data['username'].strip()
+        try:
+            user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            raise forms.ValidationError(_('No user with that username exists.'))
+        if self.item is not None:
+            if user == self.item.user:
+                raise forms.ValidationError(_('You already own this item.'))
+            if self.item.shared_with.filter(shared_with_user=user).exists():
+                raise forms.ValidationError(_('This item is already shared with that user.'))
+        self.cleaned_data['user'] = user
+        return username
+
+
 class WalletForm(forms.ModelForm):
     class Meta:
         model = Wallet

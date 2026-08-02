@@ -380,6 +380,32 @@ class ItemShareTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(ItemShare.objects.filter(pk=share.id).exists())
 
+    def test_share_defaults_to_editor_role(self):
+        response = self.client.post(f'/api/v1/items/{self.item.id}/shares/', {'username': 'bob'})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        share = ItemShare.objects.get(item=self.item, shared_with_user=self.bob)
+        self.assertEqual(share.role, ItemShare.ROLE_EDITOR)
+
+    def test_share_as_viewer_role(self):
+        response = self.client.post(f'/api/v1/items/{self.item.id}/shares/', {'username': 'bob', 'role': 'viewer'})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        share = ItemShare.objects.get(item=self.item, shared_with_user=self.bob)
+        self.assertEqual(share.role, ItemShare.ROLE_VIEWER)
+        self.assertEqual(response.data['role'], 'viewer')
+
+    @patch('api.views.notify_item_shared_with_you')
+    def test_share_fires_item_shared_with_you(self, mock_notify):
+        response = self.client.post(f'/api/v1/items/{self.item.id}/shares/', {'username': 'bob', 'role': 'viewer'})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        mock_notify.assert_called_once_with(self.item, self.bob, 'viewer')
+
+    @patch('api.views.notify_item_unshared')
+    def test_unshare_fires_notify_item_unshared(self, mock_notify):
+        share = ItemShare.objects.create(item=self.item, shared_with_user=self.bob, shared_by=self.alice)
+        response = self.client.delete(f'/api/v1/items/{self.item.id}/shares/{share.id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        mock_notify.assert_called_once_with(self.item, self.bob)
+
 
 class WebhookEventApiWiringTests(APITestCase):
     """Confirms the DRF API fires the same Phase 12.2 lifecycle events as the web UI."""

@@ -48,7 +48,7 @@ from .tasks import extract_document_text_task, fetch_merchant_logo_task
 from imports.exporters.google_wallet import generate_google_wallet_save_url, google_wallet_enabled
 from imports.exporters.pkpass import generate_pkpass, pkpass_enabled
 from imports.tasks import update_google_wallet_pass_task
-from notify.tasks import notify_balance_changed, notify_item_archived, notify_item_created, notify_item_shared, notify_item_used, notify_wallet_invited, notify_wallet_removed, _find_firefly_rule
+from notify.tasks import notify_balance_changed, notify_item_archived, notify_item_created, notify_item_shared, notify_item_shared_with_you, notify_item_unshared, notify_item_used, notify_wallet_invited, notify_wallet_removed, _find_firefly_rule
 from .webhooks import fire_user_webhooks
 from ocr.backends import ocr_enabled
 from django.db.models import Count, OuterRef, Subquery, Sum, Q
@@ -1952,37 +1952,37 @@ def share_item_view(request, item_id):
     item = get_object_or_404(Item, id=item_id, user=request.user)
 
     if request.method == 'POST':
-        selected_users = request.POST.getlist('shared_users')
-        if selected_users:
-            for user_id in selected_users:
-                recipient = get_object_or_404(User, id=user_id)
-                _share, created = ItemShare.objects.get_or_create(item=item, shared_with_user=recipient, shared_by=request.user)
-                if created:
-                    notify_item_shared(item, recipient.username)
-            messages.success(request, _('Item shared successfully!'))
-        else:
-            messages.error(request, _('Please select at least one user to share with.'))
+        form = ItemShareForm(request.POST, item=item)
+        if form.is_valid():
+            recipient = form.cleaned_data['user']
+            role = form.cleaned_data['role']
+            ItemShare.objects.create(item=item, shared_with_user=recipient, shared_by=request.user, role=role)
+            notify_item_shared(item, recipient.username)
+            notify_item_shared_with_you(item, recipient, role)
+            messages.success(request, _('Item shared with %(username)s.') % {'username': recipient.username})
+            return redirect('view_item', item_uuid=item.id)
+    else:
+        form = ItemShareForm(item=item)
 
-        return redirect('view_item', item_uuid=item.id)
-
-    users = User.objects.exclude(id=request.user.id)
-    return render(request, 'share_item.html', {'item': item, 'users': users})
+    return render(request, 'share_item.html', {'item': item, 'form': form})
 
 @require_POST
 @login_required
 def unshare_item(request, item_id, user_id):
     # Get the item and ensure the current user is the owner
     item = get_object_or_404(Item, id=item_id, user=request.user)
-    
+
     # Find the ItemShare record for the specified user
     item_share = get_object_or_404(ItemShare, item=item, shared_with_user__id=user_id)
+    recipient = item_share.shared_with_user
 
     # Delete the ItemShare record to unshare the item
     item_share.delete()
-    
+    notify_item_unshared(item, recipient)
+
     # Display a success message
     messages.success(request, _("Item has been unshared successfully."))
-    
+
     # Redirect back to the item view page
     return redirect('view_item', item_uuid=item.id)
 
@@ -3479,8 +3479,9 @@ def _check_item_edit_permission(item, user):
     """
     if item.user == user:
         return True
-    if item.shared_with.filter(shared_with_user=user).exists():
-        return True
+    item_share = item.shared_with.filter(shared_with_user=user).first()
+    if item_share is not None:
+        return item_share.role == ItemShare.ROLE_EDITOR
     if item.wallet is None:
         return False
     if item.wallet.user == user:

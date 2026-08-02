@@ -2186,6 +2186,11 @@ body.dark-mode .tilt-scan-enable-btn {
                 {% if share.shared_with_user.email %}
                 <small class="text-muted">({{ share.shared_with_user.email }})</small>
                 {% endif %}
+                {% if share.role == "viewer" %}
+                <span class="badge bg-secondary-subtle text-secondary-emphasis">{% trans "Viewer" %}</span>
+                {% else %}
+                <span class="badge bg-primary-subtle text-primary-emphasis">{% trans "Editor" %}</span>
+                {% endif %}
               </span>
               <form method="POST" action="{% url 'unshare_item' item_id=item.id user_id=share.shared_with_user.id %}" style="display:inline;">
                 {% csrf_token %}

@@ -32,6 +32,8 @@ class NotificationRule(models.Model):
         ('next_up_reminder', 'Next Up Item Due Today'),
         ('wallet_invited', 'Wallet Invitation'),
         ('wallet_removed', 'Removed from Wallet'),
+        ('item_shared_with_you', 'Item Shared With You'),
+        ('item_unshared', 'Removed from Item'),
         ('item_inactive', 'Unused Gift Card Reminder'),
         ('merchant_health_alert', 'Merchant Health Alert'),
     ]

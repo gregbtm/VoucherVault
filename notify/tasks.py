@@ -154,13 +154,44 @@ def notify_balance_changed(item, transaction):
 
 
 def notify_item_shared(item, shared_with_username: str):
-    """Fired every time an item is shared with another user."""
+    """Fired every time an item is shared with another user - notifies the
+    *owner* (via their own rules) that their share went through. See
+    notify_item_shared_with_you for the recipient-facing counterpart."""
     fire_notifications(
         item, 'item_shared',
         title=f"🤝 {item.name} shared",
         message=f"Shared with {shared_with_username}",
         dedupe=False,
     )
+
+
+def notify_item_shared_with_you(item, recipient, role: str):
+    """Notify a user when an item is shared with them (mirrors notify_wallet_invited)."""
+    rules = NotificationRule.objects.filter(user=recipient, enabled=True)
+    matching_rules = [r for r in rules if 'item_shared_with_you' in (r.event_types or [])]
+    for rule in matching_rules:
+        title = f"🤝 '{item.name}' shared with you"
+        access = 'edit' if role == 'editor' else 'view'
+        message = f"Owner: {item.user.username}\nYou can now {access} this item."
+        success, detail = send_via_rule(rule, title, message, item=item)
+        NotificationLog.objects.create(
+            user=recipient, rule=rule, item=item, event_type='item_shared_with_you',
+            success=success, detail=detail,
+        )
+
+
+def notify_item_unshared(item, removed_user):
+    """Notify a user when their access to an item is revoked (mirrors notify_wallet_removed)."""
+    rules = NotificationRule.objects.filter(user=removed_user, enabled=True)
+    matching_rules = [r for r in rules if 'item_unshared' in (r.event_types or [])]
+    for rule in matching_rules:
+        title = f"🤝 Removed from '{item.name}'"
+        message = f"You no longer have access to '{item.name}' (owner: {item.user.username})."
+        success, detail = send_via_rule(rule, title, message, item=item)
+        NotificationLog.objects.create(
+            user=removed_user, rule=rule, item=item, event_type='item_unshared',
+            success=success, detail=detail,
+        )
 
 
 def notify_wallet_invited(wallet, invited_user):

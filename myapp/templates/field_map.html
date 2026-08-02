@@ -777,7 +777,7 @@ rules: {
       { name: 'Enabled', id: 'enabled', type: 'checkbox', status: 'always',
         purpose: 'Enable or disable this rule without deleting it.' },
       { name: 'Event Types', id: 'event_types', type: 'checkboxes', status: 'always',
-        purpose: 'Which events trigger this rule: expiry_warning, expiry_final, item_created, item_used, item_archived, balance_changed, item_shared, next_up_reminder, wallet_invited, wallet_removed.' },
+        purpose: 'Which events trigger this rule: expiry_warning, expiry_final, item_created, item_used, item_archived, balance_changed, item_shared, next_up_reminder, wallet_invited, wallet_removed, item_shared_with_you, item_unshared.' },
       { name: 'Delivery', id: 'digest_frequency', type: 'select', status: 'conditional',
         purpose: 'Immediate or daily digest. Hidden when backend is firefly or webpush — those backends do not support digest batching.',
         dependsOn: 'backend', showWhen: 'backend ≠ firefly AND backend ≠ webpush (JS: updateVisibility)' },

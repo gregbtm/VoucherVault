@@ -51,7 +51,8 @@ from myapp.utils import generate_code_image_base64
 from notify.models import NotificationLog, NotificationRule
 from notify.tasks import (
     backfill_firefly_transactions,
-    notify_balance_changed, notify_item_created, notify_item_shared, notify_item_used,
+    notify_balance_changed, notify_item_created, notify_item_shared,
+    notify_item_shared_with_you, notify_item_unshared, notify_item_used,
     send_test_notification,
     _find_firefly_rule,
 )
@@ -671,6 +672,7 @@ class ItemViewSet(viewsets.ModelViewSet):
             serializer.is_valid(raise_exception=True)
             share = serializer.save()
             notify_item_shared(item, share.shared_with_user.username)
+            notify_item_shared_with_you(item, share.shared_with_user, share.role)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         serializer = ItemShareSerializer(item.shared_with.all(), many=True)
@@ -680,7 +682,9 @@ class ItemViewSet(viewsets.ModelViewSet):
     def delete_share(self, request, pk=None, share_id=None):
         item = self.get_object()
         share = get_object_or_404(ItemShare, item=item, pk=share_id)
+        recipient = share.shared_with_user
         share.delete()
+        notify_item_unshared(item, recipient)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['get'], url_path='pkpass')
