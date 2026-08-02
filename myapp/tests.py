@@ -38,7 +38,7 @@ from .models import AppSettings, BalanceHistory, Document, EnrichmentConfig, Enr
 from .scan_learning import apply_learned_corrections, record_scan_corrections
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .test_utils import set_site_config
-from .tasks import check_for_update_task, check_upstream_version_task, fetch_merchant_logo_task
+from .tasks import check_for_update_task, check_upstream_version_task, fetch_merchant_logo_task, purge_expired_public_shares
 from .update_check import _is_newer, _parse_version, check_for_update, check_upstream_version
 from .utils import fetch_oidc_discovery, generate_code_image_base64, levenshtein_distance
 from .views import _integration_status
@@ -3031,6 +3031,43 @@ class TriggerUpstreamCheckViewTests(TestCase):
         mock_check.assert_not_called()
 
 
+class PurgeExpiredPublicSharesTests(TestCase):
+    """
+    myapp.tasks.purge_expired_public_shares - data hygiene for
+    ItemPublicShare rows past their expires_at. These already 410 on
+    access regardless of whether this task has run, so a delay here never
+    changes user-visible behavior - it just stops the row (and its
+    view_count/access_pin/failed_pin_attempts history) from sitting in the
+    database forever.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_deletes_expired_shares(self):
+        item = make_item(self.user)
+        expired = ItemPublicShare.objects.create(
+            item=item, created_by=self.user, expires_at=timezone.now() - timedelta(days=1),
+        )
+        deleted_count = purge_expired_public_shares()
+        self.assertEqual(deleted_count, 1)
+        self.assertFalse(ItemPublicShare.objects.filter(pk=expired.pk).exists())
+
+    def test_leaves_unexpired_shares_alone(self):
+        item = make_item(self.user)
+        active = ItemPublicShare.objects.create(
+            item=item, created_by=self.user, expires_at=timezone.now() + timedelta(days=1),
+        )
+        purge_expired_public_shares()
+        self.assertTrue(ItemPublicShare.objects.filter(pk=active.pk).exists())
+
+    def test_leaves_never_expiring_shares_alone(self):
+        item = make_item(self.user)
+        never_expires = ItemPublicShare.objects.create(item=item, created_by=self.user, expires_at=None)
+        purge_expired_public_shares()
+        self.assertTrue(ItemPublicShare.objects.filter(pk=never_expires.pk).exists())
+
+
 class PublicShareWalletTests(TestCase):
     """
     The public share page's "Add to Apple/Google Wallet" buttons - only
@@ -4117,7 +4154,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
             'Advance Recurring Items', 'Retry Failed Firefly Pushes',
             'DMS Auto Pull',
             'Gift Card Inactivity Check', 'Merchant Health Check',
-            'Purge Old Import Jobs',
+            'Purge Old Import Jobs', 'Purge Expired Public Share Links',
             'Login Spike Alert',
             'Email Expiry Digest',
             'Process Webhook Retries',

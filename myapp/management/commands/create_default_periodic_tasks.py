@@ -120,6 +120,10 @@ class Command(BaseCommand):
             # that are in a terminal state (complete/failed). Runs weekly to keep
             # the database and uploads/ directory clean without hammering storage.
             {'name': 'Purge Old Import Jobs', 'task': 'imports.tasks.purge_old_import_jobs', 'crontab': weekly_schedule, 'enabled': True},
+            # Deletes expired public share links (ItemPublicShare) - they already
+            # 410 on access, so this is just database hygiene. Never-expire links
+            # (expires_at=None) are untouched.
+            {'name': 'Purge Expired Public Share Links', 'task': 'myapp.tasks.purge_expired_public_shares', 'crontab': weekly_schedule, 'enabled': True},
             # Sends a ntfy security alert when the failed-login count in the last hour
             # exceeds SiteConfiguration.security_alert_threshold. A no-op unless a
             # security_alert_ntfy_topic is configured in Site Settings.
