@@ -5044,6 +5044,24 @@ class HelpDocViewerTests(TestCase):
             self.assertEqual(response.status_code, 200, f'{slug} did not render for a regular user')
             self.assertContains(response, '<h1', msg_prefix=f'{slug} missing rendered heading')
 
+    def test_wallets_tags_doc_covers_item_sharing_not_just_wallets(self):
+        # Previously this doc - the one linked from the item-share page's
+        # own help icon - never mentioned ItemShare ("Share with Users") or
+        # the wallet-sharing viewer/editor role at all.
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.get(reverse('view_doc', args=['wallets-tags']))
+        self.assertContains(response, 'Share with Users')
+        self.assertContains(response, 'Viewer')
+        self.assertContains(response, 'Editor')
+
+    def test_sharing_settings_doc_clarifies_its_scope(self):
+        # Previously nothing here indicated that "Share via..." settings are
+        # unrelated to Share with Users / shared wallets, or that turning off
+        # the smart-share chooser doesn't disable public link creation itself.
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.get(reverse('view_doc', args=['sharing']))
+        self.assertContains(response, "doesn't disable public share links outright")
+
 
 class DeveloperHubTokenTests(TestCase):
     """API token management on the developer hub (formerly its own

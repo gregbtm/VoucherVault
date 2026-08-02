@@ -1,15 +1,15 @@
 # Sharing
 
-Controls what the **Share via…** button on an item offers, and how public share links behave once created.
+Controls what the **Share via…** button on an item offers, and how public share links behave once created. This page is about the *public, no-account-needed* share link specifically - for giving another VoucherVault user their own access to an item or a whole wallet, see [Wallets & Tags](WALLETS_AND_TAGS.md#sharing-individual-items) instead.
 
 ## Share via… options
 
-With **Offer a choice on "Share via…"** enabled, tapping Share on an item gives the recipient two options:
+With **Offer a choice on "Share via…"** enabled, tapping Share on an item gives the person sharing it two options:
 
 - **Bare link** — just the item's public URL, works the same either way.
 - **Rich share** — a public link that also shows the merchant, code, PIN, and remaining balance directly on the shared page, without the recipient needing a VoucherVault account.
 
-Turn it off to go back to link-only sharing (no rich preview page).
+Turn it off to go back to link-only sharing (no rich preview page). This only changes what the "Share via…" chooser offers - it doesn't disable public share links outright; an owner can still create, view, and manage one from the item's own detail page regardless of this setting.
 
 The public share page is always read-only — a recipient can view what was shared but never sign in or edit anything through it, account or no account.
 
