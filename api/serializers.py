@@ -107,7 +107,7 @@ class ItemShareSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ItemShare
-        fields = ['id', 'item', 'username', 'shared_with_username', 'shared_by_username', 'shared_at']
+        fields = ['id', 'item', 'username', 'shared_with_username', 'shared_by_username', 'shared_at', 'role']
         read_only_fields = ['id', 'item', 'shared_at']
 
     def validate_username(self, username):
@@ -121,11 +121,12 @@ class ItemShareSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         recipient = validated_data.pop('username')
+        role = validated_data.pop('role', ItemShare.ROLE_EDITOR)
         item = self.context['item']
         share, _created = ItemShare.objects.get_or_create(
             item=item,
             shared_with_user=recipient,
-            defaults={'shared_by': self.context['request'].user},
+            defaults={'shared_by': self.context['request'].user, 'role': role},
         )
         return share
 

@@ -34,7 +34,7 @@ from .merchant_logos import (
 from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
 from .nearby_places import _names_match, _normalize, find_nearby_issuer_matches
 from .imagehash import compute_dhash, hamming_distance
-from .models import AppSettings, BalanceHistory, Document, EnrichmentConfig, EnrichmentRun, EnrichmentRunItem, Item, ItemEnrichmentLog, ItemPublicShare, LoginAuditLog, MerchantProfile, ScanFieldCorrection, SiteConfiguration, Tag, TOTPDevice, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, UserWebhook, Wallet, WalletActivity, WalletMembership
+from .models import AppSettings, BalanceHistory, Document, EnrichmentConfig, EnrichmentRun, EnrichmentRunItem, Item, ItemEnrichmentLog, ItemPublicShare, ItemShare, LoginAuditLog, MerchantProfile, ScanFieldCorrection, SiteConfiguration, Tag, TOTPDevice, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, UserWebhook, Wallet, WalletActivity, WalletMembership
 from .scan_learning import apply_learned_corrections, record_scan_corrections
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .test_utils import set_site_config
@@ -3326,16 +3326,121 @@ class WebhookEventWiringTests(TestCase):
     @patch('myapp.views.notify_item_shared')
     def test_sharing_item_fires_item_shared(self, mock_notify):
         item = make_item(self.alice)
-        self.client.post(reverse('share_item', args=[item.id]), {'shared_users': [self.bob.id]})
+        self.client.post(reverse('share_item', args=[item.id]), {'username': 'bob', 'role': 'editor'})
         mock_notify.assert_called_once_with(item, 'bob')
 
     @patch('myapp.views.notify_item_shared')
     def test_resharing_already_shared_item_does_not_refire(self, mock_notify):
         item = make_item(self.alice)
-        self.client.post(reverse('share_item', args=[item.id]), {'shared_users': [self.bob.id]})
+        self.client.post(reverse('share_item', args=[item.id]), {'username': 'bob', 'role': 'editor'})
         mock_notify.reset_mock()
-        self.client.post(reverse('share_item', args=[item.id]), {'shared_users': [self.bob.id]})
+        # The form now rejects re-sharing with an already-shared user
+        # outright (matching WalletShareForm), so this is a no-op non-create.
+        self.client.post(reverse('share_item', args=[item.id]), {'username': 'bob', 'role': 'editor'})
         mock_notify.assert_not_called()
+
+
+class ItemShareFormAndRoleTests(TestCase):
+    """
+    share_item now shares by exact username (matching WalletShareForm)
+    instead of listing every user's username and email in a searchable
+    checklist - that page used to leak the whole instance's user directory
+    to anyone wanting to share a single item. It also now supports a
+    viewer/editor role, matching WalletMembership's existing role concept.
+    """
+
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.carol = User.objects.create_user(username='carol', password='pw12345!', email='carol@example.com')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_share_page_does_not_leak_the_user_directory(self):
+        item = make_item(self.alice)
+        response = self.client.get(reverse('share_item', args=[item.id]))
+        self.assertNotContains(response, 'carol@example.com')
+        self.assertNotContains(response, 'bob')
+        self.assertContains(response, 'Username to share with')
+
+    def test_share_by_exact_username_creates_editor_share_by_default(self):
+        item = make_item(self.alice)
+        response = self.client.post(reverse('share_item', args=[item.id]), {'username': 'bob'})
+        self.assertRedirects(response, reverse('view_item', kwargs={'item_uuid': item.id}))
+        share = ItemShare.objects.get(item=item, shared_with_user=self.bob)
+        self.assertEqual(share.role, ItemShare.ROLE_EDITOR)
+
+    def test_share_as_viewer_role(self):
+        item = make_item(self.alice)
+        self.client.post(reverse('share_item', args=[item.id]), {'username': 'bob', 'role': 'viewer'})
+        share = ItemShare.objects.get(item=item, shared_with_user=self.bob)
+        self.assertEqual(share.role, ItemShare.ROLE_VIEWER)
+
+    def test_sharing_with_unknown_username_fails(self):
+        item = make_item(self.alice)
+        response = self.client.post(reverse('share_item', args=[item.id]), {'username': 'ghost'}, follow=True)
+        self.assertContains(response, 'No user with that username exists.')
+        self.assertFalse(ItemShare.objects.filter(item=item).exists())
+
+    def test_sharing_with_self_fails(self):
+        item = make_item(self.alice)
+        response = self.client.post(reverse('share_item', args=[item.id]), {'username': 'alice'}, follow=True)
+        self.assertContains(response, 'You already own this item.')
+
+    def test_resharing_with_same_user_fails(self):
+        item = make_item(self.alice)
+        ItemShare.objects.create(item=item, shared_with_user=self.bob, shared_by=self.alice)
+        response = self.client.post(reverse('share_item', args=[item.id]), {'username': 'bob'}, follow=True)
+        self.assertContains(response, 'This item is already shared with that user.')
+
+    def test_viewer_role_cannot_edit_the_item(self):
+        item = make_item(self.alice)
+        ItemShare.objects.create(item=item, shared_with_user=self.bob, shared_by=self.alice, role=ItemShare.ROLE_VIEWER)
+        self.client.logout()
+        self.client.login(username='bob', password='pw12345!')
+
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context['can_edit'])
+
+        edit_response = self.client.post(reverse('edit_item', args=[item.id]), {
+            'type': item.type, 'name': 'Hacked Name', 'issuer': item.issuer or '',
+            'redeem_code': item.redeem_code, 'value': str(item.value), 'currency': item.currency,
+            'code_type': item.code_type, 'value_type': item.value_type,
+            'issue_date': date.today().isoformat(),
+        })
+        self.assertEqual(edit_response.status_code, 403)
+        item.refresh_from_db()
+        self.assertNotEqual(item.name, 'Hacked Name')
+
+    def test_editor_role_can_edit_the_item(self):
+        item = make_item(self.alice)
+        ItemShare.objects.create(item=item, shared_with_user=self.bob, shared_by=self.alice, role=ItemShare.ROLE_EDITOR)
+        self.client.logout()
+        self.client.login(username='bob', password='pw12345!')
+
+        response = self.client.get(reverse('view_item', kwargs={'item_uuid': item.id}))
+        self.assertTrue(response.context['can_edit'])
+
+    def test_preexisting_share_without_explicit_role_defaults_to_editor(self):
+        # Pre-migration rows (created before the `role` field existed) get
+        # role='editor' via the field default, preserving their existing
+        # full access rather than silently downgrading them to read-only.
+        item = make_item(self.alice)
+        share = ItemShare.objects.create(item=item, shared_with_user=self.bob, shared_by=self.alice)
+        self.assertEqual(share.role, ItemShare.ROLE_EDITOR)
+
+    @patch('myapp.views.notify_item_unshared')
+    def test_unshare_fires_notify_item_unshared(self, mock_notify):
+        item = make_item(self.alice)
+        ItemShare.objects.create(item=item, shared_with_user=self.bob, shared_by=self.alice)
+        self.client.post(reverse('unshare_item', args=[item.id, self.bob.id]))
+        mock_notify.assert_called_once_with(item, self.bob)
+
+    @patch('myapp.views.notify_item_shared_with_you')
+    def test_sharing_fires_notify_item_shared_with_you(self, mock_notify):
+        item = make_item(self.alice)
+        self.client.post(reverse('share_item', args=[item.id]), {'username': 'bob', 'role': 'viewer'})
+        mock_notify.assert_called_once_with(item, self.bob, 'viewer')
 
 
 class GoogleWalletUpdateWiringTests(TestCase):

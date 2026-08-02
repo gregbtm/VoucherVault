@@ -43,6 +43,8 @@ from .tasks import (
     notify_item_archived,
     notify_item_created,
     notify_item_shared,
+    notify_item_shared_with_you,
+    notify_item_unshared,
     notify_item_used,
     push_transaction_to_firefly,
     retry_failed_firefly_pushes,
@@ -1489,6 +1491,51 @@ class LifecycleEventNotificationTests(TestCase):
         mock_send.assert_called_once()
         title, message = mock_send.call_args[0][1], mock_send.call_args[0][2]
         self.assertIn('bob', message)
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_notify_item_shared_with_you_reaches_the_recipient(self, mock_send):
+        # Unlike notify_item_shared (fired through the *owner's* rules to
+        # confirm their share went through), this fires through the
+        # *recipient's* own rules - they're a different user from self.user.
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        make_rule(bob, event_types=['item_shared_with_you'])
+        notify_item_shared_with_you(self.item, bob, 'editor')
+        mock_send.assert_called_once()
+        message = mock_send.call_args[0][2]
+        self.assertIn(self.user.username, message)
+        self.assertIn('edit', message)
+        log = NotificationLog.objects.get()
+        self.assertEqual(log.event_type, 'item_shared_with_you')
+        self.assertEqual(log.user, bob)
+        self.assertEqual(log.item, self.item)
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_notify_item_shared_with_you_mentions_view_only_for_viewer_role(self, mock_send):
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        make_rule(bob, event_types=['item_shared_with_you'])
+        notify_item_shared_with_you(self.item, bob, 'viewer')
+        message = mock_send.call_args[0][2]
+        self.assertIn('view', message)
+        self.assertNotIn('edit', message)
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_notify_item_unshared_reaches_the_removed_user(self, mock_send):
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        make_rule(bob, event_types=['item_unshared'])
+        notify_item_unshared(self.item, bob)
+        mock_send.assert_called_once()
+        message = mock_send.call_args[0][2]
+        self.assertIn(self.user.username, message)
+        log = NotificationLog.objects.get()
+        self.assertEqual(log.event_type, 'item_unshared')
+        self.assertEqual(log.user, bob)
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_notify_item_shared_with_you_noop_without_matching_rule(self, mock_send):
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        make_rule(bob, event_types=['item_shared'])  # different event type
+        notify_item_shared_with_you(self.item, bob, 'editor')
+        mock_send.assert_not_called()
 
     @patch('notify.tasks.send_via_rule', return_value=(True, ''))
     def test_no_matching_rule_is_a_noop(self, mock_send):

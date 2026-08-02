@@ -625,10 +625,18 @@ class Document(models.Model):
 
 
 class ItemShare(models.Model):
+    ROLE_VIEWER = 'viewer'
+    ROLE_EDITOR = 'editor'
+    ROLE_CHOICES = [(ROLE_VIEWER, 'Viewer'), (ROLE_EDITOR, 'Editor')]
+
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='shared_with')
     shared_with_user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_items')
     shared_at = models.DateTimeField(auto_now_add=True)
     shared_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shared_items')
+    # Defaults to editor so every pre-existing share (created before this
+    # field existed) keeps the full read/write access it already granted -
+    # only a newly-created share can opt into read-only.
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_EDITOR)
 
     class Meta:
         unique_together = ('item', 'shared_with_user')
