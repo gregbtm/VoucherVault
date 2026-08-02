@@ -80,6 +80,16 @@ SESSION_COOKIE_SAMESITE = 'Lax'
 
 SECURE_COOKIES = os.environ.get('SECURE_COOKIES', 'False').lower() in ['true']
 
+# Whether the deployment's reverse proxy can be trusted to set/overwrite
+# X-Forwarded-For itself (rather than merely forwarding whatever the client
+# sent). Used by the public share link's rate limiter (myapp/public_share.py)
+# to pick a client IP to key on. Defaults to False - with no trusted proxy in
+# front, a client can set this header to any value and get a fresh rate-limit
+# bucket on every request, defeating the throttle entirely (most damagingly
+# the PIN-guess limiter). Only enable this if you know your proxy strips any
+# client-supplied X-Forwarded-For before setting its own.
+TRUST_X_FORWARDED_FOR = os.environ.get('TRUST_X_FORWARDED_FOR', 'False').lower() in ['true']
+
 if SECURE_COOKIES:
     # transmit cookies over encrypted https only
     SESSION_COOKIE_SECURE = True

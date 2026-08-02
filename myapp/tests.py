@@ -2519,6 +2519,81 @@ class PublicShareLinkTests(TestCase):
         self.assertContains(response, f'/s/{share.id}/')
 
 
+class PublicShareLinkViewerRolePermissionTests(TestCase):
+    """
+    regenerate_public_share_link/revoke_public_share_link must require edit
+    access, not just view access - the "Public Share Link" management card
+    (with its Regenerate/Revoke buttons) is only ever shown to editors
+    (view-item.html's `{% if can_edit %}` block), but the endpoints
+    themselves used to accept any user with view access (has_item_access),
+    so a read-only wallet viewer could invalidate or reissue the owner's
+    public link by POSTing directly to a URL they can see in page source.
+    get_public_share_link is deliberately NOT tightened the same way - it's
+    a get-or-create, shown to (and meant for) every collaborator including
+    viewers, matching the "Share via..." button's own audience.
+    """
+
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.viewer = User.objects.create_user(username='viewer_bob', password='pw12345!')
+        self.wallet = Wallet.objects.create(user=self.alice, name='Family')
+        self.item = make_item(self.alice, wallet=self.wallet)
+
+        self.client.login(username='alice', password='pw12345!')
+        self.client.post(
+            reverse('share_wallet', kwargs={'wallet_id': self.wallet.id}),
+            {'username': 'viewer_bob', 'role': 'viewer'},
+        )
+        self.client.logout()
+        self.client.login(username='viewer_bob', password='pw12345!')
+
+    def test_viewer_can_still_create_and_fetch_the_link(self):
+        response = self.client.post(reverse('get_public_share_link', args=[self.item.id]),
+                                     HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(ItemPublicShare.objects.filter(item=self.item).exists())
+
+    def test_viewer_cannot_regenerate_the_link(self):
+        ItemPublicShare.objects.create(item=self.item, created_by=self.alice)
+        old_share_id = ItemPublicShare.objects.get(item=self.item).id
+
+        response = self.client.post(reverse('regenerate_public_share_link', args=[self.item.id]),
+                                     HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(ItemPublicShare.objects.get(item=self.item).id, old_share_id)
+
+    def test_viewer_cannot_revoke_the_link(self):
+        ItemPublicShare.objects.create(item=self.item, created_by=self.alice)
+
+        response = self.client.post(reverse('revoke_public_share_link', args=[self.item.id]),
+                                     HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(ItemPublicShare.objects.filter(item=self.item).exists())
+
+    def test_editor_can_still_regenerate_and_revoke(self):
+        self.client.logout()
+        editor = User.objects.create_user(username='editor_carol', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+        self.client.post(
+            reverse('share_wallet', kwargs={'wallet_id': self.wallet.id}),
+            {'username': 'editor_carol', 'role': 'editor'},
+        )
+        self.client.logout()
+        self.client.login(username='editor_carol', password='pw12345!')
+
+        ItemPublicShare.objects.create(item=self.item, created_by=self.alice)
+        old_share_id = ItemPublicShare.objects.get(item=self.item).id
+        response = self.client.post(reverse('regenerate_public_share_link', args=[self.item.id]),
+                                     HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        self.assertNotEqual(ItemPublicShare.objects.get(item=self.item).id, old_share_id)
+
+        response = self.client.post(reverse('revoke_public_share_link', args=[self.item.id]),
+                                     HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ItemPublicShare.objects.filter(item=self.item).exists())
+
+
 class ItemShareLogoViewTests(TestCase):
     """
     myapp.views.item_share_logo - the same-origin proxy the "Share via..."
