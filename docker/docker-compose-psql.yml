@@ -9,6 +9,8 @@ services:
       - DOMAIN=${DOMAIN:-vouchervault.example.com}
       # set to True if you use a reverse proxy with tls; enables secure cookie flag and hsts
       - SECURE_COOKIES=${SECURE_COOKIES:-False}
+      # set to True only if your reverse proxy strips/overwrites client-supplied X-Forwarded-For itself; enables trusting it for the public share link's rate limiter
+      - TRUST_X_FORWARDED_FOR=${TRUST_X_FORWARDED_FOR:-False}
       # send notifications xx days prior expiry
       - EXPIRY_THRESHOLD_DAYS=${EXPIRY_THRESHOLD_DAYS:-90}
       # define the timezone

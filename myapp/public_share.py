@@ -8,6 +8,7 @@ update_check.py, merchant_logos.py).
 """
 import logging
 
+from django.conf import settings
 from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
@@ -34,9 +35,20 @@ def is_link_preview_bot(user_agent):
 
 
 def _client_ip(request):
-    forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
-    if forwarded:
-        return forwarded.split(',')[0].strip()
+    """
+    Only trust X-Forwarded-For when the deployment has explicitly said its
+    reverse proxy sets it itself (settings.TRUST_X_FORWARDED_FOR) - it's a
+    plain request header, so with no proxy in front (or one that passes a
+    client-supplied value through unchanged) any visitor can set it to a
+    fresh value on every request and get a brand new rate-limit bucket each
+    time, defeating both throttles below - most damagingly the PIN-guess
+    limiter, which exists specifically to make brute-forcing a 4-digit PIN
+    slow.
+    """
+    if settings.TRUST_X_FORWARDED_FOR:
+        forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
+        if forwarded:
+            return forwarded.split(',')[0].strip()
     return request.META.get('REMOTE_ADDR', 'unknown')
 
 

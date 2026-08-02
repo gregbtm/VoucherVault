@@ -2193,10 +2193,17 @@ def get_public_share_link(request, item_id):
 @require_POST
 @login_required
 def regenerate_public_share_link(request, item_id):
-    """Invalidates the old public link (e.g. if it leaked) and issues a fresh one."""
+    """
+    Invalidates the old public link (e.g. if it leaked) and issues a fresh
+    one. Requires edit access, not just view access - unlike
+    get_public_share_link, this destroys the existing link for everyone
+    who has it, so a read-only wallet viewer shouldn't be able to trigger
+    it just because they can see the item (the UI already only shows this
+    action to editors; this matches that at the permission-check level).
+    """
     item = get_object_or_404(Item, id=item_id)
-    if not has_item_access(item, request.user):
-        logger.warning('regenerate_public_share_link: user %s denied access to item %s', request.user, item_id)
+    if not _check_item_edit_permission(item, request.user):
+        logger.warning('regenerate_public_share_link: user %s denied edit access to item %s', request.user, item_id)
         return HttpResponse("Unauthorized", status=403)
 
     try:
@@ -2214,10 +2221,14 @@ def regenerate_public_share_link(request, item_id):
 @require_POST
 @login_required
 def revoke_public_share_link(request, item_id):
-    """Deletes the public link outright; the next 'Share details' tap creates a new one."""
+    """
+    Deletes the public link outright; the next 'Share details' tap creates
+    a new one. Requires edit access - see regenerate_public_share_link for
+    why this is stricter than get_public_share_link's view-access check.
+    """
     item = get_object_or_404(Item, id=item_id)
-    if not has_item_access(item, request.user):
-        logger.warning('revoke_public_share_link: user %s denied access to item %s', request.user, item_id)
+    if not _check_item_edit_permission(item, request.user):
+        logger.warning('revoke_public_share_link: user %s denied edit access to item %s', request.user, item_id)
         return HttpResponse("Unauthorized", status=403)
 
     ItemPublicShare.objects.filter(item=item).delete()
