@@ -7,6 +7,13 @@ description_words_compact, description_words_standard.
 Optional flags (all default falsy if omitted): show_pin, show_share,
 show_checkbox, show_wallet_tags, show_sharing_badge,
 hide_value_for_travelpass, value_highlight.
+
+show_sharing_badge additionally requires entry.shared_with_me (bool) and,
+when True, entry.shared_by (the sharing user) - only set these on entries
+that are actually one-directionally shared (see sharing_center's view and
+show_items' shared_with_me/shared_by_me status filter), never
+unconditionally, since a missing/falsy shared_with_me still renders the
+"shared by me" branch.
 {% endcomment %}
 <div class="item-card
             {% if entry.item.is_used %}is-used{% endif %}

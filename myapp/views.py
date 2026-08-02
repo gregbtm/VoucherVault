@@ -456,14 +456,32 @@ def show_items(request):
     from .services.enrichment import get_active_flags_for_items
     flags_by_item_id = get_active_flags_for_items(items)
 
+    # The shared_by_me/shared_with_me status filters are the only place
+    # Inventory shows items reached via an individual ItemShare (its base
+    # queryset otherwise only covers owned + wallet-shared items) - every
+    # item in the resulting list is uniformly one direction, so a single
+    # per-request lookup covers the whole page rather than a per-item query.
+    sharers_by_item_id = {}
+    if filter_value == 'shared_with_me':
+        sharers_by_item_id = {
+            share.item_id: share.shared_by
+            for share in ItemShare.objects.filter(shared_with_user=user).select_related('shared_by')
+        }
+
     for item in items:
-        items_with_qr.append({
+        entry = {
             'item': item,
             'qr_code_base64': item.qr_code_base64,
             'current_value': item.current_balance,
             'merchant_logo_url': merchant_logos.get(item.issuer.strip().lower()),
             'has_flags': item.id in flags_by_item_id,
-        })
+        }
+        if filter_value == 'shared_with_me':
+            entry['shared_with_me'] = True
+            entry['shared_by'] = sharers_by_item_id.get(item.id)
+        elif filter_value == 'shared_by_me':
+            entry['shared_with_me'] = False
+        items_with_qr.append(entry)
 
     next_up_with_logos = [
         {'item': item, 'merchant_logo_url': merchant_logos.get(item.issuer.strip().lower())}
@@ -483,6 +501,7 @@ def show_items(request):
         'active_today_item': active_today_with_logo,
         'item_type': item_type,  # Add the item_type to the context
         'item_status': filter_value,  # Reuse item_status to hold the combined filter value
+        'is_shared_status_filter': filter_value in ('shared_with_me', 'shared_by_me'),
         'search_query': search_query,
         'current_date': timezone.now(),
         'preferences': preferences,

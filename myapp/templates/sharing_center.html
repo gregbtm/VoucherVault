@@ -233,7 +233,7 @@ body.dark-mode .status-badge.shared-by-me {
   {% if shared_items %}
   <div class="items-grid">
     {% for entry in shared_items %}
-    {% include "partials/item_card.html" with entry=entry show_sharing_badge=True value_highlight=True description_words_compact=15 description_words_standard=15 %}
+    {% include "partials/item_card.html" with entry=entry show_share=True show_sharing_badge=True value_highlight=True description_words_compact=15 description_words_standard=15 %}
     {% endfor %}
   </div>
   {% else %}

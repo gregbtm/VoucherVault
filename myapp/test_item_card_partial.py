@@ -110,14 +110,22 @@ class ItemCardPerPageElementTests(TestCase):
         self.assertNotContains(response, 'status-badge shared-with-me')
         self.assertNotContains(response, 'status-badge shared-by-me')
 
-    def test_sharing_center_does_not_render_pin_share_or_select_controls(self):
+    def test_sharing_center_does_not_render_pin_or_select_controls(self):
         item = make_item(self.user, redeem_code='ITEM3')
         ItemShare.objects.create(item=item, shared_with_user=self.other_user, shared_by=self.user)
         self.client.login(username='bob', password='pw12345!')
         response = self.client.get(reverse('sharing_center'))
         self.assertNotContains(response, 'items/toggle_pin/')
-        self.assertNotContains(response, 'data-public-share-url')
         self.assertNotContains(response, 'type="checkbox" class="select-checkbox"')
+
+    def test_sharing_center_renders_share_button(self):
+        # Previously absent - a card here had no way to forward the item's
+        # public share link without navigating to the item detail page first.
+        item = make_item(self.user, redeem_code='ITEM3B')
+        ItemShare.objects.create(item=item, shared_with_user=self.other_user, shared_by=self.user)
+        self.client.login(username='bob', password='pw12345!')
+        response = self.client.get(reverse('sharing_center'))
+        self.assertContains(response, 'data-public-share-url')
 
     def test_sharing_center_renders_sharing_badge_and_footer(self):
         item = make_item(self.user, redeem_code='ITEM4')
@@ -126,6 +134,26 @@ class ItemCardPerPageElementTests(TestCase):
         response = self.client.get(reverse('sharing_center'))
         self.assertContains(response, 'class="shared-info"')
         self.assertContains(response, 'status-badge shared-with-me')
+
+    def test_inventory_shared_with_me_filter_renders_the_sharing_badge(self):
+        # Inventory's own status=shared_with_me/shared_by_me filters are the
+        # only place it shows ItemShare'd items - previously with no
+        # indication at all of who shared them or in which direction.
+        item = make_item(self.user, redeem_code='ITEM4B')
+        ItemShare.objects.create(item=item, shared_with_user=self.other_user, shared_by=self.user)
+        self.client.login(username='bob', password='pw12345!')
+        response = self.client.get(reverse('show_items'), {'status': 'shared_with_me'})
+        self.assertContains(response, 'status-badge shared-with-me')
+        self.assertContains(response, 'class="shared-info"')
+        self.assertContains(response, self.user.username)  # "From: alice"
+
+    def test_inventory_shared_by_me_filter_renders_the_sharing_badge(self):
+        item = make_item(self.user, redeem_code='ITEM4C')
+        ItemShare.objects.create(item=item, shared_with_user=self.other_user, shared_by=self.user)
+        self.client.login(username='alice', password='pw12345!')
+        response = self.client.get(reverse('show_items'), {'status': 'shared_by_me'})
+        self.assertContains(response, 'status-badge shared-by-me')
+        self.assertContains(response, 'You shared this item')
 
 
 class ItemCardDescriptionTruncationTests(TestCase):
