@@ -58,6 +58,75 @@ def make_item(user, **kwargs):
     return Item.objects.create(**defaults)
 
 
+class ItemNormalizeValueTests(TestCase):
+    """
+    Item.normalize_value() is the single source of truth for the item
+    value/type business rule - replacing three independent copies that
+    used to live in ItemForm.clean(), ItemSerializer.validate(), and
+    imports/tasks.py::_validate_value, which had drifted out of sync with
+    each other (most seriously: the importer used to silently zero out
+    any loyalty card value with no error at all).
+    """
+
+    def test_loyaltycard_blank_normalizes_to_zero(self):
+        value, error = Item.normalize_value('loyaltycard', 'money', None)
+        self.assertIsNone(error)
+        self.assertEqual(value, Decimal('0'))
+
+    def test_loyaltycard_zero_accepted(self):
+        value, error = Item.normalize_value('loyaltycard', 'money', Decimal('0'))
+        self.assertIsNone(error)
+        self.assertEqual(value, Decimal('0'))
+
+    def test_loyaltycard_nonzero_rejected(self):
+        value, error = Item.normalize_value('loyaltycard', 'money', Decimal('5.00'))
+        self.assertIsNone(value)
+        self.assertIsNotNone(error)
+
+    def test_travelpass_blank_normalizes_to_zero(self):
+        value, error = Item.normalize_value('travelpass', 'money', None)
+        self.assertIsNone(error)
+        self.assertEqual(value, Decimal('0'))
+
+    def test_travelpass_explicit_value_preserved(self):
+        # Travel passes don't carry a monetary value in the UI, but an
+        # explicit value passed in (e.g. from a future integration) isn't
+        # second-guessed - only a blank/omitted one is defaulted.
+        value, error = Item.normalize_value('travelpass', 'money', Decimal('12.50'))
+        self.assertIsNone(error)
+        self.assertEqual(value, Decimal('12.50'))
+
+    def test_coupon_money_negative_rejected(self):
+        value, error = Item.normalize_value('coupon', 'money', Decimal('-1'))
+        self.assertIsNotNone(error)
+
+    def test_coupon_percentage_over_100_rejected(self):
+        value, error = Item.normalize_value('coupon', 'percentage', Decimal('101'))
+        self.assertIsNotNone(error)
+
+    def test_coupon_percentage_in_range_accepted(self):
+        value, error = Item.normalize_value('coupon', 'percentage', Decimal('50'))
+        self.assertIsNone(error)
+        self.assertEqual(value, Decimal('50'))
+
+    def test_coupon_multiplier_below_one_rejected(self):
+        value, error = Item.normalize_value('coupon', 'multiplier', Decimal('0.5'))
+        self.assertIsNotNone(error)
+
+    def test_giftcard_requires_positive_value(self):
+        value, error = Item.normalize_value('giftcard', 'money', None)
+        self.assertIsNotNone(error)
+
+    def test_giftcard_negative_value_rejected(self):
+        value, error = Item.normalize_value('giftcard', 'money', Decimal('-5'))
+        self.assertIsNotNone(error)
+
+    def test_giftcard_positive_value_accepted(self):
+        value, error = Item.normalize_value('giftcard', 'money', Decimal('25.00'))
+        self.assertIsNone(error)
+        self.assertEqual(value, Decimal('25.00'))
+
+
 class LedgerBalanceTests(TestCase):
     """
     Item.get_current_balance() / Item.objects.with_current_balance() are the

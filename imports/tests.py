@@ -210,8 +210,30 @@ class CreateItemFromRowTests(TestCase):
         self.assertEqual(item.wallet_id, wallet.id)
         self.assertEqual(Wallet.objects.filter(user=self.user, name='Travel').count(), 1)
 
-    def test_loyaltycard_value_forced_to_zero(self):
+    def test_loyaltycard_nonzero_value_raises(self):
+        # Previously this silently forced the value to 0 with no error,
+        # discarding real data from a mislabeled or hand-edited row - now
+        # it's rejected explicitly, matching the form/API behavior.
         row = {'type': 'loyaltycard', 'name': 'X', 'issuer': 'Y', 'redeem_code': 'C1', 'value': Decimal('5.00')}
+        with self.assertRaises(ValueError):
+            create_item_from_row(self.user, row)
+
+    def test_loyaltycard_blank_value_normalizes_to_zero(self):
+        row = {'type': 'loyaltycard', 'name': 'X', 'issuer': 'Y', 'redeem_code': 'C1', 'value': None}
+        item = create_item_from_row(self.user, row)
+        self.assertEqual(item.value, Decimal('0'))
+
+    def test_loyaltycard_zero_value_accepted(self):
+        row = {'type': 'loyaltycard', 'name': 'X', 'issuer': 'Y', 'redeem_code': 'C1', 'value': Decimal('0')}
+        item = create_item_from_row(self.user, row)
+        self.assertEqual(item.value, Decimal('0'))
+
+    def test_travelpass_blank_value_normalizes_to_zero(self):
+        # Previously this raised - the generic "Value must be positive"
+        # branch had no travelpass-specific fallback (unlike the form),
+        # even though the built-in parsers happen to always default
+        # travelpass rows' value to 0 before it reaches here in practice.
+        row = {'type': 'travelpass', 'name': 'X', 'issuer': 'Y', 'redeem_code': 'C1', 'value': None}
         item = create_item_from_row(self.user, row)
         self.assertEqual(item.value, Decimal('0'))
 
