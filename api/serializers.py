@@ -193,22 +193,10 @@ class ItemSerializer(serializers.ModelSerializer):
         value_type = attrs.get('value_type', getattr(self.instance, 'value_type', 'money'))
         value = attrs.get('value', getattr(self.instance, 'value', None))
 
-        if item_type == 'loyaltycard':
-            if value not in (0, None):
-                raise serializers.ValidationError({'value': _('Value must be zero for loyalty cards.')})
-            attrs['value'] = 0
-        elif item_type == 'coupon':
-            if value_type == 'money':
-                if value is None or value < 0:
-                    raise serializers.ValidationError({'value': _('Value must be a positive monetary amount.')})
-            elif value_type == 'percentage':
-                if value is None or value < 0 or value > 100:
-                    raise serializers.ValidationError({'value': _('Percentage value must be between 0 and 100.')})
-            elif value_type == 'multiplier':
-                if value is None or value < 1:
-                    raise serializers.ValidationError({'value': _('Multiplier must be 1 or higher.')})
-        elif item_type != 'loyaltycard' and (value is None or value < 0):
-            raise serializers.ValidationError({'value': _('Value must be positive.')})
+        normalized_value, error = Item.normalize_value(item_type, value_type, value)
+        if error:
+            raise serializers.ValidationError({'value': error})
+        attrs['value'] = normalized_value
 
         return attrs
 

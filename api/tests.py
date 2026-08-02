@@ -110,6 +110,21 @@ class ItemCrudTests(APITestCase):
         response = self.client.post('/api/v1/items/', payload)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_travelpass_blank_value_defaults_to_zero(self):
+        # Previously the API had no travelpass fallback (unlike the web
+        # form, which has always defaulted a blank travelpass value to 0)
+        # and rejected this with 400 - now consolidated onto the same rule.
+        payload = {
+            'type': 'travelpass',
+            'name': 'Train Ticket',
+            'redeem_code': 'TICKET001',
+            'issuer': 'Rail Co',
+        }
+        response = self.client.post('/api/v1/items/', payload)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        item = Item.objects.get(pk=response.data['id'])
+        self.assertEqual(item.value, 0)
+
     def test_list_retrieve_update_delete(self):
         item = make_item(self.user)
 

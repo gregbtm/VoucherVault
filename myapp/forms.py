@@ -175,31 +175,12 @@ class ItemForm(forms.ModelForm):
             # Train tickets are frequently valid and expire on the same day.
             if not cleaned_data.get('issue_date'):
                 cleaned_data['issue_date'] = cleaned_data['expiry_date']
-            # Value/currency/card number/PIN don't apply to a travel pass -
-            # forced to a harmless zero rather than erroring on a blank
-            # submission (covers non-JS clients; the form UI hides and
-            # zeroes this field itself).
-            if not value:
-                value = 0
-                cleaned_data['value'] = 0
 
-        if item_type == 'loyaltycard' and value != 0:
-            error_msg_value = _('Value must be zero for loyalty cards.')
-            raise forms.ValidationError(error_msg_value)
-        if item_type == 'coupon':
-            if value_type == 'money':
-                if value is None or value < 0:
-                    raise forms.ValidationError(_('Value must be a positive monetary amount.'))
-            elif value_type == 'percentage':
-                if value is None or value < 0 or value > 100:
-                    raise forms.ValidationError(_('Percentage value must be between 0 and 100.'))
-            elif value_type == 'multiplier':
-                if value is None or value < 1:
-                    raise forms.ValidationError(_('Multiplier must be 1 or higher.'))
-        elif item_type != 'loyaltycard' and (value is None or value < 0):
-            error_message_positive = _('Value must be positive.')
-            raise forms.ValidationError(error_message_positive)
-        
+        normalized_value, error = Item.normalize_value(item_type, value_type, value)
+        if error:
+            raise forms.ValidationError(error)
+        cleaned_data['value'] = normalized_value
+
         return cleaned_data
 
 class TransactionForm(forms.ModelForm):

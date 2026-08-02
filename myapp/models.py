@@ -7,6 +7,7 @@ from django.db.models import ExpressionWrapper, F, Sum
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.utils.translation import gettext_lazy as _
 import os
 import uuid
 from django.core.validators import RegexValidator, MinValueValidator, MaxValueValidator
@@ -528,6 +529,54 @@ class Item(models.Model):
         if self.type == 'travelpass' and self.user_id:
             self.wallet = Wallet.get_or_create_travel_pass_wallet(self.user)
         super().save(*args, **kwargs)
+
+    @staticmethod
+    def normalize_value(item_type, value_type, value):
+        """
+        The value/type business rule for an item: what's a valid `value`
+        for a given `item_type` (and, for coupons, `value_type`), and what
+        it should be normalized to. Single source of truth for the
+        create/edit item form (ItemForm.clean), the REST API
+        (ItemSerializer.validate), and CSV/JSON import
+        (imports/tasks.py::create_item_from_row) - these three previously
+        each reimplemented this independently and drifted out of sync,
+        most seriously on loyalty cards: the importer silently zeroed out
+        *any* value with no error, silently discarding real data from a
+        mislabeled or hand-edited row, while the form and API each
+        rejected (inconsistently) or accepted-and-normalized it.
+
+        Returns (normalized_value, error_message_or_None). On error, the
+        caller raises it however its own framework expects
+        (forms.ValidationError, serializers.ValidationError, ValueError).
+        """
+        if item_type == 'loyaltycard':
+            # A blank/omitted value is fine (there's nothing to enter -
+            # normalize to 0), but an explicit nonzero value is rejected
+            # rather than silently discarded, so a real balance typed or
+            # imported by mistake doesn't just vanish.
+            if value not in (0, None):
+                return None, _('Value must be zero for loyalty cards.')
+            return Decimal('0'), None
+        if item_type == 'travelpass':
+            # No monetary value applies to a travel pass; a blank/omitted
+            # value defaults to 0 rather than erroring.
+            if not value:
+                return Decimal('0'), None
+            return value, None
+        if item_type == 'coupon':
+            if value_type == 'money':
+                if value is None or value < 0:
+                    return None, _('Value must be a positive monetary amount.')
+            elif value_type == 'percentage':
+                if value is None or value < 0 or value > 100:
+                    return None, _('Percentage value must be between 0 and 100.')
+            elif value_type == 'multiplier':
+                if value is None or value < 1:
+                    return None, _('Multiplier must be 1 or higher.')
+            return value, None
+        if value is None or value < 0:
+            return None, _('Value must be positive.')
+        return value, None
 
     def get_current_balance(self, transactions=None):
         """

@@ -1,7 +1,6 @@
 import logging
 import os
 from datetime import timedelta
-from decimal import Decimal
 
 from celery import shared_task
 from django.contrib.auth.models import User
@@ -20,37 +19,11 @@ logger = logging.getLogger(__name__)
 BACKUP_ROOT = os.path.join('database', 'backups')
 
 
-def _validate_value(item_type, value_type, value):
-    """
-    Mirrors the value/type business rule enforced by ItemForm.clean() and
-    ItemSerializer.validate() — kept as a third, independent implementation
-    here rather than a shared import, since import rows come pre-typed
-    (Decimal, already-resolved item_type) and don't go through a Form/DRF
-    validation pipeline.
-    """
-    if item_type == 'loyaltycard':
-        return Decimal('0'), None
-    if item_type == 'coupon':
-        if value_type == 'money':
-            if value is None or value < 0:
-                return None, 'Value must be a positive monetary amount.'
-        elif value_type == 'percentage':
-            if value is None or value < 0 or value > 100:
-                return None, 'Percentage value must be between 0 and 100.'
-        elif value_type == 'multiplier':
-            if value is None or value < 1:
-                return None, 'Multiplier must be 1 or higher.'
-        return value, None
-    if value is None or value < 0:
-        return None, 'Value must be positive.'
-    return value, None
-
-
 def create_item_from_row(user, row):
     """Creates a single Item from a normalized parser row dict. Raises ValueError on failure."""
-    value, error = _validate_value(row['type'], row.get('value_type', 'money'), row.get('value'))
+    value, error = Item.normalize_value(row['type'], row.get('value_type', 'money'), row.get('value'))
     if error:
-        raise ValueError(error)
+        raise ValueError(str(error))
 
     wallet = None
     wallet_name = row.get('wallet_name')
