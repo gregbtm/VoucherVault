@@ -103,7 +103,7 @@ Implementation: `_record_suggestion_feedback` in `myapp/views.py`, called after 
 | Tags | `tags` | checkboxes | Always | Only rendered if user has tags |
 | New Tags | `new_tags` | text | Always | Comma-separated; combined with existing tags |
 | Notes | `notes` | textarea | Always | Free-text |
-| Share Message | `share_message` | textarea | Always | Shown on the public share page |
+| Share Message | `share_message` | textarea | Conditional | Collapsed by default behind "Add a share message"; auto-expanded if already set. Its owner-preview on the item page only shows once a public share link actually exists. |
 | Recurring / Subscription | `is_recurring` | checkbox | **Driver** | Reveals renewal period and date |
 | Renewal Period | `renewal_period` | select | Conditional | `is_recurring` checked |
 | Next Renewal Date | `renewal_date` | date | Conditional | `is_recurring` checked |
@@ -117,7 +117,7 @@ Implementation: `_record_suggestion_feedback` in `myapp/views.py`, called after 
 | Order / Booking Reference | `order_id` | text | Conditional | Gift card · travel pass |
 | Discount / Railcard Applied | `discount_applied` | text | Conditional | 💡 Suggestion button when empty. Travel pass only. |
 | Minimum Spend | `minimum_spend` | number | Conditional | Voucher · coupon |
-| Logo Slug | `logo_slug` | text | ⚡ Proposed | 💡 Suggestion button when empty. Proposal: move to "Advanced" collapsible. |
+| Logo Slug | `logo_slug` | text | Conditional | 💡 Suggestion button when empty. Collapsed by default behind "Advanced"; auto-expanded if already set. |
 | Upload File | `file` | file | Always | Card photo or PDF |
 
 ### Type Visibility Matrix
