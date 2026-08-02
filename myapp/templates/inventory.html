@@ -1383,7 +1383,7 @@ body.dark-mode .next-up-card {
   {% if items_with_qr %}
   <div class="items-grid {% if preferences.view_mode == 'compact' %}compact-view{% else %}standard-view{% endif %}">
     {% for entry in items_with_qr %}
-    {% include "partials/item_card.html" with entry=entry show_pin=True show_share=True show_checkbox=True show_wallet_tags=True hide_value_for_travelpass=True description_words_compact=10 description_words_standard=25 %}
+    {% include "partials/item_card.html" with entry=entry show_pin=True show_share=True show_checkbox=True show_wallet_tags=True show_sharing_badge=is_shared_status_filter hide_value_for_travelpass=True description_words_compact=10 description_words_standard=25 %}
     {% endfor %}
   </div>
   {% else %}
