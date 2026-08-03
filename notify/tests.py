@@ -46,6 +46,8 @@ from .tasks import (
     notify_item_shared_with_you,
     notify_item_unshared,
     notify_item_used,
+    notify_wallet_invited,
+    notify_wallet_removed,
     push_transaction_to_firefly,
     retry_failed_firefly_pushes,
     send_daily_digests,
@@ -1542,6 +1544,63 @@ class LifecycleEventNotificationTests(TestCase):
         make_rule(self.user, event_types=['expiry_warning'])
         notify_item_created(self.item)
         mock_send.assert_not_called()
+
+
+class WalletMembershipNotificationTests(TestCase):
+    """notify_wallet_invited/notify_wallet_removed - fired through the
+    invited/removed collaborator's own rules, not the wallet owner's,
+    same as the item_shared_with_you/item_unshared pair above."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username='alice', password='pw12345!')
+        self.wallet = Wallet.objects.create(user=self.owner, name='Groceries')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_notify_wallet_invited_reaches_the_invited_user(self, mock_send):
+        make_rule(self.bob, event_types=['wallet_invited'])
+        notify_wallet_invited(self.wallet, self.bob)
+        mock_send.assert_called_once()
+        title, message = mock_send.call_args[0][1], mock_send.call_args[0][2]
+        self.assertIn(self.wallet.name, title)
+        self.assertIn(self.owner.username, message)
+        log = NotificationLog.objects.get()
+        self.assertEqual(log.event_type, 'wallet_invited')
+        self.assertEqual(log.user, self.bob)
+        self.assertTrue(log.success)
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_notify_wallet_invited_noop_without_matching_rule(self, mock_send):
+        make_rule(self.bob, event_types=['wallet_removed'])  # different event type
+        notify_wallet_invited(self.wallet, self.bob)
+        mock_send.assert_not_called()
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_notify_wallet_removed_reaches_the_removed_user(self, mock_send):
+        make_rule(self.bob, event_types=['wallet_removed'])
+        notify_wallet_removed(self.wallet, self.bob, self.owner.username)
+        mock_send.assert_called_once()
+        title, message = mock_send.call_args[0][1], mock_send.call_args[0][2]
+        self.assertIn(self.wallet.name, title)
+        self.assertIn(self.owner.username, message)
+        log = NotificationLog.objects.get()
+        self.assertEqual(log.event_type, 'wallet_removed')
+        self.assertEqual(log.user, self.bob)
+        self.assertTrue(log.success)
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_notify_wallet_removed_noop_without_matching_rule(self, mock_send):
+        make_rule(self.bob, event_types=['wallet_invited'])  # different event type
+        notify_wallet_removed(self.wallet, self.bob, self.owner.username)
+        mock_send.assert_not_called()
+
+    @patch('notify.tasks.send_via_rule', return_value=(False, 'Backend reported failure.'))
+    def test_notify_wallet_removed_logs_failure(self, mock_send):
+        make_rule(self.bob, event_types=['wallet_removed'])
+        notify_wallet_removed(self.wallet, self.bob, self.owner.username)
+        log = NotificationLog.objects.get()
+        self.assertFalse(log.success)
+        self.assertEqual(log.detail, 'Backend reported failure.')
 
 
 class CheckAndNotifyExpiryTaskTests(TestCase):
