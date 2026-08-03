@@ -5063,6 +5063,50 @@ class HelpDocViewerTests(TestCase):
         self.assertContains(response, "doesn't disable public share links outright")
 
 
+class FieldMapDocumentationTests(TestCase):
+    """Guards docs/FIELD_MAP.md's Item Form section against silently going
+    stale again - every real ItemForm.Meta.fields entry (bar a few UI-only
+    aliases documented under a different id) must appear as a `code` token
+    somewhere in that section, and the doc must not still claim any of them
+    are merely "Proposed" once they've actually shipped."""
+
+    # ItemForm fields whose FIELD_MAP.md row uses a different id than the
+    # model/form field name because it documents the visible control, not
+    # the underlying field (e.g. a hidden field toggled by a button).
+    ALIASED_FIELD_IDS = {'value_type': 'toggle-value-type'}
+
+    def _item_form_section(self):
+        import re
+
+        from django.conf import settings
+
+        text = (settings.BASE_DIR / 'docs' / 'FIELD_MAP.md').read_text()
+        match = re.search(r'## Item Form\b(.*?)(?=\n## [^#])', text, re.DOTALL)
+        self.assertIsNotNone(match, 'Item Form section not found in FIELD_MAP.md')
+        return match.group(1)
+
+    def test_every_item_form_field_is_documented(self):
+        import re
+
+        section = self._item_form_section()
+        documented_ids = set(re.findall(r'`([a-zA-Z0-9_-]+)`', section))
+        for field_name in ItemForm.Meta.fields:
+            expected_id = self.ALIASED_FIELD_IDS.get(field_name, field_name)
+            self.assertIn(
+                expected_id, documented_ids,
+                f'ItemForm field "{field_name}" (documented as `{expected_id}`) is missing from '
+                f'FIELD_MAP.md\'s Item Form section - add a row for it.',
+            )
+
+    def test_no_item_form_field_left_marked_proposed(self):
+        section = self._item_form_section()
+        self.assertNotIn(
+            '⚡ Proposed', section,
+            'A field in FIELD_MAP.md\'s Item Form section is still marked "⚡ Proposed" - '
+            'if it has shipped, update its Status to Always/Conditional/Driver.',
+        )
+
+
 class DeveloperHubTokenTests(TestCase):
     """API token management on the developer hub (formerly its own
     standalone api_access page, retired in favor of this one - see

@@ -87,13 +87,13 @@ Implementation: `_record_suggestion_feedback` in `myapp/views.py`, called after 
 | Field | ID | Type | Status | Notes |
 |---|---|---|---|---|
 | Value | `value` | number | Conditional | Hidden for travel pass; read-only (forced 0) for loyalty card |
-| Value Type Toggle | `toggle-value-type` | button | Conditional | Coupon only — cycles money/percentage/multiplier |
+| Value Type Toggle | `toggle-value-type` | button | Conditional | Coupon only — cycles the hidden `value_type` field between money/percentage/multiplier |
 | Currency | `currency` | select | Conditional | 💡 Suggestion button (always visible). Hidden for loyalty card and non-money value types. |
 | Balance Check URL | `balance_check_url` | url | Conditional | Gift card only |
 | Face Value (at purchase) | `initial_value` | number | Conditional | Gift card only |
 | Points Balance | `points_balance` | number | Conditional | Loyalty card only |
-| Firefly III Account ID | `firefly_account_id` | text | ⚡ Proposed | Gate on: user has at least one Firefly rule |
-| Firefly III Rule (override) | `firefly_rule` | select | ⚡ Proposed | Edit form only; same gate as above |
+| Firefly III Account ID | `firefly_account_id` | text | Conditional | Shown on create and edit; hint links to Firefly setup doc when user has no enabled Firefly rule |
+| Firefly III Rule (override) | `firefly_rule` | select | Conditional | Shown on create and edit once Account ID is non-blank; same Firefly-rule gate as above |
 
 ### Organisation
 
@@ -107,7 +107,8 @@ Implementation: `_record_suggestion_feedback` in `myapp/views.py`, called after 
 | Recurring / Subscription | `is_recurring` | checkbox | **Driver** | Reveals renewal period and date |
 | Renewal Period | `renewal_period` | select | Conditional | `is_recurring` checked |
 | Next Renewal Date | `renewal_date` | date | Conditional | `is_recurring` checked |
-| Notify Before Expiry (days) | `notify_days_before` | number | ⚡ Proposed | Consider hiding unless user has at least one active notification rule |
+| Mute All Notifications | `notifications_muted` | checkbox | Always | Suppresses all expiry/renewal alerts for this item |
+| Notify Before Expiry (days) | `notify_days_before` | number | Conditional | Shown only when user has ≥1 enabled notification rule; hint links to rule setup otherwise |
 
 ### Additional Information
 
@@ -151,7 +152,9 @@ Key conditional groups:
 - **OCR backend** — Anthropic API key + model shown only when `ocr_backend = claude`; OpenAI key + model only when `ocr_backend = openai`.
 - **OIDC** — `oidc_autologin` and `oidc_require_totp` shown only when both discovery URL and client ID are set.
 - **Apple Wallet / Google Wallet** — each in a `<details>` element, collapsed by default.
-- **Proposed conditionals** — Overpass API URL (gate on `nearby_places_enabled`), share link settings (gate on `share_via_smart_enabled`), backup retention (gate on `scheduled_backup_enabled`).
+- **Nearby / Overpass** — `overpass_api_url` shown only when `nearby_places_enabled` is checked.
+- **Sharing** — `share_link_expiry_days` and `share_link_pin_enabled` shown only when `share_via_smart_enabled` is checked.
+- **Scheduled Local Backups** — `backup_retention_count` shown only when `scheduled_backup_enabled` is checked.
 
 ---
 
@@ -159,11 +162,11 @@ Key conditional groups:
 
 Source: `update_preferences.html` · `UserPreferenceForm`.
 
-Notable proposed conditionals:
+Key conditional groups:
 
-- **Next Up Items to Show** — show only when at least one wallet is checked in `next_up_wallets`.
-- **Active Today** sub-fields (`commute_home_station`, `active_today_cutoff_time`) — show only when `active_today_enabled` is checked.
-- **Nearby** section — gate on site-level `nearby_places_enabled` first, then per-user `nearby_items_enabled`.
+- **Next Up Widget** — `next_up_max_items` shown only when at least one wallet is checked in `next_up_wallets`.
+- **Active Today Widget** — `commute_home_station` and `active_today_cutoff_time` shown only when `active_today_enabled` is checked.
+- **Nearby Widget** — gated on site-level `nearby_places_enabled` first (an inline banner explains it's off site-wide if so); `nearby_radius_m` then shown only when the user's own `nearby_items_enabled` is checked.
 
 ---
 
