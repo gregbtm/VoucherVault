@@ -152,7 +152,9 @@ Key conditional groups:
 - **OCR backend** — Anthropic API key + model shown only when `ocr_backend = claude`; OpenAI key + model only when `ocr_backend = openai`.
 - **OIDC** — `oidc_autologin` and `oidc_require_totp` shown only when both discovery URL and client ID are set.
 - **Apple Wallet / Google Wallet** — each in a `<details>` element, collapsed by default.
-- **Proposed conditionals** — Overpass API URL (gate on `nearby_places_enabled`), share link settings (gate on `share_via_smart_enabled`), backup retention (gate on `scheduled_backup_enabled`).
+- **Nearby / Overpass** — `overpass_api_url` shown only when `nearby_places_enabled` is checked.
+- **Sharing** — `share_link_expiry_days` and `share_link_pin_enabled` shown only when `share_via_smart_enabled` is checked.
+- **Scheduled Local Backups** — `backup_retention_count` shown only when `scheduled_backup_enabled` is checked.
 
 ---
 
@@ -160,11 +162,11 @@ Key conditional groups:
 
 Source: `update_preferences.html` · `UserPreferenceForm`.
 
-Notable proposed conditionals:
+Key conditional groups:
 
-- **Next Up Items to Show** — show only when at least one wallet is checked in `next_up_wallets`.
-- **Active Today** sub-fields (`commute_home_station`, `active_today_cutoff_time`) — show only when `active_today_enabled` is checked.
-- **Nearby** section — gate on site-level `nearby_places_enabled` first, then per-user `nearby_items_enabled`.
+- **Next Up Widget** — `next_up_max_items` shown only when at least one wallet is checked in `next_up_wallets`.
+- **Active Today Widget** — `commute_home_station` and `active_today_cutoff_time` shown only when `active_today_enabled` is checked.
+- **Nearby Widget** — gated on site-level `nearby_places_enabled` first (an inline banner explains it's off site-wide if so); `nearby_radius_m` then shown only when the user's own `nearby_items_enabled` is checked.
 
 ---
 
