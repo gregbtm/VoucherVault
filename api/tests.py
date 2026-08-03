@@ -218,6 +218,13 @@ class WriteRateThrottleTests(APITestCase):
 
 class Phase11FieldsApiTests(APITestCase):
     def setUp(self):
+        # This class's writes accumulate in the shared, un-cleared cache
+        # toward WriteRateThrottle's limit alongside every other API test
+        # class's writes in the same run - see WriteRateThrottleTests above
+        # for the same fix. Without it, test_last_used_at_is_read_only's
+        # PATCH intermittently 429s depending on how many writes earlier
+        # test classes made first.
+        cache.clear()
         self.user = User.objects.create_user(username='alice', password='pw12345!')
         self.client.force_authenticate(user=self.user)
 
