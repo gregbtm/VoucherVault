@@ -87,13 +87,13 @@ Implementation: `_record_suggestion_feedback` in `myapp/views.py`, called after 
 | Field | ID | Type | Status | Notes |
 |---|---|---|---|---|
 | Value | `value` | number | Conditional | Hidden for travel pass; read-only (forced 0) for loyalty card |
-| Value Type Toggle | `toggle-value-type` | button | Conditional | Coupon only — cycles money/percentage/multiplier |
+| Value Type Toggle | `toggle-value-type` | button | Conditional | Coupon only — cycles the hidden `value_type` field between money/percentage/multiplier |
 | Currency | `currency` | select | Conditional | 💡 Suggestion button (always visible). Hidden for loyalty card and non-money value types. |
 | Balance Check URL | `balance_check_url` | url | Conditional | Gift card only |
 | Face Value (at purchase) | `initial_value` | number | Conditional | Gift card only |
 | Points Balance | `points_balance` | number | Conditional | Loyalty card only |
-| Firefly III Account ID | `firefly_account_id` | text | ⚡ Proposed | Gate on: user has at least one Firefly rule |
-| Firefly III Rule (override) | `firefly_rule` | select | ⚡ Proposed | Edit form only; same gate as above |
+| Firefly III Account ID | `firefly_account_id` | text | Conditional | Shown on create and edit; hint links to Firefly setup doc when user has no enabled Firefly rule |
+| Firefly III Rule (override) | `firefly_rule` | select | Conditional | Shown on create and edit once Account ID is non-blank; same Firefly-rule gate as above |
 
 ### Organisation
 
@@ -107,7 +107,8 @@ Implementation: `_record_suggestion_feedback` in `myapp/views.py`, called after 
 | Recurring / Subscription | `is_recurring` | checkbox | **Driver** | Reveals renewal period and date |
 | Renewal Period | `renewal_period` | select | Conditional | `is_recurring` checked |
 | Next Renewal Date | `renewal_date` | date | Conditional | `is_recurring` checked |
-| Notify Before Expiry (days) | `notify_days_before` | number | ⚡ Proposed | Consider hiding unless user has at least one active notification rule |
+| Mute All Notifications | `notifications_muted` | checkbox | Always | Suppresses all expiry/renewal alerts for this item |
+| Notify Before Expiry (days) | `notify_days_before` | number | Conditional | Shown only when user has ≥1 enabled notification rule; hint links to rule setup otherwise |
 
 ### Additional Information
 
