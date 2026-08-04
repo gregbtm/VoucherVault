@@ -114,6 +114,22 @@ class RecordEnrichmentCorrectionFeedbackTestCase(TestCase):
         scan_correction.refresh_from_db()  # untouched - only source='enrichment' rows are retired here
         self.assertEqual(scan_correction.corrected_value, 'Something Unrelated')
 
+    def test_a_correction_for_a_different_item_type_is_left_alone_when_kept(self):
+        # Same field/ai_value/source, but a different item_type - keeping
+        # the enrichment value for a 'voucher' item must not retire a
+        # correction that only applies to a different item type.
+        item = _make_item(self.user, issuer='Amazon')
+        _make_log(item, 'issuer', 'Amazon', enrichment_type='merchant_lookup')
+        other_type_correction = ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', field='issuer', ai_value='Amazon',
+            corrected_value='Amazon.co.uk', source='enrichment', enrichment_method='merchant_lookup',
+        )
+
+        record_enrichment_correction_feedback(self.user, item, {'issuer': 'Amazon'})
+
+        other_type_correction.refresh_from_db()
+        self.assertEqual(other_type_correction.corrected_value, 'Amazon.co.uk')
+
     def test_only_latest_enrichment_log_for_the_field_is_consulted(self):
         item = _make_item(self.user, issuer='Amazon UK')
         _make_log(item, 'issuer', 'Amzn', enrichment_type='merchant_lookup')

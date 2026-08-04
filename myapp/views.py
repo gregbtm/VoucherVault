@@ -785,29 +785,45 @@ def _record_suggestion_feedback(request, item):
     saving, that edit is signal: the suggestion was wrong for this context.
     The form JS injects hidden _sg_suggested_FIELD inputs recording what
     each suggestion popover filled; here we diff each against the final
-    saved value and write a ScanFieldCorrection row so the ranking can
-    self-correct over time. Best-effort: feedback must never block a save.
+    saved value and write a ScanFieldCorrection row so apply_learned_corrections
+    can self-correct future OCR scans.
+
+    Only fields in LEARNABLE_FIELDS are recorded, even though more fields
+    are suggestible - apply_learned_corrections/build_ocr_correction_hints
+    only ever read LEARNABLE_FIELDS, so a row for anything else (wallet,
+    discount_applied, pin) would be pure write-only dead weight. This also
+    sidesteps a real mismatch for 'wallet' specifically: the suggested
+    value is the wallet's id (see suggest_field_options' _rank), while
+    _saved_value/getattr would compare against the wallet's name - the two
+    would essentially never match even when the user kept the exact
+    suggested wallet.
+
+    Best-effort: feedback must never block a save.
     """
     from .scan_learning import ScanFieldCorrection, LEARNABLE_FIELDS, _normalize, _saved_value
     try:
         for field in _SUGGESTABLE_FIELDS:
+            if field not in LEARNABLE_FIELDS:
+                continue
             suggested_raw = request.POST.get(f'_sg_suggested_{field}')
             if suggested_raw is None:
                 continue
             suggested = _normalize(suggested_raw)
-            final = _saved_value(item, field) if field in LEARNABLE_FIELDS else _normalize(getattr(item, field, None))
+            final = _saved_value(item, field)
             if not final:
                 continue
             if final.lower() == suggested.lower():
-                # User kept the suggestion - retire any old correction that mapped this value away
+                # User kept the suggestion - retire any old correction that
+                # mapped this value away for this same item type.
                 ScanFieldCorrection.objects.filter(
                     user=request.user, field=field, ai_value__iexact=suggested,
+                    item_type=item.type,
                 ).delete()
             else:
                 # User changed it - record that for this context the suggestion was wrong
                 correction, created = ScanFieldCorrection.objects.get_or_create(
                     user=request.user, item_type=item.type, field=field, ai_value=suggested,
-                    defaults={'corrected_value': final},
+                    defaults={'corrected_value': final, 'source': 'suggestion'},
                 )
                 if not created:
                     if correction.corrected_value.lower() == final.lower():

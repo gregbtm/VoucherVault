@@ -198,11 +198,16 @@ def record_scan_corrections(user, snapshot: dict, item: Item) -> None:
                         correction.times_seen = 1
                     correction.save()
             elif final_value and ai_value and final_value.lower() == ai_value.lower():
-                # The scan got it right this time and the user kept it -
-                # any old correction mapping this exact value elsewhere no
-                # longer reflects what they want.
+                # The scan got it right this time for this item type and the
+                # user kept it - any old correction mapping this exact value
+                # away for this same item type no longer reflects what they
+                # want. Scoped by item_type to match how corrections are
+                # recorded and replayed - retiring across item types would
+                # un-teach a still-valid, unrelated correction (e.g. a travel
+                # ticket's barcode symbology) just because a different item
+                # type happened to produce the same value and got kept.
                 ScanFieldCorrection.objects.filter(
-                    user=user, field=field, ai_value=ai_value,
+                    user=user, field=field, ai_value=ai_value, item_type=item.type,
                 ).delete()
     except Exception:
         logger.warning('Failed to record scan corrections', exc_info=True)
@@ -265,9 +270,11 @@ def record_enrichment_correction_feedback(user, item: Item, before_values: dict)
             elif final_value and final_value.lower() == logged_value.lower():
                 # The enrichment pipeline got it right and the user kept it -
                 # any old enrichment-sourced correction mapping this exact
-                # value away for this field no longer reflects what they want.
+                # value away for this same field and item type no longer
+                # reflects what they want.
                 ScanFieldCorrection.objects.filter(
                     user=user, field=field, ai_value=logged_value, source='enrichment',
+                    item_type=item.type,
                 ).delete()
     except Exception:
         logger.warning('Failed to record enrichment correction feedback', exc_info=True)
@@ -322,21 +329,29 @@ def apply_learned_corrections(user, result: dict) -> list[str]:
     Mutates an OCR extraction `result` in place, swapping values this user
     has corrected before. Returns the list of healed field names (for the
     frontend's "adjusted from your history" note). Type is healed first so
-    blank-fill lookups can use the corrected type as context.
+    every other field's lookup - blank-fill and non-blank alike - can use
+    the corrected type as context: a correction learned in one item type's
+    context (e.g. a travel ticket's barcode symbology) should never bleed
+    into an unrelated item type whose scan happens to produce the same
+    misreading. 'type' itself has no item-type context to scope by, and
+    when the extraction didn't guess a type at all there's nothing to scope
+    with either, so both cases fall back to the unscoped match.
     """
     healed = []
     try:
         ordered = ('type',) + tuple(f for f in LEARNABLE_FIELDS if f != 'type')
         for field in ordered:
             ai_value = _normalize(result.get(field))
+            item_type = _normalize(result.get('type'))
             if ai_value:
                 candidates = ScanFieldCorrection.objects.filter(
                     user=user, field=field, ai_value__iexact=ai_value,
                 )
+                if field != 'type' and item_type:
+                    candidates = candidates.filter(item_type=item_type)
             else:
                 # Blank fills need stronger evidence and the right context:
                 # same item type, seen at least twice.
-                item_type = _normalize(result.get('type'))
                 if not item_type:
                     continue
                 candidates = ScanFieldCorrection.objects.filter(

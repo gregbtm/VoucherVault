@@ -819,6 +819,55 @@ class SuggestFieldOptionsTests(TestCase):
             ScanFieldCorrection.objects.filter(user=self.user, field='issuer', ai_value='Tesco').exists()
         )
 
+    def test_suggestion_feedback_tags_the_row_with_source_suggestion(self):
+        from myapp.models import ScanFieldCorrection
+        self._post_item({
+            'issuer': 'Tesco', '_sg_suggested_issuer': 'Amazon', 'redeem_code': 'SOURCE1',
+        })
+        correction = ScanFieldCorrection.objects.get(user=self.user, field='issuer', ai_value='Amazon')
+        self.assertEqual(correction.source, 'suggestion')
+
+    def test_suggestion_retirement_only_clears_the_matching_item_type(self):
+        from myapp.models import ScanFieldCorrection
+        # A correction for a different item_type must survive keeping the
+        # same suggested value on a giftcard save.
+        other_type_correction = ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Tesco', corrected_value='Tesco Express',
+        )
+        self._post_item({
+            'issuer': 'Tesco', '_sg_suggested_issuer': 'Tesco', 'redeem_code': 'SCOPED1',
+        })
+        other_type_correction.refresh_from_db()
+        self.assertEqual(other_type_correction.corrected_value, 'Tesco Express')
+
+    def test_wallet_suggestion_feedback_is_not_recorded(self):
+        # 'wallet' is suggestible but not learnable - apply_learned_corrections
+        # never reads it, and the suggested value (a wallet id) can never
+        # equal the saved value's string form (the wallet's name) anyway.
+        from myapp.models import ScanFieldCorrection
+        wallet = Wallet.objects.create(user=self.user, name='Groceries')
+        self._post_item({
+            'issuer': 'Tesco', 'wallet': str(wallet.id),
+            '_sg_suggested_wallet': str(wallet.id), 'redeem_code': 'WALLETFB1',
+        })
+        self.assertFalse(ScanFieldCorrection.objects.filter(user=self.user, field='wallet').exists())
+
+    def test_pin_and_discount_applied_suggestion_feedback_is_not_recorded(self):
+        # Suggestible but not learnable - recording them would be
+        # write-only dead weight since nothing ever reads these rows back.
+        from myapp.models import ScanFieldCorrection
+        self._post_item({
+            'issuer': 'Tesco', 'pin': '4321', 'discount_applied': '10',
+            '_sg_suggested_pin': '1234', '_sg_suggested_discount_applied': '5',
+            'redeem_code': 'PINFB1',
+        })
+        self.assertFalse(
+            ScanFieldCorrection.objects.filter(
+                user=self.user, field__in=('pin', 'discount_applied'),
+            ).exists()
+        )
+
 
 class AnimationAssetsTests(TestCase):
     """
@@ -971,6 +1020,42 @@ class ScanLearningTests(TestCase):
         self.assertEqual(result['type'], 'travelpass')
         self.assertEqual(result['issuer'], 'National Rail')
         self.assertEqual(set(healed), {'type', 'issuer'})
+
+    def test_apply_does_not_bleed_a_correction_across_item_types(self):
+        # A code_type correction learned from travel-pass tickets
+        # (qrcode -> azteccode) must not leak into an unrelated giftcard
+        # scan that genuinely is a QR code.
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='code_type',
+            ai_value='qrcode', corrected_value='azteccode',
+        )
+        result = {'code_type': 'qrcode', 'type': 'giftcard'}
+        self.assertEqual(apply_learned_corrections(self.user, result), [])
+        self.assertEqual(result['code_type'], 'qrcode')
+
+    def test_apply_still_heals_within_the_matching_item_type(self):
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='code_type',
+            ai_value='qrcode', corrected_value='azteccode',
+        )
+        result = {'code_type': 'qrcode', 'type': 'travelpass'}
+        self.assertEqual(apply_learned_corrections(self.user, result), ['code_type'])
+        self.assertEqual(result['code_type'], 'azteccode')
+
+    def test_keeping_the_scanned_value_only_retires_the_same_item_type(self):
+        # A correction learned from a different item type must survive a
+        # save where this exact ai_value was correctly scanned and kept.
+        item = self._item(type='giftcard', issuer='Amazon')
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Amazon', corrected_value='Amazon.co.uk',
+        )
+        record_scan_corrections(self.user, {'issuer': 'Amazon'}, item)
+        self.assertTrue(
+            ScanFieldCorrection.objects.filter(
+                user=self.user, field='issuer', item_type='travelpass', ai_value='Amazon',
+            ).exists()
+        )
 
     def test_corrections_are_scoped_per_user(self):
         bob = User.objects.create_user(username='bob', password='pw12345!')
