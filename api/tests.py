@@ -413,6 +413,51 @@ class ItemShareTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         mock_notify.assert_called_once_with(self.item, self.bob)
 
+    def test_wallet_collaborator_cannot_invite_third_party_share(self):
+        # A wallet editor collaborator can edit this item via
+        # IsItemOwnerOrWalletCollaborator, but the web UI
+        # (share_item_view: get_object_or_404(Item, user=request.user))
+        # has always restricted inviting a third party into an
+        # ItemShare to the item's actual owner - the API previously
+        # didn't enforce the same restriction on this action.
+        carol = User.objects.create_user(username='carol', password='pw12345!')
+        wallet = Wallet.objects.create(user=self.alice, name='Shared')
+        wallet.shared_with.add(carol)
+        item = make_item(self.alice, wallet=wallet)
+
+        self.client.force_authenticate(user=carol)
+        response = self.client.post(f'/api/v1/items/{item.id}/shares/', {'username': 'bob'})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(ItemShare.objects.filter(item=item, shared_with_user=self.bob).exists())
+
+    def test_wallet_collaborator_cannot_revoke_owners_share(self):
+        carol = User.objects.create_user(username='carol', password='pw12345!')
+        wallet = Wallet.objects.create(user=self.alice, name='Shared')
+        wallet.shared_with.add(carol)
+        item = make_item(self.alice, wallet=wallet)
+        share = ItemShare.objects.create(item=item, shared_with_user=self.bob, shared_by=self.alice)
+
+        self.client.force_authenticate(user=carol)
+        response = self.client.delete(f'/api/v1/items/{item.id}/shares/{share.id}/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(ItemShare.objects.filter(pk=share.id).exists())
+
+    def test_owner_can_still_invite_and_revoke_on_shared_wallet_item(self):
+        # The permission tightening is owner-only, not owner-plus-nobody -
+        # confirm the owner's own access through this same action is
+        # unaffected when the item happens to live in a shared wallet.
+        carol = User.objects.create_user(username='carol', password='pw12345!')
+        wallet = Wallet.objects.create(user=self.alice, name='Shared')
+        wallet.shared_with.add(carol)
+        item = make_item(self.alice, wallet=wallet)
+
+        response = self.client.post(f'/api/v1/items/{item.id}/shares/', {'username': 'bob'})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        share = ItemShare.objects.get(item=item, shared_with_user=self.bob)
+
+        response = self.client.delete(f'/api/v1/items/{item.id}/shares/{share.id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
 
 class WebhookEventApiWiringTests(APITestCase):
     """Confirms the DRF API fires the same Phase 12.2 lifecycle events as the web UI."""
@@ -942,6 +987,9 @@ def _tiny_image_upload(name='voucher.png', content_type='image/png', size=None):
 
 class OCRExtractApiTests(APITestCase):
     def setUp(self):
+        # Shared, un-cleared cache toward WriteRateThrottle's limit again -
+        # see WriteRateThrottleTests for the same fix.
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
 
