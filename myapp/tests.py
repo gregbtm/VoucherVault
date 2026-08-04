@@ -8,6 +8,7 @@ from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
+from django.contrib.messages import get_messages
 from django.core.cache import cache
 from django.core.management import call_command
 from django.db import IntegrityError, transaction
@@ -6832,6 +6833,45 @@ class AcceptInviteViewTests(TestCase):
         self.invite.save()
         resp = self.client.get(reverse('accept_invite', args=[str(self.invite.token)]))
         self.assertEqual(resp.status_code, 302)
+
+    def test_register_via_invite_grants_pre_shared_wallet(self):
+        wallet = Wallet.objects.create(user=self.admin, name='Pre-shared')
+        self.invite.pre_share_wallet = wallet
+        self.invite.save(update_fields=['pre_share_wallet'])
+
+        resp = self.client.post(reverse('accept_invite', args=[str(self.invite.token)]), {
+            'username': 'newuser_with_wallet',
+            'email': 'new2@example.com',
+            'password': 'StrongPass!1',
+            'password2': 'StrongPass!1',
+        })
+        self.assertEqual(resp.status_code, 302)
+        new_user = User.objects.get(username='newuser_with_wallet')
+        self.assertIn(new_user, wallet.shared_with.all())
+        messages_list = list(get_messages(resp.wsgi_request))
+        self.assertFalse(any('could not automatically set up' in str(m) for m in messages_list))
+
+    def test_register_via_invite_warns_when_pre_share_fails(self):
+        # _apply_invite_pre_share's own try/except means registration
+        # itself must still succeed even when granting the promised
+        # wallet access blows up - only a warning message and a log
+        # entry should result, not a broken signup.
+        wallet = Wallet.objects.create(user=self.admin, name='Pre-shared')
+        self.invite.pre_share_wallet = wallet
+        self.invite.save(update_fields=['pre_share_wallet'])
+
+        with patch('myapp.views.WalletMembership.objects.get_or_create', side_effect=Exception('boom')):
+            resp = self.client.post(reverse('accept_invite', args=[str(self.invite.token)]), {
+                'username': 'newuser_share_fails',
+                'email': 'new3@example.com',
+                'password': 'StrongPass!1',
+                'password2': 'StrongPass!1',
+            })
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(User.objects.filter(username='newuser_share_fails').exists())
+        messages_list = list(get_messages(resp.wsgi_request))
+        self.assertTrue(any('could not automatically set up' in str(m) for m in messages_list))
 
 
 class AcceptInviteOIDCTests(TestCase):
