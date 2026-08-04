@@ -30,4 +30,4 @@ jobs:
         run: pip install pip-audit
 
       - name: Audit dependencies
-        run: pip-audit -r requirements.txt --output-format=columns
+        run: pip-audit -r requirements.txt --format=columns
