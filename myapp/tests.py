@@ -1845,6 +1845,26 @@ class DashboardAnalyticsContextTests(TestCase):
         self.assertEqual(len(dashboard_response.context['expiring_soon_list']), 1)
         self.assertEqual(len(inventory_response.context['items_with_qr']), 1)
 
+    def test_dashboard_value_cards_guard_against_grid_blowout(self):
+        """
+        Regression coverage: the Total Value card's nested .quick-stats
+        grid and .quick-stats-gc-total flex row had no min-width:0 on
+        their items, so on narrow viewports the browser couldn't shrink
+        them below their own content's min-content width - instead of
+        the labels wrapping, the whole card (and everything stretched to
+        match it) got forced wider than the viewport, visibly cutting off
+        text on the right edge (confirmed via Playwright at <=300px CSS
+        width; reported in the wild via Edge mobile, which apparently
+        hits the same floor at a wider effective viewport than Chromium
+        does). This just guards the CSS rules stay in place - a real
+        headless-browser check is done manually via Playwright, not here.
+        """
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn('.gc-total-label, .gc-total-value { min-width: 0; }', content)
+        self.assertIn('.quick-stat {\n  text-align: center;\n  min-width: 0;\n}', content)
+
 
 class GenerateInitialAvatarTests(TestCase):
     """
