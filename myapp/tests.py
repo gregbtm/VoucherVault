@@ -7498,3 +7498,90 @@ class ItemEnrichNowViewTests(TestCase):
 
         self.item.refresh_from_db()
         self.assertEqual(self.item.issuer, 'Costa Coffee')
+
+
+class ViewItemStatusBadgeTests(TestCase):
+    """The Used/Archived/Expired badge in view-item.html's item header."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_active_item_shows_no_status_badge(self):
+        # The bare string 'status-badge' also appears in this page's own
+        # inline <style> block (its CSS selectors), so check for the
+        # actual rendered element rather than a substring the stylesheet
+        # itself would always satisfy.
+        item = make_item(self.user, expiry_date=date.today() + timedelta(days=30))
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertNotContains(response, '<span class="status-badge')
+
+    def test_used_item_shows_green_used_badge(self):
+        item = make_item(self.user, is_used=True)
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertContains(response, 'status-badge used')
+        self.assertContains(response, 'Used')
+
+    def test_archived_item_shows_orange_archived_badge(self):
+        item = make_item(self.user, is_archived=True)
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertContains(response, 'status-badge archived')
+        self.assertContains(response, 'Archived')
+
+    def test_expired_item_shows_expired_badge(self):
+        item = make_item(self.user, expiry_date=date.today() - timedelta(days=1))
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertContains(response, 'status-badge expired')
+        self.assertContains(response, 'Expired')
+
+    def test_used_takes_precedence_over_expired(self):
+        # Matches partials/item_card.html's own precedence - once used, a
+        # stale expiry date is uninteresting.
+        item = make_item(self.user, is_used=True, expiry_date=date.today() - timedelta(days=1))
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertContains(response, 'status-badge used')
+        self.assertNotContains(response, 'status-badge expired')
+
+    def test_archived_and_used_badges_both_show(self):
+        # Archived is independent of used/expired - both can be true at once.
+        item = make_item(self.user, is_archived=True, is_used=True)
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertContains(response, 'status-badge archived')
+        self.assertContains(response, 'status-badge used')
+
+
+class ViewItemEnrichmentButtonVisibilityTests(TestCase):
+    """
+    The "Re-scan documents for updates" button only makes sense when the
+    item actually has documents to scan - enrich_from_ocr
+    (myapp/services/enrichment.py) fails outright with "No documents
+    found for this item" otherwise, so showing the button on a
+    document-less item just invites a click that immediately errors.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner', password='pw12345!')
+        self.client.login(username='owner', password='pw12345!')
+        self.item = make_item(self.owner)
+
+    def test_button_hidden_without_documents(self):
+        response = self.client.get(reverse('view_item', args=[self.item.id]))
+        self.assertNotContains(response, 'Re-scan documents for updates')
+
+    def test_button_shown_once_a_document_exists(self):
+        Document.objects.create(item=self.item, file=SimpleUploadedFile('receipt.png', b'fake-bytes', content_type='image/png'))
+        response = self.client.get(reverse('view_item', args=[self.item.id]))
+        self.assertContains(response, 'Re-scan documents for updates')
+
+    def test_history_link_still_shows_without_documents_if_history_exists(self):
+        # A past enrichment run stays viewable even if its source document
+        # was later deleted - only the re-scan action itself is gated.
+        run = EnrichmentRun.objects.create(
+            method='ocr', status='completed', total_items=1,
+            successful_items=1, total_changes=1,
+            average_confidence=Decimal('0.8'), confidence_threshold=Decimal('0.5'),
+        )
+        EnrichmentRunItem.objects.create(run=run, item=self.item, success=True, changes_proposed=1)
+        response = self.client.get(reverse('view_item', args=[self.item.id]))
+        self.assertNotContains(response, 'Re-scan documents for updates')
+        self.assertContains(response, 'View enrichment history')
