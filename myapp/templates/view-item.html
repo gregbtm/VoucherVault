@@ -147,8 +147,13 @@
 }
 
 .status-badge.used {
-  background: #cfe2ff;
-  color: #084298;
+  background: #d1e7dd;
+  color: #0f5132;
+}
+
+.status-badge.archived {
+  background: #ffe5c2;
+  color: #7a4a00;
 }
 
 .status-badge.expired {
@@ -1420,8 +1425,13 @@ body.dark-mode .item-type-badge {
 }
 
 body.dark-mode .status-badge.used {
-  background: #1e3a5f;
-  color: #7dd3fc;
+  background: #1e4433;
+  color: #6ee7b7;
+}
+
+body.dark-mode .status-badge.archived {
+  background: #4d3200;
+  color: #fbbf24;
 }
 
 body.dark-mode .status-badge.expired {
@@ -1785,10 +1795,13 @@ body.dark-mode .tilt-scan-enable-btn {
                   {% endif %}
                   {% translate item.type %}
                 </span>
+                {% if item.is_archived %}
+                <span class="status-badge archived"><i class="bi bi-archive-fill"></i> {% trans "Archived" %}</span>
+                {% endif %}
                 {% if item.is_used %}
-                <span class="status-badge used">{% trans "Used" %}</span>
+                <span class="status-badge used"><i class="bi bi-check-circle-fill"></i> {% trans "Used" %}</span>
                 {% elif item.expiry_date|date:"Y-m-d" < current_date|date:"Y-m-d" %}
-                <span class="status-badge expired">{% trans "Expired" %}</span>
+                <span class="status-badge expired"><i class="bi bi-exclamation-triangle-fill"></i> {% trans "Expired" %}</span>
                 {% endif %}
               </div>
             </div>
@@ -2351,9 +2364,9 @@ body.dark-mode .tilt-scan-enable-btn {
             </form>
             {% endif %}
           </div>
-          {% if can_edit or item.enrichment_run_results.exists %}
+          {% if item.enrichment_run_results.exists or can_edit and item.documents.exists %}
           <div class="d-flex justify-content-end align-items-center gap-3 mt-2 flex-wrap">
-            {% if can_edit %}
+            {% if can_edit and item.documents.exists %}
             <button type="button" class="btn btn-link p-0 text-muted small text-decoration-none" id="enrich-item-now-btn" data-enrich-url="{% url 'item_enrich_now' item.id %}">
               <i class="bi bi-magic me-1"></i>{% trans "Re-scan documents for updates" %}
             </button>
