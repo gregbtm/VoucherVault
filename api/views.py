@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import uuid as uuid_module
+from decimal import Decimal
 
 import requests
 from django.contrib.auth.models import User
@@ -527,10 +528,22 @@ class ItemViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return Item.objects.none()
+        # transaction_total here has always meant "value + every
+        # transaction delta", not transactions alone (see
+        # ItemSerializer.get_transaction_total's Python fallback, which
+        # sums transactions starting from item.value) - so this can't
+        # just call Item.objects.with_current_balance(), whose own
+        # transaction_total is transactions-only with a separate
+        # current_balance field for the summed total. Renaming/repointing
+        # the annotation to that method would silently change this
+        # public API field's values for existing clients. Sum(..)
+        # without default=Decimal('0') returns SQL NULL for an item with
+        # zero transactions, and NULL + F('value') is NULL - the missing
+        # default was the actual bug, not the duplicated Sum() call.
         return Item.objects.filter(
             Q(user=self.request.user) | Q(wallet__shared_with=self.request.user)
         ).distinct().select_related('wallet').prefetch_related('transactions', 'tags').annotate(
-            transaction_total=Sum('transactions__value') + F('value')
+            transaction_total=Sum('transactions__value', default=Decimal('0')) + F('value')
         )
 
     def perform_create(self, serializer):
