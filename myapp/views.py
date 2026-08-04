@@ -4606,9 +4606,17 @@ def send_test_email(request):
 
 
 def _apply_invite_pre_share(invite, user):
-    """If the invite had a pre_share_wallet, add the new user as a member."""
+    """If the invite had a pre_share_wallet, add the new user as a member.
+
+    Returns True if the promised wallet access was actually granted (or
+    there was none promised), False if the invite named a wallet but
+    granting access to it failed - the caller uses this to warn the new
+    user their registration succeeded but the promised wallet access
+    didn't come through, rather than the pre-#46-fix behavior of always
+    showing a plain "Welcome!" with no trace anywhere of the failure.
+    """
     if not invite.pre_share_wallet_id:
-        return
+        return True
     try:
         WalletMembership.objects.get_or_create(
             wallet=invite.pre_share_wallet,
@@ -4616,8 +4624,13 @@ def _apply_invite_pre_share(invite, user):
             defaults={'role': WalletMembership.ROLE_EDITOR},
         )
         invite.pre_share_wallet.shared_with.add(user)
+        return True
     except Exception:
-        pass
+        logger.exception(
+            'Failed to grant invite %s pre-shared wallet %s access to new user %s',
+            invite.pk, invite.pre_share_wallet_id, user.pk,
+        )
+        return False
 
 
 def accept_invite(request, token):
@@ -4678,10 +4691,16 @@ def accept_invite(request, token):
         invite.used_by = user
         invite.accepted_ip = client_ip
         invite.save(update_fields=['used_at', 'used_by', 'accepted_ip'])
-        _apply_invite_pre_share(invite, user)
+        pre_share_ok = _apply_invite_pre_share(invite, user)
         from django.contrib.auth import login as _login_user
         _login_user(request, user, backend='django.contrib.auth.backends.ModelBackend')
         messages.success(request, _('Welcome! Your account has been created.'))
+        if not pre_share_ok:
+            messages.warning(
+                request,
+                _('We could not automatically set up the wallet access this invite promised - '
+                  'ask whoever invited you to share it with you directly.'),
+            )
         return redirect('show_items')
 
     return render(request, 'invite_accept.html', {'invite': invite})
@@ -4721,8 +4740,14 @@ def invite_complete(request):
                     ip_address=client_ip,
                     user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],
                 )
-                _apply_invite_pre_share(invite, request.user)
+                pre_share_ok = _apply_invite_pre_share(invite, request.user)
                 messages.success(request, _('Welcome to VoucherVault Plus+! Your account is all set.'))
+                if not pre_share_ok:
+                    messages.warning(
+                        request,
+                        _('We could not automatically set up the wallet access this invite promised - '
+                          'ask whoever invited you to share it with you directly.'),
+                    )
         except InviteLink.DoesNotExist:
             pass
     return redirect('show_items')

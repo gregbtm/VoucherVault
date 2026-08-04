@@ -166,6 +166,60 @@ class ItemCrudTests(APITestCase):
         self.assertEqual(searched.data['results'][0]['name'], 'Beta Voucher')
 
 
+class ItemTransactionTotalAnnotationTests(APITestCase):
+    """
+    ItemViewSet.get_queryset()'s transaction_total annotation used to be
+    Sum('transactions__value') + F('value') with no null-safety default -
+    a SQL SUM() over zero rows is NULL, and NULL + anything is NULL, so
+    any item with no transactions got transaction_total=None straight
+    from the annotated queryset. This was never visible in an actual API
+    response, though: ItemSerializer.get_transaction_total's Python
+    fallback re-sums in Python (starting from item.value, matching the
+    annotation's own "value + transactions" semantics) whenever the
+    annotated attribute is None, silently producing the right answer
+    anyway - which is exactly why these tests inspect the annotated
+    queryset attribute directly rather than a serialized response: a
+    response-level assertion would have passed both before and after
+    this fix, since the fallback masks the bug from any API consumer.
+    The actual cost was defeating the annotation's whole point (avoiding
+    a query per item in list views) for the common case, not a wrong
+    answer.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.force_authenticate(user=self.user)
+
+    def _get_via_queryset(self, item):
+        from api.views import ItemViewSet
+        from django.test import RequestFactory
+        request = RequestFactory().get('/api/v1/items/')
+        request.user = self.user
+        view = ItemViewSet()
+        view.request = request
+        return view.get_queryset().get(pk=item.pk)
+
+    def test_item_with_no_transactions_gets_non_null_annotation(self):
+        item = make_item(self.user, value='25.00')
+        annotated = self._get_via_queryset(item)
+        self.assertIsNotNone(annotated.transaction_total)
+        self.assertEqual(annotated.transaction_total, Decimal('25.00'))
+
+    def test_item_with_transactions_still_sums_correctly_in_annotation(self):
+        item = make_item(self.user, value='25.00')
+        Transaction.objects.create(item=item, description='Spend', value='-10.00')
+        annotated = self._get_via_queryset(item)
+        self.assertEqual(annotated.transaction_total, Decimal('15.00'))
+
+    def test_response_value_correct_for_item_with_no_transactions(self):
+        # End-to-end sanity check that the API's visible behavior is
+        # unaffected by the fix (it was already correct via the fallback).
+        item = make_item(self.user, value='25.00')
+        response = self.client.get(f'/api/v1/items/{item.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Decimal(response.data['transaction_total']), Decimal('25.00'))
+
+
 class WriteRateThrottleTests(APITestCase):
     """
     The full CRUD API previously had no rate limiting at all - a leaked
@@ -412,6 +466,51 @@ class ItemShareTests(APITestCase):
         response = self.client.delete(f'/api/v1/items/{self.item.id}/shares/{share.id}/')
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         mock_notify.assert_called_once_with(self.item, self.bob)
+
+    def test_wallet_collaborator_cannot_invite_third_party_share(self):
+        # A wallet editor collaborator can edit this item via
+        # IsItemOwnerOrWalletCollaborator, but the web UI
+        # (share_item_view: get_object_or_404(Item, user=request.user))
+        # has always restricted inviting a third party into an
+        # ItemShare to the item's actual owner - the API previously
+        # didn't enforce the same restriction on this action.
+        carol = User.objects.create_user(username='carol', password='pw12345!')
+        wallet = Wallet.objects.create(user=self.alice, name='Shared')
+        wallet.shared_with.add(carol)
+        item = make_item(self.alice, wallet=wallet)
+
+        self.client.force_authenticate(user=carol)
+        response = self.client.post(f'/api/v1/items/{item.id}/shares/', {'username': 'bob'})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(ItemShare.objects.filter(item=item, shared_with_user=self.bob).exists())
+
+    def test_wallet_collaborator_cannot_revoke_owners_share(self):
+        carol = User.objects.create_user(username='carol', password='pw12345!')
+        wallet = Wallet.objects.create(user=self.alice, name='Shared')
+        wallet.shared_with.add(carol)
+        item = make_item(self.alice, wallet=wallet)
+        share = ItemShare.objects.create(item=item, shared_with_user=self.bob, shared_by=self.alice)
+
+        self.client.force_authenticate(user=carol)
+        response = self.client.delete(f'/api/v1/items/{item.id}/shares/{share.id}/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(ItemShare.objects.filter(pk=share.id).exists())
+
+    def test_owner_can_still_invite_and_revoke_on_shared_wallet_item(self):
+        # The permission tightening is owner-only, not owner-plus-nobody -
+        # confirm the owner's own access through this same action is
+        # unaffected when the item happens to live in a shared wallet.
+        carol = User.objects.create_user(username='carol', password='pw12345!')
+        wallet = Wallet.objects.create(user=self.alice, name='Shared')
+        wallet.shared_with.add(carol)
+        item = make_item(self.alice, wallet=wallet)
+
+        response = self.client.post(f'/api/v1/items/{item.id}/shares/', {'username': 'bob'})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        share = ItemShare.objects.get(item=item, shared_with_user=self.bob)
+
+        response = self.client.delete(f'/api/v1/items/{item.id}/shares/{share.id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
 
 class WebhookEventApiWiringTests(APITestCase):
@@ -942,6 +1041,9 @@ def _tiny_image_upload(name='voucher.png', content_type='image/png', size=None):
 
 class OCRExtractApiTests(APITestCase):
     def setUp(self):
+        # Shared, un-cleared cache toward WriteRateThrottle's limit again -
+        # see WriteRateThrottleTests for the same fix.
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
 
@@ -2027,3 +2129,29 @@ class UserWebhookSSRFGuardTests(APITestCase):
         )
         response = self.client.post(f'/api/v1/webhooks/{hook.id}/test/')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class UserSearchEndpointRemovedTests(APITestCase):
+    """
+    api/v1/users/search/ used to return any matching user's username AND
+    email to any authenticated caller (icontains match, no relationship
+    check, unthrottled) for a wallet-invite autocomplete - a straight
+    user-directory leak on any multi-user instance, same class of bug as
+    the ItemShare recipient-picker leak fixed in #209. The endpoint is
+    removed entirely rather than scoped, matching how this app already
+    does every other invite flow (WalletShareForm, ItemShareForm): typed
+    exact username, no live directory search.
+    """
+
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+
+    def test_endpoint_no_longer_exists(self):
+        response = self.client.get('/api/v1/users/search/', {'q': 'b'})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_url_name_no_longer_registered(self):
+        from django.urls import NoReverseMatch
+        with self.assertRaises(NoReverseMatch):
+            reverse('api-users-search')

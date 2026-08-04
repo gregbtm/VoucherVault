@@ -8,6 +8,7 @@ from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
+from django.contrib.messages import get_messages
 from django.core.cache import cache
 from django.core.management import call_command
 from django.db import IntegrityError, transaction
@@ -6915,6 +6916,45 @@ class AcceptInviteViewTests(TestCase):
         resp = self.client.get(reverse('accept_invite', args=[str(self.invite.token)]))
         self.assertEqual(resp.status_code, 302)
 
+    def test_register_via_invite_grants_pre_shared_wallet(self):
+        wallet = Wallet.objects.create(user=self.admin, name='Pre-shared')
+        self.invite.pre_share_wallet = wallet
+        self.invite.save(update_fields=['pre_share_wallet'])
+
+        resp = self.client.post(reverse('accept_invite', args=[str(self.invite.token)]), {
+            'username': 'newuser_with_wallet',
+            'email': 'new2@example.com',
+            'password': 'StrongPass!1',
+            'password2': 'StrongPass!1',
+        })
+        self.assertEqual(resp.status_code, 302)
+        new_user = User.objects.get(username='newuser_with_wallet')
+        self.assertIn(new_user, wallet.shared_with.all())
+        messages_list = list(get_messages(resp.wsgi_request))
+        self.assertFalse(any('could not automatically set up' in str(m) for m in messages_list))
+
+    def test_register_via_invite_warns_when_pre_share_fails(self):
+        # _apply_invite_pre_share's own try/except means registration
+        # itself must still succeed even when granting the promised
+        # wallet access blows up - only a warning message and a log
+        # entry should result, not a broken signup.
+        wallet = Wallet.objects.create(user=self.admin, name='Pre-shared')
+        self.invite.pre_share_wallet = wallet
+        self.invite.save(update_fields=['pre_share_wallet'])
+
+        with patch('myapp.views.WalletMembership.objects.get_or_create', side_effect=Exception('boom')):
+            resp = self.client.post(reverse('accept_invite', args=[str(self.invite.token)]), {
+                'username': 'newuser_share_fails',
+                'email': 'new3@example.com',
+                'password': 'StrongPass!1',
+                'password2': 'StrongPass!1',
+            })
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(User.objects.filter(username='newuser_share_fails').exists())
+        messages_list = list(get_messages(resp.wsgi_request))
+        self.assertTrue(any('could not automatically set up' in str(m) for m in messages_list))
+
 
 class AcceptInviteOIDCTests(TestCase):
     """Tests for the OIDC-redirect path of accept_invite and invite_complete."""
@@ -7580,3 +7620,90 @@ class ItemEnrichNowViewTests(TestCase):
 
         self.item.refresh_from_db()
         self.assertEqual(self.item.issuer, 'Costa Coffee')
+
+
+class ViewItemStatusBadgeTests(TestCase):
+    """The Used/Archived/Expired badge in view-item.html's item header."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_active_item_shows_no_status_badge(self):
+        # The bare string 'status-badge' also appears in this page's own
+        # inline <style> block (its CSS selectors), so check for the
+        # actual rendered element rather than a substring the stylesheet
+        # itself would always satisfy.
+        item = make_item(self.user, expiry_date=date.today() + timedelta(days=30))
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertNotContains(response, '<span class="status-badge')
+
+    def test_used_item_shows_green_used_badge(self):
+        item = make_item(self.user, is_used=True)
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertContains(response, 'status-badge used')
+        self.assertContains(response, 'Used')
+
+    def test_archived_item_shows_orange_archived_badge(self):
+        item = make_item(self.user, is_archived=True)
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertContains(response, 'status-badge archived')
+        self.assertContains(response, 'Archived')
+
+    def test_expired_item_shows_expired_badge(self):
+        item = make_item(self.user, expiry_date=date.today() - timedelta(days=1))
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertContains(response, 'status-badge expired')
+        self.assertContains(response, 'Expired')
+
+    def test_used_takes_precedence_over_expired(self):
+        # Matches partials/item_card.html's own precedence - once used, a
+        # stale expiry date is uninteresting.
+        item = make_item(self.user, is_used=True, expiry_date=date.today() - timedelta(days=1))
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertContains(response, 'status-badge used')
+        self.assertNotContains(response, 'status-badge expired')
+
+    def test_archived_and_used_badges_both_show(self):
+        # Archived is independent of used/expired - both can be true at once.
+        item = make_item(self.user, is_archived=True, is_used=True)
+        response = self.client.get(reverse('view_item', args=[item.id]))
+        self.assertContains(response, 'status-badge archived')
+        self.assertContains(response, 'status-badge used')
+
+
+class ViewItemEnrichmentButtonVisibilityTests(TestCase):
+    """
+    The "Re-scan documents for updates" button only makes sense when the
+    item actually has documents to scan - enrich_from_ocr
+    (myapp/services/enrichment.py) fails outright with "No documents
+    found for this item" otherwise, so showing the button on a
+    document-less item just invites a click that immediately errors.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner', password='pw12345!')
+        self.client.login(username='owner', password='pw12345!')
+        self.item = make_item(self.owner)
+
+    def test_button_hidden_without_documents(self):
+        response = self.client.get(reverse('view_item', args=[self.item.id]))
+        self.assertNotContains(response, 'Re-scan documents for updates')
+
+    def test_button_shown_once_a_document_exists(self):
+        Document.objects.create(item=self.item, file=SimpleUploadedFile('receipt.png', b'fake-bytes', content_type='image/png'))
+        response = self.client.get(reverse('view_item', args=[self.item.id]))
+        self.assertContains(response, 'Re-scan documents for updates')
+
+    def test_history_link_still_shows_without_documents_if_history_exists(self):
+        # A past enrichment run stays viewable even if its source document
+        # was later deleted - only the re-scan action itself is gated.
+        run = EnrichmentRun.objects.create(
+            method='ocr', status='completed', total_items=1,
+            successful_items=1, total_changes=1,
+            average_confidence=Decimal('0.8'), confidence_threshold=Decimal('0.5'),
+        )
+        EnrichmentRunItem.objects.create(run=run, item=self.item, success=True, changes_proposed=1)
+        response = self.client.get(reverse('view_item', args=[self.item.id]))
+        self.assertNotContains(response, 'Re-scan documents for updates')
+        self.assertContains(response, 'View enrichment history')
