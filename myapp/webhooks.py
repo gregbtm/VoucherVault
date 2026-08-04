@@ -8,16 +8,61 @@ via a background thread so the calling request is never delayed.
 """
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
+import socket
 import threading
 import time
+from urllib.parse import urlparse
 
 import requests as http_requests
 
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = 10  # seconds per outbound request
+
+
+class WebhookURLValidationError(ValueError):
+    pass
+
+
+def validate_webhook_url(url: str) -> None:
+    """
+    Raises WebhookURLValidationError for a URL with no legitimate webhook
+    use case: loopback, link-local (this also covers 169.254.169.254 -
+    the AWS/GCP/Azure cloud metadata endpoint and the single most common
+    real-world SSRF target), unspecified, reserved, or multicast.
+
+    Deliberately does NOT block general private (RFC1918) address
+    ranges - self-hosters legitimately point webhooks at automation
+    tools (n8n, Home Assistant, etc.) running on their own LAN, and this
+    app's own docs assume that works. The targets blocked here have no
+    such use case: nothing a webhook should ever legitimately need to
+    reach lives on loopback or link-local from this app's perspective.
+
+    Resolves the hostname and checks the resolved address rather than
+    just the literal string, so "definitely-not-localhost.example.com"
+    pointed at 127.0.0.1 via DNS doesn't sail through - though note this
+    only protects the URL at validation time; a DNS record can still
+    change between save and send (rebinding), which is why _send_one
+    below re-validates immediately before every actual request too.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ('http', 'https'):
+        raise WebhookURLValidationError('Webhook URL must use http or https.')
+    hostname = parsed.hostname
+    if not hostname:
+        raise WebhookURLValidationError('Webhook URL must include a hostname.')
+    try:
+        resolved = socket.gethostbyname(hostname)
+    except socket.gaierror:
+        raise WebhookURLValidationError('Could not resolve webhook hostname.')
+    ip = ipaddress.ip_address(resolved)
+    if ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_reserved or ip.is_multicast:
+        raise WebhookURLValidationError(
+            'Webhook URL resolves to a loopback, link-local, or reserved address, which is never a valid webhook target.'
+        )
 
 
 def _build_payload(event_type: str, item) -> dict:
@@ -40,6 +85,16 @@ def _build_payload(event_type: str, item) -> dict:
 
 
 def _send_one(webhook, payload: dict):
+    # Re-validate right before sending, not just at save time - a DNS
+    # record can change between when a webhook was created and when it
+    # actually fires, and this also covers any webhook row saved before
+    # this guard existed.
+    try:
+        validate_webhook_url(webhook.url)
+    except WebhookURLValidationError as exc:
+        logger.warning("Webhook %s not sent - %s", webhook.id, exc)
+        return
+
     body = json.dumps(payload, ensure_ascii=False).encode()
     headers = {'Content-Type': 'application/json', 'X-VoucherVault-Event': payload.get('event', '')}
     if webhook.secret:

@@ -6329,6 +6329,88 @@ class UserWebhookTests(TestCase):
         resp = self.client.post(reverse('delete_webhook', kwargs={'webhook_id': hook.id}))
         self.assertEqual(resp.status_code, 404)
 
+    @patch('myapp.webhooks.socket.gethostbyname', return_value='127.0.0.1')
+    def test_create_webhook_rejects_loopback_url(self, mock_resolve):
+        resp = self.client.post(reverse('create_webhook'), {
+            'name': 'Bad Hook',
+            'url': 'http://localhost:8000/hook',
+            'secret': '',
+            'event_item_created': '1',
+            'enabled': '1',
+        })
+        self.assertRedirects(resp, reverse('manage_webhooks'))
+        self.assertFalse(UserWebhook.objects.filter(name='Bad Hook').exists())
+
+
+class WebhookURLGuardTests(TestCase):
+    """
+    validate_webhook_url (myapp/webhooks.py) - blocks the SSRF targets
+    with zero legitimate webhook use case (loopback, link-local
+    including the 169.254.169.254 cloud metadata endpoint, unspecified,
+    reserved, multicast). Deliberately does NOT block general private
+    (RFC1918) ranges, since self-hosters legitimately point webhooks at
+    their own LAN automation tools (n8n, Home Assistant, etc.) - see
+    docs referencing the n8n integration.
+
+    socket.gethostbyname is mocked throughout rather than relying on
+    real DNS, matching this test suite's general "no network in tests"
+    convention (see merchant_logos tests) and keeping these
+    deterministic regardless of the CI runner's network access.
+    """
+
+    def test_non_http_scheme_rejected(self):
+        from myapp.webhooks import WebhookURLValidationError, validate_webhook_url
+        with self.assertRaises(WebhookURLValidationError):
+            validate_webhook_url('ftp://example.com/hook')
+
+    def test_missing_hostname_rejected(self):
+        from myapp.webhooks import WebhookURLValidationError, validate_webhook_url
+        with self.assertRaises(WebhookURLValidationError):
+            validate_webhook_url('http:///path')
+
+    @patch('myapp.webhooks.socket.gethostbyname', return_value='127.0.0.1')
+    def test_loopback_rejected(self, mock_resolve):
+        from myapp.webhooks import WebhookURLValidationError, validate_webhook_url
+        with self.assertRaises(WebhookURLValidationError):
+            validate_webhook_url('http://localhost/hook')
+
+    @patch('myapp.webhooks.socket.gethostbyname', return_value='169.254.169.254')
+    def test_cloud_metadata_link_local_rejected(self, mock_resolve):
+        from myapp.webhooks import WebhookURLValidationError, validate_webhook_url
+        with self.assertRaises(WebhookURLValidationError):
+            validate_webhook_url('http://metadata.internal/latest/meta-data/')
+
+    @patch('myapp.webhooks.socket.gethostbyname', return_value='192.168.1.50')
+    def test_private_lan_address_allowed(self, mock_resolve):
+        from myapp.webhooks import validate_webhook_url
+        validate_webhook_url('http://my-n8n.lan:5678/webhook/abc')  # must not raise
+
+    @patch('myapp.webhooks.socket.gethostbyname', return_value='93.184.216.34')
+    def test_public_address_allowed(self, mock_resolve):
+        from myapp.webhooks import validate_webhook_url
+        validate_webhook_url('https://example.com/hook')  # must not raise
+
+    def test_unresolvable_hostname_rejected(self):
+        import socket
+        from myapp.webhooks import WebhookURLValidationError, validate_webhook_url
+        with patch('myapp.webhooks.socket.gethostbyname', side_effect=socket.gaierror()):
+            with self.assertRaises(WebhookURLValidationError):
+                validate_webhook_url('http://this-does-not-resolve.invalid/hook')
+
+    @patch('myapp.webhooks.socket.gethostbyname', return_value='127.0.0.1')
+    def test_dispatch_skips_sending_to_now_invalid_url(self, mock_resolve):
+        # Covers both a row saved before this guard existed, and DNS
+        # rebinding between save time and send time.
+        from myapp.webhooks import _send_one
+        hook = UserWebhook.objects.create(
+            user=User.objects.create_user(username='hookowner', password='pw12345!'),
+            name='Rebound', url='http://looks-external.example.com/hook',
+            events=['item_created'],
+        )
+        with patch('myapp.webhooks.http_requests.post') as mock_post:
+            _send_one(hook, {'event': 'item_created'})
+        mock_post.assert_not_called()
+
 
 class TOTPTests(TestCase):
     def setUp(self):
