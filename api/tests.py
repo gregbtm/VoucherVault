@@ -36,6 +36,7 @@ def make_item(user, **kwargs):
 
 class AuthenticationTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.user = User.objects.create_user(username='alice', password='pw12345!')
 
     def test_items_list_requires_authentication(self):
@@ -69,6 +70,7 @@ class AuthenticationTests(APITestCase):
 
 class ItemCrudTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.user = User.objects.create_user(username='alice', password='pw12345!')
         self.client.force_authenticate(user=self.user)
 
@@ -187,6 +189,7 @@ class ItemTransactionTotalAnnotationTests(APITestCase):
     """
 
     def setUp(self):
+        cache.clear()
         self.user = User.objects.create_user(username='alice', password='pw12345!')
         self.client.force_authenticate(user=self.user)
 
@@ -308,6 +311,7 @@ class Phase11FieldsApiTests(APITestCase):
 
 class BalanceCheckUrlApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.user = User.objects.create_user(username='alice', password='pw12345!')
         self.client.force_authenticate(user=self.user)
 
@@ -343,6 +347,7 @@ class BalanceCheckUrlApiTests(APITestCase):
 
 class CrossUserIsolationTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.bob = User.objects.create_user(username='bob', password='pw12345!')
         self.alice_item = make_item(self.alice)
@@ -376,6 +381,7 @@ class CrossUserIsolationTests(APITestCase):
 
 class TransactionTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.user = User.objects.create_user(username='alice', password='pw12345!')
         self.client.force_authenticate(user=self.user)
         self.item = make_item(self.user, value='10.00')
@@ -417,6 +423,7 @@ class TransactionTests(APITestCase):
 
 class ItemShareTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.bob = User.objects.create_user(username='bob', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
@@ -517,6 +524,7 @@ class WebhookEventApiWiringTests(APITestCase):
     """Confirms the DRF API fires the same Phase 12.2 lifecycle events as the web UI."""
 
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.bob = User.objects.create_user(username='bob', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
@@ -557,6 +565,7 @@ class WebhookEventApiWiringTests(APITestCase):
 
 class WalletApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.bob = User.objects.create_user(username='bob', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
@@ -606,6 +615,7 @@ class WalletApiTests(APITestCase):
 
 class TagApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.bob = User.objects.create_user(username='bob', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
@@ -626,6 +636,7 @@ class TagApiTests(APITestCase):
 
 class ItemWalletAndTagsTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.bob = User.objects.create_user(username='bob', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
@@ -696,6 +707,7 @@ class ItemWalletAndTagsTests(APITestCase):
 
 class NotificationRuleApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.bob = User.objects.create_user(username='bob', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
@@ -776,6 +788,7 @@ class NotificationRuleApiTests(APITestCase):
 
 class NotificationLogApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.bob = User.objects.create_user(username='bob', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
@@ -799,6 +812,7 @@ CATIMA_SAMPLE = (
 
 class ImportApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.bob = User.objects.create_user(username='bob', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
@@ -852,6 +866,7 @@ class ImportApiTests(APITestCase):
 
 class ExportApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.bob = User.objects.create_user(username='bob', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
@@ -890,6 +905,7 @@ class ExportApiTests(APITestCase):
 
 class AnalyticsApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.bob = User.objects.create_user(username='bob', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
@@ -966,6 +982,7 @@ class AnalyticsApiTests(APITestCase):
 
 class ItemWalletAutoAssignApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.user = User.objects.create_user(username='alice', password='pw12345!')
         self.client.force_authenticate(user=self.user)
         self.wallet = Wallet.objects.create(
@@ -1014,6 +1031,7 @@ class ItemWalletAutoAssignApiTests(APITestCase):
 
 class MerchantProfileApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
 
@@ -1645,6 +1663,7 @@ class RailTicketBatchImportApiTests(APITestCase):
 
 class PkpassApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.bob = User.objects.create_user(username='bob', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
@@ -1685,6 +1704,7 @@ class PkpassApiTests(APITestCase):
 
 class GoogleWalletApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.bob = User.objects.create_user(username='bob', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
@@ -1723,6 +1743,7 @@ class GoogleWalletApiTests(APITestCase):
 
 class SharedWalletApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.bob = User.objects.create_user(username='bob', password='pw12345!')
         self.carol = User.objects.create_user(username='carol', password='pw12345!')
@@ -1861,6 +1882,7 @@ class GiftCardEmailParserTests(APITestCase):
 
 class GiftCardEmailImportApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.bob = User.objects.create_user(username='bob', password='pw12345!')
         self.url = '/api/v1/imports/gift-card-email/'
@@ -1932,6 +1954,7 @@ class GiftCardEmailImportApiTests(APITestCase):
 
 class EnrichmentConfigViewSetTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.user = User.objects.create_user(username='alice', password='pw12345!')
         self.client.force_authenticate(user=self.user)
         from myapp.models import EnrichmentConfig
@@ -1984,6 +2007,7 @@ class EnrichmentConfigViewSetTests(APITestCase):
 
 class EnrichmentRunViewSetTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.user = User.objects.create_user(username='alice', password='pw12345!')
         self.client.force_authenticate(user=self.user)
         from myapp.models import EnrichmentConfig, EnrichmentRun, Item
@@ -2103,6 +2127,7 @@ class UserWebhookSSRFGuardTests(APITestCase):
     """
 
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
 
@@ -2144,6 +2169,7 @@ class UserSearchEndpointRemovedTests(APITestCase):
     """
 
     def setUp(self):
+        cache.clear()
         self.alice = User.objects.create_user(username='alice', password='pw12345!')
         self.client.force_authenticate(user=self.alice)
 

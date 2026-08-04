@@ -1218,6 +1218,43 @@ class RailTicketBatchImportView(APIView):
 
     MAX_FILES = 10
 
+    @extend_schema(
+        request={'multipart/form-data': inline_serializer(
+            name='RailTicketBatchImportRequest',
+            fields={
+                'files': serializers.ListField(child=serializers.FileField()),
+                'create': serializers.BooleanField(required=False, default=False),
+                'name': serializers.CharField(required=False),
+                'issuer': serializers.CharField(required=False),
+                'card_number': serializers.CharField(required=False),
+                'order_id': serializers.CharField(required=False),
+                'discount_applied': serializers.CharField(required=False),
+                'journey_origin': serializers.CharField(required=False),
+                'journey_destination': serializers.CharField(required=False),
+                'travel_time': serializers.CharField(required=False, help_text='24-hour "HH:MM"'),
+                'travel_date': serializers.CharField(required=False, help_text='"YYYY-MM-DD"'),
+                'value': serializers.FloatField(required=False),
+                'currency': serializers.CharField(required=False),
+            },
+        )},
+        responses=inline_serializer(
+            name='RailTicketBatchImportResponse',
+            fields={
+                'results': inline_serializer(
+                    name='RailTicketBatchImportResultEntry',
+                    fields={
+                        'file': serializers.CharField(),
+                        'status_code': serializers.IntegerField(),
+                        'created': serializers.BooleanField(required=False),
+                        'duplicate': serializers.BooleanField(required=False),
+                        'item': ItemSerializer(required=False),
+                        'error': serializers.CharField(required=False),
+                    },
+                    many=True,
+                ),
+            },
+        ),
+    )
     def post(self, request):
         files = request.FILES.getlist('files') or list(request.FILES.values())
         if not files:
