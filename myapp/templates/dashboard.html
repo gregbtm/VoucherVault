@@ -124,12 +124,18 @@
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  gap: 0.5rem;
   background: rgba(239, 68, 68, 0.07);
   border-radius: 8px;
   padding: 6px 12px;
   margin-bottom: 10px;
   font-size: 0.82rem;
 }
+/* Flex items default to min-width:auto (their own content's min-content
+   size) which can force this row - and everything up the flex/grid chain
+   above it - wider than the viewport on narrow screens rather than
+   letting the label/value wrap. min-width:0 lets them shrink normally. */
+.gc-total-label, .gc-total-value { min-width: 0; }
 .gc-total-label { color: var(--text-muted, #6b7280); }
 .gc-total-value { font-weight: 600; color: #ef4444; font-variant-numeric: tabular-nums; }
 body.dark-mode .quick-stats-gc-total { background: rgba(239, 68, 68, 0.12); }
@@ -229,6 +235,9 @@ body.dark-mode .quick-stats-gc-total { background: rgba(239, 68, 68, 0.12); }
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  /* Also a grid item of .dashboard-layout - same min-width:auto blowout
+     risk one level up, so it needs the same override. */
+  min-width: 0;
 }
 
 /* Chart Card */
@@ -265,6 +274,13 @@ body.dark-mode .quick-stats-gc-total { background: rgba(239, 68, 68, 0.12); }
   padding: 1.5rem;
   color: white;
   box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
+  /* A flex item's default min-width:auto sizes it to its own content's
+     min-content - the nested quick-stats grid/gc-total row below can
+     have a wider min-content than the sidebar's available width on
+     narrow screens, which would otherwise force this card (and its
+     .dashboard-sidebar parent, and everything stretched to match) wider
+     than the viewport instead of wrapping. min-width:0 lets it shrink. */
+  min-width: 0;
 }
 
 .value-display-label {
@@ -298,6 +314,7 @@ body.dark-mode .quick-stats-gc-total { background: rgba(239, 68, 68, 0.12); }
 
 .quick-stat {
   text-align: center;
+  min-width: 0;
 }
 
 .quick-stat-value {
