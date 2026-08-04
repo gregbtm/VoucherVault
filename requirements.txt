@@ -46,7 +46,7 @@ pytesseract==0.3.13
 Pillow==12.3.0
 
 # APPLE WALLET EXPORT
-cryptography==49.0.0
+cryptography==50.0.0
 
 # HEALTH CHECK + ERROR TRACKING
 django-health-check>=3.18.0
