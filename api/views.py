@@ -524,6 +524,18 @@ class ItemViewSet(viewsets.ModelViewSet):
     ordering_fields = ['expiry_date', 'name', 'value', 'issue_date', 'last_used_at', 'is_pinned']
     ordering = ['expiry_date']
 
+    def get_permissions(self):
+        # Sharing/unsharing a third party into an item is owner-only,
+        # matching myapp.views.share_item_view/unshare_item exactly
+        # (get_object_or_404(Item, id=item_id, user=request.user)) - a
+        # wallet editor collaborator can edit the item itself via the
+        # broader IsItemOwnerOrWalletCollaborator permission below, but
+        # was previously able to invite or revoke arbitrary third-party
+        # shares too, which the web UI has never allowed.
+        if self.action in ('shares', 'delete_share'):
+            return [IsAuthenticated(), IsOwner()]
+        return super().get_permissions()
+
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return Item.objects.none()
