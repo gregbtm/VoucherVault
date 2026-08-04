@@ -1987,3 +1987,29 @@ class EnrichmentRunViewSetTests(APITestCase):
         self.client.force_authenticate(user=None)
         response = self.client.get('/api/v1/enrichment/runs/')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class UserSearchEndpointRemovedTests(APITestCase):
+    """
+    api/v1/users/search/ used to return any matching user's username AND
+    email to any authenticated caller (icontains match, no relationship
+    check, unthrottled) for a wallet-invite autocomplete - a straight
+    user-directory leak on any multi-user instance, same class of bug as
+    the ItemShare recipient-picker leak fixed in #209. The endpoint is
+    removed entirely rather than scoped, matching how this app already
+    does every other invite flow (WalletShareForm, ItemShareForm): typed
+    exact username, no live directory search.
+    """
+
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+
+    def test_endpoint_no_longer_exists(self):
+        response = self.client.get('/api/v1/users/search/', {'q': 'b'})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_url_name_no_longer_registered(self):
+        from django.urls import NoReverseMatch
+        with self.assertRaises(NoReverseMatch):
+            reverse('api-users-search')

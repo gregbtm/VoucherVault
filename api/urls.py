@@ -58,7 +58,5 @@ urlpatterns = [
     path('items/<uuid:item_pk>/documents/<int:pk>/', views.ItemDocumentViewSet.as_view({'delete': 'destroy'}), name='api-item-document-detail'),
     # Token-authenticated barcode image for ntfy notification attachments
     path('items/<uuid:item_pk>/notification-barcode/', views.NotificationBarcodeView.as_view(), name='api-notification-barcode'),
-    # User search for autocomplete
-    path('users/search/', views.UserSearchView.as_view(), name='api-users-search'),
     path('', include(router.urls)),
 ]
