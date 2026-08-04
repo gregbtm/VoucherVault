@@ -360,6 +360,14 @@ class UserWebhookSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
         extra_kwargs = {'secret': {'write_only': True}}
 
+    def validate_url(self, value):
+        from myapp.webhooks import WebhookURLValidationError, validate_webhook_url
+        try:
+            validate_webhook_url(value)
+        except WebhookURLValidationError as exc:
+            raise serializers.ValidationError(str(exc))
+        return value
+
     def validate_events(self, value):
         valid = {c[0] for c in UserWebhook.EVENT_CHOICES}
         bad = [e for e in value if e not in valid]

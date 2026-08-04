@@ -1581,12 +1581,13 @@ class UserWebhookViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='test')
     def test_fire(self, request, pk=None):
         """Fire a synthetic test payload to the webhook URL."""
-        from myapp.webhooks import fire_user_webhooks
+        from myapp.webhooks import WebhookURLValidationError, validate_webhook_url
         hook = self.get_object()
-        from myapp.models import Item as _Item
-        dummy = _Item(name='Test Item', issuer='VoucherVault', redeem_code='TEST123', value=10)
-        fire_user_webhooks.__wrapped__ = getattr(fire_user_webhooks, '__wrapped__', None)
-        import threading, json, hashlib, hmac, datetime, requests as _requests
+        try:
+            validate_webhook_url(hook.url)
+        except WebhookURLValidationError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        import json, hashlib, hmac, datetime, requests as _requests
         payload = {
             'event': 'test',
             'timestamp': datetime.datetime.utcnow().isoformat() + 'Z',

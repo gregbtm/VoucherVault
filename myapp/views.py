@@ -3544,6 +3544,12 @@ class _WebhookForm:
             errors['name'] = 'Name is required.'
         if not url or not url.startswith(('http://', 'https://')):
             errors['url'] = 'A valid URL is required.'
+        else:
+            from .webhooks import WebhookURLValidationError, validate_webhook_url
+            try:
+                validate_webhook_url(url)
+            except WebhookURLValidationError as exc:
+                errors['url'] = str(exc)
         if not events:
             errors['events'] = 'Select at least one event.'
         return {

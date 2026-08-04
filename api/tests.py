@@ -15,7 +15,7 @@ from rest_framework.test import APITestCase
 
 from api.throttling import WriteRateThrottle
 from imports.models import ImportJob
-from myapp.models import Item, ItemShare, MerchantProfile, Tag, Transaction, Wallet
+from myapp.models import Item, ItemShare, MerchantProfile, Tag, Transaction, UserWebhook, Wallet
 from myapp.test_utils import set_site_config
 from notify.models import NotificationLog, NotificationRule
 
@@ -1987,3 +1987,43 @@ class EnrichmentRunViewSetTests(APITestCase):
         self.client.force_authenticate(user=None)
         response = self.client.get('/api/v1/enrichment/runs/')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class UserWebhookSSRFGuardTests(APITestCase):
+    """
+    UserWebhookViewSet's create/update (via UserWebhookSerializer) and
+    the test_fire action both reject webhook URLs pointed at loopback,
+    link-local (including 169.254.169.254, the cloud metadata SSRF
+    target), or other never-legitimate addresses - see
+    myapp.webhooks.validate_webhook_url for the full rationale,
+    including why general private/LAN addresses are deliberately still
+    allowed.
+    """
+
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+
+    @patch('myapp.webhooks.socket.gethostbyname', return_value='127.0.0.1')
+    def test_create_rejects_loopback_url(self, mock_resolve):
+        response = self.client.post('/api/v1/webhooks/', {
+            'name': 'Bad Hook', 'url': 'http://localhost/hook', 'events': ['item_created'],
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(UserWebhook.objects.filter(name='Bad Hook').exists())
+
+    @patch('myapp.webhooks.socket.gethostbyname', return_value='192.168.1.50')
+    def test_create_allows_private_lan_url(self, mock_resolve):
+        response = self.client.post('/api/v1/webhooks/', {
+            'name': 'LAN Hook', 'url': 'http://my-n8n.lan/hook', 'events': ['item_created'],
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    @patch('myapp.webhooks.socket.gethostbyname', return_value='169.254.169.254')
+    def test_test_fire_action_rejects_cloud_metadata_url(self, mock_resolve):
+        hook = UserWebhook.objects.create(
+            user=self.alice, name='Metadata', url='http://metadata.internal/latest/meta-data/',
+            events=['item_created'],
+        )
+        response = self.client.post(f'/api/v1/webhooks/{hook.id}/test/')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
