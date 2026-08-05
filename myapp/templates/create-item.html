@@ -212,6 +212,19 @@
 body.dark-mode .scan-chip-filled { background: rgba(25, 135, 84, 0.25); color: #75d9a6; }
 body.dark-mode .scan-chip-learned { background: rgba(111, 66, 193, 0.28); color: #c5a3ff; }
 body.dark-mode .scan-chip-empty { background: rgba(108, 117, 125, 0.25); color: #adb5bd; }
+.scan-chip-undo-btn {
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  line-height: 1;
+  padding: 0.05rem 0.45rem;
+  margin-left: 0.2rem;
+  cursor: pointer;
+}
+.scan-chip-undo-btn:hover { opacity: 0.75; }
+.scan-chip-undo-btn:disabled { cursor: default; opacity: 0.5; }
 body.dark-mode .modern-input.suggested-fill,
 body.dark-mode .modern-select.suggested-fill {
   background: rgba(255, 193, 7, 0.1);
@@ -1170,7 +1183,7 @@ body.dark-mode .error-alert {
 
             <div class="form-group">
               <label class="form-label" for="file">{% trans "Upload File" %}</label>
-              <input type="file" id="file" name="file" class="modern-input" data-check-duplicate-image-url="{% url 'check_duplicate_image' %}" data-barcode-decode-url="{% url 'barcode_decode' %}">
+              <input type="file" id="file" name="file" class="modern-input" data-check-duplicate-image-url="{% url 'check_duplicate_image' %}" data-barcode-decode-url="{% url 'barcode_decode' %}" data-undo-correction-url="{% url 'api-ocr-undo-correction' %}">
               <small class="form-text text-warning" id="duplicate-image-warning" style="display:none;"></small>
             </div>
           </div>
@@ -1946,7 +1959,7 @@ document.addEventListener("DOMContentLoaded", function () {
           statusEl.innerHTML = '<span class="scan-chip scan-chip-empty"><i class="bi bi-eye-slash"></i> {% trans "Nothing could be confidently read from that photo." %}</span>';
         }
         if (data.healed_fields && data.healed_fields.length) {
-          statusEl.innerHTML += `<span class="scan-chip scan-chip-learned" title="{% trans 'Fields you corrected on a previous scan were automatically fixed the same way this time.' %}"><i class="bi bi-magic"></i> {% trans "Learned from your past corrections:" %} ${data.healed_fields.join(', ')}</span>`;
+          renderHealedFieldsChip(statusEl, data.healed_fields, data.healed_originals);
         }
         if (codeFromAiGuess) {
           showOcrConfidenceWarning(data.code, data.confidence);

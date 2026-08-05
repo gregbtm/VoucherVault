@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(join(__dirname, 'scanner.js'), 'utf-8');
@@ -20,6 +20,11 @@ const source = readFileSync(join(__dirname, 'scanner.js'), 'utf-8');
 // failure instead of the fixture gap it actually is.
 const FIXTURE_HTML = `
   <input type="text" id="redeem_code">
+  <select id="type">
+    <option value="giftcard">Gift Card</option>
+    <option value="travelpass">Travel Pass</option>
+  </select>
+  <input type="text" id="issuer">
   <select id="code_type">
     <option value="qrcode">QR Code</option>
     <option value="none">No Barcode</option>
@@ -55,9 +60,11 @@ const FIXTURE_HTML = `
   <button id="resetSelectionBtn"></button>
   <div id="cropPreviewSection"></div>
   <canvas id="cropPreviewCanvas"></canvas>
-  <input type="file" id="file">
+  <input type="file" id="file" data-undo-correction-url="/api/v1/ocr/undo-correction/">
   <small id="duplicate-image-warning"></small>
   <p id="codeTypeHint"></p>
+  <input type="hidden" name="csrfmiddlewaretoken" value="test-csrf-token">
+  <div id="statusEl"></div>
 `;
 
 // scanner.js is a classic (non-module) script, loaded via <script src> in
@@ -77,9 +84,13 @@ function loadScanner() {
 
 beforeEach(() => {
   document.body.innerHTML = FIXTURE_HTML;
-  for (const fn of ['markAutoFilled', 'markSuggested', 'applyDetectedFormat', 'guessCodeTypeFromValue', 'showCodeTypeHint']) {
+  for (const fn of [
+    'markAutoFilled', 'markSuggested', 'applyDetectedFormat', 'guessCodeTypeFromValue',
+    'showCodeTypeHint', 'renderHealedFieldsChip', 'undoHealedField',
+  ]) {
     delete window[fn];
   }
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ retracted: true }) }));
 });
 
 describe('markAutoFilled / markSuggested', () => {
@@ -202,5 +213,99 @@ describe('guessCodeTypeFromValue (via the redeem_code input listener)', () => {
     select.dispatchEvent(new Event('change')); // user's own explicit pick
     type('9780134685991'); // would normally guess ean13
     expect(select.value).toBe('datamatrix');
+  });
+});
+
+describe('renderHealedFieldsChip / undoHealedField', () => {
+  it('renders one Undo button per healed field that has an original recorded', () => {
+    loadScanner();
+    const statusEl = document.getElementById('statusEl');
+    window.renderHealedFieldsChip(statusEl, ['issuer'], {
+      issuer: { ai_value: 'Merchant Ay', correction_id: 42 },
+    });
+    const chip = statusEl.querySelector('.scan-chip-learned');
+    expect(chip.textContent).toContain('Learned from your past corrections: issuer');
+    expect(chip.querySelectorAll('.scan-chip-undo-btn').length).toBe(1);
+  });
+
+  it('skips the Undo button for a healed field with no original recorded', () => {
+    // Defensive: shouldn't happen in practice (apply_learned_corrections
+    // always records an original alongside every healed field), but a
+    // missing entry must not crash chip rendering.
+    loadScanner();
+    const statusEl = document.getElementById('statusEl');
+    window.renderHealedFieldsChip(statusEl, ['issuer'], {});
+    expect(statusEl.querySelectorAll('.scan-chip-undo-btn').length).toBe(0);
+  });
+
+  it('never puts the raw ai_value into the rendered HTML', () => {
+    // The whole point of closing over healedOriginals instead of using a
+    // data-* attribute: OCR-read text is untrusted and must never be
+    // interpolated into innerHTML unescaped.
+    loadScanner();
+    const statusEl = document.getElementById('statusEl');
+    const dangerous = '<img src=x onerror=alert(1)>';
+    window.renderHealedFieldsChip(statusEl, ['issuer'], {
+      issuer: { ai_value: dangerous, correction_id: 1 },
+    });
+    expect(statusEl.innerHTML).not.toContain(dangerous);
+    expect(statusEl.querySelectorAll('img').length).toBe(0);
+  });
+
+  it('undo reverts the field to the original AI value and clears fill highlighting', () => {
+    loadScanner();
+    const field = document.getElementById('issuer');
+    field.value = 'Merchant A';
+    field.classList.add('auto-filled');
+    const button = document.createElement('button');
+    window.undoHealedField('issuer', { ai_value: 'Merchant Ay', correction_id: 42 }, button);
+    expect(field.value).toBe('Merchant Ay');
+    expect(field.classList.contains('auto-filled')).toBe(false);
+  });
+
+  it('undo dispatches a bubbling change event so field-specific listeners (e.g. #type toggling other sections) still fire', () => {
+    loadScanner();
+    const field = document.getElementById('type');
+    const handler = vi.fn();
+    document.body.addEventListener('change', handler);
+    const button = document.createElement('button');
+    window.undoHealedField('type', { ai_value: 'giftcard', correction_id: 7 }, button);
+    expect(field.value).toBe('giftcard');
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('undo disables the button and marks it "Undone"', () => {
+    loadScanner();
+    const button = document.createElement('button');
+    window.undoHealedField('issuer', { ai_value: 'Merchant Ay', correction_id: 42 }, button);
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toBe('Undone');
+  });
+
+  it('undo posts the correction_id to the undo-correction endpoint', () => {
+    loadScanner();
+    const button = document.createElement('button');
+    window.undoHealedField('issuer', { ai_value: 'Merchant Ay', correction_id: 42 }, button);
+    expect(fetch).toHaveBeenCalledWith('/api/v1/ocr/undo-correction/', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ correction_id: 42 }),
+    }));
+    const headers = fetch.mock.calls[0][1].headers;
+    expect(headers['X-CSRFToken']).toBe('test-csrf-token');
+  });
+
+  it('clicking the rendered Undo button wires through to undoHealedField', () => {
+    loadScanner();
+    const statusEl = document.getElementById('statusEl');
+    const field = document.getElementById('issuer');
+    field.value = 'Merchant A';
+    window.renderHealedFieldsChip(statusEl, ['issuer'], {
+      issuer: { ai_value: 'Merchant Ay', correction_id: 42 },
+    });
+    statusEl.querySelector('.scan-chip-undo-btn').click();
+    expect(field.value).toBe('Merchant Ay');
+    expect(fetch).toHaveBeenCalledWith('/api/v1/ocr/undo-correction/', expect.objectContaining({
+      body: JSON.stringify({ correction_id: 42 }),
+    }));
   });
 });

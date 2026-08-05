@@ -46,7 +46,7 @@ from dms.models import DMSProvider, DMSSyncLog
 from myapp.pdf_ticket import (
     decode_barcode_from_pdf, iter_pdf_pages, pdf_page_count, pdf_page_to_png_bytes,
 )
-from myapp.scan_learning import apply_learned_corrections
+from myapp.scan_learning import apply_learned_corrections, retract_learned_correction
 from myapp.tasks import fetch_merchant_logo_task
 from myapp.utils import generate_code_image_base64
 from notify.models import NotificationLog, NotificationRule
@@ -1091,6 +1091,12 @@ class OCRExtractView(APIView):
                 'journey_destination': serializers.CharField(allow_null=True),
                 'travel_time': serializers.CharField(allow_null=True),
                 'healed_fields': serializers.ListField(child=serializers.CharField()),
+                'healed_originals': serializers.DictField(
+                    child=inline_serializer(
+                        name='HealedOriginal',
+                        fields={'ai_value': serializers.CharField(), 'correction_id': serializers.IntegerField()},
+                    ),
+                ),
                 'confidence': serializers.FloatField(),
             },
         ),
@@ -1123,10 +1129,46 @@ class OCRExtractView(APIView):
         # Self-healing pass: replay this user's past corrections against
         # the fresh extraction (see myapp/scan_learning.py) - e.g. an
         # operator name the model keeps misreading gets silently fixed
-        # before the form ever sees it. healed_fields lets the UI say so.
-        result['healed_fields'] = apply_learned_corrections(request.user, result)
+        # before the form ever sees it. healed_fields lets the UI say so;
+        # healed_originals gives it enough to offer a one-click Undo per
+        # field (see UndoScanHealingView below) - the AI's raw pre-heal
+        # value to put back, and which correction to retract if it was
+        # wrong.
+        healed_originals = {}
+        result['healed_fields'] = apply_learned_corrections(request.user, result, originals=healed_originals)
+        result['healed_originals'] = healed_originals
 
         return Response(result)
+
+
+class UndoScanHealingView(APIView):
+    """
+    POST {'correction_id': <int>} to retract one learned correction that
+    OCRExtractView just applied to the current scan - the id comes from
+    that response's `healed_originals[field].correction_id`. One-click
+    counterpart to the "Learned from your past corrections" chip: the
+    field itself is reverted client-side (the frontend already has the
+    original ai_value to put back), this just stops the store from
+    applying that same wrong heal again on the next scan.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=inline_serializer(
+            name='UndoScanHealingRequest', fields={'correction_id': serializers.IntegerField()},
+        ),
+        responses=inline_serializer(
+            name='UndoScanHealingResponse', fields={'retracted': serializers.BooleanField()},
+        ),
+    )
+    def post(self, request):
+        try:
+            correction_id = int(request.data.get('correction_id'))
+        except (TypeError, ValueError):
+            return Response({'detail': _('correction_id must be an integer.')}, status=status.HTTP_400_BAD_REQUEST)
+
+        retracted = retract_learned_correction(request.user, correction_id)
+        return Response({'retracted': retracted})
 
 
 class RailTicketImportView(APIView):

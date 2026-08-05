@@ -16,6 +16,11 @@ Two halves, wired into opposite ends of the scan-to-save round trip:
   matches a remembered `ai_value` gets swapped for the remembered
   `corrected_value` before the frontend ever sees it.
 
+retract_learned_correction() is the escape hatch for when the above gets
+it wrong: a one-click "Undo" on a healed field deletes the specific
+ScanFieldCorrection that applied, without waiting for a save to un-teach
+it the slow way.
+
 Only fields with stable, recurring values are learnable. Item-specific
 fields (name, code, expiry, value, pin, card number) are deliberately
 excluded - "corrections" there are just data entry, not a pattern.
@@ -422,11 +427,18 @@ def _find_fuzzy_correction(user, field: str, ai_value: str, item_type: str, issu
     return best_match
 
 
-def apply_learned_corrections(user, result: dict) -> list[str]:
+def apply_learned_corrections(user, result: dict, originals: dict = None) -> list[str]:
     """
     Mutates an OCR extraction `result` in place, swapping values this user
     has corrected before. Returns the list of healed field names (for the
-    frontend's "adjusted from your history" note). Type and issuer are
+    frontend's "adjusted from your history" note). When `originals` is
+    given (a dict the caller owns), each healed field's pre-heal value and
+    the id of the ScanFieldCorrection row that healed it are recorded into
+    it as `{field: {'ai_value': ..., 'correction_id': ...}}` - the one-click
+    "Undo" control's other half (see retract_learned_correction below)
+    needs both: the ai_value to put back in the form, and the id to know
+    exactly which row to retract, since a fuzzy-matched heal's `ai_value`
+    doesn't equal the correction's own `ai_value`. Type and issuer are
     healed first (in that order - issuer immediately follows type in
     LEARNABLE_FIELDS) so every other field's lookup - blank-fill and
     non-blank alike - can use the corrected type/issuer as context: a
@@ -489,8 +501,34 @@ def apply_learned_corrections(user, result: dict) -> list[str]:
                     'Fuzzy-healed %s for user %s: %r -> %r (learned from %r)',
                     field, user.pk, ai_value, best.corrected_value, best.ai_value,
                 )
+            if originals is not None:
+                originals[field] = {'ai_value': ai_value, 'correction_id': best.pk}
             result[field] = best.corrected_value
             healed.append(field)
     except Exception:
         logger.warning('Failed to apply learned scan corrections', exc_info=True)
     return healed
+
+
+def retract_learned_correction(user, correction_id: int) -> bool:
+    """
+    One-click undo for a single healed field: deletes the exact
+    ScanFieldCorrection row apply_learned_corrections just applied (its id
+    came back to the frontend via that call's `originals` argument), so
+    this user's next scan of the same misreading is left alone instead of
+    "healed" the same wrong way again. A merchant that changes its card
+    layout, or a one-off bad correction that slipped past the times_seen
+    bar, both recover the same way: the user just says "no, that's wrong"
+    once.
+
+    Deletes outright rather than decrementing times_seen - if this really
+    is still a good correction for a different context, the next genuine
+    save will teach it again from scratch (record_scan_corrections), and
+    a decayed-but-still-present row would just be a confusing halfway
+    state. Scoped to `user` so one user can never retract another's
+    correction by guessing an id; a missing/already-gone row is not an
+    error, since the caller's local undo (reverting the form field) has
+    already happened either way by the time this is called.
+    """
+    deleted_count, _ = ScanFieldCorrection.objects.filter(pk=correction_id, user=user).delete()
+    return deleted_count > 0

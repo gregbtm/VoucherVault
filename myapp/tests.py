@@ -37,7 +37,7 @@ from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
 from .nearby_places import _names_match, _normalize, find_nearby_issuer_matches
 from .imagehash import compute_dhash, hamming_distance
 from .models import AppSettings, BalanceHistory, Document, EnrichmentConfig, EnrichmentRun, EnrichmentRunItem, Item, ItemComment, ItemEnrichmentLog, ItemPublicShare, ItemShare, LoginAuditLog, MerchantProfile, ScanFieldCorrection, SiteConfiguration, Tag, TOTPDevice, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, UserWebhook, Wallet, WalletActivity, WalletMembership
-from .scan_learning import apply_learned_corrections, record_scan_corrections
+from .scan_learning import apply_learned_corrections, record_scan_corrections, retract_learned_correction
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .test_utils import set_site_config
 from .tasks import check_for_update_task, check_upstream_version_task, fetch_merchant_logo_task, purge_expired_public_shares
@@ -1272,6 +1272,78 @@ class ScanLearningTests(TestCase):
         self.assertIn('/items/view/', response['Location'])
         self.assertIn('?new=1', response['Location'])
         self.assertFalse(ScanFieldCorrection.objects.exists())
+
+    def test_apply_records_originals_for_the_undo_control(self):
+        correction = ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail',
+        )
+        result = {'issuer': 'Nationl Rail', 'type': 'travelpass'}
+        originals = {}
+        healed = apply_learned_corrections(self.user, result, originals=originals)
+        self.assertEqual(healed, ['issuer'])
+        self.assertEqual(originals['issuer'], {'ai_value': 'Nationl Rail', 'correction_id': correction.pk})
+
+    def test_apply_does_not_record_an_original_for_an_unhealed_field(self):
+        result = {'issuer': 'Some Merchant', 'type': 'travelpass'}
+        originals = {}
+        apply_learned_corrections(self.user, result, originals=originals)
+        self.assertEqual(originals, {})
+
+    def test_apply_without_originals_argument_still_works(self):
+        # originals is optional - existing callers (and every other test in
+        # this class) don't pass it at all.
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail',
+        )
+        result = {'issuer': 'Nationl Rail', 'type': 'travelpass'}
+        self.assertEqual(apply_learned_corrections(self.user, result), ['issuer'])
+
+    def test_apply_records_the_fuzzy_matched_corrections_own_id_and_ai_value(self):
+        # A fuzzy heal's own ai_value differs from the scan's ai_value (that's
+        # the point) - originals must record the correction row's ai_value
+        # ("Kwikfip", what it was actually taught), not the scan's ai_value
+        # ("Kwikfit"), since that's what Undo needs to identify the row.
+        correction = ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', field='issuer',
+            ai_value='Kwikfip', corrected_value='Right Answer', times_seen=2,
+        )
+        result = {'issuer': 'Kwikfit', 'type': 'giftcard'}
+        originals = {}
+        healed = apply_learned_corrections(self.user, result, originals=originals)
+        self.assertEqual(healed, ['issuer'])
+        self.assertEqual(originals['issuer']['correction_id'], correction.pk)
+
+    def test_retract_deletes_the_correction(self):
+        correction = ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail',
+        )
+        self.assertTrue(retract_learned_correction(self.user, correction.pk))
+        self.assertFalse(ScanFieldCorrection.objects.filter(pk=correction.pk).exists())
+
+    def test_retract_stops_the_correction_from_healing_again(self):
+        correction = ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail',
+        )
+        retract_learned_correction(self.user, correction.pk)
+        result = {'issuer': 'Nationl Rail', 'type': 'travelpass'}
+        self.assertEqual(apply_learned_corrections(self.user, result), [])
+        self.assertEqual(result['issuer'], 'Nationl Rail')
+
+    def test_retract_is_scoped_to_the_owning_user(self):
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        correction = ScanFieldCorrection.objects.create(
+            user=bob, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail',
+        )
+        self.assertFalse(retract_learned_correction(self.user, correction.pk))
+        self.assertTrue(ScanFieldCorrection.objects.filter(pk=correction.pk).exists())
+
+    def test_retract_of_a_missing_id_is_not_an_error(self):
+        self.assertFalse(retract_learned_correction(self.user, 999999))
 
 
 class NoBarcodeCodeTypeTests(TestCase):

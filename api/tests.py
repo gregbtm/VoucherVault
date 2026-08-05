@@ -1220,6 +1220,96 @@ class OCRExtractApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['healed_fields'], [])
 
+    @patch('api.views.get_backend')
+    def test_healed_originals_gives_the_undo_control_what_it_needs(self, mock_get_backend):
+        from myapp.models import ScanFieldCorrection
+        correction = ScanFieldCorrection.objects.create(
+            user=self.alice, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail',
+        )
+        mock_backend = MagicMock()
+        mock_backend.extract.return_value = {
+            'code': 'AABXF39DNGF', 'issuer': 'Nationl Rail', 'type': 'travelpass', 'confidence': 0.9,
+        }
+        mock_get_backend.return_value = mock_backend
+
+        set_site_config(ocr_backend='claude')
+        response = self.client.post('/api/v1/ocr/extract/', {'image': _tiny_image_upload()}, format='multipart')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data['healed_originals']['issuer'],
+            {'ai_value': 'Nationl Rail', 'correction_id': correction.pk},
+        )
+
+    @patch('api.views.get_backend')
+    def test_no_corrections_means_empty_healed_originals(self, mock_get_backend):
+        mock_backend = MagicMock()
+        mock_backend.extract.return_value = {'code': 'X', 'issuer': 'Acme', 'confidence': 0.9}
+        mock_get_backend.return_value = mock_backend
+
+        set_site_config(ocr_backend='claude')
+        response = self.client.post('/api/v1/ocr/extract/', {'image': _tiny_image_upload()}, format='multipart')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['healed_originals'], {})
+
+
+class UndoScanHealingApiTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+
+    def _correction(self, user=None):
+        from myapp.models import ScanFieldCorrection
+        return ScanFieldCorrection.objects.create(
+            user=user or self.alice, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail',
+        )
+
+    def test_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.post('/api/v1/ocr/undo-correction/', {'correction_id': 1}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_retracts_the_correction(self):
+        from myapp.models import ScanFieldCorrection
+        correction = self._correction()
+        response = self.client.post(
+            '/api/v1/ocr/undo-correction/', {'correction_id': correction.pk}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['retracted'])
+        self.assertFalse(ScanFieldCorrection.objects.filter(pk=correction.pk).exists())
+
+    def test_cannot_retract_another_users_correction(self):
+        from myapp.models import ScanFieldCorrection
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        correction = self._correction(user=bob)
+        response = self.client.post(
+            '/api/v1/ocr/undo-correction/', {'correction_id': correction.pk}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data['retracted'])
+        self.assertTrue(ScanFieldCorrection.objects.filter(pk=correction.pk).exists())
+
+    def test_missing_correction_id_is_a_bad_request(self):
+        response = self.client.post('/api/v1/ocr/undo-correction/', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_non_integer_correction_id_is_a_bad_request(self):
+        response = self.client.post(
+            '/api/v1/ocr/undo-correction/', {'correction_id': 'not-a-number'}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_nonexistent_correction_id_still_succeeds_with_retracted_false(self):
+        response = self.client.post(
+            '/api/v1/ocr/undo-correction/', {'correction_id': 999999}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data['retracted'])
+
 
 def _ticket_pdf_upload(barcode_data='AABXC5V4LVT', barcode_type='azteccode', name='ticket.pdf'):
     """A real single-page PDF with a genuine barcode embedded in it - not a
