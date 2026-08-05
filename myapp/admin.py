@@ -265,11 +265,11 @@ class ScanFieldCorrectionAdmin(admin.ModelAdmin):
     short of editing the database directly.
     """
     list_display = (
-        'user', 'item_type', 'field', 'ai_value_display', 'corrected_value',
+        'user', 'item_type', 'issuer', 'field', 'ai_value_display', 'corrected_value',
         'times_seen', 'source', 'enrichment_method', 'updated_at',
     )
     list_filter = ('source', 'field', 'item_type')
-    search_fields = ('user__username', 'ai_value', 'corrected_value')
+    search_fields = ('user__username', 'issuer', 'ai_value', 'corrected_value')
     autocomplete_fields = ('user',)
     ordering = ('-updated_at',)
 

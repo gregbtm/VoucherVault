@@ -817,17 +817,18 @@ def _record_suggestion_feedback(request, item):
             final = _saved_value(item, field)
             if not final:
                 continue
+            issuer = _normalize(item.issuer) if field not in ('issuer', 'type') else ''
             if final.lower() == suggested.lower():
                 # User kept the suggestion - retire any old correction that
-                # mapped this value away for this same item type.
+                # mapped this value away for this same item type/merchant.
                 ScanFieldCorrection.objects.filter(
                     user=request.user, field=field, ai_value__iexact=suggested,
-                    item_type=item.type,
+                    item_type=item.type, issuer=issuer,
                 ).delete()
             else:
                 # User changed it - record that for this context the suggestion was wrong
                 correction, created = ScanFieldCorrection.objects.get_or_create(
-                    user=request.user, item_type=item.type, field=field, ai_value=suggested,
+                    user=request.user, item_type=item.type, issuer=issuer, field=field, ai_value=suggested,
                     defaults={'corrected_value': final, 'source': 'suggestion'},
                 )
                 if not created:

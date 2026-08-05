@@ -617,6 +617,15 @@ class ScanFieldCorrection(models.Model):
     apart from "the merchant_lookup enrichment method keeps getting
     journey_origin wrong for this user" even though both replay the same
     way through apply_learned_corrections.
+
+    `issuer` narrows the scope one level further than `item_type` alone:
+    a code_type correction learned from one merchant's gift cards (e.g.
+    a merchant whose cards happen to use a QR code that should really be
+    read as an Aztec code) must not bleed into a different merchant's
+    gift cards that genuinely are QR codes. Blank ('') means "not tied to
+    a specific merchant" - either the scan had no issuer yet when this
+    was recorded, or the field itself is issuer-independent - and such
+    rows are still replayed unscoped, same as before this field existed.
     """
     SOURCE_CHOICES = (
         ('scan', 'AI Photo Scan'),
@@ -626,6 +635,7 @@ class ScanFieldCorrection(models.Model):
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='scan_corrections')
     item_type = models.CharField(max_length=100, blank=True, default='')
+    issuer = models.CharField(max_length=255, blank=True, default='')
     field = models.CharField(max_length=50)
     ai_value = models.CharField(max_length=255, blank=True, default='')
     corrected_value = models.CharField(max_length=255)
@@ -639,7 +649,7 @@ class ScanFieldCorrection(models.Model):
     )
 
     class Meta:
-        unique_together = ('user', 'item_type', 'field', 'ai_value')
+        unique_together = ('user', 'item_type', 'issuer', 'field', 'ai_value')
 
     def __str__(self):
         shown = self.ai_value or '(blank)'
