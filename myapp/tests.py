@@ -1043,6 +1043,85 @@ class ScanLearningTests(TestCase):
         self.assertEqual(apply_learned_corrections(self.user, result), ['code_type'])
         self.assertEqual(result['code_type'], 'azteccode')
 
+    def test_apply_does_not_bleed_a_correction_across_merchants(self):
+        # A code_type correction learned from one merchant's gift cards
+        # must not fuzzy- or exact-heal a *different* merchant's card of
+        # the same item type that genuinely is a QR code.
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', issuer='Merchant A', field='code_type',
+            ai_value='qrcode', corrected_value='azteccode',
+        )
+        result = {'code_type': 'qrcode', 'type': 'giftcard', 'issuer': 'Merchant B'}
+        self.assertEqual(apply_learned_corrections(self.user, result), [])
+        self.assertEqual(result['code_type'], 'qrcode')
+
+    def test_apply_still_heals_within_the_matching_merchant(self):
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', issuer='Merchant A', field='code_type',
+            ai_value='qrcode', corrected_value='azteccode',
+        )
+        result = {'code_type': 'qrcode', 'type': 'giftcard', 'issuer': 'Merchant A'}
+        self.assertEqual(apply_learned_corrections(self.user, result), ['code_type'])
+        self.assertEqual(result['code_type'], 'azteccode')
+
+    def test_apply_heals_issuer_first_so_later_fields_use_the_corrected_issuer(self):
+        # issuer is healed right after type, so a code_type correction
+        # keyed to the *corrected* issuer name still applies even though
+        # the raw OCR guess for issuer was a typo'd variant.
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', field='issuer',
+            ai_value='Merchant Ay', corrected_value='Merchant A',
+        )
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', issuer='Merchant A', field='code_type',
+            ai_value='qrcode', corrected_value='azteccode',
+        )
+        result = {'code_type': 'qrcode', 'type': 'giftcard', 'issuer': 'Merchant Ay'}
+        healed = apply_learned_corrections(self.user, result)
+        self.assertEqual(result['issuer'], 'Merchant A')
+        self.assertEqual(result['code_type'], 'azteccode')
+        self.assertEqual(set(healed), {'issuer', 'code_type'})
+
+    def test_merchant_unscoped_correction_still_applies_regardless_of_issuer(self):
+        # A correction recorded with no issuer (blank) predates this
+        # feature, or was recorded for a field where issuer context
+        # genuinely wasn't captured - it should keep replaying unscoped.
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', issuer='', field='code_type',
+            ai_value='qrcode', corrected_value='azteccode',
+        )
+        result = {'code_type': 'qrcode', 'type': 'giftcard', 'issuer': 'Any Merchant'}
+        self.assertEqual(apply_learned_corrections(self.user, result), ['code_type'])
+        self.assertEqual(result['code_type'], 'azteccode')
+
+    def test_keeping_the_scanned_value_only_retires_the_same_merchant(self):
+        item = self._item(type='giftcard', issuer='Merchant B', code_type='qrcode')
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', issuer='Merchant A', field='code_type',
+            ai_value='qrcode', corrected_value='azteccode',
+        )
+        record_scan_corrections(self.user, {'code_type': 'qrcode'}, item)
+        self.assertTrue(
+            ScanFieldCorrection.objects.filter(
+                user=self.user, field='code_type', issuer='Merchant A', ai_value='qrcode',
+            ).exists()
+        )
+
+    def test_recording_a_correction_captures_the_items_issuer(self):
+        item = self._item(type='giftcard', issuer='Merchant A', code_type='azteccode')
+        record_scan_corrections(self.user, {'code_type': 'qrcode'}, item)
+        correction = ScanFieldCorrection.objects.get(user=self.user, field='code_type')
+        self.assertEqual(correction.issuer, 'Merchant A')
+
+    def test_fuzzy_match_respects_merchant_scoping(self):
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', issuer='Merchant A', field='code_type',
+            ai_value='qrcode', corrected_value='azteccode', times_seen=3,
+        )
+        result = {'code_type': 'qrcoda', 'type': 'travelpass', 'issuer': 'Merchant B'}
+        self.assertEqual(apply_learned_corrections(self.user, result), [])
+        self.assertEqual(result['code_type'], 'qrcoda')
+
     def test_apply_heals_a_near_miss_typo_via_fuzzy_match(self):
         # Learned from "Nationl Rail" (one dropped letter); this scan
         # produces a *different* typo, "Natinal Rail" (transposed

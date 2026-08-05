@@ -23,6 +23,8 @@ excluded - "corrections" there are just data entry, not a pattern.
 
 import logging
 
+from django.db.models import Case, IntegerField, Q, Value, When
+
 from .models import Item, ItemEnrichmentLog, ScanFieldCorrection
 from .utils import levenshtein_distance
 
@@ -195,9 +197,15 @@ def record_scan_corrections(user, snapshot: dict, item: Item) -> None:
             ai_value = _normalize(snapshot.get(field))
             final_value = _saved_value(item, field)
 
+            # Issuer-scoped only for fields that aren't the issuer/type
+            # itself - scoping 'issuer' corrections by issuer would be
+            # circular, and 'type' deliberately stays item_type/issuer
+            # -unscoped to match its own healing-time treatment.
+            issuer = _normalize(item.issuer) if field not in ('issuer', 'type') else ''
+
             if final_value and final_value.lower() != ai_value.lower():
                 correction, created = ScanFieldCorrection.objects.get_or_create(
-                    user=user, item_type=item.type, field=field, ai_value=ai_value,
+                    user=user, item_type=item.type, issuer=issuer, field=field, ai_value=ai_value,
                     defaults={'corrected_value': final_value},
                 )
                 if not created:
@@ -214,13 +222,15 @@ def record_scan_corrections(user, snapshot: dict, item: Item) -> None:
                 # The scan got it right this time for this item type and the
                 # user kept it - any old correction mapping this exact value
                 # away for this same item type no longer reflects what they
-                # want. Scoped by item_type to match how corrections are
-                # recorded and replayed - retiring across item types would
-                # un-teach a still-valid, unrelated correction (e.g. a travel
-                # ticket's barcode symbology) just because a different item
-                # type happened to produce the same value and got kept.
+                # want. Scoped by item_type (and issuer, for issuer-scoped
+                # fields) to match how corrections are recorded and replayed
+                # - retiring more broadly would un-teach a still-valid,
+                # unrelated correction (e.g. a travel ticket's barcode
+                # symbology, or a different merchant's card layout) just
+                # because a different item type/merchant happened to
+                # produce the same value and got kept.
                 ScanFieldCorrection.objects.filter(
-                    user=user, field=field, ai_value=ai_value, item_type=item.type,
+                    user=user, field=field, ai_value=ai_value, item_type=item.type, issuer=issuer,
                 ).delete()
     except Exception:
         logger.warning('Failed to record scan corrections', exc_info=True)
@@ -263,9 +273,18 @@ def record_enrichment_correction_feedback(user, item: Item, before_values: dict)
                 # edited away since - this save isn't about that fill.
                 continue
 
+            # Uses the pre-edit snapshot, not item.issuer - by this point
+            # `item` already reflects the form's new values (possibly
+            # including a just-changed issuer in this same save), but the
+            # enrichment being corrected away happened against whatever
+            # issuer was current *then*.
+            issuer = (
+                _normalize(before_values.get('issuer', '')) if field not in ('issuer', 'type') else ''
+            )
+
             if final_value and final_value.lower() != logged_value.lower():
                 correction, created = ScanFieldCorrection.objects.get_or_create(
-                    user=user, item_type=item.type, field=field, ai_value=logged_value,
+                    user=user, item_type=item.type, issuer=issuer, field=field, ai_value=logged_value,
                     defaults={
                         'corrected_value': final_value,
                         'source': 'enrichment',
@@ -283,11 +302,11 @@ def record_enrichment_correction_feedback(user, item: Item, before_values: dict)
             elif final_value and final_value.lower() == logged_value.lower():
                 # The enrichment pipeline got it right and the user kept it -
                 # any old enrichment-sourced correction mapping this exact
-                # value away for this same field and item type no longer
-                # reflects what they want.
+                # value away for this same field/item type/merchant no
+                # longer reflects what they want.
                 ScanFieldCorrection.objects.filter(
                     user=user, field=field, ai_value=logged_value, source='enrichment',
-                    item_type=item.type,
+                    item_type=item.type, issuer=issuer,
                 ).delete()
     except Exception:
         logger.warning('Failed to record enrichment correction feedback', exc_info=True)
@@ -337,23 +356,49 @@ def build_ocr_correction_hints(user) -> str:
         return ''
 
 
-def _find_fuzzy_correction(user, field: str, ai_value: str, item_type: str):
+def _order_by_relevance(qs, issuer: str):
+    """
+    Merchant-aware ranking for a candidates queryset that may contain both
+    merchant-specific rows (issuer=<this scan's issuer>) and merchant-
+    unscoped rows (issuer='', predating this feature or genuinely never
+    merchant-specific). When the current scan has an issuer, a row scoped
+    to that exact issuer wins over a blank one for the same ai_value -
+    but the blank row is still a valid fallback rather than excluded
+    outright, since excluding it would silently stop every legacy
+    correction from ever replaying again.
+    """
+    if issuer:
+        qs = qs.filter(Q(issuer='') | Q(issuer=issuer)).annotate(
+            _specificity=Case(
+                When(issuer=issuer, then=Value(1)), default=Value(0), output_field=IntegerField(),
+            ),
+        ).order_by('-_specificity', '-times_seen', '-updated_at')
+    else:
+        qs = qs.order_by('-times_seen', '-updated_at')
+    return qs
+
+
+def _find_fuzzy_correction(user, field: str, ai_value: str, item_type: str, issuer: str):
     """
     Only called when no exact (case-insensitive) match exists. Scans
     this user's (and, when given, this item type's) corrections for
     `field` for one within FUZZY_MATCH_MAX_DISTANCE edits of `ai_value`,
     requiring FUZZY_MATCH_MIN_SEEN - see the constants' docstring above
     for why both are conservative rather than matching the exact-match
-    path's laxer bar. Ties broken the same way as the exact-match
-    ordering (-times_seen), then by distance.
+    path's laxer bar. When the scan has an issuer, a merchant-unscoped
+    candidate is still allowed (never excluded outright) but a same-
+    issuer candidate always wins the tie-break first, ahead of
+    times_seen and distance.
     """
     qs = ScanFieldCorrection.objects.filter(
         user=user, field=field, times_seen__gte=FUZZY_MATCH_MIN_SEEN,
     ).exclude(ai_value='')
     if item_type:
         qs = qs.filter(item_type=item_type)
+    if issuer:
+        qs = qs.filter(Q(issuer='') | Q(issuer=issuer))
 
-    best_match, best_distance = None, None
+    best_match, best_distance, best_specificity = None, None, None
     ai_value_lower = ai_value.lower()
     for candidate in qs:
         candidate_value = candidate.ai_value.lower()
@@ -362,12 +407,18 @@ def _find_fuzzy_correction(user, field: str, ai_value: str, item_type: str):
         distance = levenshtein_distance(ai_value_lower, candidate_value)
         if distance == 0 or distance > FUZZY_MATCH_MAX_DISTANCE:
             continue
+        specificity = 1 if issuer and candidate.issuer == issuer else 0
         if (
             best_match is None
-            or candidate.times_seen > best_match.times_seen
-            or (candidate.times_seen == best_match.times_seen and distance < best_distance)
+            or specificity > best_specificity
+            or (specificity == best_specificity and candidate.times_seen > best_match.times_seen)
+            or (
+                specificity == best_specificity
+                and candidate.times_seen == best_match.times_seen
+                and distance < best_distance
+            )
         ):
-            best_match, best_distance = candidate, distance
+            best_match, best_distance, best_specificity = candidate, distance, specificity
     return best_match
 
 
@@ -375,14 +426,24 @@ def apply_learned_corrections(user, result: dict) -> list[str]:
     """
     Mutates an OCR extraction `result` in place, swapping values this user
     has corrected before. Returns the list of healed field names (for the
-    frontend's "adjusted from your history" note). Type is healed first so
-    every other field's lookup - blank-fill and non-blank alike - can use
-    the corrected type as context: a correction learned in one item type's
-    context (e.g. a travel ticket's barcode symbology) should never bleed
-    into an unrelated item type whose scan happens to produce the same
-    misreading. 'type' itself has no item-type context to scope by, and
-    when the extraction didn't guess a type at all there's nothing to scope
-    with either, so both cases fall back to the unscoped match.
+    frontend's "adjusted from your history" note). Type and issuer are
+    healed first (in that order - issuer immediately follows type in
+    LEARNABLE_FIELDS) so every other field's lookup - blank-fill and
+    non-blank alike - can use the corrected type/issuer as context: a
+    correction learned in one item type's or merchant's context (e.g. a
+    travel ticket's barcode symbology, or one merchant's card layout)
+    should never bleed into an unrelated item type or merchant whose scan
+    happens to produce the same misreading. Neither 'type' nor 'issuer'
+    scopes its own lookup by item_type/issuer - that would be circular -
+    and when the extraction didn't guess a type/issuer at all there's
+    nothing to scope with either, so all of these fall back to the
+    unscoped match. Item-type scoping is a hard filter (no item-type
+    context yet on this correction means it can't have been learned for
+    a different type), but issuer scoping is a soft preference, not an
+    exclusion (see _order_by_relevance): a correction recorded before
+    this feature existed, or for a field where issuer context genuinely
+    wasn't captured, has issuer='' and must keep replaying for every
+    merchant - a same-issuer match just outranks it when both exist.
 
     Non-blank fields that find no exact match fall back to a fuzzy,
     edit-distance match (see _find_fuzzy_correction) - a different typo
@@ -394,6 +455,7 @@ def apply_learned_corrections(user, result: dict) -> list[str]:
         for field in ordered:
             ai_value = _normalize(result.get(field))
             item_type = _normalize(result.get('type'))
+            issuer = _normalize(result.get('issuer')) if field not in ('type', 'issuer') else ''
             fuzzy = False
             if ai_value:
                 candidates = ScanFieldCorrection.objects.filter(
@@ -410,10 +472,10 @@ def apply_learned_corrections(user, result: dict) -> list[str]:
                     user=user, field=field, ai_value='', item_type=item_type,
                     times_seen__gte=BLANK_FILL_MIN_SEEN,
                 )
-            best = candidates.order_by('-times_seen', '-updated_at').first()
+            best = _order_by_relevance(candidates, issuer).first()
             if best is None and ai_value:
                 best = _find_fuzzy_correction(
-                    user, field, ai_value, item_type if field != 'type' else '',
+                    user, field, ai_value, item_type if field != 'type' else '', issuer,
                 )
                 fuzzy = best is not None
             if best is None:
