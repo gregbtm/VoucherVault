@@ -691,6 +691,31 @@ class ItemShare(models.Model):
         unique_together = ('item', 'shared_with_user')
 
 
+class ItemComment(models.Model):
+    """
+    A dated, attributed note on an item - for collaborators on a shared
+    item or wallet to leave messages like "already used the code" or
+    "renewed early this time" without overwriting each other's notes.
+    Item.notes is a single freeform field with no author/timestamp/
+    history, so two people editing it independently just clobber
+    whatever the other one wrote; this is the append-only alternative.
+    Anyone with view access to the item (has_item_access) may read and
+    add comments, including a viewer-role collaborator - commenting
+    isn't an edit to the item itself. Only the comment's own author or
+    the item's owner may delete a comment.
+    """
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='comments')
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='item_comments')
+    body = models.TextField(max_length=2000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f'{self.author.username} on {self.item.name}: {self.body[:50]}'
+
+
 class ItemPublicShare(models.Model):
     """
     A tokenized, no-login-required link to a read-only redemption summary

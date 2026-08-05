@@ -314,6 +314,42 @@
   word-break: break-word;
 }
 
+/* Comments */
+.item-comment-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.item-comment {
+  background: var(--card-bg, #fff);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border-color, #eee);
+}
+
+.item-comment-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.item-comment-delete-form {
+  margin-left: auto;
+}
+
+.item-comment-body {
+  margin: 0;
+  color: var(--text-color, #1e1e1e);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
 /* Action Buttons */
 .action-buttons {
   display: grid;
@@ -2062,6 +2098,45 @@ body.dark-mode .tilt-scan-enable-btn {
             <p>{{ item.notes|linebreaksbr }}</p>
           </div>
           {% endif %}
+
+          <!-- Comments: dated, attributed messages between collaborators -
+               unlike Notes above (one overwritable field), each entry keeps
+               its own author and timestamp so two people sharing an item
+               don't clobber each other's messages. -->
+          <div class="item-description-section">
+            <h6><i class="bi bi-chat-left-text"></i> {% trans "Comments" %}</h6>
+            {% if comments %}
+            <ul class="item-comment-list">
+              {% for comment in comments %}
+              <li class="item-comment">
+                <div class="item-comment-meta">
+                  <strong>{{ comment.author.username }}</strong>
+                  <span class="text-muted small">{{ comment.created_at|date:"SHORT_DATETIME_FORMAT" }}</span>
+                  {% if comment.author == request.user or is_owner %}
+                  <form method="post" action="{% url 'delete_item_comment' comment.id %}" class="item-comment-delete-form">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-link btn-sm text-danger p-0"
+                            title="{% trans 'Delete comment' %}"
+                            onclick="return confirm('{% trans "Delete this comment?" %}');">
+                      <i class="bi bi-x-lg"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+                <p class="item-comment-body">{{ comment.body|linebreaksbr }}</p>
+              </li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-muted small mb-2">{% trans "No comments yet." %}</p>
+            {% endif %}
+            <form method="post" action="{% url 'add_item_comment' item.id %}" class="item-comment-form">
+              {% csrf_token %}
+              <textarea name="body" class="form-control" rows="2" maxlength="2000"
+                        placeholder="{% trans 'Leave a note for anyone sharing this item...' %}" required></textarea>
+              <button type="submit" class="btn btn-sm btn-primary mt-2">{% trans "Add Comment" %}</button>
+            </form>
+          </div>
 
           <!-- Share Message (owner preview) - only once the item has
                actually been opted into public sharing (a link exists);
