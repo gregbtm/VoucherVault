@@ -4,6 +4,7 @@ import json
 import os
 import re
 from datetime import date, timedelta
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from django.utils import timezone
@@ -38,6 +39,7 @@ from .tasks import (
     check_and_notify_inactivity,
     check_merchant_health,
     check_next_up_reminders,
+    check_wallet_budget_overspend,
     fire_notifications,
     notify_balance_changed,
     notify_item_archived,
@@ -2049,3 +2051,84 @@ class WebhookEventParityTests(TestCase):
         valid = {c[0] for c in UserWebhook.EVENT_CHOICES}
         for event in ('item_shared_with_you', 'next_up_reminder', 'wallet_invited', 'merchant_health_alert', 'renewal_advanced'):
             self.assertIn(event, valid)
+
+
+class CheckWalletBudgetOverspendTaskTests(TestCase):
+    """
+    Going over a wallet's monthly budget previously only ever produced a
+    dashboard/analytics progress-bar badge (Wallet.budget_amount vs
+    current-month spend) - there was no way to actually be notified. This
+    task closes that gap: fires a real notification/webhook the first
+    time this calendar month spend exceeds the budget, then goes quiet
+    for the rest of the month via Wallet.budget_alert_sent_for_month.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.wallet = Wallet.objects.create(user=self.user, name='Groceries', budget_amount=Decimal('50.00'))
+
+    def _overspend_item(self, value='-75.00'):
+        item = make_item(self.user, wallet=self.wallet, value='0.00')
+        Transaction.objects.create(item=item, description='Big shop', value=Decimal(value), date=timezone.now())
+        return item
+
+    @patch('notify.tasks.fire_user_webhooks')
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_fires_once_when_over_budget(self, mock_send, mock_fire):
+        make_rule(self.user, event_types=['budget_overspend'])
+        self._overspend_item()
+
+        check_wallet_budget_overspend()
+
+        self.assertTrue(NotificationLog.objects.filter(user=self.user, event_type='budget_overspend', success=True).exists())
+        mock_fire.assert_called_once()
+        args, kwargs = mock_fire.call_args
+        self.assertEqual(args[0], self.user)
+        self.assertEqual(args[1], 'budget_overspend')
+        self.assertEqual(kwargs['extra']['wallet']['name'], 'Groceries')
+        self.wallet.refresh_from_db()
+        self.assertIsNotNone(self.wallet.budget_alert_sent_for_month)
+
+    @patch('notify.tasks.fire_user_webhooks')
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_does_not_refire_within_the_same_month(self, mock_send, mock_fire):
+        make_rule(self.user, event_types=['budget_overspend'])
+        self._overspend_item()
+
+        check_wallet_budget_overspend()
+        mock_fire.reset_mock()
+        check_wallet_budget_overspend()  # still over budget, same month
+
+        mock_fire.assert_not_called()
+        self.assertEqual(NotificationLog.objects.filter(user=self.user, event_type='budget_overspend').count(), 1)
+
+    @patch('notify.tasks.fire_user_webhooks')
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_no_alert_when_under_budget(self, mock_send, mock_fire):
+        make_rule(self.user, event_types=['budget_overspend'])
+        self._overspend_item(value='-10.00')  # well under the 50.00 budget
+
+        check_wallet_budget_overspend()
+
+        mock_fire.assert_not_called()
+        self.assertFalse(NotificationLog.objects.filter(user=self.user, event_type='budget_overspend').exists())
+
+    def test_noop_for_a_wallet_with_no_budget_set(self):
+        Wallet.objects.create(user=self.user, name='No Budget')
+        check_wallet_budget_overspend()  # should not raise
+        self.assertEqual(NotificationLog.objects.filter(event_type='budget_overspend').count(), 0)
+
+    @patch('notify.tasks.fire_user_webhooks')
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_apply_to_all_rule_also_fires(self, mock_send, mock_fire):
+        make_rule(self.user, event_types=[])
+        NotificationRule.objects.filter(user=self.user).update(apply_to_all=True)
+        self._overspend_item()
+
+        check_wallet_budget_overspend()
+
+        self.assertTrue(NotificationLog.objects.filter(user=self.user, event_type='budget_overspend', success=True).exists())
+
+    def test_budget_overspend_is_a_selectable_notification_rule_event(self):
+        valid = {c[0] for c in NotificationRule.EVENT_CHOICES}
+        self.assertIn('budget_overspend', valid)

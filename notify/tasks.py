@@ -8,10 +8,10 @@ from dateutil.relativedelta import relativedelta
 
 from celery import shared_task
 
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.utils import timezone
 
-from myapp.models import Item, SiteConfiguration, Transaction, UserPreference
+from myapp.models import Item, SiteConfiguration, Transaction, UserPreference, Wallet
 from myapp.utils import check_companies_house_status, _CH_BAD_STATUSES
 from myapp.webhooks import fire_user_webhooks
 
@@ -638,6 +638,72 @@ def check_merchant_health():
                 'company_status': ch_data['company_status'],
                 'company_name': ch_data['company_name'],
             })
+
+
+@shared_task
+def check_wallet_budget_overspend():
+    """
+    Runs daily. For each wallet with a monthly budget set, fires a
+    'budget_overspend' alert the first time this calendar month that
+    spend exceeds it - previously going over budget only ever produced
+    a dashboard/analytics progress-bar badge (Wallet.budget_amount vs
+    current-month spend in _get_wallet_budget/analytics()), with no way
+    to actually be notified (ntfy/email/webhook/etc.) short of
+    remembering to check the page.
+
+    No item is associated with this event - like wallet_invited, it's
+    about the Wallet itself - so it's dispatched by hand rather than
+    through fire_notifications(), matching that same pattern.
+
+    Wallet.budget_alert_sent_for_month makes this safe to re-run daily
+    without re-firing while still over budget for the same month, and
+    naturally resets itself once a new calendar month starts (compared
+    by value, not just presence, so last month's stamp doesn't suppress
+    this month's alert).
+    """
+    # Two forms of "start of this month": an aware datetime for the
+    # Transaction query (matching _get_wallet_budget/analytics()'s own
+    # pattern) and a bare date for comparing against
+    # budget_alert_sent_for_month (a DateField) - reusing one truncated
+    # value for both strips tz-awareness off the datetime comparison.
+    month_start_dt = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_start = month_start_dt.date()
+    wallets = (
+        Wallet.objects.filter(budget_amount__isnull=False)
+        .exclude(budget_amount=0)
+        .exclude(budget_alert_sent_for_month=month_start)
+        .select_related('user')
+    )
+
+    for wallet in wallets:
+        spent = abs(
+            Transaction.objects.filter(
+                item__wallet=wallet, item__user=wallet.user,
+                date__gte=month_start_dt, value__lt=0,
+            ).aggregate(total=Sum('value'))['total'] or 0
+        )
+        if spent <= wallet.budget_amount:
+            continue
+
+        title = f"💸 '{wallet.name}' budget exceeded"
+        message = (
+            f"Spent {spent} against a budget of {wallet.budget_amount} this month."
+        )
+        rules = NotificationRule.objects.filter(user=wallet.user, enabled=True)
+        matching_rules = [r for r in rules if r.apply_to_all or 'budget_overspend' in (r.event_types or [])]
+        for rule in matching_rules:
+            success, detail = send_via_rule(rule, title, message)
+            NotificationLog.objects.create(
+                user=wallet.user, rule=rule, item=None, event_type='budget_overspend',
+                success=success, detail=detail,
+            )
+        fire_user_webhooks(wallet.user, 'budget_overspend', extra={
+            'wallet': {'id': wallet.id, 'name': wallet.name},
+            'budget_amount': str(wallet.budget_amount),
+            'spent': str(spent),
+        })
+        wallet.budget_alert_sent_for_month = month_start
+        wallet.save(update_fields=['budget_alert_sent_for_month'])
 
 
 @shared_task

@@ -36,6 +36,8 @@ class NotificationRule(models.Model):
         ('item_unshared', 'Removed from Item'),
         ('item_inactive', 'Unused Gift Card Reminder'),
         ('merchant_health_alert', 'Merchant Health Alert'),
+        ('renewal_advanced', 'Recurring Item Renewed'),
+        ('budget_overspend', 'Wallet Budget Exceeded'),
     ]
     DIGEST_FREQUENCY_CHOICES = [
         ('immediate', 'Immediate'),

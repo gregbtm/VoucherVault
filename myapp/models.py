@@ -214,6 +214,12 @@ class Wallet(models.Model):
         help_text="Firefly III notification rule used for items in this wallet. Overrides user default; overridden by per-item setting.",
     )
     sort_order = models.IntegerField(default=0)
+    budget_alert_sent_for_month = models.DateField(
+        null=True, blank=True,
+        help_text="First-of-month date the budget_overspend alert was last sent for - "
+                   "prevents re-firing on every periodic check while still over budget, "
+                   "and naturally resets once a new calendar month starts.",
+    )
 
     class Meta:
         ordering = ['sort_order', 'name']
@@ -1077,6 +1083,7 @@ class UserWebhook(models.Model):
         ('wallet_invited', 'Wallet Invitation'),
         ('merchant_health_alert', 'Merchant Health Alert'),
         ('renewal_advanced', 'Recurring Item Renewed'),
+        ('budget_overspend', 'Wallet Budget Exceeded'),
     ]
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='webhooks')
     name = models.CharField(max_length=100)

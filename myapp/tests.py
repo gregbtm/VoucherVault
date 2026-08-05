@@ -4838,6 +4838,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
             'Advance Recurring Items', 'Retry Failed Firefly Pushes',
             'DMS Auto Pull',
             'Gift Card Inactivity Check', 'Merchant Health Check',
+            'Wallet Budget Overspend Check',
             'Purge Old Import Jobs', 'Purge Expired Public Share Links',
             'Login Spike Alert',
             'Email Expiry Digest',
