@@ -153,6 +153,12 @@ class Command(BaseCommand):
             # myapp.tasks.enrichment_run_watchdog_task. A no-op unless a run
             # is actually stuck.
             {'name': 'Enrichment Run Watchdog', 'task': 'myapp.tasks.enrichment_run_watchdog_task', 'crontab': hourly_schedule, 'enabled': True},
+            # Weekly sweep for scan corrections several distinct users have
+            # independently taught for the same merchant - see
+            # myapp.scan_learning.detect_systemic_misreads. Promotes a
+            # GlobalScanCorrection and alerts via security_alert_ntfy_topic;
+            # a no-op unless a pattern actually crosses the threshold.
+            {'name': 'Systemic Misread Detection', 'task': 'myapp.tasks.detect_systemic_misreads_task', 'crontab': weekly_schedule, 'enabled': True},
         ]
 
         for task_data in tasks:

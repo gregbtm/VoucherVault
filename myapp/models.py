@@ -656,6 +656,54 @@ class ScanFieldCorrection(models.Model):
         return f'{self.field}: {shown} -> {self.corrected_value}'
 
 
+class GlobalScanCorrection(models.Model):
+    """
+    Cross-user counterpart to ScanFieldCorrection: promoted by
+    myapp.scan_learning.detect_systemic_misreads(), a periodic sweep that
+    looks for the exact same (item_type, issuer, field, ai_value ->
+    corrected_value) mapping recorded independently by several distinct
+    users. Two users happening to fix the same value for the same
+    merchant could be coincidence; several doing so independently is far
+    more likely a systemic vision-model misreading for that merchant
+    (e.g. a card layout the OCR backend consistently gets wrong for
+    everyone) than any one user's personal quirk - worth applying even
+    for a user who has never scanned this merchant before, and worth an
+    admin knowing about as a probable upstream OCR issue.
+
+    Deliberately requires a non-blank issuer: an unscoped correction
+    (item_type-only or fully generic) isn't merchant-specific to begin
+    with, so several users independently agreeing on it carries much
+    weaker signal - it's as likely to mean "this is just what the field
+    usually contains" as "this merchant's cards are misread the same way
+    for everyone".
+
+    Promoted (a periodic sweep's conclusion), not synced live on every
+    ScanFieldCorrection save - the threshold is about aggregate pattern
+    strength across users, which only a sweep can evaluate.
+    """
+    item_type = models.CharField(max_length=100)
+    issuer = models.CharField(max_length=255)
+    field = models.CharField(max_length=50)
+    ai_value = models.CharField(max_length=255)
+    corrected_value = models.CharField(max_length=255)
+    confirmed_by_users = models.PositiveIntegerField(
+        default=0,
+        help_text="How many distinct users' own corrections agreed on this mapping "
+                   "the last time detect_systemic_misreads() ran.",
+    )
+    promoted_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('item_type', 'issuer', 'field', 'ai_value')
+        ordering = ['-confirmed_by_users', '-promoted_at']
+
+    def __str__(self):
+        return (
+            f'{self.issuer} ({self.item_type}) {self.field}: '
+            f'{self.ai_value!r} -> {self.corrected_value!r} ({self.confirmed_by_users} users)'
+        )
+
+
 def document_upload_path(instance, filename):
     safe_name = os.path.basename(filename)
     username = str(instance.item.user)
