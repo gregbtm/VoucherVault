@@ -7,6 +7,7 @@ from decimal import Decimal
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 
+from django.contrib import admin
 from django.contrib.auth.models import User
 from django.contrib.messages import get_messages
 from django.core.cache import cache
@@ -7812,3 +7813,80 @@ class ViewItemEnrichmentButtonVisibilityTests(TestCase):
         response = self.client.get(reverse('view_item', args=[self.item.id]))
         self.assertNotContains(response, 'Re-scan documents for updates')
         self.assertContains(response, 'View enrichment history')
+
+
+class ScanFieldCorrectionAndEnrichmentLogAdminTests(TestCase):
+    """
+    ScanFieldCorrection (the OCR/enrichment self-healing ledger) and
+    ItemEnrichmentLog (the enrichment audit trail) previously had no
+    admin registration and no other UI - an admin had no way to see
+    what's been learned for a user, or what an enrichment run actually
+    changed, short of a database shell. Same gap EnrichmentFieldPreference
+    had before it was registered.
+    """
+
+    def setUp(self):
+        self.admin_user = User.objects.create_superuser(username='admin', password='pw12345!', email='a@example.com')
+        self.client.login(username='admin', password='pw12345!')
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.item = make_item(self.user)
+
+    def test_scanfieldcorrection_is_registered(self):
+        self.assertIn(ScanFieldCorrection, admin.site._registry)
+
+    def test_itemenrichmentlog_is_registered(self):
+        self.assertIn(ItemEnrichmentLog, admin.site._registry)
+
+    def test_scanfieldcorrection_changelist_loads(self):
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='code_type',
+            ai_value='qrcode', corrected_value='azteccode',
+        )
+        response = self.client.get(reverse('admin:myapp_scanfieldcorrection_changelist'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'qrcode')
+        self.assertContains(response, 'azteccode')
+
+    def test_scanfieldcorrection_blank_ai_value_shown_as_blank_placeholder(self):
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', field='issuer',
+            ai_value='', corrected_value='Tesco', times_seen=2,
+        )
+        response = self.client.get(reverse('admin:myapp_scanfieldcorrection_changelist'))
+        self.assertContains(response, '(blank)')
+
+    def test_scanfieldcorrection_can_be_deleted_from_admin(self):
+        correction = ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', field='issuer',
+            ai_value='Amzn', corrected_value='Amazon',
+        )
+        response = self.client.post(
+            reverse('admin:myapp_scanfieldcorrection_delete', args=[correction.pk]),
+            {'post': 'yes'},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(ScanFieldCorrection.objects.filter(pk=correction.pk).exists())
+
+    def test_itemenrichmentlog_changelist_loads(self):
+        ItemEnrichmentLog.objects.create(
+            enrichment_run_id=uuid.uuid4(), item=self.item, field_name='issuer',
+            old_value='Amzn', new_value='Amazon', enrichment_type='merchant_lookup',
+        )
+        response = self.client.get(reverse('admin:myapp_itemenrichmentlog_changelist'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Amazon')
+
+    def test_itemenrichmentlog_is_read_only(self):
+        # Adding a new log entry by hand makes no sense for an audit
+        # trail, so that's blocked outright (403). Viewing an existing
+        # entry's detail page is still allowed - Django admin renders it
+        # as a read-only form (200, no editable inputs) rather than
+        # blocking access entirely.
+        log = ItemEnrichmentLog.objects.create(
+            enrichment_run_id=uuid.uuid4(), item=self.item, field_name='issuer',
+            old_value='Amzn', new_value='Amazon', enrichment_type='merchant_lookup',
+        )
+        self.assertEqual(self.client.get(reverse('admin:myapp_itemenrichmentlog_add')).status_code, 403)
+        response = self.client.get(reverse('admin:myapp_itemenrichmentlog_change', args=[log.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, '<input type="text" name="field_name"')

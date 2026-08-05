@@ -255,6 +255,51 @@ class EnrichmentFieldPreferenceAdmin(admin.ModelAdmin):
     autocomplete_fields = ('user',)
 
 
+class ScanFieldCorrectionAdmin(admin.ModelAdmin):
+    """
+    Admin interface for the OCR/enrichment self-healing ledger (see
+    myapp/scan_learning.py). Like EnrichmentFieldPreference above, this
+    model had no admin registration and no other UI - an admin had no
+    way to see what's been learned for a user, or to remove a bad entry
+    (e.g. a one-off typo that got replayed as if it were a pattern)
+    short of editing the database directly.
+    """
+    list_display = (
+        'user', 'item_type', 'field', 'ai_value_display', 'corrected_value',
+        'times_seen', 'source', 'enrichment_method', 'updated_at',
+    )
+    list_filter = ('source', 'field', 'item_type')
+    search_fields = ('user__username', 'ai_value', 'corrected_value')
+    autocomplete_fields = ('user',)
+    ordering = ('-updated_at',)
+
+    def ai_value_display(self, obj):
+        return obj.ai_value or '(blank)'
+    ai_value_display.short_description = _('AI Value')
+
+
+class ItemEnrichmentLogAdmin(admin.ModelAdmin):
+    """
+    Read-only audit trail of every enrichment change actually applied to
+    an item (see ItemEnrichmentLog) - had no admin registration despite
+    the model's own docstring calling it an "audit trail... allows
+    rollback". Read-only here since it's a historical log, not
+    something an admin should hand-edit; corrections to what it
+    recorded belong in ScanFieldCorrection above instead.
+    """
+    list_display = ('item', 'field_name', 'enrichment_type', 'old_value', 'new_value', 'confidence_score', 'created_at')
+    list_filter = ('enrichment_type', 'field_name')
+    search_fields = ('item__name', 'field_name', 'enrichment_run_id')
+    readonly_fields = [f.name for f in ItemEnrichmentLog._meta.fields]
+    ordering = ('-created_at',)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
 class EnrichmentRunAdmin(admin.ModelAdmin):
     """Admin interface for enrichment run tracking and approval."""
     list_display = ('run_id', 'get_method_display', 'get_status_display', 'total_items', 'successful_items', 'total_changes', 'average_confidence', 'started_at', 'actions_buttons')
@@ -442,3 +487,5 @@ admin.site.register(Document, DocumentAdmin)
 admin.site.register(EnrichmentConfig, EnrichmentConfigAdmin)
 admin.site.register(EnrichmentRun, EnrichmentRunAdmin)
 admin.site.register(EnrichmentFieldPreference, EnrichmentFieldPreferenceAdmin)
+admin.site.register(ScanFieldCorrection, ScanFieldCorrectionAdmin)
+admin.site.register(ItemEnrichmentLog, ItemEnrichmentLogAdmin)
