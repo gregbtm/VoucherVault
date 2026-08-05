@@ -24,6 +24,7 @@ excluded - "corrections" there are just data entry, not a pattern.
 import logging
 
 from .models import Item, ItemEnrichmentLog, ScanFieldCorrection
+from .utils import levenshtein_distance
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,18 @@ def _alert_circuit_breaker_tripped(user, method: str, field: str, correction_cou
 # only once the same fill has been seen this many times - one occurrence
 # could be item-specific, a repeat is a pattern.
 BLANK_FILL_MIN_SEEN = 2
+
+# Exact match only catches a *repeat* of the exact same misreading - a
+# different typo of an already-learned pattern (e.g. "Natinal Rail" when
+# the learned correction is for "Nationl Rail") slips through entirely.
+# The fuzzy fallback below only tries once no exact match exists, and is
+# deliberately conservative: a tight edit-distance ceiling (matching
+# check_duplicate_code's own precedent in myapp/views.py for "same code,
+# one misread character"), and a higher times_seen bar than exact
+# matches need - a single one-off typo correction shouldn't get to
+# "generalize" to near-miss strings it was never actually taught for.
+FUZZY_MATCH_MAX_DISTANCE = 2
+FUZZY_MATCH_MIN_SEEN = 2
 
 _MAX_VALUE_LENGTH = 255
 
@@ -324,6 +337,40 @@ def build_ocr_correction_hints(user) -> str:
         return ''
 
 
+def _find_fuzzy_correction(user, field: str, ai_value: str, item_type: str):
+    """
+    Only called when no exact (case-insensitive) match exists. Scans
+    this user's (and, when given, this item type's) corrections for
+    `field` for one within FUZZY_MATCH_MAX_DISTANCE edits of `ai_value`,
+    requiring FUZZY_MATCH_MIN_SEEN - see the constants' docstring above
+    for why both are conservative rather than matching the exact-match
+    path's laxer bar. Ties broken the same way as the exact-match
+    ordering (-times_seen), then by distance.
+    """
+    qs = ScanFieldCorrection.objects.filter(
+        user=user, field=field, times_seen__gte=FUZZY_MATCH_MIN_SEEN,
+    ).exclude(ai_value='')
+    if item_type:
+        qs = qs.filter(item_type=item_type)
+
+    best_match, best_distance = None, None
+    ai_value_lower = ai_value.lower()
+    for candidate in qs:
+        candidate_value = candidate.ai_value.lower()
+        if abs(len(candidate_value) - len(ai_value_lower)) > FUZZY_MATCH_MAX_DISTANCE:
+            continue
+        distance = levenshtein_distance(ai_value_lower, candidate_value)
+        if distance == 0 or distance > FUZZY_MATCH_MAX_DISTANCE:
+            continue
+        if (
+            best_match is None
+            or candidate.times_seen > best_match.times_seen
+            or (candidate.times_seen == best_match.times_seen and distance < best_distance)
+        ):
+            best_match, best_distance = candidate, distance
+    return best_match
+
+
 def apply_learned_corrections(user, result: dict) -> list[str]:
     """
     Mutates an OCR extraction `result` in place, swapping values this user
@@ -336,6 +383,10 @@ def apply_learned_corrections(user, result: dict) -> list[str]:
     misreading. 'type' itself has no item-type context to scope by, and
     when the extraction didn't guess a type at all there's nothing to scope
     with either, so both cases fall back to the unscoped match.
+
+    Non-blank fields that find no exact match fall back to a fuzzy,
+    edit-distance match (see _find_fuzzy_correction) - a different typo
+    of an already-learned misreading would otherwise never heal at all.
     """
     healed = []
     try:
@@ -343,6 +394,7 @@ def apply_learned_corrections(user, result: dict) -> list[str]:
         for field in ordered:
             ai_value = _normalize(result.get(field))
             item_type = _normalize(result.get('type'))
+            fuzzy = False
             if ai_value:
                 candidates = ScanFieldCorrection.objects.filter(
                     user=user, field=field, ai_value__iexact=ai_value,
@@ -359,12 +411,22 @@ def apply_learned_corrections(user, result: dict) -> list[str]:
                     times_seen__gte=BLANK_FILL_MIN_SEEN,
                 )
             best = candidates.order_by('-times_seen', '-updated_at').first()
+            if best is None and ai_value:
+                best = _find_fuzzy_correction(
+                    user, field, ai_value, item_type if field != 'type' else '',
+                )
+                fuzzy = best is not None
             if best is None:
                 continue
             if best.corrected_value.lower() == ai_value.lower():
                 continue
             if not _healed_value_is_valid(field, best.corrected_value):
                 continue
+            if fuzzy:
+                logger.info(
+                    'Fuzzy-healed %s for user %s: %r -> %r (learned from %r)',
+                    field, user.pk, ai_value, best.corrected_value, best.ai_value,
+                )
             result[field] = best.corrected_value
             healed.append(field)
     except Exception:

@@ -1043,6 +1043,86 @@ class ScanLearningTests(TestCase):
         self.assertEqual(apply_learned_corrections(self.user, result), ['code_type'])
         self.assertEqual(result['code_type'], 'azteccode')
 
+    def test_apply_heals_a_near_miss_typo_via_fuzzy_match(self):
+        # Learned from "Nationl Rail" (one dropped letter); this scan
+        # produces a *different* typo, "Natinal Rail" (transposed
+        # letters) - exact match can't catch this, fuzzy match should.
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail', times_seen=2,
+        )
+        result = {'issuer': 'Natinal Rail', 'type': 'travelpass'}
+        self.assertEqual(apply_learned_corrections(self.user, result), ['issuer'])
+        self.assertEqual(result['issuer'], 'National Rail')
+
+    def test_fuzzy_match_requires_minimum_times_seen(self):
+        # A single one-off correction shouldn't "generalize" to near-miss
+        # strings it was never actually taught for - only a repeated
+        # pattern (times_seen >= FUZZY_MATCH_MIN_SEEN) earns fuzzy replay.
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail', times_seen=1,
+        )
+        result = {'issuer': 'Natinal Rail', 'type': 'travelpass'}
+        self.assertEqual(apply_learned_corrections(self.user, result), [])
+        self.assertEqual(result['issuer'], 'Natinal Rail')
+
+    def test_fuzzy_match_does_not_fire_when_an_exact_match_already_exists(self):
+        # The exact-match path wins outright regardless of times_seen -
+        # fuzzy is only ever a fallback for when no exact match exists,
+        # never a competing candidate even when a fuzzy-distance row has
+        # a much higher times_seen than the exact match does.
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='Wrong Answer', times_seen=10,
+        )
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='National Rail', corrected_value='Right Answer', times_seen=1,
+        )
+        result = {'issuer': 'National Rail', 'type': 'travelpass'}
+        self.assertEqual(apply_learned_corrections(self.user, result), ['issuer'])
+        self.assertEqual(result['issuer'], 'Right Answer')
+
+    def test_fuzzy_match_too_far_does_not_fire(self):
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='National Rail', corrected_value='National Rail Ltd', times_seen=5,
+        )
+        result = {'issuer': 'Completely Different Name', 'type': 'travelpass'}
+        self.assertEqual(apply_learned_corrections(self.user, result), [])
+        self.assertEqual(result['issuer'], 'Completely Different Name')
+
+    def test_fuzzy_match_respects_item_type_scoping(self):
+        # Same fuzzy-matching precision guarantee as the exact-match path:
+        # a correction learned under one item type must not fuzzy-heal a
+        # different item type's scan.
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail', times_seen=3,
+        )
+        result = {'issuer': 'Natinal Rail', 'type': 'travelpass'}
+        self.assertEqual(apply_learned_corrections(self.user, result), [])
+        self.assertEqual(result['issuer'], 'Natinal Rail')
+
+    def test_fuzzy_match_picks_higher_times_seen_over_closer_distance(self):
+        # Scanned "Kwikfit" is distance 1 from "Kwikfip" (last char only)
+        # and distance 2 from "Kwakfip" (2 chars) - both within
+        # FUZZY_MATCH_MAX_DISTANCE. The farther-but-more-repeated
+        # candidate should still win: times_seen is checked before
+        # distance is used as a tiebreaker.
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Kwikfip', corrected_value='Closer But Rarer', times_seen=2,
+        )
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Kwakfip', corrected_value='Farther But Common', times_seen=8,
+        )
+        result = {'issuer': 'Kwikfit', 'type': 'travelpass'}
+        apply_learned_corrections(self.user, result)
+        self.assertEqual(result['issuer'], 'Farther But Common')
+
     def test_keeping_the_scanned_value_only_retires_the_same_item_type(self):
         # A correction learned from a different item type must survive a
         # save where this exact ai_value was correctly scanned and kept.
