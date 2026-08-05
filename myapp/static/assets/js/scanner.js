@@ -270,6 +270,71 @@ function guessCodeTypeFromValue(value) {
     return 'code128';
 }
 
+// Renders the "Learned from your past corrections" status chip with a
+// per-field Undo button, given the OCR extract response's healed_fields
+// and healed_originals (see api/views.py's OCRExtractView and
+// myapp/scan_learning.py's apply_learned_corrections). Deliberately built
+// with createElement/textContent rather than one big innerHTML template
+// string: healedFields is a fixed backend enum (safe either way), but the
+// per-field Undo buttons are wired up via a closure over healedOriginals
+// rather than any data-* attribute, specifically so ai_value - which is
+// OCR-read text, not something backend-controlled - never has to be
+// embedded into HTML at all.
+function renderHealedFieldsChip(statusEl, healedFields, healedOriginals) {
+    healedOriginals = healedOriginals || {};
+    const chip = document.createElement('span');
+    chip.className = 'scan-chip scan-chip-learned';
+    chip.title = "Fields you corrected on a previous scan were automatically fixed the same way this time. Wrong this time? Undo puts back what the photo actually showed and stops applying that correction.";
+
+    const icon = document.createElement('i');
+    icon.className = 'bi bi-magic';
+    chip.appendChild(icon);
+    chip.appendChild(document.createTextNode(` Learned from your past corrections: ${healedFields.join(', ')}`));
+
+    healedFields.forEach(function (field) {
+        const original = healedOriginals[field];
+        if (!original) return;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'scan-chip-undo-btn';
+        button.textContent = 'Undo';
+        button.addEventListener('click', function () {
+            undoHealedField(field, original, button);
+        }, { once: true });
+        chip.appendChild(button);
+    });
+
+    statusEl.appendChild(chip);
+}
+
+// Reverts one healed field back to what the AI actually read, and tells
+// the server to stop applying that specific learned correction (best-
+// effort - the field revert below already gives the user what they
+// wanted regardless of whether the retract request lands).
+function undoHealedField(field, original, button) {
+    const el = document.getElementById(field);
+    if (el) {
+        el.value = original.ai_value || '';
+        el.classList.remove('auto-filled', 'suggested-fill');
+        // A bubbling 'change' is enough to re-trigger any field-specific
+        // side effect wired up the normal way, e.g. #type's own listener
+        // re-running toggleFields() to show/hide the travel-fields section -
+        // scanner.js has no access to that template-local function itself.
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    button.disabled = true;
+    button.textContent = 'Undone';
+
+    const undoUrl = attachFileField?.dataset.undoCorrectionUrl;
+    const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (!undoUrl || !csrfInput) return;
+    fetch(undoUrl, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfInput.value, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ correction_id: original.correction_id }),
+    }).catch(() => {});
+}
+
 if (redeemCodeField) {
     redeemCodeField.addEventListener('input', () => {
         if (userSelectedType || hadInitialRedeemCode) return;

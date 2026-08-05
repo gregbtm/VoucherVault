@@ -49,6 +49,7 @@ urlpatterns = [
     path('analytics/summary/', views.AnalyticsSummaryView.as_view(), name='api-analytics-summary'),
     path('analytics/expiry-timeline/', views.AnalyticsExpiryTimelineView.as_view(), name='api-analytics-expiry-timeline'),
     path('ocr/extract/', views.OCRExtractView.as_view(), name='api-ocr-extract'),
+    path('ocr/undo-correction/', views.UndoScanHealingView.as_view(), name='api-ocr-undo-correction'),
     path('imports/pkpass/', views.PkpassImportView.as_view(), name='api-pkpass-import'),
     path('imports/rail-ticket/', views.RailTicketImportView.as_view(), name='api-rail-ticket-import'),
     path('imports/rail-ticket/batch/', views.RailTicketBatchImportView.as_view(), name='api-rail-ticket-batch-import'),
