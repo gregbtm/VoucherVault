@@ -21,6 +21,13 @@ it wrong: a one-click "Undo" on a healed field deletes the specific
 ScanFieldCorrection that applied, without waiting for a save to un-teach
 it the slow way.
 
+detect_systemic_misreads() looks across every user's corrections for a
+third kind of signal apply_learned_corrections can't see on its own:
+several different users independently teaching the exact same
+merchant/field misreading is a sign of a systemic vision-model quirk for
+that merchant, not personal preference - worth applying even for a user
+who's never scanned that merchant before (see GlobalScanCorrection).
+
 Only fields with stable, recurring values are learnable. Item-specific
 fields (name, code, expiry, value, pin, card number) are deliberately
 excluded - "corrections" there are just data entry, not a pattern.
@@ -28,9 +35,9 @@ excluded - "corrections" there are just data entry, not a pattern.
 
 import logging
 
-from django.db.models import Case, IntegerField, Q, Value, When
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 
-from .models import Item, ItemEnrichmentLog, ScanFieldCorrection
+from .models import GlobalScanCorrection, Item, ItemEnrichmentLog, ScanFieldCorrection
 from .utils import levenshtein_distance
 
 logger = logging.getLogger(__name__)
@@ -146,6 +153,13 @@ BLANK_FILL_MIN_SEEN = 2
 # "generalize" to near-miss strings it was never actually taught for.
 FUZZY_MATCH_MAX_DISTANCE = 2
 FUZZY_MATCH_MIN_SEEN = 2
+
+# How many distinct users independently teaching the exact same
+# merchant/field misreading it takes before detect_systemic_misreads()
+# promotes it to a GlobalScanCorrection. Two could be coincidence; three
+# independently-arrived-at identical corrections for the same merchant is
+# a much stronger signal of a shared vision-model quirk.
+SYSTEMIC_MISREAD_MIN_USERS = 3
 
 _MAX_VALUE_LENGTH = 255
 
@@ -427,6 +441,23 @@ def _find_fuzzy_correction(user, field: str, ai_value: str, item_type: str, issu
     return best_match
 
 
+def _find_global_correction(field: str, ai_value: str, item_type: str, issuer: str):
+    """
+    Last-resort fallback once this user's own corrections (exact and
+    fuzzy) have both come up empty: a cross-user pattern several other
+    users independently taught for this exact merchant (see
+    GlobalScanCorrection/detect_systemic_misreads). Only reached when
+    the scan actually has both an item_type and issuer to scope by -
+    global promotion itself requires a non-blank issuer, so there's
+    nothing to look up without one.
+    """
+    if not item_type or not issuer:
+        return None
+    return GlobalScanCorrection.objects.filter(
+        item_type=item_type, issuer=issuer, field=field, ai_value__iexact=ai_value,
+    ).first()
+
+
 def apply_learned_corrections(user, result: dict, originals: dict = None) -> list[str]:
     """
     Mutates an OCR extraction `result` in place, swapping values this user
@@ -460,6 +491,14 @@ def apply_learned_corrections(user, result: dict, originals: dict = None) -> lis
     Non-blank fields that find no exact match fall back to a fuzzy,
     edit-distance match (see _find_fuzzy_correction) - a different typo
     of an already-learned misreading would otherwise never heal at all.
+    Failing that too, a cross-user GlobalScanCorrection for this exact
+    merchant is tried last (see _find_global_correction) - this is the
+    only branch that can heal a field this particular user has never
+    personally corrected before. Global matches are never recorded into
+    `originals`: they aren't this user's own ScanFieldCorrection row to
+    retract, so the one-click Undo control simply doesn't offer one for
+    a globally-healed field (retracting a cross-user pattern because one
+    user disagrees isn't a one-click action).
     """
     healed = []
     try:
@@ -468,7 +507,7 @@ def apply_learned_corrections(user, result: dict, originals: dict = None) -> lis
             ai_value = _normalize(result.get(field))
             item_type = _normalize(result.get('type'))
             issuer = _normalize(result.get('issuer')) if field not in ('type', 'issuer') else ''
-            fuzzy = False
+            source_kind = 'exact'
             if ai_value:
                 candidates = ScanFieldCorrection.objects.filter(
                     user=user, field=field, ai_value__iexact=ai_value,
@@ -489,19 +528,31 @@ def apply_learned_corrections(user, result: dict, originals: dict = None) -> lis
                 best = _find_fuzzy_correction(
                     user, field, ai_value, item_type if field != 'type' else '', issuer,
                 )
-                fuzzy = best is not None
+                if best is not None:
+                    source_kind = 'fuzzy'
+            if best is None and ai_value:
+                best = _find_global_correction(
+                    field, ai_value, item_type if field != 'type' else '', issuer,
+                )
+                if best is not None:
+                    source_kind = 'global'
             if best is None:
                 continue
             if best.corrected_value.lower() == ai_value.lower():
                 continue
             if not _healed_value_is_valid(field, best.corrected_value):
                 continue
-            if fuzzy:
+            if source_kind == 'fuzzy':
                 logger.info(
                     'Fuzzy-healed %s for user %s: %r -> %r (learned from %r)',
                     field, user.pk, ai_value, best.corrected_value, best.ai_value,
                 )
-            if originals is not None:
+            elif source_kind == 'global':
+                logger.info(
+                    'Cross-user-healed %s for user %s: %r -> %r (confirmed by %d users for %r)',
+                    field, user.pk, ai_value, best.corrected_value, best.confirmed_by_users, issuer,
+                )
+            if originals is not None and source_kind != 'global':
                 originals[field] = {'ai_value': ai_value, 'correction_id': best.pk}
             result[field] = best.corrected_value
             healed.append(field)
@@ -532,3 +583,55 @@ def retract_learned_correction(user, correction_id: int) -> bool:
     """
     deleted_count, _ = ScanFieldCorrection.objects.filter(pk=correction_id, user=user).delete()
     return deleted_count > 0
+
+
+def detect_systemic_misreads() -> list:
+    """
+    Periodic sweep (see myapp.tasks.detect_systemic_misreads_task): groups
+    every user's ScanFieldCorrection rows by (item_type, issuer, field,
+    ai_value) - excluding merchant-unscoped rows, since "N users agree"
+    is a weak signal without a specific merchant to anchor it - and
+    promotes/refreshes a GlobalScanCorrection wherever at least
+    SYSTEMIC_MISREAD_MIN_USERS distinct users independently taught the
+    same corrected_value for that group.
+
+    When more than one corrected_value exists for the same group (rare,
+    but two different users could have "corrected" the same misreading
+    two different ways), the value with the most distinct users wins -
+    ties keep whichever the query visits first, since `-distinct_users`
+    ordering makes them equivalent anyway.
+
+    Returns the GlobalScanCorrection rows that are newly promoted this
+    run (didn't exist before), for the caller's admin alert - an
+    already-promoted pattern getting its confirmed_by_users count
+    refreshed isn't news. Best-effort: never raises.
+    """
+    newly_promoted = []
+    try:
+        rows = (
+            ScanFieldCorrection.objects
+            .exclude(issuer='')
+            .values('item_type', 'issuer', 'field', 'ai_value', 'corrected_value')
+            .annotate(distinct_users=Count('user', distinct=True))
+            .order_by('-distinct_users')
+        )
+        best_per_key = {}
+        for row in rows:
+            key = (row['item_type'], row['issuer'], row['field'], row['ai_value'])
+            best_per_key.setdefault(key, row)
+
+        for (item_type, issuer, field, ai_value), row in best_per_key.items():
+            if row['distinct_users'] < SYSTEMIC_MISREAD_MIN_USERS:
+                continue
+            obj, created = GlobalScanCorrection.objects.update_or_create(
+                item_type=item_type, issuer=issuer, field=field, ai_value=ai_value,
+                defaults={
+                    'corrected_value': row['corrected_value'],
+                    'confirmed_by_users': row['distinct_users'],
+                },
+            )
+            if created:
+                newly_promoted.append(obj)
+    except Exception:
+        logger.warning('Failed to detect systemic misreads', exc_info=True)
+    return newly_promoted

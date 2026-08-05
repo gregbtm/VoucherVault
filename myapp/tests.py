@@ -36,8 +36,8 @@ from .merchant_logos import (
 from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
 from .nearby_places import _names_match, _normalize, find_nearby_issuer_matches
 from .imagehash import compute_dhash, hamming_distance
-from .models import AppSettings, BalanceHistory, Document, EnrichmentConfig, EnrichmentRun, EnrichmentRunItem, Item, ItemComment, ItemEnrichmentLog, ItemPublicShare, ItemShare, LoginAuditLog, MerchantProfile, ScanFieldCorrection, SiteConfiguration, Tag, TOTPDevice, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, UserWebhook, Wallet, WalletActivity, WalletMembership
-from .scan_learning import apply_learned_corrections, record_scan_corrections, retract_learned_correction
+from .models import AppSettings, BalanceHistory, Document, EnrichmentConfig, EnrichmentRun, EnrichmentRunItem, GlobalScanCorrection, Item, ItemComment, ItemEnrichmentLog, ItemPublicShare, ItemShare, LoginAuditLog, MerchantProfile, ScanFieldCorrection, SiteConfiguration, Tag, TOTPDevice, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, UserWebhook, Wallet, WalletActivity, WalletMembership
+from .scan_learning import apply_learned_corrections, detect_systemic_misreads, record_scan_corrections, retract_learned_correction
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .test_utils import set_site_config
 from .tasks import check_for_update_task, check_upstream_version_task, fetch_merchant_logo_task, purge_expired_public_shares
@@ -1344,6 +1344,132 @@ class ScanLearningTests(TestCase):
 
     def test_retract_of_a_missing_id_is_not_an_error(self):
         self.assertFalse(retract_learned_correction(self.user, 999999))
+
+
+class SystemicMisreadDetectionTests(TestCase):
+    """
+    myapp/scan_learning.py's detect_systemic_misreads() and the
+    apply_learned_corrections() cross-user fallback that consumes what
+    it promotes (see GlobalScanCorrection).
+    """
+
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.carol = User.objects.create_user(username='carol', password='pw12345!')
+        self.dave = User.objects.create_user(username='dave', password='pw12345!')
+
+    def _teach(self, user, **overrides):
+        defaults = dict(
+            item_type='giftcard', issuer='Merchant A', field='code_type',
+            ai_value='qrcode', corrected_value='azteccode',
+        )
+        defaults.update(overrides)
+        return ScanFieldCorrection.objects.create(user=user, **defaults)
+
+    def test_promotes_a_pattern_confirmed_by_enough_distinct_users(self):
+        self._teach(self.alice)
+        self._teach(self.bob)
+        self._teach(self.carol)
+        promoted = detect_systemic_misreads()
+        self.assertEqual(len(promoted), 1)
+        pattern = GlobalScanCorrection.objects.get()
+        self.assertEqual(pattern.issuer, 'Merchant A')
+        self.assertEqual(pattern.corrected_value, 'azteccode')
+        self.assertEqual(pattern.confirmed_by_users, 3)
+
+    def test_does_not_promote_below_the_threshold(self):
+        self._teach(self.alice)
+        self._teach(self.bob)
+        promoted = detect_systemic_misreads()
+        self.assertEqual(promoted, [])
+        self.assertFalse(GlobalScanCorrection.objects.exists())
+
+    def test_ignores_merchant_unscoped_corrections(self):
+        self._teach(self.alice, issuer='')
+        self._teach(self.bob, issuer='')
+        self._teach(self.carol, issuer='')
+        promoted = detect_systemic_misreads()
+        self.assertEqual(promoted, [])
+        self.assertFalse(GlobalScanCorrection.objects.exists())
+
+    def test_one_user_correcting_the_same_value_repeatedly_only_counts_once(self):
+        # times_seen incrementing (the same user re-teaching the same
+        # correction) must not be mistaken for a second distinct user.
+        correction = self._teach(self.alice)
+        correction.times_seen = 5
+        correction.save()
+        self._teach(self.bob)
+        promoted = detect_systemic_misreads()
+        self.assertEqual(promoted, [])
+
+    def test_picks_the_majority_corrected_value_when_users_disagree(self):
+        self._teach(self.alice, corrected_value='azteccode')
+        self._teach(self.bob, corrected_value='azteccode')
+        self._teach(self.carol, corrected_value='azteccode')
+        self._teach(self.dave, corrected_value='datamatrix')
+        detect_systemic_misreads()
+        pattern = GlobalScanCorrection.objects.get()
+        self.assertEqual(pattern.corrected_value, 'azteccode')
+        self.assertEqual(pattern.confirmed_by_users, 3)
+
+    def test_rerunning_refreshes_the_count_but_is_not_newly_promoted(self):
+        self._teach(self.alice)
+        self._teach(self.bob)
+        self._teach(self.carol)
+        first_run = detect_systemic_misreads()
+        self.assertEqual(len(first_run), 1)
+        eve = User.objects.create_user(username='eve', password='pw12345!')
+        self._teach(eve)
+        second_run = detect_systemic_misreads()
+        self.assertEqual(second_run, [])
+        pattern = GlobalScanCorrection.objects.get()
+        self.assertEqual(pattern.confirmed_by_users, 4)
+
+    def test_apply_learned_corrections_heals_from_a_global_pattern(self):
+        self._teach(self.alice)
+        self._teach(self.bob)
+        self._teach(self.carol)
+        detect_systemic_misreads()
+        # dave has never personally corrected this misreading.
+        result = {'code_type': 'qrcode', 'type': 'giftcard', 'issuer': 'Merchant A'}
+        healed = apply_learned_corrections(self.dave, result)
+        self.assertEqual(healed, ['code_type'])
+        self.assertEqual(result['code_type'], 'azteccode')
+
+    def test_a_users_own_correction_still_wins_over_the_global_pattern(self):
+        self._teach(self.alice)
+        self._teach(self.bob)
+        self._teach(self.carol)
+        detect_systemic_misreads()
+        self._teach(self.dave, corrected_value='datamatrix')
+        result = {'code_type': 'qrcode', 'type': 'giftcard', 'issuer': 'Merchant A'}
+        healed = apply_learned_corrections(self.dave, result)
+        self.assertEqual(healed, ['code_type'])
+        self.assertEqual(result['code_type'], 'datamatrix')
+
+    def test_global_pattern_does_not_bleed_into_a_different_merchant(self):
+        self._teach(self.alice)
+        self._teach(self.bob)
+        self._teach(self.carol)
+        detect_systemic_misreads()
+        result = {'code_type': 'qrcode', 'type': 'giftcard', 'issuer': 'Merchant B'}
+        healed = apply_learned_corrections(self.dave, result)
+        self.assertEqual(healed, [])
+        self.assertEqual(result['code_type'], 'qrcode')
+
+    def test_global_heal_is_not_recorded_into_originals(self):
+        # Undo doesn't offer a control for a cross-user pattern - see
+        # apply_learned_corrections' docstring for why.
+        self._teach(self.alice)
+        self._teach(self.bob)
+        self._teach(self.carol)
+        detect_systemic_misreads()
+        result = {'code_type': 'qrcode', 'type': 'giftcard', 'issuer': 'Merchant A'}
+        originals = {}
+        healed = apply_learned_corrections(self.dave, result, originals=originals)
+        self.assertEqual(healed, ['code_type'])
+        self.assertEqual(originals, {})
 
 
 class NoBarcodeCodeTypeTests(TestCase):
@@ -4719,6 +4845,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
             'Refresh Smart Suggestions',
             'Database Integrity Check',
             'Enrichment Run Watchdog',
+            'Systemic Misread Detection',
         })
 
     def test_update_check_and_upstream_check_run_hourly_not_daily(self):
@@ -8239,3 +8366,110 @@ class ItemCommentTests(TestCase):
         first = ItemComment.objects.create(item=self.item, author=self.owner, body='first')
         second = ItemComment.objects.create(item=self.item, author=self.viewer, body='second')
         self.assertEqual(list(self.item.comments.all()), [first, second])
+
+
+class GlobalScanCorrectionAdminTests(TestCase):
+    """
+    GlobalScanCorrection (the promoted cross-user misread patterns - see
+    myapp.scan_learning.detect_systemic_misreads) had no admin UI: an
+    admin had no way to see what's being auto-applied for every user
+    against a given merchant, or to retract a wrongly-promoted one.
+    """
+
+    def setUp(self):
+        self.admin_user = User.objects.create_superuser(username='admin', password='pw12345!', email='a@example.com')
+        self.client.login(username='admin', password='pw12345!')
+
+    def test_is_registered(self):
+        self.assertIn(GlobalScanCorrection, admin.site._registry)
+
+    def test_changelist_loads(self):
+        GlobalScanCorrection.objects.create(
+            item_type='giftcard', issuer='Merchant A', field='code_type',
+            ai_value='qrcode', corrected_value='azteccode', confirmed_by_users=3,
+        )
+        response = self.client.get(reverse('admin:myapp_globalscancorrection_changelist'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'azteccode')
+
+    def test_is_not_hand_addable(self):
+        # Only ever means anything as detect_systemic_misreads()' own
+        # conclusion from real ScanFieldCorrection data.
+        self.assertEqual(self.client.get(reverse('admin:myapp_globalscancorrection_add')).status_code, 403)
+
+    def test_is_read_only_but_can_be_deleted(self):
+        pattern = GlobalScanCorrection.objects.create(
+            item_type='giftcard', issuer='Merchant A', field='code_type',
+            ai_value='qrcode', corrected_value='azteccode', confirmed_by_users=3,
+        )
+        response = self.client.get(reverse('admin:myapp_globalscancorrection_change', args=[pattern.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, '<input type="text" name="corrected_value"')
+
+        delete_response = self.client.post(
+            reverse('admin:myapp_globalscancorrection_delete', args=[pattern.pk]), {'post': 'yes'},
+        )
+        self.assertEqual(delete_response.status_code, 302)
+        self.assertFalse(GlobalScanCorrection.objects.filter(pk=pattern.pk).exists())
+
+
+class DetectSystemicMisreadsTaskTests(TestCase):
+    """
+    myapp.tasks.detect_systemic_misreads_task: the weekly Celery wrapper
+    around detect_systemic_misreads() that alerts an admin when it's
+    promoted something new, following the same
+    security_alert_ntfy_topic/ntfy_default_server pattern as
+    check_login_spike_task.
+    """
+
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.carol = User.objects.create_user(username='carol', password='pw12345!')
+
+    def _teach_enough_users_to_promote(self):
+        for user in (self.alice, self.bob, self.carol):
+            ScanFieldCorrection.objects.create(
+                user=user, item_type='giftcard', issuer='Merchant A', field='code_type',
+                ai_value='qrcode', corrected_value='azteccode',
+            )
+
+    @patch('requests.post')
+    def test_no_op_when_nothing_gets_promoted(self, mock_post):
+        set_site_config(security_alert_ntfy_topic='alerts')
+        from myapp.tasks import detect_systemic_misreads_task
+        detect_systemic_misreads_task()
+        mock_post.assert_not_called()
+
+    @patch('requests.post')
+    def test_no_op_when_no_ntfy_topic_configured(self, mock_post):
+        set_site_config(security_alert_ntfy_topic='')
+        self._teach_enough_users_to_promote()
+        from myapp.tasks import detect_systemic_misreads_task
+        detect_systemic_misreads_task()
+        mock_post.assert_not_called()
+        # The promotion itself still happens - only the alert is gated.
+        self.assertTrue(GlobalScanCorrection.objects.exists())
+
+    @patch('requests.post')
+    def test_sends_an_alert_for_a_newly_promoted_pattern(self, mock_post):
+        set_site_config(security_alert_ntfy_topic='alerts', ntfy_default_server='https://ntfy.sh')
+        self._teach_enough_users_to_promote()
+        from myapp.tasks import detect_systemic_misreads_task
+        detect_systemic_misreads_task()
+        mock_post.assert_called_once()
+        url, kwargs = mock_post.call_args[0][0], mock_post.call_args[1]
+        self.assertEqual(url, 'https://ntfy.sh/alerts')
+        body = kwargs['data'].decode('utf-8')
+        self.assertIn('Merchant A', body)
+        self.assertIn('azteccode', body)
+
+    @patch('requests.post')
+    def test_does_not_re_alert_for_an_already_promoted_pattern(self, mock_post):
+        set_site_config(security_alert_ntfy_topic='alerts')
+        self._teach_enough_users_to_promote()
+        from myapp.tasks import detect_systemic_misreads_task
+        detect_systemic_misreads_task()
+        mock_post.reset_mock()
+        detect_systemic_misreads_task()
+        mock_post.assert_not_called()

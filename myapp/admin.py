@@ -278,6 +278,31 @@ class ScanFieldCorrectionAdmin(admin.ModelAdmin):
     ai_value_display.short_description = _('AI Value')
 
 
+class GlobalScanCorrectionAdmin(admin.ModelAdmin):
+    """
+    Read-only (except delete) view of the cross-user patterns detect_
+    systemic_misreads() has promoted (see GlobalScanCorrection) - lets an
+    admin see what's being auto-applied for every user against a given
+    merchant, and retract a wrongly-promoted one (e.g. the merchant
+    genuinely changed their card layout, or the "majority" mapping
+    detect_systemic_misreads picked turned out to be wrong). Not
+    hand-creatable: these only mean anything as the sweep's own
+    conclusion from real ScanFieldCorrection data, never as something an
+    admin types in directly.
+    """
+    list_display = ('issuer', 'item_type', 'field', 'ai_value', 'corrected_value', 'confirmed_by_users', 'promoted_at')
+    list_filter = ('field', 'item_type')
+    search_fields = ('issuer', 'ai_value', 'corrected_value')
+    readonly_fields = [f.name for f in GlobalScanCorrection._meta.fields]
+    ordering = ('-confirmed_by_users', '-promoted_at')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
 class ItemEnrichmentLogAdmin(admin.ModelAdmin):
     """
     Read-only audit trail of every enrichment change actually applied to
@@ -488,4 +513,5 @@ admin.site.register(EnrichmentConfig, EnrichmentConfigAdmin)
 admin.site.register(EnrichmentRun, EnrichmentRunAdmin)
 admin.site.register(EnrichmentFieldPreference, EnrichmentFieldPreferenceAdmin)
 admin.site.register(ScanFieldCorrection, ScanFieldCorrectionAdmin)
+admin.site.register(GlobalScanCorrection, GlobalScanCorrectionAdmin)
 admin.site.register(ItemEnrichmentLog, ItemEnrichmentLogAdmin)

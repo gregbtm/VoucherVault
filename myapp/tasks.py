@@ -226,6 +226,56 @@ def check_login_spike_task():
 
 
 @shared_task
+def detect_systemic_misreads_task():
+    """
+    Weekly sweep: promotes cross-user scan-correction patterns (see
+    myapp.scan_learning.detect_systemic_misreads) and, when a security
+    ntfy topic is configured, fires a single alert listing what's newly
+    promoted this run - a probable systemic OCR misreading is worth an
+    admin's attention the same way a login spike is, even though nothing
+    here is a security event per se.
+    """
+    import logging
+    import requests as _requests
+    from .models import SiteConfiguration
+    from .scan_learning import detect_systemic_misreads
+
+    _log = logging.getLogger(__name__)
+    newly_promoted = detect_systemic_misreads()
+    if not newly_promoted:
+        return
+
+    config = SiteConfiguration.load()
+    topic = config.security_alert_ntfy_topic.strip()
+    if not topic:
+        return
+
+    lines = [
+        f"- {c.issuer} ({c.item_type}) {c.field}: {c.ai_value!r} -> {c.corrected_value!r} "
+        f"(confirmed by {c.confirmed_by_users} users)"
+        for c in newly_promoted
+    ]
+    server = (config.ntfy_default_server or 'https://ntfy.sh').rstrip('/')
+    try:
+        _requests.post(
+            f'{server}/{topic}',
+            data=(
+                f"{len(newly_promoted)} probable systemic OCR misreading(s) detected across users:\n"
+                + '\n'.join(lines)
+            ).encode('utf-8'),
+            headers={
+                'Title': 'VoucherVault Systemic Misread Detected'.encode('utf-8'),
+                'Priority': 'default',
+                'Tags': 'mag',
+            },
+            timeout=10,
+        )
+        _log.warning('Systemic misread alert sent: %d newly promoted pattern(s).', len(newly_promoted))
+    except Exception as exc:
+        _log.warning('Failed to send systemic misread alert: %s', exc)
+
+
+@shared_task
 def mark_expired_commute_outward_tickets():
     """
     Bookkeeping companion to analytics.get_active_today_item(): once a
