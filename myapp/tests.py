@@ -1260,6 +1260,52 @@ class IssuerAutocompleteTests(TestCase):
         self.assertContains(response, '<option value="Tesco">')
 
 
+class ShowItemsSearchTests(TestCase):
+    """
+    show_items()'s free-text search query - covers the existing field
+    matches plus the extracted_text search added below (a Document's
+    OCR'd text was populated on upload and shown read-only on the item
+    page, but never searchable - years of already-scanned receipt
+    content was effectively write-only).
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.client.login(username='alice', password='pw12345!')
+
+    def test_search_matches_document_extracted_text(self):
+        matching = make_item(self.user, name='Matches via receipt', redeem_code='RECEIPT1')
+        Document.objects.create(
+            item=matching, file=SimpleUploadedFile('r.png', b'bytes', content_type='image/png'),
+            extracted_text='Total: 12.50 paid at Riverside Cafe',
+        )
+        other = make_item(self.user, name='No receipt text', redeem_code='OTHER1')
+
+        response = self.client.get(reverse('show_items'), {'query': 'Riverside Cafe', 'status': 'all'})
+        names = [entry['item'].name for entry in response.context['items_with_qr']]
+        self.assertEqual(names, ['Matches via receipt'])
+
+    def test_search_still_matches_other_fields_unaffected(self):
+        make_item(self.user, name='Amazon Card', redeem_code='AMZ1')
+        response = self.client.get(reverse('show_items'), {'query': 'Amazon', 'status': 'all'})
+        names = [entry['item'].name for entry in response.context['items_with_qr']]
+        self.assertEqual(names, ['Amazon Card'])
+
+    def test_search_does_not_duplicate_results_for_items_with_multiple_documents(self):
+        item = make_item(self.user, name='Multi Doc', redeem_code='MULTI1')
+        Document.objects.create(
+            item=item, file=SimpleUploadedFile('r1.png', b'bytes', content_type='image/png'),
+            extracted_text='Cafe Luna receipt',
+        )
+        Document.objects.create(
+            item=item, file=SimpleUploadedFile('r2.png', b'bytes', content_type='image/png'),
+            extracted_text='Cafe Luna second copy',
+        )
+        response = self.client.get(reverse('show_items'), {'query': 'Cafe Luna', 'status': 'all'})
+        names = [entry['item'].name for entry in response.context['items_with_qr']]
+        self.assertEqual(names, ['Multi Doc'])
+
+
 class ShowItemsWalletFilterTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')

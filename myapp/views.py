@@ -432,7 +432,11 @@ def show_items(request):
             Q(card_number__icontains=search_query) |
             Q(description__icontains=search_query) |
             Q(notes__icontains=search_query) |
-            Q(tags__name__icontains=search_query)
+            Q(tags__name__icontains=search_query) |
+            # OCR-extracted receipt/document text - previously write-only:
+            # populated on upload (myapp/tasks.py) and shown read-only on
+            # the item page, but never searchable.
+            Q(documents__extracted_text__icontains=search_query)
         ).distinct()
 
     # Apply sorting based on user preference
