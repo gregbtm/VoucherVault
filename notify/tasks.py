@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from myapp.models import Item, SiteConfiguration, Transaction, UserPreference
 from myapp.utils import check_companies_house_status, _CH_BAD_STATUSES
+from myapp.webhooks import fire_user_webhooks
 
 from .backends import get_backend
 from .models import DigestEntry, NotificationLog, NotificationRule
@@ -178,6 +179,9 @@ def notify_item_shared_with_you(item, recipient, role: str):
             user=recipient, rule=rule, item=item, event_type='item_shared_with_you',
             success=success, detail=detail,
         )
+    fire_user_webhooks(recipient, 'item_shared_with_you', item, extra={
+        'role': role, 'shared_by': item.user.username,
+    })
 
 
 def notify_item_unshared(item, removed_user):
@@ -206,6 +210,10 @@ def notify_wallet_invited(wallet, invited_user):
             user=invited_user, rule=rule, item=None, event_type='wallet_invited',
             success=success, detail=detail,
         )
+    fire_user_webhooks(invited_user, 'wallet_invited', extra={
+        'wallet': {'id': wallet.id, 'name': wallet.name},
+        'invited_by': wallet.user.username,
+    })
 
 
 def notify_wallet_removed(wallet, removed_user, owner_username: str):
@@ -302,6 +310,7 @@ def check_next_up_reminders():
             title = f"📌 {item.name} is today"
             message = f"Code: {item.redeem_code}\nWallet: {item.wallet.name}"
             fire_notifications(item, 'next_up_reminder', title, message)
+            fire_user_webhooks(item.user, 'next_up_reminder', item)
 
 
 @shared_task
@@ -505,6 +514,7 @@ def advance_recurring_items():
             f"Code: {item.redeem_code}\nValue: {item.value} {item.currency}"
         )
         fire_notifications(item, 'renewal_advanced', title, message, dedupe=False)
+        fire_user_webhooks(item.user, 'renewal_advanced', item)
 
 
 @shared_task
@@ -624,6 +634,10 @@ def check_merchant_health():
                 f"Consider spending your {item.name} balance soon."
             )
             fire_notifications(item, 'merchant_health_alert', title, message, dedupe=True)
+            fire_user_webhooks(item.user, 'merchant_health_alert', item, extra={
+                'company_status': ch_data['company_status'],
+                'company_name': ch_data['company_name'],
+            })
 
 
 @shared_task

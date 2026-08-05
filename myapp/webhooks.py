@@ -1,10 +1,14 @@
 """
-Outbound webhook dispatcher for per-user item lifecycle events (Phase E).
+Outbound webhook dispatcher for per-user events (Phase E, extended for
+event parity with the notification engine - see notify/tasks.py). Most
+events are item-scoped, but a few (e.g. wallet_invited) have no single
+associated item.
 
 Each UserWebhook row stores a URL, an optional HMAC secret, and a list of
-event types it should fire for. Call fire_user_webhooks() after any item
-lifecycle event; it fans out to every matching, enabled webhook asynchronously
-via a background thread so the calling request is never delayed.
+event types it should fire for. Call fire_user_webhooks() after any
+lifecycle event this app already notifies a user about; it fans out to
+every matching, enabled webhook asynchronously via a background thread so
+the calling request is never delayed.
 """
 import hashlib
 import hmac
@@ -65,12 +69,21 @@ def validate_webhook_url(url: str) -> None:
         )
 
 
-def _build_payload(event_type: str, item) -> dict:
+def _build_payload(event_type: str, item=None, extra: dict = None) -> dict:
+    """
+    `item` is None for events with no single associated item (e.g.
+    wallet_invited, which is about a Wallet, not an Item) - the payload
+    just omits the 'item' key entirely rather than sending a null
+    placeholder. `extra` merges in event-specific context (e.g. which
+    wallet, who shared it) that doesn't fit the item shape.
+    """
     from django.utils import timezone
-    return {
+    payload = {
         'event': event_type,
         'timestamp': timezone.now().isoformat(),
-        'item': {
+    }
+    if item is not None:
+        payload['item'] = {
             'id': str(item.id),
             'name': item.name,
             'issuer': item.issuer,
@@ -80,8 +93,10 @@ def _build_payload(event_type: str, item) -> dict:
             'expiry_date': item.expiry_date.isoformat() if item.expiry_date else None,
             'is_used': item.is_used,
             'is_archived': item.is_archived,
-        },
-    }
+        }
+    if extra:
+        payload.update(extra)
+    return payload
 
 
 def _send_one(webhook, payload: dict):
@@ -108,8 +123,14 @@ def _send_one(webhook, payload: dict):
         logger.warning("Webhook %s delivery failed: %s", webhook.id, exc)
 
 
-def fire_user_webhooks(user, event_type: str, item):
-    """Fan out to all enabled webhooks for user that subscribe to event_type."""
+def fire_user_webhooks(user, event_type: str, item=None, extra: dict = None):
+    """
+    Fan out to all enabled webhooks for `user` that subscribe to
+    event_type. `user` is who should receive the webhook, which for a
+    handful of events (item_shared_with_you) is the recipient rather
+    than the item's owner - callers pass whichever user actually owns
+    the webhook subscription that should fire.
+    """
     from .models import UserWebhook
     hooks = list(
         UserWebhook.objects.filter(user=user, enabled=True)
@@ -118,7 +139,7 @@ def fire_user_webhooks(user, event_type: str, item):
     matching = [h for h in hooks if event_type in (h.events or [])]
     if not matching:
         return
-    payload = _build_payload(event_type, item)
+    payload = _build_payload(event_type, item, extra)
 
     def _dispatch():
         for hook in matching:

@@ -1954,3 +1954,98 @@ class CheckMerchantHealthTaskTests(TestCase):
 
         mock_ch.assert_not_called()
         self.assertEqual(NotificationLog.objects.count(), 0)
+
+
+class WebhookEventParityTests(TestCase):
+    """
+    Outbound webhooks (myapp/webhooks.py) only ever covered 5 item
+    lifecycle events, while NotificationRule has grown to 14 - an
+    n8n/Home Assistant automation could react to a balance change but
+    not to a wallet invite, a shared item, a next-up reminder, a
+    merchant health alert, or a recurring item's renewal, even though
+    this app's own notification engine already fires internally for
+    all of those. These tests confirm each of those five call sites now
+    also fires a webhook, independent of whether the user has any
+    matching NotificationRule at all (fire_user_webhooks has its own,
+    separate UserWebhook.events filter).
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+
+    @patch('notify.tasks.fire_user_webhooks')
+    def test_item_shared_with_you_fires_webhook_for_the_recipient_not_the_owner(self, mock_fire):
+        item = make_item(self.owner)
+        notify_item_shared_with_you(item, self.bob, 'editor')
+        mock_fire.assert_called_once()
+        args, kwargs = mock_fire.call_args
+        self.assertEqual(args[0], self.bob)
+        self.assertEqual(args[1], 'item_shared_with_you')
+        self.assertEqual(args[2], item)
+        self.assertEqual(kwargs['extra']['role'], 'editor')
+        self.assertEqual(kwargs['extra']['shared_by'], self.owner.username)
+
+    @patch('notify.tasks.fire_user_webhooks')
+    def test_wallet_invited_fires_webhook_for_the_invited_user_with_no_item(self, mock_fire):
+        wallet = Wallet.objects.create(user=self.owner, name='Groceries')
+        notify_wallet_invited(wallet, self.bob)
+        mock_fire.assert_called_once()
+        args, kwargs = mock_fire.call_args
+        self.assertEqual(args[0], self.bob)
+        self.assertEqual(args[1], 'wallet_invited')
+        self.assertEqual(len(args), 2)  # no positional item arg
+        self.assertNotIn('item', kwargs)
+        self.assertEqual(kwargs['extra']['wallet']['name'], 'Groceries')
+
+    @patch('notify.tasks.fire_user_webhooks')
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_next_up_reminder_fires_webhook_for_the_item_owner(self, mock_send, mock_fire):
+        wallet = Wallet.objects.create(user=self.owner, name='Train Tickets')
+        preferences, _ = UserPreference.objects.get_or_create(user=self.owner)
+        preferences.next_up_wallets.add(wallet)
+        item = make_item(self.owner, wallet=wallet, expiry_date=date.today())
+
+        check_next_up_reminders()
+
+        mock_fire.assert_called_once_with(self.owner, 'next_up_reminder', item)
+
+    @patch('notify.tasks.fire_user_webhooks')
+    def test_renewal_advanced_fires_webhook_for_the_item_owner(self, mock_fire):
+        item = make_item(
+            self.owner, is_recurring=True, renewal_period='monthly',
+            renewal_date=date.today() - timedelta(days=1),
+        )
+
+        advance_recurring_items()
+
+        mock_fire.assert_called_once()
+        args, kwargs = mock_fire.call_args
+        self.assertEqual(args[0], self.owner)
+        self.assertEqual(args[1], 'renewal_advanced')
+        self.assertEqual(args[2], item)
+
+    @patch('notify.tasks.fire_user_webhooks')
+    @patch('notify.tasks.check_companies_house_status')
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_merchant_health_alert_fires_webhook_for_the_item_owner(self, mock_send, mock_ch, mock_fire):
+        set_site_config(companies_house_api_key='dummy-key')
+        item = make_item(self.owner, issuer='Acme Retail', redeem_code='MH-WEBHOOK1')
+        mock_ch.return_value = {
+            'company_name': 'Acme Retail Ltd', 'company_status': 'administration', 'company_number': '123',
+        }
+
+        check_merchant_health()
+
+        mock_fire.assert_called_once()
+        args, kwargs = mock_fire.call_args
+        self.assertEqual(args[0], self.owner)
+        self.assertEqual(args[1], 'merchant_health_alert')
+        self.assertEqual(args[2], item)
+        self.assertEqual(kwargs['extra']['company_status'], 'administration')
+
+    def test_new_events_are_selectable_on_a_user_webhook(self):
+        from myapp.models import UserWebhook
+        valid = {c[0] for c in UserWebhook.EVENT_CHOICES}
+        for event in ('item_shared_with_you', 'next_up_reminder', 'wallet_invited', 'merchant_health_alert', 'renewal_advanced'):
+            self.assertIn(event, valid)
