@@ -740,6 +740,7 @@ def view_item(request, item_uuid):
         'update_balance_url': reverse('update_item_balance', args=[item.id]),
         'journey_siblings': journey_siblings,
         'active_flags': _flags_by_field(get_active_flags_for_items([item]).get(item.id, [])),
+        'comments': item.comments.select_related('author').all(),
     }
     return render(request, 'view-item.html', context)
 
@@ -1457,6 +1458,35 @@ def upload_document(request, item_uuid):
             messages.error(request, error)
 
     return redirect('view_item', item_uuid=item.id)
+
+@require_POST
+@login_required
+def add_item_comment(request, item_uuid):
+    """
+    Any collaborator with view access - including a viewer-role
+    ItemShare/WalletMembership - may leave a comment; commenting isn't
+    an edit to the item itself, unlike the transaction/document actions
+    above which require can_edit.
+    """
+    item = get_object_or_404(Item, id=item_uuid)
+    if not has_item_access(item, request.user):
+        return HttpResponse("Unauthorized", status=403)
+
+    body = request.POST.get('body', '').strip()
+    if body:
+        ItemComment.objects.create(item=item, author=request.user, body=body[:2000])
+    return redirect('view_item', item_uuid=item.id)
+
+@require_POST
+@login_required
+def delete_item_comment(request, comment_id):
+    """Deletable by the comment's own author, or the item's owner (moderation)."""
+    comment = get_object_or_404(ItemComment, id=comment_id)
+    if comment.author != request.user and comment.item.user != request.user:
+        return HttpResponse("Unauthorized", status=403)
+    item_uuid = comment.item.id
+    comment.delete()
+    return redirect('view_item', item_uuid=item_uuid)
 
 @require_GET
 @login_required

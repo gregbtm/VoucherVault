@@ -36,7 +36,7 @@ from .merchant_logos import (
 from .ics_calendar import _escape_text, _fold_line, build_ics_calendar
 from .nearby_places import _names_match, _normalize, find_nearby_issuer_matches
 from .imagehash import compute_dhash, hamming_distance
-from .models import AppSettings, BalanceHistory, Document, EnrichmentConfig, EnrichmentRun, EnrichmentRunItem, Item, ItemEnrichmentLog, ItemPublicShare, ItemShare, LoginAuditLog, MerchantProfile, ScanFieldCorrection, SiteConfiguration, Tag, TOTPDevice, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, UserWebhook, Wallet, WalletActivity, WalletMembership
+from .models import AppSettings, BalanceHistory, Document, EnrichmentConfig, EnrichmentRun, EnrichmentRunItem, Item, ItemComment, ItemEnrichmentLog, ItemPublicShare, ItemShare, LoginAuditLog, MerchantProfile, ScanFieldCorrection, SiteConfiguration, Tag, TOTPDevice, Transaction, UpdateCheckStatus, UpstreamSyncStatus, UserPreference, UserProfile, UserWebhook, Wallet, WalletActivity, WalletMembership
 from .scan_learning import apply_learned_corrections, record_scan_corrections
 from .portainer import PortainerRedeployError, trigger_redeploy
 from .test_utils import set_site_config
@@ -7936,3 +7936,75 @@ class ScanFieldCorrectionAndEnrichmentLogAdminTests(TestCase):
         response = self.client.get(reverse('admin:myapp_itemenrichmentlog_change', args=[log.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, '<input type="text" name="field_name"')
+
+
+class ItemCommentTests(TestCase):
+    """
+    Item.notes is a single overwritable field with no author/timestamp/
+    history - two collaborators editing it independently just clobber
+    each other's message. ItemComment is the append-only alternative:
+    dated, attributed notes any collaborator (including a viewer-role
+    one) can read and add, but only the author or the item's owner can
+    delete.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner', password='pw12345!')
+        self.viewer = User.objects.create_user(username='viewer', password='pw12345!')
+        self.stranger = User.objects.create_user(username='stranger', password='pw12345!')
+        self.item = make_item(self.owner)
+        ItemShare.objects.create(
+            item=self.item, shared_with_user=self.viewer, shared_by=self.owner,
+            role=ItemShare.ROLE_VIEWER,
+        )
+
+    def test_comment_appears_on_item_page(self):
+        ItemComment.objects.create(item=self.item, author=self.owner, body='Already used the code once')
+        self.client.login(username='owner', password='pw12345!')
+        response = self.client.get(reverse('view_item', args=[self.item.id]))
+        self.assertContains(response, 'Already used the code once')
+
+    def test_viewer_role_collaborator_can_add_a_comment(self):
+        # Commenting isn't an edit to the item itself - a read-only
+        # viewer should still be able to leave a note.
+        self.client.login(username='viewer', password='pw12345!')
+        response = self.client.post(reverse('add_item_comment', args=[self.item.id]), {'body': 'Noted, thanks!'})
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(ItemComment.objects.filter(item=self.item, author=self.viewer, body='Noted, thanks!').exists())
+
+    def test_unrelated_user_cannot_add_a_comment(self):
+        self.client.login(username='stranger', password='pw12345!')
+        response = self.client.post(reverse('add_item_comment', args=[self.item.id]), {'body': 'sneaky'})
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(ItemComment.objects.filter(item=self.item).exists())
+
+    def test_blank_comment_is_ignored(self):
+        self.client.login(username='owner', password='pw12345!')
+        self.client.post(reverse('add_item_comment', args=[self.item.id]), {'body': '   '})
+        self.assertFalse(ItemComment.objects.filter(item=self.item).exists())
+
+    def test_author_can_delete_their_own_comment(self):
+        comment = ItemComment.objects.create(item=self.item, author=self.viewer, body='oops typo')
+        self.client.login(username='viewer', password='pw12345!')
+        response = self.client.post(reverse('delete_item_comment', args=[comment.id]))
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(ItemComment.objects.filter(pk=comment.pk).exists())
+
+    def test_owner_can_delete_anyone_elses_comment(self):
+        comment = ItemComment.objects.create(item=self.item, author=self.viewer, body='needs removing')
+        self.client.login(username='owner', password='pw12345!')
+        response = self.client.post(reverse('delete_item_comment', args=[comment.id]))
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(ItemComment.objects.filter(pk=comment.pk).exists())
+
+    def test_non_author_non_owner_cannot_delete_a_comment(self):
+        comment = ItemComment.objects.create(item=self.item, author=self.owner, body='owner note')
+        self.client.login(username='viewer', password='pw12345!')
+        response = self.client.post(reverse('delete_item_comment', args=[comment.id]))
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(ItemComment.objects.filter(pk=comment.pk).exists())
+
+    def test_comments_are_ordered_oldest_first(self):
+        first = ItemComment.objects.create(item=self.item, author=self.owner, body='first')
+        second = ItemComment.objects.create(item=self.item, author=self.viewer, body='second')
+        self.assertEqual(list(self.item.comments.all()), [first, second])

@@ -38,7 +38,7 @@ from imports.tasks import process_import_job
 from myapp.analytics import get_expiry_timeline, get_spend_stats, get_summary_stats
 from myapp.merchant_logos import remember_balance_check_url
 from myapp.models import (
-    Document, Item, ItemShare, MerchantProfile, Tag, Transaction,
+    Document, Item, ItemComment, ItemShare, MerchantProfile, Tag, Transaction,
     UserPreference, UserProfile, UserWebhook, Wallet,
     WalletActivity, WalletMembership, ItemCategory, ItemRecommendation,
 )
@@ -71,6 +71,7 @@ from .serializers import (
     EnrichmentRunItemSerializer,
     ImportJobSerializer,
     ItemSerializer,
+    ItemCommentSerializer,
     ItemShareSerializer,
     ItemCategorySerializer,
     ItemRecommendationSerializer,
@@ -710,6 +711,37 @@ class ItemViewSet(viewsets.ModelViewSet):
         recipient = share.shared_with_user
         share.delete()
         notify_item_unshared(item, recipient)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['get', 'post'], url_path='comments')
+    def comments(self, request, pk=None):
+        """
+        Anyone reachable through this ViewSet's own permission class
+        (IsItemOwnerOrWalletCollaborator - same reach as every other
+        action here) may list and add comments; unlike shares/
+        delete_share above, this deliberately does not narrow to
+        IsOwner via get_permissions - commenting isn't an edit to the
+        item itself, and a wallet viewer should be able to leave a note
+        the same way they can on the web UI (has_item_access).
+        """
+        item = self.get_object()
+        if request.method == 'POST':
+            serializer = ItemCommentSerializer(data=request.data, context={'item': item, 'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        serializer = ItemCommentSerializer(item.comments.select_related('author').all(), many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['delete'], url_path=r'comments/(?P<comment_id>\d+)')
+    def delete_comment(self, request, pk=None, comment_id=None):
+        """Deletable by the comment's own author, or the item's owner (moderation)."""
+        item = self.get_object()
+        comment = get_object_or_404(ItemComment, item=item, pk=comment_id)
+        if comment.author_id != request.user.id and item.user_id != request.user.id:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        comment.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['get'], url_path='pkpass')

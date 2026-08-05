@@ -15,7 +15,7 @@ from rest_framework.test import APITestCase
 
 from api.throttling import WriteRateThrottle
 from imports.models import ImportJob
-from myapp.models import Item, ItemShare, MerchantProfile, Tag, Transaction, UserWebhook, Wallet
+from myapp.models import Item, ItemComment, ItemShare, MerchantProfile, Tag, Transaction, UserWebhook, Wallet
 from myapp.test_utils import set_site_config
 from notify.models import NotificationLog, NotificationRule
 
@@ -518,6 +518,73 @@ class ItemShareTests(APITestCase):
 
         response = self.client.delete(f'/api/v1/items/{item.id}/shares/{share.id}/')
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+
+class ItemCommentApiTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.client.force_authenticate(user=self.alice)
+        self.item = make_item(self.alice)
+
+    def test_add_comment(self):
+        response = self.client.post(f'/api/v1/items/{self.item.id}/comments/', {'body': 'Left a note'})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['author_username'], 'alice')
+        self.assertTrue(ItemComment.objects.filter(item=self.item, author=self.alice, body='Left a note').exists())
+
+    def test_list_comments(self):
+        ItemComment.objects.create(item=self.item, author=self.alice, body='First')
+        ItemComment.objects.create(item=self.item, author=self.alice, body='Second')
+        response = self.client.get(f'/api/v1/items/{self.item.id}/comments/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 2)
+
+    def test_blank_comment_rejected(self):
+        response = self.client.post(f'/api/v1/items/{self.item.id}/comments/', {'body': '   '})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_wallet_collaborator_can_comment(self):
+        wallet = Wallet.objects.create(user=self.alice, name='Shared')
+        wallet.shared_with.add(self.bob)
+        item = make_item(self.alice, wallet=wallet)
+
+        self.client.force_authenticate(user=self.bob)
+        response = self.client.post(f'/api/v1/items/{item.id}/comments/', {'body': 'From bob'})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    def test_unrelated_user_cannot_comment(self):
+        self.client.force_authenticate(user=self.bob)
+        response = self.client.post(f'/api/v1/items/{self.item.id}/comments/', {'body': 'sneaky'})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_author_can_delete_own_comment(self):
+        comment = ItemComment.objects.create(item=self.item, author=self.alice, body='oops')
+        response = self.client.delete(f'/api/v1/items/{self.item.id}/comments/{comment.id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(ItemComment.objects.filter(pk=comment.pk).exists())
+
+    def test_owner_can_delete_a_collaborators_comment(self):
+        wallet = Wallet.objects.create(user=self.alice, name='Shared')
+        wallet.shared_with.add(self.bob)
+        item = make_item(self.alice, wallet=wallet)
+        comment = ItemComment.objects.create(item=item, author=self.bob, body='needs removal')
+
+        response = self.client.delete(f'/api/v1/items/{item.id}/comments/{comment.id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(ItemComment.objects.filter(pk=comment.pk).exists())
+
+    def test_non_author_non_owner_cannot_delete_a_comment(self):
+        wallet = Wallet.objects.create(user=self.alice, name='Shared')
+        wallet.shared_with.add(self.bob)
+        item = make_item(self.alice, wallet=wallet)
+        comment = ItemComment.objects.create(item=item, author=self.alice, body='owner note')
+
+        self.client.force_authenticate(user=self.bob)
+        response = self.client.delete(f'/api/v1/items/{item.id}/comments/{comment.id}/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(ItemComment.objects.filter(pk=comment.pk).exists())
 
 
 class WebhookEventApiWiringTests(APITestCase):

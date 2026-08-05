@@ -9,7 +9,7 @@ from rest_framework import serializers
 
 from imports.models import ImportJob
 from myapp.models import (
-    Document, Item, ItemShare, MerchantProfile, Tag, Transaction,
+    Document, Item, ItemComment, ItemShare, MerchantProfile, Tag, Transaction,
     UserPreference, UserProfile, UserWebhook, Wallet,
     WalletActivity, WalletMembership, EnrichmentConfig, EnrichmentRun, EnrichmentRunItem,
     ItemCategory, ItemRecommendation,
@@ -129,6 +129,26 @@ class ItemShareSerializer(serializers.ModelSerializer):
             defaults={'shared_by': self.context['request'].user, 'role': role},
         )
         return share
+
+
+class ItemCommentSerializer(serializers.ModelSerializer):
+    author_username = serializers.CharField(source='author.username', read_only=True)
+
+    class Meta:
+        model = ItemComment
+        fields = ['id', 'item', 'author_username', 'body', 'created_at']
+        read_only_fields = ['id', 'item', 'author_username', 'created_at']
+
+    def validate_body(self, body):
+        body = body.strip()
+        if not body:
+            raise serializers.ValidationError(_('Comment cannot be empty.'))
+        return body[:2000]
+
+    def create(self, validated_data):
+        return ItemComment.objects.create(
+            item=self.context['item'], author=self.context['request'].user, **validated_data,
+        )
 
 
 class ItemSerializer(serializers.ModelSerializer):
