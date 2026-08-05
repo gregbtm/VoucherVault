@@ -116,6 +116,10 @@ class Command(BaseCommand):
             # 'merchant_health_alert' if the company is in administration/liquidation.
             # A no-op unless SiteConfiguration.companies_house_api_key is set.
             {'name': 'Merchant Health Check', 'task': 'notify.tasks.check_merchant_health', 'crontab': weekly_schedule, 'enabled': True},
+            # Fires a 'budget_overspend' alert once per calendar month for each
+            # wallet whose current-month spend exceeds its budget_amount. A no-op
+            # until a user sets a wallet budget and has a matching NotificationRule.
+            {'name': 'Wallet Budget Overspend Check', 'task': 'notify.tasks.check_wallet_budget_overspend', 'crontab': crontab_schedule, 'enabled': True},
             # Deletes ImportJob records (and their uploaded files) older than 30 days
             # that are in a terminal state (complete/failed). Runs weekly to keep
             # the database and uploads/ directory clean without hammering storage.
