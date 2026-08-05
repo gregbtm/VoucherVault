@@ -989,6 +989,11 @@ class UserWebhook(models.Model):
         ('item_archived', 'Item Archived'),
         ('item_balance_changed', 'Balance Updated'),
         ('item_expiry_warning', 'Expiry Warning'),
+        ('item_shared_with_you', 'Item Shared With You'),
+        ('next_up_reminder', 'Next Up Item Due Today'),
+        ('wallet_invited', 'Wallet Invitation'),
+        ('merchant_health_alert', 'Merchant Health Alert'),
+        ('renewal_advanced', 'Recurring Item Renewed'),
     ]
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='webhooks')
     name = models.CharField(max_length=100)
