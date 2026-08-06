@@ -1,43 +1,63 @@
 # Outbound Webhooks
 
-VoucherVault Plus+ fires a webhook POST when key events happen in your vault — items created, updated, archived, deleted, and when a spend is logged. This lets you pipe events into n8n, Zapier, Make, Home Assistant, or your own endpoint without polling the API.
+VoucherVault Plus+ fires a webhook POST when key events happen in your vault — items created, used, archived, expiring, shared, and more. This lets you pipe events into n8n, Zapier, Make, Home Assistant, or your own endpoint without polling the API. Webhooks are per-user, set up from **Webhooks** in the sidebar (also reachable via **Developer Hub**) — no admin role required, each user manages their own.
 
 ## Setting up a webhook
 
-1. Go to **Site Settings → Webhooks** (admin only).
+1. Go to **Webhooks** in the sidebar.
 2. Click **Add Webhook**.
-3. Enter a URL and choose which event types to subscribe to.
+3. Enter a URL and tick which event types should fire it. You can subscribe one webhook to several events, or set up separate webhooks per event.
 4. Save — the webhook is active immediately.
 
 ## Event types
 
 | Event | Fires when |
 |---|---|
-| `item.created` | A new item is saved for the first time |
-| `item.updated` | Any field on an existing item changes |
-| `item.archived` | An item's status is set to Archived |
-| `item.deleted` | An item is permanently deleted |
-| `item.used` | An item is marked Used (status toggle) |
+| `item_created` | A new item is saved for the first time |
+| `item_used` | An item is marked Used |
+| `item_archived` | An item's status is set to Archived |
+| `item_balance_changed` | A transaction changes an item's current balance |
+| `item_expiry_warning` | An item is approaching its expiry date (same lead time as notification rules) |
+| `item_shared_with_you` | Another user shares an item with you — fires for the **recipient**, not the owner |
+| `next_up_reminder` | A Next Up widget item is due today |
+| `wallet_invited` | You're added as a collaborator on a shared wallet |
+| `merchant_health_alert` | A merchant tied to one of your items shows up as in administration/liquidation on Companies House |
+| `renewal_advanced` | A recurring item's renewal date passes and it auto-renews for the next period |
+| `budget_overspend` | A wallet with a monthly budget set goes over it for the first time that calendar month |
+
+A handful of events (`wallet_invited`, `budget_overspend`) aren't about any single item — the payload for those omits the `item` key entirely rather than sending a null placeholder, and includes wallet details in its place (see below).
 
 ## Payload
 
-Each POST sends a JSON body:
+Each POST sends a JSON body. For an item-scoped event:
 
 ```json
 {
-  "event": "item.created",
-  "timestamp": "2025-04-01T09:00:00Z",
+  "event": "item_created",
+  "timestamp": "2026-04-01T09:00:00Z",
   "item": {
-    "id": 42,
+    "id": "3f1b6b2a-...-e1c9",
     "name": "Tesco Gift Card",
     "issuer": "Tesco",
     "type": "giftcard",
+    "value": "25.00",
     "currency": "GBP",
-    "current_value": "25.00",
-    "expiry_date": "2026-01-01",
-    "barcode": "5012345678901",
-    "wallet": "Supermarkets"
+    "expiry_date": "2027-01-01",
+    "is_used": false,
+    "is_archived": false
   }
+}
+```
+
+Events with no single item (e.g. `budget_overspend`) merge in event-specific fields instead of an `item` key:
+
+```json
+{
+  "event": "budget_overspend",
+  "timestamp": "2026-04-01T09:00:00Z",
+  "wallet": { "id": 7, "name": "Supermarkets" },
+  "budget_amount": "100.00",
+  "spent": "134.50"
 }
 ```
 

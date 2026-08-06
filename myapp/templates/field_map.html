@@ -289,8 +289,9 @@ a { color: var(--accent); text-decoration: none; }
     6 fields carry a 💡 <strong>context-aware suggestion button</strong> (issuer, logo slug, wallet, discount applied, currency, code type).
     Suggestions are ranked by recency/frequency, boosted when sibling fields share the same context (e.g. same issuer),
     with automatic cross-type fallback when fewer than 3 suggestions exist for the selected type.
-    Accepted suggestions later changed before saving record a <code>ScanFieldCorrection</code> row to self-improve future rankings.</p>
-    <span class="file-ref">create-item.html / edit-item.html · ItemForm (myapp/forms.py) · field-suggest.js · views.suggest_field_options</span>
+    Accepted suggestions later changed before saving record a <code>ScanFieldCorrection</code> row to self-improve future rankings.
+    An AI Scan applies the same learned corrections automatically (exact match, then a fuzzy near-miss match, then — only if this user has never taught it personally — a pattern several other users independently taught for the same merchant), scoped by item type and merchant so a fix learned for one merchant's cards never bleeds into another's. Healed fields get a one-click <strong>Undo</strong> in the scan status chip (except cross-user-healed ones, which aren't this user's own correction to retract). See <code>myapp/scan_learning.py</code>.</p>
+    <span class="file-ref">create-item.html / edit-item.html · ItemForm (myapp/forms.py) · field-suggest.js · views.suggest_field_options · myapp/scan_learning.py</span>
   </div>
 
   <!-- Type matrix -->

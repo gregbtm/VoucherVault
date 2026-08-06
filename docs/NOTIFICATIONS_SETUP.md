@@ -7,9 +7,32 @@ VoucherVault Plus+ can push a notification when one of your items is approaching
 A notification rule defines:
 
 - **Backend** — where the alert goes (ntfy, webhook, apprise, web push, or Firefly III)
-- **Trigger** — what event to fire on: item expiring soon, already expired, or a Next Up item due today
-- **Lead time** — how many days before expiry to send the alert (the global default; individual items can override it)
+- **Trigger** — which event to fire on (see below)
+- **Lead time** — for the expiry triggers, how many days before expiry to send the alert (the global default; individual items can override it)
 - **Enabled** — a quick on/off switch without deleting the rule
+
+### Trigger events
+
+| Event | Fires when |
+|---|---|
+| Expiry Warning | An item is within the rule's lead time of its expiry date |
+| Final Expiry Warning | An item expires today |
+| Item Created | A new item is saved for the first time |
+| Item Marked Used | An item's status is toggled to Used |
+| Item Archived | An item's status is set to Archived |
+| Balance Changed | A transaction changes an item's current balance |
+| Item Shared | You share one of your items with another user |
+| Next Up Item Due Today | An item in your Next Up widget is valid today (see below) |
+| Wallet Invitation | You're added as a collaborator on a shared wallet |
+| Removed from Wallet | Your access to a shared wallet is revoked |
+| Item Shared With You | Another user shares an item with you |
+| Removed from Item | Your access to an item shared with you is revoked |
+| Unused Gift Card Reminder | A money-type item hasn't been used or viewed in a while (**Site Settings → Inactivity reminder threshold**) |
+| Merchant Health Alert | A merchant tied to one of your items shows up as in administration/liquidation on Companies House (requires a Companies House API key — see [Gift Card Health](./GIFT_CARD_HEALTH.md)) |
+| Recurring Item Renewed | A recurring item's renewal date passes and it auto-renews for the next period |
+| Wallet Budget Exceeded | A wallet with a monthly budget set goes over it for the first time that calendar month |
+
+A rule can also be marked **apply to all events** instead of picking specific ones — useful for a single "notify me about everything" ntfy topic.
 
 Celery Beat runs the check once per day. When an item's expiry date is within the rule's threshold, the backend fires and the result is logged at **Notifications → Log**.
 
