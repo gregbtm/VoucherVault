@@ -187,9 +187,46 @@
 
 [data-bs-theme="dark"] .kpi-card,
 .dark-mode .kpi-card,
-body.dark-mode .kpi-card {
+body.dark-mode .kpi-card,
+[data-bs-theme="dark"] .chart-card,
+.dark-mode .chart-card,
+body.dark-mode .chart-card,
+[data-bs-theme="dark"] .table-card,
+.dark-mode .table-card,
+body.dark-mode .table-card {
   background: var(--card-bg, #1e1e2e);
   border-color: var(--border-color, #2d2d3f);
+}
+
+[data-bs-theme="dark"] .table-card thead th,
+.dark-mode .table-card thead th,
+body.dark-mode .table-card thead th {
+  background: var(--table-head-bg, #26263a);
+  color: #8b949e;
+}
+
+/* Body text inside these cards falls back to var(--text-color, #212529)
+   and var(--text-muted, #6c757d) - neither custom property is actually
+   defined anywhere in this app's theming (only .kpi-card/.chart-card/
+   .table-card backgrounds get an explicit dark override above), so
+   without this the near-black fallback is what renders, unreadable
+   against the now-dark card background. */
+[data-bs-theme="dark"] .table-card tbody td,
+.dark-mode .table-card tbody td,
+body.dark-mode .table-card tbody td,
+[data-bs-theme="dark"] .budget-label,
+.dark-mode .budget-label,
+body.dark-mode .budget-label {
+  color: #e0e6eb;
+}
+
+[data-bs-theme="dark"] .budget-numbers,
+.dark-mode .budget-numbers,
+body.dark-mode .budget-numbers,
+[data-bs-theme="dark"] .no-data-msg,
+.dark-mode .no-data-msg,
+body.dark-mode .no-data-msg {
+  color: #8b949e;
 }
 </style>
 
@@ -332,6 +369,76 @@ body.dark-mode .kpi-card {
         </div>
       </div>
       {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Self-Healing Insights -->
+  <div class="section-header">
+    <i class="bi bi-magic"></i>
+    <h2>{% trans "Self-Healing Insights" %}</h2>
+  </div>
+  {% if self_healing_stats.corrections_taught %}
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-value">{{ self_healing_stats.corrections_taught }}</div>
+      <div class="kpi-label">{% trans "Corrections Taught" %}</div>
+    </div>
+    <div class="kpi-card success">
+      <div class="kpi-value">{{ self_healing_stats.times_healed }}</div>
+      <div class="kpi-label">{% trans "Times Healed" %}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">{{ self_healing_stats.fields_self_healing }}</div>
+      <div class="kpi-label">{% trans "Fields Self-Healing" %}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">{{ self_healing_stats.cross_user_patterns }}</div>
+      <div class="kpi-label">{% trans "Cross-User Patterns" %}</div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <div class="chart-card">
+        {% if self_healing_stats.monthly_heals|length > 0 and self_healing_stats.times_healed %}
+          <div id="selfHealChart" class="chart-inner"></div>
+        {% else %}
+          <div class="no-data-msg"><i class="bi bi-graph-up"></i>{% trans "No retroactive heals recorded yet" %}</div>
+        {% endif %}
+      </div>
+    </div>
+    <div>
+      {% if self_healing_stats.top_merchants %}
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>{% trans "Merchant" %}</th>
+              <th class="text-end">{% trans "Times Healed" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in self_healing_stats.top_merchants %}
+            <tr>
+              <td>{{ m.issuer }}</td>
+              <td class="text-end fw-semibold">{{ m.heals }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="chart-card">
+        <div class="no-data-msg"><i class="bi bi-building"></i>{% trans "No healed merchants yet" %}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="chart-card">
+    <div class="no-data-msg">
+      <i class="bi bi-magic"></i>{% trans "Correct a scanned field once and VoucherVault will remember it for next time" %}
     </div>
   </div>
   {% endif %}
@@ -488,6 +595,44 @@ body.dark-mode .kpi-card {
     window.addEventListener('resize', () => issuersChart.resize());
     document.addEventListener('darkModeChange', () => {
       issuersChart.setOption(buildIssuersOpts(isDark()));
+    });
+  }
+
+  /* --- Self-Healing retroactive heals trend --- */
+  const selfHealEl = document.getElementById('selfHealChart');
+  if (selfHealEl) {
+    const shMonths = {{ self_healing_months_json|safe }};
+    const shCounts = {{ self_healing_counts_json|safe }};
+
+    const buildSelfHealOpts = (dark) => ({
+      grid: { left: 8, right: 8, top: 24, bottom: 8, containLabel: true },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, ...commonTooltip(dark) },
+      xAxis: {
+        type: 'category',
+        data: shMonths,
+        axisLabel: { color: dark ? '#9ca3af' : '#6b7280', fontSize: 11, rotate: 30 },
+        axisLine: { lineStyle: { color: dark ? '#404040' : '#dee2e6' } }
+      },
+      yAxis: {
+        type: 'value',
+        minInterval: 1,
+        axisLabel: { color: dark ? '#9ca3af' : '#6b7280' },
+        splitLine: { lineStyle: { color: dark ? '#333' : '#f1f3f5' } }
+      },
+      series: [{
+        name: '{% trans "Retroactive heals" %}',
+        type: 'bar',
+        data: shCounts,
+        barMaxWidth: 28,
+        itemStyle: { color: '#8b5cf6', borderRadius: [4, 4, 0, 0] }
+      }]
+    });
+
+    const selfHealChart = echarts.init(selfHealEl);
+    selfHealChart.setOption(buildSelfHealOpts(isDark()));
+    window.addEventListener('resize', () => selfHealChart.resize());
+    document.addEventListener('darkModeChange', () => {
+      selfHealChart.setOption(buildSelfHealOpts(isDark()));
     });
   }
 })();

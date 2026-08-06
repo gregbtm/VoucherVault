@@ -8,7 +8,7 @@ from django.db.models import Count, Sum
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
-from .models import Item, SiteConfiguration, Transaction
+from .models import GlobalScanCorrection, Item, ItemEnrichmentLog, ScanFieldCorrection, SiteConfiguration, Transaction
 
 EXPIRING_SOON_DAYS = 7
 OTHER_WALLET_COLOR = '#9ca3af'
@@ -295,6 +295,100 @@ def get_spend_stats(user):
         'total_spent': str(total_spent),
         'monthly_spend': monthly_spend,
         'redeemed_value': str(redeemed_value),
+    }
+    cache.set(cache_key, result, 60)
+    return result
+
+
+def get_self_healing_stats(user):
+    """
+    Aggregate stats for the "Self-Healing Insights" analytics section
+    (cached for 60s, same shape as get_summary_stats/get_spend_stats):
+
+    - `corrections_taught`/`times_healed`: how many corrections this user
+      has taught (myapp.scan_learning.ScanFieldCorrection rows) and how
+      many times they've actually fired (Sum('times_applied') - see the
+      counter added for retroactive healing; this counts every heal, live
+      or retroactive, not just retroactive ones).
+    - `fields_self_healing`: distinct fields with at least one correction
+      that has actually fired at least once - "taught but never fired"
+      doesn't count as currently self-healing anything.
+    - `cross_user_patterns`: GlobalScanCorrection rows scoped to an issuer
+      this user actually has items for - patterns for merchants the user
+      has never dealt with don't benefit them, regardless of how many
+      other users taught it.
+    - `monthly_heals`: list of {'month': 'YYYY-MM', 'count': int} for the
+      last 12 calendar months (current month included), sourced from
+      ItemEnrichmentLog entries of enrichment_type='learned_correction' -
+      the retroactive-healing side specifically, since live-scan-time
+      heals aren't logged anywhere with a timestamp today. Months with no
+      heals are included as 0 so the chart always has a complete axis.
+    - `top_merchants`: up to 5 {'issuer': str, 'heals': int} entries,
+      combining this user's own per-issuer heal counts with any relevant
+      cross-user pattern's heal count for that same issuer, ordered by
+      total heals descending. Issuers with zero combined heals are
+      omitted.
+    """
+    cache_key = f'self_healing_stats:{user.id}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    personal = ScanFieldCorrection.objects.filter(user=user)
+    totals = personal.aggregate(corrections_taught=Count('id'), times_healed=Sum('times_applied'))
+    fields_self_healing = personal.filter(times_applied__gt=0).values('field').distinct().count()
+
+    user_issuers = set(
+        Item.objects.filter(user=user).exclude(issuer='').values_list('issuer', flat=True).distinct()
+    )
+    cross_user_patterns = (
+        GlobalScanCorrection.objects.filter(issuer__in=user_issuers).count() if user_issuers else 0
+    )
+
+    now = timezone.now()
+    twelve_months_ago = now - timedelta(days=365)
+    monthly_rows = (
+        ItemEnrichmentLog.objects
+        .filter(item__user=user, enrichment_type='learned_correction', created_at__gte=twelve_months_ago)
+        .annotate(month=TruncMonth('created_at'))
+        .values('month')
+        .annotate(count=Count('id'))
+        .order_by('month')
+    )
+    heals_by_month = {row['month'].strftime('%Y-%m'): row['count'] for row in monthly_rows}
+    current_year, current_month = now.year, now.month
+    monthly_heals = []
+    for i in range(11, -1, -1):
+        m = current_month - i
+        y = current_year
+        while m <= 0:
+            m += 12
+            y -= 1
+        label = f"{y:04d}-{m:02d}"
+        monthly_heals.append({'month': label, 'count': heals_by_month.get(label, 0)})
+
+    combined = {}
+    for row in personal.exclude(issuer='').values('issuer').annotate(total=Sum('times_applied')).order_by():
+        combined[row['issuer']] = combined.get(row['issuer'], 0) + (row['total'] or 0)
+    if user_issuers:
+        for row in (
+            GlobalScanCorrection.objects.filter(issuer__in=user_issuers)
+            .values('issuer').annotate(total=Sum('times_applied')).order_by()
+        ):
+            combined[row['issuer']] = combined.get(row['issuer'], 0) + (row['total'] or 0)
+    top_merchants = [
+        {'issuer': issuer, 'heals': total}
+        for issuer, total in sorted(combined.items(), key=lambda kv: -kv[1])
+        if total > 0
+    ][:5]
+
+    result = {
+        'corrections_taught': totals['corrections_taught'] or 0,
+        'times_healed': totals['times_healed'] or 0,
+        'fields_self_healing': fields_self_healing,
+        'cross_user_patterns': cross_user_patterns,
+        'monthly_heals': monthly_heals,
+        'top_merchants': top_merchants,
     }
     cache.set(cache_key, result, 60)
     return result

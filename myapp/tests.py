@@ -303,6 +303,139 @@ class SpendStatsTests(TestCase):
         self.assertEqual(stats['total_spent'], '0.00')
 
 
+class SelfHealingStatsTests(TestCase):
+    """myapp.analytics.get_self_healing_stats - the aggregate stats
+    backing the analytics page's Self-Healing Insights section."""
+
+    def setUp(self):
+        # SQLite's test-transaction rollback between tests reuses the same
+        # auto-incremented user id, so two different tests' users can share
+        # a cache key (self_healing_stats:<id>) against the process-wide
+        # LocMemCache the test settings swap in - clearing it up front keeps
+        # each test's result independent of whatever an earlier test cached.
+        from django.core.cache import cache
+        cache.clear()
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def test_no_data_returns_zeros(self):
+        from .analytics import get_self_healing_stats
+        stats = get_self_healing_stats(self.user)
+        self.assertEqual(stats['corrections_taught'], 0)
+        self.assertEqual(stats['times_healed'], 0)
+        self.assertEqual(stats['fields_self_healing'], 0)
+        self.assertEqual(stats['cross_user_patterns'], 0)
+        self.assertEqual(len(stats['monthly_heals']), 12)
+        self.assertEqual(stats['top_merchants'], [])
+
+    def test_corrections_taught_and_times_healed(self):
+        from .analytics import get_self_healing_stats
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', issuer='Merchant A', field='issuer',
+            ai_value='Merchan A', corrected_value='Merchant A', times_applied=3,
+        )
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', issuer='Merchant B', field='currency',
+            ai_value='GBP', corrected_value='EUR', times_applied=2,
+        )
+        stats = get_self_healing_stats(self.user)
+        self.assertEqual(stats['corrections_taught'], 2)
+        self.assertEqual(stats['times_healed'], 5)
+
+    def test_fields_self_healing_excludes_never_fired_corrections(self):
+        from .analytics import get_self_healing_stats
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', issuer='Merchant A', field='issuer',
+            ai_value='Merchan A', corrected_value='Merchant A', times_applied=1,
+        )
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', issuer='Merchant B', field='currency',
+            ai_value='GBP', corrected_value='EUR', times_applied=0,
+        )
+        stats = get_self_healing_stats(self.user)
+        self.assertEqual(stats['fields_self_healing'], 1)
+
+    def test_cross_user_patterns_scoped_to_the_users_own_issuers(self):
+        from .analytics import get_self_healing_stats
+        make_item(self.user, issuer='Merchant A', redeem_code='I1')
+        GlobalScanCorrection.objects.create(
+            item_type='giftcard', issuer='Merchant A', field='code_type',
+            ai_value='qrcode', corrected_value='azteccode', confirmed_by_users=3,
+        )
+        GlobalScanCorrection.objects.create(
+            item_type='giftcard', issuer='Merchant Z', field='code_type',
+            ai_value='qrcode', corrected_value='datamatrix', confirmed_by_users=3,
+        )
+        stats = get_self_healing_stats(self.user)
+        self.assertEqual(stats['cross_user_patterns'], 1)
+
+    def test_monthly_heals_reflects_retroactive_correction_logs(self):
+        from .analytics import get_self_healing_stats
+        item = make_item(self.user, issuer='Merchant A')
+        ItemEnrichmentLog.objects.create(
+            item=item, enrichment_run_id='11111111-1111-1111-1111-111111111111',
+            field_name='issuer', old_value='Merchan A', new_value='Merchant A',
+            enrichment_type='learned_correction', confidence_score=Decimal('0.9'),
+        )
+        # A different enrichment_type must not be counted here.
+        ItemEnrichmentLog.objects.create(
+            item=item, enrichment_run_id='22222222-2222-2222-2222-222222222222',
+            field_name='notes', old_value='a', new_value='b',
+            enrichment_type='validation', confidence_score=Decimal('0.9'),
+        )
+        stats = get_self_healing_stats(self.user)
+        current_month = timezone.now().strftime('%Y-%m')
+        current_entry = next(e for e in stats['monthly_heals'] if e['month'] == current_month)
+        self.assertEqual(current_entry['count'], 1)
+
+    def test_top_merchants_combines_personal_and_relevant_global_totals(self):
+        from .analytics import get_self_healing_stats
+        make_item(self.user, issuer='Merchant A', redeem_code='I2')
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', issuer='Merchant A', field='issuer',
+            ai_value='Merchan A', corrected_value='Merchant A', times_applied=2,
+        )
+        GlobalScanCorrection.objects.create(
+            item_type='giftcard', issuer='Merchant A', field='code_type',
+            ai_value='qrcode', corrected_value='azteccode', confirmed_by_users=3, times_applied=1,
+        )
+        stats = get_self_healing_stats(self.user)
+        self.assertEqual(stats['top_merchants'], [{'issuer': 'Merchant A', 'heals': 3}])
+
+    def test_zero_heal_merchants_are_omitted_from_top_merchants(self):
+        from .analytics import get_self_healing_stats
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', issuer='Merchant A', field='issuer',
+            ai_value='Merchan A', corrected_value='Merchant A', times_applied=0,
+        )
+        stats = get_self_healing_stats(self.user)
+        self.assertEqual(stats['top_merchants'], [])
+
+    def test_other_users_corrections_excluded(self):
+        from .analytics import get_self_healing_stats
+        bob = User.objects.create_user(username='bob', password='pw12345!')
+        ScanFieldCorrection.objects.create(
+            user=bob, item_type='giftcard', issuer='Merchant A', field='issuer',
+            ai_value='Merchan A', corrected_value='Merchant A', times_applied=5,
+        )
+        stats = get_self_healing_stats(self.user)
+        self.assertEqual(stats['corrections_taught'], 0)
+        self.assertEqual(stats['times_healed'], 0)
+
+    def test_result_is_cached(self):
+        from .analytics import get_self_healing_stats
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', issuer='Merchant A', field='issuer',
+            ai_value='Merchan A', corrected_value='Merchant A', times_applied=1,
+        )
+        first = get_self_healing_stats(self.user)
+        ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', issuer='Merchant B', field='currency',
+            ai_value='GBP', corrected_value='EUR', times_applied=1,
+        )
+        second = get_self_healing_stats(self.user)
+        self.assertEqual(first, second)
+
+
 class DefaultCurrencyTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='alice', password='pw12345!')
@@ -6735,6 +6868,11 @@ class NearbyItemsViewTests(TestCase):
 
 class AnalyticsViewTests(TestCase):
     def setUp(self):
+        # See SelfHealingStatsTests.setUp for why: the view now calls the
+        # cached get_self_healing_stats(), so it's subject to the same
+        # cross-test LocMemCache-key-reuse risk from SQLite id reuse.
+        from django.core.cache import cache
+        cache.clear()
         self.alice = User.objects.create_user(username='alice_an', password='pw12345!')
         self.bob = User.objects.create_user(username='bob_an', password='pw12345!')
         self.client.force_login(self.alice)
@@ -6804,6 +6942,36 @@ class AnalyticsViewTests(TestCase):
                     'value_by_type_json', 'top_issuers_json'):
             self.assertIn(key, response.context)
             json.loads(response.context[key])  # must be valid JSON
+
+    def test_self_healing_stats_in_context(self):
+        response = self._get()
+        self.assertIn('self_healing_stats', response.context)
+        self.assertEqual(response.context['self_healing_stats']['corrections_taught'], 0)
+        for key in ('self_healing_months_json', 'self_healing_counts_json',
+                    'self_healing_top_merchants_json'):
+            self.assertIn(key, response.context)
+            json.loads(response.context[key])  # must be valid JSON
+
+    def test_self_healing_section_renders_kpis_when_data_exists(self):
+        ScanFieldCorrection.objects.create(
+            user=self.alice, item_type='giftcard', issuer='Merchant A', field='issuer',
+            ai_value='Merchan A', corrected_value='Merchant A', times_applied=2,
+        )
+        response = self._get()
+        self.assertContains(response, 'Self-Healing Insights')
+        self.assertContains(response, 'Corrections Taught')
+
+    def test_self_healing_section_shows_no_data_message_when_empty(self):
+        response = self._get()
+        self.assertContains(response, 'Correct a scanned field once')
+
+    def test_self_healing_stats_scoped_to_the_logged_in_user(self):
+        ScanFieldCorrection.objects.create(
+            user=self.bob, item_type='giftcard', issuer='Merchant A', field='issuer',
+            ai_value='Merchan A', corrected_value='Merchant A', times_applied=5,
+        )
+        response = self._get()
+        self.assertEqual(response.context['self_healing_stats']['corrections_taught'], 0)
 
 
 # ── Phase C/D/E/F Tests ─────────────────────────────────────────────────────
