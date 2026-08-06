@@ -163,6 +163,12 @@ class Command(BaseCommand):
             # GlobalScanCorrection and alerts via security_alert_ntfy_topic;
             # a no-op unless a pattern actually crosses the threshold.
             {'name': 'Systemic Misread Detection', 'task': 'myapp.tasks.detect_systemic_misreads_task', 'crontab': weekly_schedule, 'enabled': True},
+            # Weekly sweep for learned corrections that haven't healed a
+            # live scan in over a year - see
+            # myapp.scan_learning.find_stale_corrections. Never deletes
+            # anything; alerts via security_alert_ntfy_topic. A no-op
+            # unless a correction actually crosses the staleness threshold.
+            {'name': 'Correction Staleness Detection', 'task': 'myapp.tasks.flag_stale_corrections_task', 'crontab': weekly_schedule, 'enabled': True},
         ]
 
         for task_data in tasks:

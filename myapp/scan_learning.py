@@ -34,6 +34,7 @@ excluded - "corrections" there are just data entry, not a pattern.
 """
 
 import logging
+from datetime import timedelta
 
 from django.db.models import Case, Count, F, IntegerField, Q, Value, When
 from django.utils import timezone
@@ -174,6 +175,14 @@ FUZZY_MATCH_MIN_SEEN = 2
 # independently-arrived-at identical corrections for the same merchant is
 # a much stronger signal of a shared vision-model quirk.
 SYSTEMIC_MISREAD_MIN_USERS = 3
+
+# How long a correction can go without healing a live scan before
+# find_stale_corrections() surfaces it for an admin to judge - long enough
+# that a merchant simply not being scanned for a season isn't noise, short
+# enough that a correction whose merchant genuinely changed its card
+# layout (making the correction actively wrong) doesn't sit silently
+# unnoticed for years.
+STALE_CORRECTION_THRESHOLD_DAYS = 365
 
 _MAX_VALUE_LENGTH = 255
 
@@ -576,6 +585,12 @@ def apply_learned_corrections(user, result: dict, originals: dict = None) -> lis
             model_cls = GlobalScanCorrection if source_kind == 'global' else ScanFieldCorrection
             model_cls.objects.filter(pk=best.pk).update(
                 times_applied=F('times_applied') + 1, last_applied_at=timezone.now(),
+                # A heal firing again means any prior staleness alert no
+                # longer describes reality - clearing it lets a future
+                # dry spell be reported as a genuinely new episode
+                # instead of staying silently suppressed forever (see
+                # find_stale_corrections).
+                stale_alerted_at=None,
             )
             result[field] = best.corrected_value
             healed.append(field)
@@ -716,3 +731,51 @@ def detect_systemic_misreads() -> list:
     except Exception:
         logger.warning('Failed to detect systemic misreads', exc_info=True)
     return newly_promoted
+
+
+def find_stale_corrections():
+    """
+    Read-only sweep (see myapp.tasks.flag_stale_corrections_task) for
+    corrections that haven't healed anything in over
+    STALE_CORRECTION_THRESHOLD_DAYS - either the merchant changed its
+    card layout (the correction may now be actively wrong) or the user
+    simply stopped seeing that merchant (harmless, but noise); either way
+    worth a human's judgment rather than a guess.
+
+    Neither model has a true creation timestamp, so "never fired and
+    hasn't had a chance to prove itself yet" is approximated with the
+    closest existing field: ScanFieldCorrection.updated_at (set on
+    creation, refreshed only when a user re-teaches it - see
+    apply_learned_corrections' use of .update() to avoid touching it on
+    every heal) for personal corrections, and GlobalScanCorrection.
+    promoted_at (refreshed weekly by detect_systemic_misreads() only
+    while a pattern still meets quorum, so it freezes once support for a
+    pattern erodes) for cross-user ones.
+
+    Only returns rows with stale_alerted_at still null - already-reported
+    rows aren't returned again on a later sweep unless they heal and go
+    stale a second time (apply_learned_corrections clears
+    stale_alerted_at whenever a heal actually fires), matching
+    detect_systemic_misreads_task's "only alert on what's new" precedent.
+    Never mutates state itself - the caller marks rows as alerted only
+    once it has actually delivered the alert.
+    """
+    cutoff = timezone.now() - timedelta(days=STALE_CORRECTION_THRESHOLD_DAYS)
+    try:
+        personal = list(
+            ScanFieldCorrection.objects.filter(stale_alerted_at__isnull=True)
+            .filter(Q(last_applied_at__lt=cutoff) | Q(last_applied_at__isnull=True, updated_at__lt=cutoff))
+            .select_related('user')
+        )
+    except Exception:
+        logger.warning('Failed to query stale personal corrections', exc_info=True)
+        personal = []
+    try:
+        global_rows = list(
+            GlobalScanCorrection.objects.filter(stale_alerted_at__isnull=True)
+            .filter(Q(last_applied_at__lt=cutoff) | Q(last_applied_at__isnull=True, promoted_at__lt=cutoff))
+        )
+    except Exception:
+        logger.warning('Failed to query stale global corrections', exc_info=True)
+        global_rows = []
+    return personal, global_rows
