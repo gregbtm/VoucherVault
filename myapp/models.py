@@ -662,8 +662,9 @@ class ScanFieldCorrection(models.Model):
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='scan')
     enrichment_method = models.CharField(
         max_length=50, blank=True, default='',
-        help_text="Which enrichment method (ocr_rescan/validation/merchant_lookup/auto_enrich) "
-                   "produced the corrected-away value, if source='enrichment'.",
+        help_text="Which enrichment method (ocr_rescan/validation/merchant_lookup/"
+                   "auto_enrich/learned_correction) produced the corrected-away value, "
+                   "if source='enrichment'.",
     )
 
     class Meta:
@@ -1562,6 +1563,7 @@ class ItemEnrichmentLog(models.Model):
         ('merchant_lookup', 'Merchant Lookup - Matched against merchant database'),
         ('validation', 'Validation - Normalized/corrected field values'),
         ('auto_enrich', 'Auto Enrichment - Populated from enrichment pipeline'),
+        ('learned_correction', 'Retroactive Correction - Healed using an already-known correction'),
         ('flagged', 'Flagged for Review - Suspicious value noted, not auto-changed'),
     )
 
@@ -1622,6 +1624,7 @@ class EnrichmentConfig(models.Model):
         ('ocr', 'OCR Rescan - Extract from attached documents'),
         ('validation', 'Validation & Normalization - Correct existing data'),
         ('merchant_lookup', 'Merchant Lookup - Infer from similar items'),
+        ('learned_correction', 'Retroactive Correction Sweep - Apply already-known corrections to existing items'),
     )
 
     SCHEDULE_CHOICES = (

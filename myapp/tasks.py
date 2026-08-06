@@ -556,6 +556,8 @@ def queue_item_enrichment(self, item_id, run_id, method, auto_apply=False):
             result = enricher.validate_and_normalize(item, run.confidence_threshold)
         elif method == 'merchant_lookup':
             result = enricher.enrich_from_merchant_lookup(item, run.confidence_threshold)
+        elif method == 'learned_correction':
+            result = enricher.enrich_from_learned_corrections(item, run.confidence_threshold)
 
         if result is None:
             raise ValueError(f"Unknown enrichment method: {method}")
