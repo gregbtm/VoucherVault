@@ -37,9 +37,19 @@ Six fields carry a **💡 suggestion button** powered by `views.suggest_field_op
 When a suggestion is accepted, a hidden `_sg_suggested_FIELD` input is injected into the form. On save, the server diffs the accepted value against what was actually saved:
 
 - If the user **kept** the suggestion → any stale `ScanFieldCorrection` row for that suggestion is deleted (the suggestion was correct, no correction needed).
-- If the user **changed** it → a `ScanFieldCorrection` row is upserted (`user`, `item_type`, `field`, `ai_value`, `corrected_value`, `times_seen`) so the system learns from the correction.
+- If the user **changed** it → a `ScanFieldCorrection` row is upserted (`user`, `item_type`, `issuer`, `field`, `ai_value`, `corrected_value`, `times_seen`) so the system learns from the correction.
 
 Implementation: `_record_suggestion_feedback` in `myapp/views.py`, called after `_record_scan_learning` in both `create_item` and `edit_item`.
+
+**Applying what it's learned to the next AI Scan:**
+
+`apply_learned_corrections` (`myapp/scan_learning.py`) runs server-side right after a photo scan comes back, before the frontend ever sees the result. It swaps in a remembered correction for any field whose scanned value matches a misreading this user has taught before, and the AI Scan status area shows a "Learned from your past corrections" chip listing which fields were adjusted. Match order, most to least specific:
+
+1. **Exact match**, scoped to the item type and — if the scan detected a merchant name — the issuer, so a correction taught for one merchant's cards never bleeds into a different merchant's scans that happen to produce the same misreading. A correction taught before merchant-scoping existed (blank issuer) still replays for any merchant, as a fallback.
+2. **Fuzzy match** — a different typo of an already-taught misreading (edit-distance ≤ 2, seen at least twice) heals too, not just an exact repeat.
+3. **Cross-user pattern** — only as a last resort, and only if this user has never personally taught the correction: when three or more different users have independently taught the identical merchant/field misreading, it's promoted to a shared pattern (`GlobalScanCorrection`) that heals for everyone, on the theory that it's a systemic AI misreading for that merchant rather than one person's preference. Visible to admins under **Django Admin → Global Scan Corrections**; a weekly Celery task (`detect_systemic_misreads_task`) does the promoting and can alert a configured ntfy topic when a new pattern appears.
+
+Each healed field in the chip has an **Undo** button that reverts it to what the AI actually read and retracts the correction that caused it — except a cross-user-healed field, since that isn't this user's own correction to retract with one click.
 
 ---
 
@@ -187,3 +197,4 @@ Backend selector (`apprise` / `firefly` / `ntfy` / `webhook` / `webpush`) drives
 | Wallet | `manage-wallets.html` | Collaborator sub-form only on edit (not create) |
 | Tag | `manage-tags.html` | None |
 | Import | `imports/upload.html` | None |
+| Item Comment | `view-item.html` | Single `body` textarea; shown to owner and anyone the item is shared with |
