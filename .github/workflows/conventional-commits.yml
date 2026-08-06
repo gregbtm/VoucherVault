@@ -281,9 +281,23 @@ jobs:
         # push → github.event.before..github.sha; PR → base.sha..head.sha.
         # Passing base: default_branch caused base==head on a push to main
         # (both resolve to the merge commit), which TruffleHog rejects.
+        #
+        # --exclude-detectors=Lob: Lob (a postal-mail API this app has no
+        # relationship with) uses `test_<identifier>`-shaped API keys, which
+        # collides with ordinary Python test method names - any test_* name
+        # can satisfy that shape. Confirmed false positive by reproducing
+        # locally (trufflehog --results=unverified,filtered_unverified):
+        # the "verified secret" was literally the Django test method name
+        # test_corrections_taught_and_times_healed from myapp/tests.py,
+        # which Lob's sandbox verification endpoint inconsistently reports
+        # as a valid key. Since every Django test method is required to
+        # start with test_, this is a recurring false-positive class, not a
+        # one-off - excluding the single irrelevant detector rather than
+        # excluding whole files/paths (which would also blind real-secret
+        # detection in those files).
         uses: trufflesecurity/trufflehog@main
         with:
-          extra_args: --only-verified
+          extra_args: --only-verified --exclude-detectors=Lob
 
   trivy:
     # OWASP A05 (Security Misconfiguration) / NCSC Principle 4 (secure deployment infrastructure).
