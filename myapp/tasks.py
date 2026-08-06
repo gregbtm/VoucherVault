@@ -667,7 +667,19 @@ def finalize_enrichment_run(run_id):
             run.status = 'completed'
 
         run.save()
-        _log.info(f"Finalized run {run_id.hex[:8]}: {run.successful_items}/{run.total_items} items, {run.total_changes} changes")
+        # run.id.hex, not run_id.hex - every real caller passes run_id as a
+        # str (see run_scheduled_enrichment/check_and_finalize_run), which
+        # has no .hex attribute; run.id is always the actual UUID fetched
+        # above regardless of what type run_id arrived as. This previously
+        # meant every real finalize silently fell through to the except
+        # block below right after this line - the run's own status/stats
+        # were already saved and correct, but nothing after this line
+        # (including the notify hook below) ever ran.
+        _log.info(f"Finalized run {run.id.hex[:8]}: {run.successful_items}/{run.total_items} items, {run.total_changes} changes")
+
+        if run.method == 'learned_correction' and run.status == 'completed':
+            from notify.tasks import notify_retroactive_corrections_applied
+            notify_retroactive_corrections_applied(run)
 
     except EnrichmentRun.DoesNotExist:
         _log.error(f"Enrichment run {run_id} not found")

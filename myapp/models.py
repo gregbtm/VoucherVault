@@ -1108,6 +1108,7 @@ class UserWebhook(models.Model):
         ('merchant_health_alert', 'Merchant Health Alert'),
         ('renewal_advanced', 'Recurring Item Renewed'),
         ('budget_overspend', 'Wallet Budget Exceeded'),
+        ('retroactive_correction_applied', 'Retroactive Correction Applied'),
     ]
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='webhooks')
     name = models.CharField(max_length=100)

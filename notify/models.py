@@ -38,6 +38,7 @@ class NotificationRule(models.Model):
         ('merchant_health_alert', 'Merchant Health Alert'),
         ('renewal_advanced', 'Recurring Item Renewed'),
         ('budget_overspend', 'Wallet Budget Exceeded'),
+        ('retroactive_correction_applied', 'Retroactive Correction Applied'),
     ]
     DIGEST_FREQUENCY_CHOICES = [
         ('immediate', 'Immediate'),

@@ -8,9 +8,67 @@ from django.utils import timezone
 
 from myapp.models import EnrichmentRun, EnrichmentRunItem, Item, SiteConfiguration
 from myapp.tasks import (
-    check_and_finalize_run, enrichment_run_watchdog_task,
+    check_and_finalize_run, enrichment_run_watchdog_task, finalize_enrichment_run,
     MAX_FINALIZE_ATTEMPTS, RETRY_MISSING_ITEMS_AT_ATTEMPT,
 )
+
+
+class FinalizeEnrichmentRunTests(TestCase):
+    """
+    finalize_enrichment_run itself - previously untested despite being the
+    function every enrichment run passes through exactly once.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user('finalizeuser', 'fin@example.com', 'password123')
+
+    def _create_run(self, **kwargs):
+        defaults = {'method': 'validation', 'status': 'in_progress'}
+        defaults.update(kwargs)
+        return EnrichmentRun.objects.create(**defaults)
+
+    def _create_item(self, **kwargs):
+        defaults = {
+            'user': self.user, 'name': 'Test Item', 'type': 'giftcard',
+            'redeem_code': 'TEST123', 'issuer': 'Test Issuer',
+            'expiry_date': timezone.now().date(), 'value': Decimal('10.00'),
+        }
+        defaults.update(kwargs)
+        return Item.objects.create(**defaults)
+
+    def test_completes_successfully_when_given_a_string_run_id(self):
+        """
+        Regression test: every real caller (run_scheduled_enrichment,
+        check_and_finalize_run) invokes this with run_id as a str - the
+        old `run_id.hex[:8]` in the success log crashed on that (str has
+        no .hex), silently routing every real finalize through the
+        except-Exception branch right after run.save() had already
+        succeeded. The run's own status/stats came out correct regardless
+        - this test is about the crash itself, not a stats regression.
+        """
+        from myapp.models import EnrichmentConfig
+        EnrichmentConfig.objects.update_or_create(method='validation', defaults={'auto_apply': False})
+        run = self._create_run()
+        item = self._create_item()
+        EnrichmentRunItem.objects.create(run=run, item=item, success=True, changes_proposed=1)
+
+        finalize_enrichment_run(str(run.id))
+
+        run.refresh_from_db()
+        self.assertEqual(run.status, 'pending_approval')
+        self.assertEqual(run.total_items, 1)
+
+    def test_status_is_completed_when_auto_apply_is_enabled(self):
+        from myapp.models import EnrichmentConfig
+        EnrichmentConfig.objects.update_or_create(method='validation', defaults={'auto_apply': True})
+        run = self._create_run()
+        item = self._create_item()
+        EnrichmentRunItem.objects.create(run=run, item=item, success=True, changes_applied=1)
+
+        finalize_enrichment_run(str(run.id))
+
+        run.refresh_from_db()
+        self.assertEqual(run.status, 'completed')
 
 
 class CheckAndFinalizeRunTestCase(TestCase):

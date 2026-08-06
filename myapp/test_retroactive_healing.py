@@ -1,5 +1,6 @@
 from decimal import Decimal
 from datetime import date
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.contrib.auth.models import User
@@ -10,6 +11,7 @@ from myapp.models import (
 )
 from myapp.scan_learning import find_retroactive_heal_candidates, RETROACTIVE_HEAL_FIELDS
 from myapp.services.enrichment import ItemEnricher
+from myapp.tasks import finalize_enrichment_run
 
 
 class FindRetroactiveHealCandidatesTests(TestCase):
@@ -289,3 +291,59 @@ class QueueItemEnrichmentLearnedCorrectionTests(TestCase):
         self.assertEqual(run_item.changes_proposed, 1)
         self.assertEqual(run_item.changes_applied, 0)
         self.assertEqual(run_item.preview_data['changes'][0]['field_name'], 'issuer')
+
+
+class FinalizeEnrichmentRunNotifiesOnLearnedCorrectionTests(TestCase):
+    """
+    finalize_enrichment_run's call into notify.tasks.
+    notify_retroactive_corrections_applied - only for a completed
+    'learned_correction' run, never for pending_approval or any other
+    method (see myapp/test_retroactive_healing.py's PR 2 tests and
+    notify/tests.py's RetroactiveCorrectionsAppliedNotificationTests for
+    the notifier's own behavior).
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+
+    def _create_item(self, **kwargs):
+        defaults = dict(
+            user=self.user, name='Test Item', type='travelpass', redeem_code='TEST123',
+            issuer='National Rail', expiry_date=date(2030, 12, 31), value=Decimal('50.00'),
+        )
+        defaults.update(kwargs)
+        return Item.objects.create(**defaults)
+
+    @patch('notify.tasks.notify_retroactive_corrections_applied')
+    def test_notifies_when_a_learned_correction_run_completes(self, mock_notify):
+        EnrichmentConfig.objects.update_or_create(method='learned_correction', defaults={'auto_apply': True})
+        item = self._create_item()
+        run = EnrichmentRun.objects.create(method='learned_correction')
+        EnrichmentRunItem.objects.create(run=run, item=item, success=True, changes_applied=1)
+
+        finalize_enrichment_run(str(run.id))
+
+        mock_notify.assert_called_once()
+        self.assertEqual(mock_notify.call_args[0][0].id, run.id)
+
+    @patch('notify.tasks.notify_retroactive_corrections_applied')
+    def test_does_not_notify_for_a_pending_approval_run(self, mock_notify):
+        EnrichmentConfig.objects.update_or_create(method='learned_correction', defaults={'auto_apply': False})
+        item = self._create_item()
+        run = EnrichmentRun.objects.create(method='learned_correction')
+        EnrichmentRunItem.objects.create(run=run, item=item, success=True, changes_proposed=1)
+
+        finalize_enrichment_run(str(run.id))
+
+        mock_notify.assert_not_called()
+
+    @patch('notify.tasks.notify_retroactive_corrections_applied')
+    def test_does_not_notify_for_a_different_method(self, mock_notify):
+        EnrichmentConfig.objects.update_or_create(method='validation', defaults={'auto_apply': True})
+        item = self._create_item()
+        run = EnrichmentRun.objects.create(method='validation')
+        EnrichmentRunItem.objects.create(run=run, item=item, success=True, changes_applied=1)
+
+        finalize_enrichment_run(str(run.id))
+
+        mock_notify.assert_not_called()
