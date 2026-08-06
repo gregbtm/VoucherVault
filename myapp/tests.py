@@ -1315,6 +1315,54 @@ class ScanLearningTests(TestCase):
         self.assertEqual(healed, ['issuer'])
         self.assertEqual(originals['issuer']['correction_id'], correction.pk)
 
+    def test_apply_bumps_times_applied_and_last_applied_at_on_exact_match(self):
+        correction = ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail',
+        )
+        stale_updated_at = correction.updated_at
+        result = {'issuer': 'Nationl Rail', 'type': 'travelpass'}
+        apply_learned_corrections(self.user, result)
+        correction.refresh_from_db()
+        self.assertEqual(correction.times_applied, 1)
+        self.assertIsNotNone(correction.last_applied_at)
+        # .update() bypasses auto_now - times_applied/last_applied_at track
+        # when a heal *fires*, not when the mapping was last *taught*.
+        self.assertEqual(correction.updated_at, stale_updated_at)
+
+    def test_apply_bumps_times_applied_again_on_a_second_heal(self):
+        correction = ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail',
+        )
+        result = {'issuer': 'Nationl Rail', 'type': 'travelpass'}
+        apply_learned_corrections(self.user, dict(result))
+        apply_learned_corrections(self.user, dict(result))
+        correction.refresh_from_db()
+        self.assertEqual(correction.times_applied, 2)
+
+    def test_apply_bumps_times_applied_on_a_fuzzy_match(self):
+        correction = ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', field='issuer',
+            ai_value='Kwikfip', corrected_value='Right Answer', times_seen=2,
+        )
+        result = {'issuer': 'Kwikfit', 'type': 'giftcard'}
+        apply_learned_corrections(self.user, result)
+        correction.refresh_from_db()
+        self.assertEqual(correction.times_applied, 1)
+        self.assertIsNotNone(correction.last_applied_at)
+
+    def test_apply_does_not_bump_times_applied_for_an_unhealed_field(self):
+        correction = ScanFieldCorrection.objects.create(
+            user=self.user, item_type='travelpass', field='issuer',
+            ai_value='Nationl Rail', corrected_value='National Rail',
+        )
+        result = {'issuer': 'Some Other Merchant', 'type': 'travelpass'}
+        apply_learned_corrections(self.user, result)
+        correction.refresh_from_db()
+        self.assertEqual(correction.times_applied, 0)
+        self.assertIsNone(correction.last_applied_at)
+
     def test_retract_deletes_the_correction(self):
         correction = ScanFieldCorrection.objects.create(
             user=self.user, item_type='travelpass', field='issuer',
@@ -1470,6 +1518,22 @@ class SystemicMisreadDetectionTests(TestCase):
         healed = apply_learned_corrections(self.dave, result, originals=originals)
         self.assertEqual(healed, ['code_type'])
         self.assertEqual(originals, {})
+
+    def test_global_heal_bumps_the_global_patterns_times_applied(self):
+        self._teach(self.alice)
+        self._teach(self.bob)
+        self._teach(self.carol)
+        detect_systemic_misreads()
+        pattern = GlobalScanCorrection.objects.get()
+        stale_promoted_at = pattern.promoted_at
+        result = {'code_type': 'qrcode', 'type': 'giftcard', 'issuer': 'Merchant A'}
+        apply_learned_corrections(self.dave, result)
+        pattern.refresh_from_db()
+        self.assertEqual(pattern.times_applied, 1)
+        self.assertIsNotNone(pattern.last_applied_at)
+        self.assertEqual(pattern.promoted_at, stale_promoted_at)
+        # A global heal never touches any user's own ScanFieldCorrection row.
+        self.assertFalse(ScanFieldCorrection.objects.filter(user=self.dave).exists())
 
 
 class NoBarcodeCodeTypeTests(TestCase):

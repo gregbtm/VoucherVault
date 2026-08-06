@@ -266,12 +266,12 @@ class ScanFieldCorrectionAdmin(admin.ModelAdmin):
     """
     list_display = (
         'user', 'item_type', 'issuer', 'field', 'ai_value_display', 'corrected_value',
-        'times_seen', 'source', 'enrichment_method', 'updated_at',
+        'times_seen', 'times_applied', 'last_applied_at', 'source', 'enrichment_method', 'updated_at',
     )
     list_filter = ('source', 'field', 'item_type')
     search_fields = ('user__username', 'issuer', 'ai_value', 'corrected_value')
     autocomplete_fields = ('user',)
-    ordering = ('-updated_at',)
+    ordering = ('-times_applied', '-updated_at')
 
     def ai_value_display(self, obj):
         return obj.ai_value or '(blank)'
@@ -290,11 +290,14 @@ class GlobalScanCorrectionAdmin(admin.ModelAdmin):
     conclusion from real ScanFieldCorrection data, never as something an
     admin types in directly.
     """
-    list_display = ('issuer', 'item_type', 'field', 'ai_value', 'corrected_value', 'confirmed_by_users', 'promoted_at')
+    list_display = (
+        'issuer', 'item_type', 'field', 'ai_value', 'corrected_value',
+        'confirmed_by_users', 'times_applied', 'last_applied_at', 'promoted_at',
+    )
     list_filter = ('field', 'item_type')
     search_fields = ('issuer', 'ai_value', 'corrected_value')
     readonly_fields = [f.name for f in GlobalScanCorrection._meta.fields]
-    ordering = ('-confirmed_by_users', '-promoted_at')
+    ordering = ('-times_applied', '-confirmed_by_users', '-promoted_at')
 
     def has_add_permission(self, request):
         return False

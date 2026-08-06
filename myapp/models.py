@@ -646,6 +646,18 @@ class ScanFieldCorrection(models.Model):
     ai_value = models.CharField(max_length=255, blank=True, default='')
     corrected_value = models.CharField(max_length=255)
     times_seen = models.PositiveIntegerField(default=1)
+    times_applied = models.PositiveIntegerField(
+        default=0,
+        help_text="How many times this correction has actually healed a live scan "
+                   "(see apply_learned_corrections) - distinct from times_seen, which "
+                   "counts how often the user re-taught it at save time, not how often "
+                   "it's fired at scan time.",
+    )
+    last_applied_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When this correction last healed a live scan. Never set means it's "
+                   "been taught but never actually fired yet.",
+    )
     updated_at = models.DateTimeField(auto_now=True)
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='scan')
     enrichment_method = models.CharField(
@@ -696,6 +708,17 @@ class GlobalScanCorrection(models.Model):
         default=0,
         help_text="How many distinct users' own corrections agreed on this mapping "
                    "the last time detect_systemic_misreads() ran.",
+    )
+    times_applied = models.PositiveIntegerField(
+        default=0,
+        help_text="How many times this cross-user pattern has actually healed a live "
+                   "scan for someone who'd never taught it personally (see "
+                   "apply_learned_corrections).",
+    )
+    last_applied_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When this pattern last healed a live scan. Never set means it's "
+                   "been promoted but never actually fired yet.",
     )
     promoted_at = models.DateTimeField(auto_now=True)
 
