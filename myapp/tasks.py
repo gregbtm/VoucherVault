@@ -276,6 +276,73 @@ def detect_systemic_misreads_task():
 
 
 @shared_task
+def flag_stale_corrections_task():
+    """
+    Weekly sweep: surfaces learned corrections that haven't healed a live
+    scan in over a year (see myapp.scan_learning.find_stale_corrections) -
+    either the merchant changed its card layout (the correction may now
+    be actively wrong) or the user simply stopped seeing that merchant
+    (harmless, but noise). Never deletes or excludes stale rows
+    automatically - surfacing for a human to judge, matching this
+    feature's conservative-by-default posture throughout.
+
+    Rows are only marked as alerted (stopping them from being re-reported
+    every week) once an alert has actually been attempted - if no ntfy
+    topic is configured, nothing is marked, so configuring one later
+    still picks up everything that was stale all along.
+    """
+    import logging
+    import requests as _requests
+    from .models import GlobalScanCorrection, ScanFieldCorrection, SiteConfiguration
+    from .scan_learning import find_stale_corrections
+
+    _log = logging.getLogger(__name__)
+    personal, global_rows = find_stale_corrections()
+    if not personal and not global_rows:
+        return
+
+    config = SiteConfiguration.load()
+    topic = config.security_alert_ntfy_topic.strip()
+    if not topic:
+        return
+
+    lines = [
+        f"- {c.user.username}: {c.issuer or '(any merchant)'} ({c.item_type}) {c.field}: "
+        f"{c.ai_value!r} -> {c.corrected_value!r} (taught {c.times_seen}x, fired {c.times_applied}x)"
+        for c in personal
+    ] + [
+        f"- [cross-user] {c.issuer} ({c.item_type}) {c.field}: {c.ai_value!r} -> {c.corrected_value!r} "
+        f"(confirmed by {c.confirmed_by_users} users, fired {c.times_applied}x)"
+        for c in global_rows
+    ]
+    server = (config.ntfy_default_server or 'https://ntfy.sh').rstrip('/')
+    try:
+        _requests.post(
+            f'{server}/{topic}',
+            data=(
+                f"{len(personal) + len(global_rows)} learned correction(s) haven't healed "
+                f"anything in over a year - the merchant may have changed, or it may just "
+                f"no longer be relevant:\n" + '\n'.join(lines)
+            ).encode('utf-8'),
+            headers={
+                'Title': 'VoucherVault Stale Corrections'.encode('utf-8'),
+                'Priority': 'default',
+                'Tags': 'hourglass',
+            },
+            timeout=10,
+        )
+        _log.warning('Stale correction alert sent: %d row(s).', len(personal) + len(global_rows))
+    except Exception as exc:
+        _log.warning('Failed to send stale correction alert: %s', exc)
+    finally:
+        now = timezone.now()
+        if personal:
+            ScanFieldCorrection.objects.filter(pk__in=[c.pk for c in personal]).update(stale_alerted_at=now)
+        if global_rows:
+            GlobalScanCorrection.objects.filter(pk__in=[c.pk for c in global_rows]).update(stale_alerted_at=now)
+
+
+@shared_task
 def mark_expired_commute_outward_tickets():
     """
     Bookkeeping companion to analytics.get_active_today_item(): once a

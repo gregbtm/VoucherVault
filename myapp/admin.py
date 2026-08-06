@@ -266,7 +266,8 @@ class ScanFieldCorrectionAdmin(admin.ModelAdmin):
     """
     list_display = (
         'user', 'item_type', 'issuer', 'field', 'ai_value_display', 'corrected_value',
-        'times_seen', 'times_applied', 'last_applied_at', 'source', 'enrichment_method', 'updated_at',
+        'times_seen', 'times_applied', 'last_applied_at', 'stale_alerted_at',
+        'source', 'enrichment_method', 'updated_at',
     )
     list_filter = ('source', 'field', 'item_type')
     search_fields = ('user__username', 'issuer', 'ai_value', 'corrected_value')
@@ -292,7 +293,7 @@ class GlobalScanCorrectionAdmin(admin.ModelAdmin):
     """
     list_display = (
         'issuer', 'item_type', 'field', 'ai_value', 'corrected_value',
-        'confirmed_by_users', 'times_applied', 'last_applied_at', 'promoted_at',
+        'confirmed_by_users', 'times_applied', 'last_applied_at', 'stale_alerted_at', 'promoted_at',
     )
     list_filter = ('field', 'item_type')
     search_fields = ('issuer', 'ai_value', 'corrected_value')

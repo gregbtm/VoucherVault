@@ -658,6 +658,14 @@ class ScanFieldCorrection(models.Model):
         help_text="When this correction last healed a live scan. Never set means it's "
                    "been taught but never actually fired yet.",
     )
+    stale_alerted_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When an admin was last alerted that this correction had gone stale "
+                   "(see flag_stale_corrections_task). Cleared automatically the next "
+                   "time this correction actually fires, so a correction that goes "
+                   "stale again later is reported as a genuinely new episode rather "
+                   "than staying silently suppressed.",
+    )
     updated_at = models.DateTimeField(auto_now=True)
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='scan')
     enrichment_method = models.CharField(
@@ -720,6 +728,13 @@ class GlobalScanCorrection(models.Model):
         null=True, blank=True,
         help_text="When this pattern last healed a live scan. Never set means it's "
                    "been promoted but never actually fired yet.",
+    )
+    stale_alerted_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When an admin was last alerted that this pattern had gone stale "
+                   "(see flag_stale_corrections_task). Cleared automatically the next "
+                   "time this pattern actually fires, so it can be reported again if "
+                   "it goes stale a second time.",
     )
     promoted_at = models.DateTimeField(auto_now=True)
 

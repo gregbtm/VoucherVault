@@ -4911,6 +4911,7 @@ class CreateDefaultPeriodicTasksCommandTests(TestCase):
             'Database Integrity Check',
             'Enrichment Run Watchdog',
             'Systemic Misread Detection',
+            'Correction Staleness Detection',
         })
 
     def test_update_check_and_upstream_check_run_hourly_not_daily(self):
