@@ -19,7 +19,7 @@ from django.urls import reverse
 from py_vapid import Vapid02
 from pywebpush import webpush as real_webpush
 
-from myapp.models import Item, Transaction, UserPreference, Wallet
+from myapp.models import EnrichmentRun, EnrichmentRunItem, Item, Transaction, UserPreference, Wallet
 from myapp.test_utils import set_site_config
 
 from .backends import get_backend
@@ -48,6 +48,7 @@ from .tasks import (
     notify_item_shared_with_you,
     notify_item_unshared,
     notify_item_used,
+    notify_retroactive_corrections_applied,
     notify_wallet_invited,
     notify_wallet_removed,
     push_transaction_to_firefly,
@@ -1603,6 +1604,100 @@ class WalletMembershipNotificationTests(TestCase):
         log = NotificationLog.objects.get()
         self.assertFalse(log.success)
         self.assertEqual(log.detail, 'Backend reported failure.')
+
+
+class RetroactiveCorrectionsAppliedNotificationTests(TestCase):
+    """
+    notify_retroactive_corrections_applied - fired once per affected user
+    by myapp.tasks.finalize_enrichment_run after a 'learned_correction'
+    EnrichmentRun auto-applies changes. Itemless, like the wallet events
+    above: a single run can touch many of a user's items.
+    """
+
+    def setUp(self):
+        self.alice = User.objects.create_user(username='alice', password='pw12345!')
+        self.bob = User.objects.create_user(username='bob', password='pw12345!')
+        self.run = EnrichmentRun.objects.create(method='learned_correction')
+
+    def _run_item(self, user, changes_applied=1, changes_proposed=1):
+        item = make_item(user)
+        return EnrichmentRunItem.objects.create(
+            run=self.run, item=item, success=True,
+            changes_proposed=changes_proposed, changes_applied=changes_applied,
+        )
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_fires_for_each_affected_user(self, mock_send):
+        make_rule(self.alice, event_types=['retroactive_correction_applied'])
+        make_rule(self.bob, event_types=['retroactive_correction_applied'])
+        self._run_item(self.alice)
+        self._run_item(self.bob)
+
+        notify_retroactive_corrections_applied(self.run)
+
+        self.assertEqual(mock_send.call_count, 2)
+        self.assertEqual(
+            set(NotificationLog.objects.values_list('user__username', flat=True)),
+            {'alice', 'bob'},
+        )
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_fires_once_per_user_not_once_per_item(self, mock_send):
+        make_rule(self.alice, event_types=['retroactive_correction_applied'])
+        self._run_item(self.alice, changes_applied=2)
+        self._run_item(self.alice, changes_applied=1)
+
+        notify_retroactive_corrections_applied(self.run)
+
+        mock_send.assert_called_once()
+        title, message = mock_send.call_args[0][1], mock_send.call_args[0][2]
+        self.assertIn('3', message)  # total fields healed across both items
+        self.assertIn('2', message)  # total items affected
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_no_notification_when_nothing_was_applied(self, mock_send):
+        make_rule(self.alice, event_types=['retroactive_correction_applied'])
+        self._run_item(self.alice, changes_applied=0, changes_proposed=1)
+
+        notify_retroactive_corrections_applied(self.run)
+
+        mock_send.assert_not_called()
+        self.assertFalse(NotificationLog.objects.exists())
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_only_items_with_applied_changes_count_toward_the_totals(self, mock_send):
+        make_rule(self.alice, event_types=['retroactive_correction_applied'])
+        self._run_item(self.alice, changes_applied=1)
+        self._run_item(self.alice, changes_applied=0, changes_proposed=1)  # still pending, doesn't count
+
+        notify_retroactive_corrections_applied(self.run)
+
+        message = mock_send.call_args[0][2]
+        self.assertIn('1', message)
+
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_noop_without_a_matching_rule(self, mock_send):
+        make_rule(self.alice, event_types=['budget_overspend'])
+        self._run_item(self.alice)
+
+        notify_retroactive_corrections_applied(self.run)
+
+        mock_send.assert_not_called()
+
+    @patch('notify.tasks.fire_user_webhooks')
+    def test_fires_webhook_with_itemless_payload(self, mock_fire):
+        self._run_item(self.alice, changes_applied=2)
+
+        notify_retroactive_corrections_applied(self.run)
+
+        mock_fire.assert_called_once()
+        args, kwargs = mock_fire.call_args
+        self.assertEqual(args[0], self.alice)
+        self.assertEqual(args[1], 'retroactive_correction_applied')
+        self.assertEqual(len(args), 2)  # no positional item arg
+        self.assertNotIn('item', kwargs)
+        self.assertEqual(kwargs['extra']['items_affected'], 1)
+        self.assertEqual(kwargs['extra']['fields_healed'], 2)
 
 
 class CheckAndNotifyExpiryTaskTests(TestCase):

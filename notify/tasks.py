@@ -8,10 +8,10 @@ from dateutil.relativedelta import relativedelta
 
 from celery import shared_task
 
-from django.db.models import Q, Sum
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
-from myapp.models import Item, SiteConfiguration, Transaction, UserPreference, Wallet
+from myapp.models import EnrichmentRunItem, Item, SiteConfiguration, Transaction, UserPreference, Wallet
 from myapp.utils import check_companies_house_status, _CH_BAD_STATUSES
 from myapp.webhooks import fire_user_webhooks
 
@@ -228,6 +228,65 @@ def notify_wallet_removed(wallet, removed_user, owner_username: str):
             user=removed_user, rule=rule, item=None, event_type='wallet_removed',
             success=success, detail=detail,
         )
+
+
+def notify_retroactive_corrections_applied(run):
+    """
+    Fires once per affected user after a 'learned_correction' EnrichmentRun
+    auto-applies changes (see myapp.tasks.finalize_enrichment_run) - the
+    "we fixed N of your items" counterpart to the enrichment pipeline's
+    other methods, which otherwise only ever surface through the
+    admin-only EnrichmentRun review UI. A single run can touch many of a
+    user's items, so there's no one Item to correlate this with - fires
+    by hand, itemless, same shape as check_wallet_budget_overspend below,
+    rather than through fire_notifications() (which expects exactly one).
+
+    Deliberately never fires for a still-pending_approval run (nothing to
+    report - see finalize_enrichment_run, which only calls this once a run
+    has actually auto-applied) or when nothing was applied at all: review
+    of a pending run is an existing admin-only surface, and notifying a
+    user about changes still awaiting approval would be a materially
+    different, bigger feature than wiring up the changes that already
+    landed.
+    """
+    affected = (
+        EnrichmentRunItem.objects
+        .filter(run=run, changes_applied__gt=0)
+        .values('item__user')
+        .annotate(items_affected=Count('id'), fields_healed=Sum('changes_applied'))
+    )
+    if not affected:
+        return
+
+    from django.contrib.auth.models import User
+    users_by_id = {u.id: u for u in User.objects.filter(id__in=[row['item__user'] for row in affected])}
+
+    for row in affected:
+        user = users_by_id.get(row['item__user'])
+        if user is None:
+            continue
+        items_affected = row['items_affected']
+        fields_healed = row['fields_healed'] or 0
+
+        title = "✨ VoucherVault healed some of your items"
+        message = (
+            f"We automatically fixed {fields_healed} field(s) across {items_affected} "
+            f"of your items using corrections you've taught us."
+        )
+        rules = NotificationRule.objects.filter(user=user, enabled=True)
+        matching_rules = [
+            r for r in rules if r.apply_to_all or 'retroactive_correction_applied' in (r.event_types or [])
+        ]
+        for rule in matching_rules:
+            success, detail = send_via_rule(rule, title, message)
+            NotificationLog.objects.create(
+                user=user, rule=rule, item=None, event_type='retroactive_correction_applied',
+                success=success, detail=detail,
+            )
+        fire_user_webhooks(user, 'retroactive_correction_applied', extra={
+            'items_affected': items_affected,
+            'fields_healed': fields_healed,
+        })
 
 
 def send_via_rule(rule, title: str, message: str, item=None, transaction=None) -> tuple[bool, str]:
