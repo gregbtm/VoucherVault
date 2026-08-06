@@ -35,7 +35,8 @@ excluded - "corrections" there are just data entry, not a pattern.
 
 import logging
 
-from django.db.models import Case, Count, IntegerField, Q, Value, When
+from django.db.models import Case, Count, F, IntegerField, Q, Value, When
+from django.utils import timezone
 
 from .models import GlobalScanCorrection, Item, ItemEnrichmentLog, ScanFieldCorrection
 from .utils import levenshtein_distance
@@ -554,6 +555,15 @@ def apply_learned_corrections(user, result: dict, originals: dict = None) -> lis
                 )
             if originals is not None and source_kind != 'global':
                 originals[field] = {'ai_value': ai_value, 'correction_id': best.pk}
+            # .update() rather than best.save() - bypasses the auto_now
+            # updated_at/promoted_at fields entirely (those track when the
+            # mapping was last *taught*, not when it last *fired*), and
+            # avoids a stale-instance overwrite race between concurrent
+            # scans healing from the same row.
+            model_cls = GlobalScanCorrection if source_kind == 'global' else ScanFieldCorrection
+            model_cls.objects.filter(pk=best.pk).update(
+                times_applied=F('times_applied') + 1, last_applied_at=timezone.now(),
+            )
             result[field] = best.corrected_value
             healed.append(field)
     except Exception:
