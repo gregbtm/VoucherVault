@@ -51,13 +51,19 @@ class ItemEnricher:
     # Fields that should never be modified by enrichment (core identifiers)
     PROTECTED_FIELDS = {'redeem_code', 'code_type', 'type', 'id', 'user'}
 
-    # Fields that can be enriched
+    # Fields that can be enriched. logo_slug/currency/travel_time are only
+    # ever proposed by enrich_from_learned_corrections (retroactive
+    # healing) - no other method emits them - but apply_changes() checks
+    # this same set regardless of which method produced the FieldChange,
+    # so they have to be here too or a retroactive heal for one of them
+    # would be rejected as "not enrichable" despite being a real,
+    # user-taught correction.
     ENRICHABLE_FIELDS = {
         'issuer', 'expiry_date', 'issue_date', 'value', 'value_type',
         'description', 'notes', 'card_number', 'balance_check_url',
         'journey_origin', 'journey_destination', 'order_id', 'discount_applied',
         'pin', 'name', 'minimum_spend', 'points_balance', 'membership_tier',
-        'initial_value', 'seat_number'
+        'initial_value', 'seat_number', 'logo_slug', 'currency', 'travel_time',
     }
 
     # Each corrected-away enrichment fill nudges that field+method's
@@ -349,6 +355,66 @@ class ItemEnricher:
             enrichment_run_id=str(enrichment_run_id),
             changes=changes,
             success=True
+        )
+
+    def enrich_from_learned_corrections(self, item: Item, confidence_threshold: Decimal = Decimal('0.5')) -> EnrichmentResult:
+        """
+        Retroactive healing: applies corrections this user (or, failing
+        that, other users - see GlobalScanCorrection) has already taught
+        onto this item's *current* saved values, not just future scans.
+        myapp.scan_learning.apply_learned_corrections only ever heals
+        forward - a correction learned today never touches an item saved
+        yesterday with the same wrong value - so this is the backward-
+        looking counterpart, wired in as a fourth enrichment method
+        (see find_retroactive_heal_candidates) rather than a parallel
+        pipeline.
+
+        Confidence is deliberately tiered by trust: a personal correction
+        this user has reinforced several times comfortably clears a
+        default 0.8 auto-apply bar and keeps climbing with times_seen,
+        capped at 0.95. A cross-user GlobalScanCorrection match gets a
+        flat, low 0.3 - always below any sane default threshold, so it
+        never silently rewrites a user's saved data unless an admin
+        deliberately lowers the bar, matching the same "cross-user signal
+        earns weaker automatic trust" philosophy apply_learned_corrections
+        already applies at scan time (global heals don't get a one-click
+        Undo there either).
+        """
+        from myapp.scan_learning import find_retroactive_heal_candidates
+
+        enrichment_run_id = uuid.uuid4()
+        changes = []
+        excluded = self._excluded_fields(item.user, 'learned_correction')
+
+        for candidate in find_retroactive_heal_candidates(item):
+            field_name = candidate['field']
+            if field_name in excluded:
+                continue
+
+            if candidate['source_kind'] == 'personal':
+                times_seen = candidate['source'].times_seen
+                confidence = min(Decimal('0.95'), Decimal('0.5') + Decimal('0.1') * times_seen)
+                reason = "Matches a correction you've taught VoucherVault before"
+            else:
+                confidence = Decimal('0.3')
+                reason = "Matches a pattern several other users have independently corrected for this merchant"
+
+            if confidence < confidence_threshold:
+                continue
+
+            changes.append(FieldChange(
+                field_name=field_name,
+                old_value=candidate['old_value'],
+                new_value=candidate['new_value'],
+                confidence_score=confidence,
+                reason=reason,
+            ))
+
+        return EnrichmentResult(
+            item_id=item.id,
+            enrichment_run_id=str(enrichment_run_id),
+            changes=changes,
+            success=True,
         )
 
     def apply_changes(self, item: Item, changes: List[FieldChange]) -> Tuple[bool, Optional[str]]:

@@ -94,16 +94,16 @@ class RunScheduledEnrichmentIfDueTestCase(TestCase):
 
 class SeedEnrichmentConfigTestCase(TestCase):
     """create_default_periodic_tasks runs on every container start
-    (docker/entrypoint.sh) and now also seeds the three EnrichmentConfig
-    rows the config UI has nothing to show without - previously nothing
-    ever created them, so a fresh install's Enrichment Configuration page
-    was empty and unreachable per-method."""
+    (docker/entrypoint.sh) and now also seeds the EnrichmentConfig rows
+    the config UI has nothing to show without - previously nothing ever
+    created them, so a fresh install's Enrichment Configuration page was
+    empty and unreachable per-method."""
 
-    def test_seeds_all_three_methods(self):
+    def test_seeds_a_config_row_for_every_enrichment_method(self):
         from django.core.management import call_command
         call_command('create_default_periodic_tasks')
         methods = set(EnrichmentConfig.objects.values_list('method', flat=True))
-        self.assertEqual(methods, {'ocr', 'validation', 'merchant_lookup'})
+        self.assertEqual(methods, {method for method, _label in EnrichmentConfig.ENRICHMENT_METHODS})
 
     def test_seeded_configs_start_disabled(self):
         from django.core.management import call_command

@@ -50,9 +50,18 @@ LEARNABLE_FIELDS = (
     'journey_origin', 'journey_destination', 'travel_time',
 )
 
+# The retroactive-healing enrichment method (find_retroactive_heal_candidates
+# below) may rewrite any learnable field *except* type/code_type - those two
+# are already excluded from every other enrichment method via
+# ItemEnricher.PROTECTED_FIELDS, for the same reason: a wrong guess there
+# risks breaking per-type field visibility or barcode symbology, not just a
+# cosmetic misread. Retroactive healing respects that existing boundary
+# rather than carving out an exception for itself.
+RETROACTIVE_HEAL_FIELDS = tuple(f for f in LEARNABLE_FIELDS if f not in ('type', 'code_type'))
+
 # ItemEnrichmentLog.enrichment_type values that represent an auto-applied
 # value (as opposed to 'flagged', which never changed anything).
-ENRICHMENT_LOG_TYPES = ('ocr_rescan', 'validation', 'merchant_lookup', 'auto_enrich')
+ENRICHMENT_LOG_TYPES = ('ocr_rescan', 'validation', 'merchant_lookup', 'auto_enrich', 'learned_correction')
 
 # ItemEnrichmentLog.enrichment_type (and ScanFieldCorrection.enrichment_method,
 # which mirrors it) uses a different vocabulary from
@@ -61,10 +70,14 @@ ENRICHMENT_LOG_TYPES = ('ocr_rescan', 'validation', 'merchant_lookup', 'auto_enr
 # actually queries against, so the circuit breaker below has to translate
 # before it can opt a user out of a method for a field. 'auto_enrich' has
 # no per-method opt-out surface at all, so it can never trip the breaker.
+# 'learned_correction' (retroactive healing) deliberately uses the same
+# string on both sides - unlike 'ocr'/'ocr_rescan', there was no pre-existing
+# vocabulary to split, so there's no reason to introduce a second one.
 _LOG_TYPE_TO_PREFERENCE_METHOD = {
     'ocr_rescan': 'ocr',
     'validation': 'validation',
     'merchant_lookup': 'merchant_lookup',
+    'learned_correction': 'learned_correction',
 }
 
 # Once a (user, method, field) combo has racked up this many corrected-away
@@ -569,6 +582,64 @@ def apply_learned_corrections(user, result: dict, originals: dict = None) -> lis
     except Exception:
         logger.warning('Failed to apply learned scan corrections', exc_info=True)
     return healed
+
+
+def find_retroactive_heal_candidates(item: Item) -> list[dict]:
+    """
+    The backward-looking counterpart to apply_learned_corrections(): that
+    function only ever heals a *future* scan, so a correction learned
+    today never touches items scanned and saved before it existed. This
+    checks an already-saved item's *current* field values against the same
+    ScanFieldCorrection/GlobalScanCorrection tables, scoped by the exact
+    same rules (item type hard filter, issuer soft preference via
+    _order_by_relevance, personal correction before cross-user fallback) -
+    so a heal that would have fired at scan time still fires now, applied
+    retroactively (see ItemEnricher.enrich_from_learned_corrections, the
+    caller that turns this into actual FieldChanges).
+
+    Deliberately exact-match only, unlike apply_learned_corrections' fuzzy
+    fallback: fuzzy-matching an item's already-saved value against a
+    misreading is a materially different, riskier claim than fuzzy-matching
+    a fresh OCR read - rewriting old, presumably-reviewed data on a fuzzy
+    guess isn't worth the false-positive risk.
+
+    Returns one dict per healable field: {field, old_value, new_value,
+    source_kind, source}. source_kind is 'personal' or 'global'; source is
+    the ScanFieldCorrection or GlobalScanCorrection row that supplied
+    new_value (its times_seen/confirmed_by_users drives the caller's
+    confidence score).
+    """
+    candidates = []
+    item_type = _normalize(item.type)
+    for field in RETROACTIVE_HEAL_FIELDS:
+        current_value = _saved_value(item, field)
+        if not current_value:
+            continue
+        issuer = _normalize(item.issuer) if field != 'issuer' else ''
+
+        qs = ScanFieldCorrection.objects.filter(
+            user=item.user, field=field, ai_value__iexact=current_value,
+        )
+        if item_type:
+            qs = qs.filter(item_type=item_type)
+        best = _order_by_relevance(qs, issuer).first()
+        source_kind = 'personal'
+        if best is None and item_type and issuer:
+            best = GlobalScanCorrection.objects.filter(
+                item_type=item_type, issuer=issuer, field=field, ai_value__iexact=current_value,
+            ).first()
+            source_kind = 'global'
+        if best is None:
+            continue
+        if best.corrected_value.lower() == current_value.lower():
+            continue
+        if not _healed_value_is_valid(field, best.corrected_value):
+            continue
+        candidates.append({
+            'field': field, 'old_value': current_value, 'new_value': best.corrected_value,
+            'source_kind': source_kind, 'source': best,
+        })
+    return candidates
 
 
 def retract_learned_correction(user, correction_id: int) -> bool:
