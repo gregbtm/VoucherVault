@@ -779,3 +779,62 @@ def find_stale_corrections():
         logger.warning('Failed to query stale global corrections', exc_info=True)
         global_rows = []
     return personal, global_rows
+
+
+def find_stale_corrections_relevant_to_items(items) -> dict:
+    """
+    Batched per-item counterpart to find_stale_corrections(), for the
+    at-risk item signals (see myapp.services.enrichment.
+    get_at_risk_signals_for_items). Deliberately does NOT filter by
+    stale_alerted_at - that field only tracks whether an admin has
+    already been told about a row in the weekly sweep, not whether the
+    correction is still a live risk. A correction that's gone stale is
+    just as much a "this might not be reliable for this item" signal on
+    the hundredth time it's surfaced here as the first.
+
+    Returns {item_id: ScanFieldCorrection_or_GlobalScanCorrection} - only
+    the first relevant match per item (callers only need to know "is
+    there one", not enumerate every match). Scoping mirrors
+    apply_learned_corrections': item_type is a hard filter once the row
+    has one, issuer is a soft preference (a blank issuer/item_type on the
+    stored row means "applies unscoped", not "matches nothing").
+    """
+    items = list(items)
+    if not items:
+        return {}
+    cutoff = timezone.now() - timedelta(days=STALE_CORRECTION_THRESHOLD_DAYS)
+    user_ids = {item.user_id for item in items}
+    try:
+        personal_stale = list(
+            ScanFieldCorrection.objects.filter(user_id__in=user_ids)
+            .filter(Q(last_applied_at__lt=cutoff) | Q(last_applied_at__isnull=True, updated_at__lt=cutoff))
+        )
+    except Exception:
+        logger.warning('Failed to query stale personal corrections for items', exc_info=True)
+        personal_stale = []
+    try:
+        global_stale = list(
+            GlobalScanCorrection.objects
+            .filter(Q(last_applied_at__lt=cutoff) | Q(last_applied_at__isnull=True, promoted_at__lt=cutoff))
+        )
+    except Exception:
+        logger.warning('Failed to query stale global corrections for items', exc_info=True)
+        global_stale = []
+
+    result = {}
+    for item in items:
+        item_type = _normalize(item.type)
+        issuer = _normalize(item.issuer)
+        match = next(
+            (c for c in personal_stale if c.user_id == item.user_id
+             and c.item_type in ('', item_type) and c.issuer in ('', issuer)),
+            None,
+        )
+        if match is None:
+            match = next(
+                (c for c in global_stale if c.item_type in ('', item_type) and c.issuer in ('', issuer)),
+                None,
+            )
+        if match is not None:
+            result[item.id] = match
+    return result

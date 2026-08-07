@@ -4,9 +4,25 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.contrib.auth.models import User
 from django.urls import reverse
-from myapp.models import Item, Document, ItemEnrichmentLog, EnrichmentFieldPreference
-from myapp.services.enrichment import ItemEnricher, BulkEnricher, FieldChange, get_active_flags_for_items
-from datetime import date
+from myapp.models import (
+    EnrichmentFieldPreference,
+    EnrichmentRun,
+    EnrichmentRunItem,
+    Document,
+    Item,
+    ItemEnrichmentLog,
+    MerchantProfile,
+    ScanFieldCorrection,
+)
+from myapp.services.enrichment import (
+    BulkEnricher,
+    FieldChange,
+    ItemEnricher,
+    get_active_flags_for_items,
+    get_at_risk_signals_for_items,
+)
+from datetime import date, timedelta
+from django.utils import timezone
 import uuid
 
 
@@ -592,6 +608,156 @@ class GetActiveFlagsForItemsTestCase(TestCase):
         self.assertEqual(get_active_flags_for_items([]), {})
 
 
+class GetAtRiskSignalsForItemsTestCase(TestCase):
+    """
+    Test the get_at_risk_signals_for_items batch helper - combines
+    merchant health, stale corrections, pending enrichment approvals, and
+    tripped circuit breakers into one read-only per-item signal set.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user('riskuser', 'risk@example.com', 'password123')
+
+    def _create_test_item(self, **kwargs):
+        defaults = {
+            'user': self.user,
+            'name': 'Test Item',
+            'type': 'giftcard',
+            'redeem_code': 'TEST123',
+            'issuer': 'Test Issuer',
+            'expiry_date': date(2025, 12, 31),
+            'value': Decimal('50.00'),
+        }
+        defaults.update(kwargs)
+        return Item.objects.create(**defaults)
+
+    def test_empty_item_list_returns_empty_dict(self):
+        self.assertEqual(get_at_risk_signals_for_items([]), {})
+
+    def test_no_signals_for_a_clean_item(self):
+        item = self._create_test_item()
+        self.assertEqual(get_at_risk_signals_for_items([item]), {})
+
+    def test_flags_item_with_unhealthy_merchant(self):
+        item = self._create_test_item(issuer='Acme Retail')
+        MerchantProfile.objects.create(name='Acme Retail', is_unhealthy=True, company_status='administration')
+
+        result = get_at_risk_signals_for_items([item])
+
+        self.assertEqual(len(result[item.id]), 1)
+        self.assertEqual(result[item.id][0]['kind'], 'merchant_unhealthy')
+        self.assertIn('Acme Retail', result[item.id][0]['message'])
+
+    def test_merchant_health_match_is_case_insensitive(self):
+        item = self._create_test_item(issuer='acme retail')
+        MerchantProfile.objects.create(name='Acme Retail', is_unhealthy=True)
+
+        result = get_at_risk_signals_for_items([item])
+
+        self.assertIn(item.id, result)
+
+    def test_healthy_merchant_does_not_flag(self):
+        item = self._create_test_item(issuer='Acme Retail')
+        MerchantProfile.objects.create(name='Acme Retail', is_unhealthy=False, company_status='active')
+
+        self.assertEqual(get_at_risk_signals_for_items([item]), {})
+
+    def test_flags_item_with_stale_correction(self):
+        item = self._create_test_item(type='giftcard', issuer='Merchant A')
+        correction = ScanFieldCorrection.objects.create(
+            user=self.user, item_type='giftcard', issuer='Merchant A', field='issuer',
+            ai_value='Merchan A', corrected_value='Merchant A',
+        )
+        old = timezone.now() - timedelta(days=400)
+        ScanFieldCorrection.objects.filter(pk=correction.pk).update(last_applied_at=old)
+
+        result = get_at_risk_signals_for_items([item])
+
+        self.assertEqual(len(result[item.id]), 1)
+        self.assertEqual(result[item.id][0]['kind'], 'stale_correction')
+        self.assertIn('issuer', result[item.id][0]['message'])
+
+    def test_flags_item_with_pending_enrichment_approval(self):
+        item = self._create_test_item()
+        run = EnrichmentRun.objects.create(method='ocr', status='pending_approval')
+        EnrichmentRunItem.objects.create(run=run, item=item, changes_proposed=1)
+
+        result = get_at_risk_signals_for_items([item])
+
+        self.assertEqual(result[item.id], [{
+            'kind': 'pending_enrichment',
+            'message': 'A proposed change to this item is awaiting admin review',
+        }])
+
+    def test_does_not_flag_a_completed_enrichment_run(self):
+        item = self._create_test_item()
+        run = EnrichmentRun.objects.create(method='ocr', status='completed')
+        EnrichmentRunItem.objects.create(run=run, item=item, changes_proposed=1)
+
+        self.assertEqual(get_at_risk_signals_for_items([item]), {})
+
+    def test_does_not_flag_a_pending_run_with_no_changes_proposed(self):
+        item = self._create_test_item()
+        run = EnrichmentRun.objects.create(method='ocr', status='pending_approval')
+        EnrichmentRunItem.objects.create(run=run, item=item, changes_proposed=0)
+
+        self.assertEqual(get_at_risk_signals_for_items([item]), {})
+
+    def test_flags_item_with_tripped_circuit_breaker_on_a_populated_field(self):
+        item = self._create_test_item(issuer='Test Issuer')
+        EnrichmentFieldPreference.objects.create(
+            user=self.user, method='ocr', field_name='issuer',
+            reason='Auto-disabled after repeated corrections',
+        )
+
+        result = get_at_risk_signals_for_items([item])
+
+        self.assertEqual(result[item.id], [{
+            'kind': 'circuit_breaker',
+            'message': "Automatic enrichment for 'issuer' has been disabled after repeated corrections",
+        }])
+
+    def test_does_not_flag_circuit_breaker_for_an_empty_field(self):
+        item = self._create_test_item(description='')
+        EnrichmentFieldPreference.objects.create(
+            user=self.user, method='ocr', field_name='description',
+            reason='Auto-disabled after repeated corrections',
+        )
+
+        self.assertEqual(get_at_risk_signals_for_items([item]), {})
+
+    def test_does_not_flag_a_user_set_preference_with_blank_reason(self):
+        item = self._create_test_item(issuer='Test Issuer')
+        EnrichmentFieldPreference.objects.create(
+            user=self.user, method='ocr', field_name='issuer', reason='',
+        )
+
+        self.assertEqual(get_at_risk_signals_for_items([item]), {})
+
+    def test_combines_multiple_signals_on_the_same_item(self):
+        item = self._create_test_item(issuer='Acme Retail')
+        MerchantProfile.objects.create(name='Acme Retail', is_unhealthy=True)
+        EnrichmentFieldPreference.objects.create(
+            user=self.user, method='ocr', field_name='issuer',
+            reason='Auto-disabled after repeated corrections',
+        )
+
+        result = get_at_risk_signals_for_items([item])
+
+        kinds = {signal['kind'] for signal in result[item.id]}
+        self.assertEqual(kinds, {'merchant_unhealthy', 'circuit_breaker'})
+
+    def test_batches_across_multiple_items(self):
+        flagged_item = self._create_test_item(issuer='Acme Retail', name='Flagged')
+        clean_item = self._create_test_item(issuer='Clean Merchant', name='Clean')
+        MerchantProfile.objects.create(name='Acme Retail', is_unhealthy=True)
+
+        result = get_at_risk_signals_for_items([flagged_item, clean_item])
+
+        self.assertIn(flagged_item.id, result)
+        self.assertNotIn(clean_item.id, result)
+
+
 class ReviewFlagsViewIntegrationTestCase(TestCase):
     """Test that view_item and show_items surface active flags in context."""
 
@@ -647,6 +813,34 @@ class ReviewFlagsViewIntegrationTestCase(TestCase):
 
         entries = {e['item'].id: e['has_flags'] for e in response.context['items_with_qr']}
         self.assertTrue(entries[flagged_item.id])
+        self.assertFalse(entries[clean_item.id])
+
+    def test_view_item_context_has_at_risk_signals_for_flagged_item(self):
+        item = self._create_test_item(issuer='Acme Retail')
+        MerchantProfile.objects.create(name='Acme Retail', is_unhealthy=True)
+
+        response = self.client.get(reverse('view_item', args=[item.id]))
+
+        signals = response.context['at_risk_signals']
+        self.assertEqual(len(signals), 1)
+        self.assertEqual(signals[0]['kind'], 'merchant_unhealthy')
+
+    def test_view_item_context_at_risk_signals_empty_for_clean_item(self):
+        item = self._create_test_item()
+
+        response = self.client.get(reverse('view_item', args=[item.id]))
+
+        self.assertEqual(response.context['at_risk_signals'], [])
+
+    def test_show_items_marks_has_risk_true_only_for_at_risk_items(self):
+        at_risk_item = self._create_test_item(issuer='Acme Retail')
+        MerchantProfile.objects.create(name='Acme Retail', is_unhealthy=True)
+        clean_item = self._create_test_item(name='Clean Item', issuer='Clean Merchant')
+
+        response = self.client.get(reverse('show_items'), {'status': 'all'})
+
+        entries = {e['item'].id: e['has_risk'] for e in response.context['items_with_qr']}
+        self.assertTrue(entries[at_risk_item.id])
         self.assertFalse(entries[clean_item.id])
 
 

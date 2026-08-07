@@ -329,6 +329,21 @@ class ItemEnrichmentLogAdmin(admin.ModelAdmin):
         return False
 
 
+class MerchantProfileAdmin(admin.ModelAdmin):
+    """
+    Merchant metadata cache (see MerchantProfile) - had no admin
+    registration at all. company_status/is_unhealthy/health_checked_at
+    are the fields the new at-risk-item signals read
+    (myapp.services.enrichment.get_at_risk_signals_for_items) - this is
+    where an admin can see which merchants notify.tasks.check_merchant_health
+    currently considers unhealthy, without waiting for the weekly alert.
+    """
+    list_display = ('name', 'company_status', 'is_unhealthy', 'health_checked_at', 'domain', 'fetched_at')
+    list_filter = ('is_unhealthy',)
+    search_fields = ('name', 'domain')
+    ordering = ('-is_unhealthy', 'name')
+
+
 class EnrichmentRunAdmin(admin.ModelAdmin):
     """Admin interface for enrichment run tracking and approval."""
     list_display = ('run_id', 'get_method_display', 'get_status_display', 'total_items', 'successful_items', 'total_changes', 'average_confidence', 'started_at', 'actions_buttons')
@@ -519,3 +534,4 @@ admin.site.register(EnrichmentFieldPreference, EnrichmentFieldPreferenceAdmin)
 admin.site.register(ScanFieldCorrection, ScanFieldCorrectionAdmin)
 admin.site.register(GlobalScanCorrection, GlobalScanCorrectionAdmin)
 admin.site.register(ItemEnrichmentLog, ItemEnrichmentLogAdmin)
+admin.site.register(MerchantProfile, MerchantProfileAdmin)

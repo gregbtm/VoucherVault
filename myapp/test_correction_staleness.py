@@ -5,8 +5,12 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.utils import timezone
 
-from myapp.models import GlobalScanCorrection, ScanFieldCorrection
-from myapp.scan_learning import STALE_CORRECTION_THRESHOLD_DAYS, find_stale_corrections
+from myapp.models import GlobalScanCorrection, Item, ScanFieldCorrection
+from myapp.scan_learning import (
+    STALE_CORRECTION_THRESHOLD_DAYS,
+    find_stale_corrections,
+    find_stale_corrections_relevant_to_items,
+)
 from myapp.tasks import flag_stale_corrections_task
 from myapp.test_utils import set_site_config
 
@@ -114,6 +118,135 @@ class FindStaleCorrectionsTests(TestCase):
 
         correction.refresh_from_db()
         self.assertIsNone(correction.stale_alerted_at)
+
+
+def make_item(user, **kwargs):
+    defaults = dict(
+        user=user, type='giftcard', name='Test Item', redeem_code='TEST123',
+        issuer='Merchant A', expiry_date=timezone.now().date() + timedelta(days=30),
+        value='10.00',
+    )
+    defaults.update(kwargs)
+    return Item.objects.create(**defaults)
+
+
+class FindStaleCorrectionsRelevantToItemsTests(TestCase):
+    """
+    myapp.scan_learning.find_stale_corrections_relevant_to_items - the
+    batched per-item counterpart to find_stale_corrections(), feeding the
+    at-risk item signals (get_at_risk_signals_for_items).
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='pw12345!')
+        self.old = timezone.now() - timedelta(days=STALE_CORRECTION_THRESHOLD_DAYS + 1)
+        self.recent = timezone.now() - timedelta(days=10)
+
+    def _personal(self, **kwargs):
+        defaults = dict(
+            user=self.user, item_type='giftcard', issuer='Merchant A', field='issuer',
+            ai_value='Merchan A', corrected_value='Merchant A',
+        )
+        defaults.update(kwargs)
+        return ScanFieldCorrection.objects.create(**defaults)
+
+    def _global(self, **kwargs):
+        defaults = dict(
+            item_type='giftcard', issuer='Merchant B', field='code_type',
+            ai_value='qrcode', corrected_value='azteccode', confirmed_by_users=3,
+        )
+        defaults.update(kwargs)
+        return GlobalScanCorrection.objects.create(**defaults)
+
+    def test_empty_item_list_returns_empty_dict(self):
+        self.assertEqual(find_stale_corrections_relevant_to_items([]), {})
+
+    def test_matches_a_stale_personal_correction_for_the_same_user_type_and_issuer(self):
+        correction = self._personal()
+        ScanFieldCorrection.objects.filter(pk=correction.pk).update(last_applied_at=self.old)
+        item = make_item(self.user, type='giftcard', issuer='Merchant A')
+
+        result = find_stale_corrections_relevant_to_items([item])
+
+        self.assertEqual(result, {item.id: correction})
+
+    def test_does_not_match_a_correction_that_fired_recently(self):
+        correction = self._personal()
+        ScanFieldCorrection.objects.filter(pk=correction.pk).update(last_applied_at=self.recent)
+        item = make_item(self.user, type='giftcard', issuer='Merchant A')
+
+        result = find_stale_corrections_relevant_to_items([item])
+
+        self.assertEqual(result, {})
+
+    def test_does_not_match_another_users_personal_correction(self):
+        other_user = User.objects.create_user(username='bob', password='pw12345!')
+        correction = self._personal(user=other_user)
+        ScanFieldCorrection.objects.filter(pk=correction.pk).update(last_applied_at=self.old)
+        item = make_item(self.user, type='giftcard', issuer='Merchant A')
+
+        result = find_stale_corrections_relevant_to_items([item])
+
+        self.assertEqual(result, {})
+
+    def test_does_not_match_a_different_item_type(self):
+        correction = self._personal(item_type='giftcard')
+        ScanFieldCorrection.objects.filter(pk=correction.pk).update(last_applied_at=self.old)
+        item = make_item(self.user, type='voucher', issuer='Merchant A')
+
+        result = find_stale_corrections_relevant_to_items([item])
+
+        self.assertEqual(result, {})
+
+    def test_blank_issuer_on_stored_correction_applies_unscoped(self):
+        correction = self._personal(issuer='')
+        ScanFieldCorrection.objects.filter(pk=correction.pk).update(last_applied_at=self.old)
+        item = make_item(self.user, type='giftcard', issuer='Some Other Merchant')
+
+        result = find_stale_corrections_relevant_to_items([item])
+
+        self.assertEqual(result, {item.id: correction})
+
+    def test_matches_a_stale_global_correction_when_no_personal_match(self):
+        pattern = self._global(issuer='Merchant A')
+        GlobalScanCorrection.objects.filter(pk=pattern.pk).update(last_applied_at=self.old)
+        item = make_item(self.user, type='giftcard', issuer='Merchant A')
+
+        result = find_stale_corrections_relevant_to_items([item])
+
+        self.assertEqual(result, {item.id: pattern})
+
+    def test_personal_match_takes_priority_over_global_match(self):
+        personal = self._personal(issuer='Merchant A')
+        ScanFieldCorrection.objects.filter(pk=personal.pk).update(last_applied_at=self.old)
+        global_pattern = self._global(issuer='Merchant A')
+        GlobalScanCorrection.objects.filter(pk=global_pattern.pk).update(last_applied_at=self.old)
+        item = make_item(self.user, type='giftcard', issuer='Merchant A')
+
+        result = find_stale_corrections_relevant_to_items([item])
+
+        self.assertEqual(result, {item.id: personal})
+
+    def test_ignores_stale_alerted_at_unlike_the_admin_sweep(self):
+        correction = self._personal()
+        ScanFieldCorrection.objects.filter(pk=correction.pk).update(
+            last_applied_at=self.old, stale_alerted_at=timezone.now(),
+        )
+        item = make_item(self.user, type='giftcard', issuer='Merchant A')
+
+        result = find_stale_corrections_relevant_to_items([item])
+
+        self.assertEqual(result, {item.id: correction})
+
+    def test_batches_across_multiple_items(self):
+        correction = self._personal()
+        ScanFieldCorrection.objects.filter(pk=correction.pk).update(last_applied_at=self.old)
+        stale_item = make_item(self.user, type='giftcard', issuer='Merchant A', name='Stale')
+        clean_item = make_item(self.user, type='giftcard', issuer='Merchant Z', name='Clean')
+
+        result = find_stale_corrections_relevant_to_items([stale_item, clean_item])
+
+        self.assertEqual(result, {stale_item.id: correction})
 
 
 class FlagStaleCorrectionsTaskTests(TestCase):

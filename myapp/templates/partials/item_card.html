@@ -51,6 +51,14 @@ unconditionally, since a missing/falsy shared_with_me still renders the
   </span>
   {% endif %}
 
+  {% if entry.has_risk %}
+  <!-- At-Risk Indicator (see myapp/services/enrichment.py get_at_risk_signals_for_items) -->
+  <span class="risk-indicator {% if entry.has_flags %}risk-indicator-offset{% endif %}"
+        title="{% trans 'This item has one or more signals worth a look - open it for details' %}">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+  </span>
+  {% endif %}
+
   {% if show_checkbox %}
   <!-- Bulk Select Checkbox -->
   <input type="checkbox" class="select-checkbox" title="{% trans 'Select' %}">

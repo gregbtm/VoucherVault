@@ -457,8 +457,9 @@ def show_items(request):
         issuers.append(active_today_item.issuer)
     merchant_logos = get_cached_logos_for_issuers(issuers)
 
-    from .services.enrichment import get_active_flags_for_items
+    from .services.enrichment import get_active_flags_for_items, get_at_risk_signals_for_items
     flags_by_item_id = get_active_flags_for_items(items)
+    risk_signals_by_item_id = get_at_risk_signals_for_items(items)
 
     # The shared_by_me/shared_with_me status filters are the only place
     # Inventory shows items reached via an individual ItemShare (its base
@@ -479,6 +480,7 @@ def show_items(request):
             'current_value': item.current_balance,
             'merchant_logo_url': merchant_logos.get(item.issuer.strip().lower()),
             'has_flags': item.id in flags_by_item_id,
+            'has_risk': item.id in risk_signals_by_item_id,
         }
         if filter_value == 'shared_with_me':
             entry['shared_with_me'] = True
@@ -699,7 +701,7 @@ def view_item(request, item_uuid):
         )
 
     from notify.models import NotificationRule
-    from .services.enrichment import get_active_flags_for_items
+    from .services.enrichment import get_active_flags_for_items, get_at_risk_signals_for_items
     balance_history = list(
         BalanceHistory.objects.filter(item=item).order_by('recorded_at').values('balance', 'recorded_at', 'note')
     )
@@ -740,6 +742,7 @@ def view_item(request, item_uuid):
         'update_balance_url': reverse('update_item_balance', args=[item.id]),
         'journey_siblings': journey_siblings,
         'active_flags': _flags_by_field(get_active_flags_for_items([item]).get(item.id, [])),
+        'at_risk_signals': get_at_risk_signals_for_items([item]).get(item.id, []),
         'comments': item.comments.select_related('author').all(),
     }
     return render(request, 'view-item.html', context)

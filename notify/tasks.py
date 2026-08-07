@@ -11,7 +11,7 @@ from celery import shared_task
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
-from myapp.models import EnrichmentRunItem, Item, SiteConfiguration, Transaction, UserPreference, Wallet
+from myapp.models import EnrichmentRunItem, Item, MerchantProfile, SiteConfiguration, Transaction, UserPreference, Wallet
 from myapp.utils import check_companies_house_status, _CH_BAD_STATUSES
 from myapp.webhooks import fire_user_webhooks
 
@@ -652,6 +652,18 @@ def check_merchant_health():
 
     Deduped per (item, rule): only fires once ever for the same issuer in bad
     standing — dedupe=True prevents repeat alerts while the situation persists.
+
+    Every issuer actually checked (not just the bad ones) has its result
+    persisted to MerchantProfile.company_status/is_unhealthy/health_checked_at -
+    previously this task computed everything in memory and discarded it once
+    the alert fired, so nothing else in the app (e.g. the at-risk item
+    signals surfaced elsewhere) could ever ask "is this merchant currently
+    in trouble?" without re-querying Companies House itself. A merchant that
+    later recovers (leaves administration) has is_unhealthy cleared on the
+    next run - this only reflects the *current* status, unlike the
+    fire-once-ever notification below. A None result (no plausible company
+    match, or the request failed) leaves any existing profile untouched
+    rather than overwriting a known status with silence.
     """
     cfg = SiteConfiguration.load()
     api_key = cfg.companies_house_api_key
@@ -670,11 +682,23 @@ def check_merchant_health():
         if issuer in bad_issuers:
             continue
         result = check_companies_house_status(issuer, api_key)
-        if (
-            result
-            and result['company_status'] in _CH_BAD_STATUSES
-            and result.get('confidence') != 'low'
-        ):
+        if result is None:
+            continue
+
+        confident_bad = result['company_status'] in _CH_BAD_STATUSES and result.get('confidence') != 'low'
+        profile = MerchantProfile.objects.filter(name__iexact=issuer).first()
+        if profile is None:
+            MerchantProfile.objects.create(
+                name=issuer, company_status=result['company_status'],
+                is_unhealthy=confident_bad, health_checked_at=timezone.now(),
+            )
+        else:
+            profile.company_status = result['company_status']
+            profile.is_unhealthy = confident_bad
+            profile.health_checked_at = timezone.now()
+            profile.save(update_fields=['company_status', 'is_unhealthy', 'health_checked_at'])
+
+        if confident_bad:
             bad_issuers[issuer] = result
 
     if not bad_issuers:

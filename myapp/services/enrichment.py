@@ -785,3 +785,87 @@ def get_active_flags_for_items(items) -> Dict[Any, List[Dict[str, str]]]:
             continue
         result.setdefault(item_id, []).append({'field_name': field_name, 'message': log.reason})
     return result
+
+
+def get_at_risk_signals_for_items(items) -> Dict[Any, List[Dict[str, str]]]:
+    """
+    Combines several independent existing signals - each on its own too
+    weak or too narrow to justify a notification - into a per-item
+    "worth a look" flag set. Read-only: this never changes anything,
+    just surfaces context a user would otherwise have to know to go
+    looking for. Returns {item_id: [{'kind': str, 'message': str}, ...]}
+    - same batch shape as get_active_flags_for_items above, but 'kind'
+    replaces 'field_name' since these signals aren't all tied to one
+    specific field.
+
+    Four sources, each already a real, separately-shipped signal
+    elsewhere in the app:
+    - merchant_unhealthy: MerchantProfile.is_unhealthy for this item's
+      issuer (see notify.tasks.check_merchant_health).
+    - stale_correction: a learned correction relevant to this item's
+      (user, item_type, issuer) hasn't healed anything in a long time -
+      see myapp.scan_learning.find_stale_corrections_relevant_to_items.
+    - pending_enrichment: an EnrichmentRun proposal for this item is
+      still sitting in pending_approval, awaiting admin review.
+    - circuit_breaker: a field this item actually has data in has had
+      automatic enrichment disabled for this user after repeated bad
+      guesses (EnrichmentFieldPreference with a non-blank `reason`).
+
+    A single batch of queries regardless of how many items are passed in
+    (one query per signal source, not one per item).
+    """
+    from myapp.models import EnrichmentFieldPreference, EnrichmentRunItem, MerchantProfile
+    from myapp.scan_learning import find_stale_corrections_relevant_to_items
+
+    items = list(items)
+    if not items:
+        return {}
+
+    result: Dict[Any, List[Dict[str, str]]] = {}
+
+    def _add(item_id, kind, message):
+        result.setdefault(item_id, []).append({'kind': kind, 'message': message})
+
+    # merchant_unhealthy - one query total: genuinely unhealthy merchants
+    # are rare, so fetching all of them and matching in Python beats one
+    # query per distinct issuer in the batch.
+    unhealthy_issuers = {
+        name.lower() for name in MerchantProfile.objects.filter(is_unhealthy=True).values_list('name', flat=True)
+    }
+    for item in items:
+        if item.issuer and item.issuer.lower() in unhealthy_issuers:
+            _add(item.id, 'merchant_unhealthy', f"{item.issuer} may be in financial difficulty (Companies House)")
+
+    # stale_correction
+    stale_by_item = find_stale_corrections_relevant_to_items(items)
+    for item_id, correction in stale_by_item.items():
+        _add(
+            item_id, 'stale_correction',
+            f"A learned correction for '{correction.field}' hasn't healed anything in over a year - "
+            f"the merchant may have changed, or this may no longer be accurate",
+        )
+
+    # pending_enrichment
+    item_ids = [item.id for item in items]
+    pending_item_ids = set(
+        EnrichmentRunItem.objects
+        .filter(item_id__in=item_ids, run__status='pending_approval', changes_proposed__gt=0)
+        .values_list('item_id', flat=True)
+    )
+    for item_id in pending_item_ids:
+        _add(item_id, 'pending_enrichment', "A proposed change to this item is awaiting admin review")
+
+    # circuit_breaker
+    user_ids = {item.user_id for item in items}
+    tripped_fields_by_user: Dict[int, List[str]] = {}
+    for pref in EnrichmentFieldPreference.objects.filter(user_id__in=user_ids).exclude(reason=''):
+        tripped_fields_by_user.setdefault(pref.user_id, []).append(pref.field_name)
+    for item in items:
+        for field_name in tripped_fields_by_user.get(item.user_id, []):
+            if getattr(item, field_name, None):
+                _add(
+                    item.id, 'circuit_breaker',
+                    f"Automatic enrichment for '{field_name}' has been disabled after repeated corrections",
+                )
+
+    return result
