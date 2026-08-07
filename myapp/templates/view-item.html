@@ -888,6 +888,44 @@ body.dark-mode .field-review-flag {
   border-color: rgba(245, 158, 11, 0.35);
 }
 
+/* Read-only, like .field-review-flag above - combines several
+   independent existing signals (see
+   myapp.services.enrichment.get_at_risk_signals_for_items) into one
+   place, nothing here is auto-fixable from this page. */
+.at-risk-panel {
+  margin: 0.75rem 0;
+  padding: 0.65rem 0.9rem;
+  border-radius: 10px;
+  background: rgba(220, 53, 69, 0.08);
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  color: #b02a37;
+}
+
+.at-risk-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 0.35rem;
+}
+
+.at-risk-panel-list {
+  margin: 0;
+  padding-left: 1.4rem;
+  font-size: 0.82rem;
+}
+
+.at-risk-panel-list li {
+  margin-bottom: 0.2rem;
+}
+
+body.dark-mode .at-risk-panel {
+  background: rgba(220, 53, 69, 0.15);
+  border-color: rgba(220, 53, 69, 0.4);
+  color: #f5a3ab;
+}
+
 .copied-flash {
   position: absolute;
   top: 50%;
@@ -1842,6 +1880,19 @@ body.dark-mode .tilt-scan-enable-btn {
               </div>
             </div>
           </div>
+
+          {% if at_risk_signals %}
+          <div class="at-risk-panel">
+            <div class="at-risk-panel-title">
+              <i class="bi bi-exclamation-triangle-fill"></i> {% trans "Worth a look" %}
+            </div>
+            <ul class="at-risk-panel-list">
+              {% for signal in at_risk_signals %}
+              <li>{{ signal.message }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
 
           {% if journey_siblings %}
           <div class="journey-nav-strip">

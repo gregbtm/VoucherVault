@@ -19,7 +19,7 @@ from django.urls import reverse
 from py_vapid import Vapid02
 from pywebpush import webpush as real_webpush
 
-from myapp.models import EnrichmentRun, EnrichmentRunItem, Item, Transaction, UserPreference, Wallet
+from myapp.models import EnrichmentRun, EnrichmentRunItem, Item, MerchantProfile, Transaction, UserPreference, Wallet
 from myapp.test_utils import set_site_config
 
 from .backends import get_backend
@@ -2051,6 +2051,94 @@ class CheckMerchantHealthTaskTests(TestCase):
 
         mock_ch.assert_not_called()
         self.assertEqual(NotificationLog.objects.count(), 0)
+
+    @patch('notify.tasks.check_companies_house_status')
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_persists_status_for_healthy_company(self, mock_send, mock_ch):
+        set_site_config(companies_house_api_key='dummy-key')
+        make_item(self.user, issuer='Acme Retail', redeem_code='MH-004')
+
+        mock_ch.return_value = {
+            'company_name': 'Acme Retail Ltd',
+            'company_status': 'active',
+            'company_number': '12345678',
+            'confidence': 'high',
+        }
+
+        check_merchant_health()
+
+        profile = MerchantProfile.objects.get(name__iexact='Acme Retail')
+        self.assertEqual(profile.company_status, 'active')
+        self.assertFalse(profile.is_unhealthy)
+        self.assertIsNotNone(profile.health_checked_at)
+
+    @patch('notify.tasks.check_companies_house_status')
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_persists_unhealthy_status_and_clears_on_recovery(self, mock_send, mock_ch):
+        set_site_config(companies_house_api_key='dummy-key')
+        make_item(self.user, issuer='Acme Retail', redeem_code='MH-005')
+
+        mock_ch.return_value = {
+            'company_name': 'Acme Retail Ltd',
+            'company_status': 'administration',
+            'company_number': '12345678',
+            'confidence': 'high',
+        }
+        check_merchant_health()
+
+        profile = MerchantProfile.objects.get(name__iexact='Acme Retail')
+        self.assertEqual(profile.company_status, 'administration')
+        self.assertTrue(profile.is_unhealthy)
+
+        mock_ch.return_value = {
+            'company_name': 'Acme Retail Ltd',
+            'company_status': 'active',
+            'company_number': '12345678',
+            'confidence': 'high',
+        }
+        check_merchant_health()
+
+        profile.refresh_from_db()
+        self.assertEqual(profile.company_status, 'active')
+        self.assertFalse(profile.is_unhealthy)
+
+    @patch('notify.tasks.check_companies_house_status')
+    @patch('notify.tasks.send_via_rule', return_value=(True, ''))
+    def test_low_confidence_bad_status_not_marked_unhealthy(self, mock_send, mock_ch):
+        set_site_config(companies_house_api_key='dummy-key')
+        make_item(self.user, issuer='Acme Retail', redeem_code='MH-006')
+
+        mock_ch.return_value = {
+            'company_name': 'Acme Retail Ltd',
+            'company_status': 'administration',
+            'company_number': '12345678',
+            'confidence': 'low',
+        }
+
+        check_merchant_health()
+
+        profile = MerchantProfile.objects.get(name__iexact='Acme Retail')
+        self.assertEqual(profile.company_status, 'administration')
+        self.assertFalse(profile.is_unhealthy)
+        self.assertFalse(NotificationLog.objects.filter(event_type='merchant_health_alert').exists())
+
+    @patch('notify.tasks.check_companies_house_status')
+    def test_none_result_leaves_existing_profile_untouched(self, mock_ch):
+        set_site_config(companies_house_api_key='dummy-key')
+        make_item(self.user, issuer='Acme Retail', redeem_code='MH-007')
+        existing = MerchantProfile.objects.create(
+            name='Acme Retail', company_status='active', is_unhealthy=False,
+            health_checked_at=timezone.now() - timedelta(days=30),
+        )
+        original_checked_at = existing.health_checked_at
+
+        mock_ch.return_value = None
+
+        check_merchant_health()
+
+        existing.refresh_from_db()
+        self.assertEqual(existing.company_status, 'active')
+        self.assertEqual(existing.health_checked_at, original_checked_at)
 
 
 class WebhookEventParityTests(TestCase):

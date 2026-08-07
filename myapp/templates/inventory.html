@@ -285,21 +285,36 @@
   opacity: 1;
 }
 
-.flag-indicator {
+.flag-indicator,
+.risk-indicator {
   position: absolute;
   top: 0.75rem;
   left: 0.75rem;
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: #f59e0b;
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.75rem;
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
   z-index: 10;
+}
+
+.flag-indicator {
+  background: #f59e0b;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+}
+
+.risk-indicator {
+  background: #dc3545;
+  box-shadow: 0 2px 8px rgba(220, 53, 69, 0.4);
+}
+
+/* Both badges can appear on the same card - offset the second one so
+   they sit side by side instead of overlapping. */
+.risk-indicator.risk-indicator-offset {
+  left: 3.25rem;
 }
 
 .share-btn:hover {

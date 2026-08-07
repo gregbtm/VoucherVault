@@ -301,6 +301,21 @@ class MerchantProfile(models.Model):
         help_text="Remembered gift-card balance/validity check link for this merchant, "
                    "suggested on future gift cards from the same issuer.",
     )
+    company_status = models.CharField(
+        max_length=50, blank=True,
+        help_text="Last known Companies House company status for this issuer (see "
+                   "notify.tasks.check_merchant_health), e.g. 'active' or 'administration'.",
+    )
+    is_unhealthy = models.BooleanField(
+        default=False,
+        help_text="True if company_status was a bad status (dissolved/liquidation/"
+                   "administration/etc.) at high confidence as of the last health check. "
+                   "Cleared automatically if the company's status later recovers.",
+    )
+    health_checked_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When company_status/is_unhealthy were last refreshed.",
+    )
 
     class Meta:
         ordering = ['name']
