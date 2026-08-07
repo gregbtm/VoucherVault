@@ -36,7 +36,7 @@ from django.contrib import messages
 from django.utils.timezone import now
 from django.utils.http import url_has_allowed_host_and_scheme
 from .decorators import require_authorization_header_with_api_token
-from .analytics import build_expiry_calendar, get_active_today_item, get_expiring_soon_items, get_items_by_wallet, get_next_up_items, get_spend_stats
+from .analytics import build_expiry_calendar, get_active_today_item, get_expiring_soon_items, get_items_by_wallet, get_next_up_items, get_self_healing_stats, get_spend_stats
 from .avatar import generate_initial_avatar, normalize_logo_image
 from .merchant_logos import fetch_merchant_logo, get_cached_balance_check_url, get_cached_logo, get_cached_logos_for_issuers, merchant_logos_enabled, remember_balance_check_url
 from .nearby_places import find_nearby_issuer_matches, nearby_places_enabled
@@ -3503,6 +3503,13 @@ def analytics(request):
         'loyaltycard': 'Loyalty Cards', 'travelpass': 'Travel Passes',
     }
 
+    self_healing_stats = get_self_healing_stats(user)
+    self_healing_months = [
+        dt.datetime.strptime(m['month'], '%Y-%m').strftime('%b %Y')
+        for m in self_healing_stats['monthly_heals']
+    ]
+    self_healing_counts = [m['count'] for m in self_healing_stats['monthly_heals']]
+
     context = {
         'kpis': kpis,
         'months_seq_json': json.dumps(months_seq),
@@ -3519,6 +3526,12 @@ def analytics(request):
         ).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026'),
         'currency_breakdown': currency_breakdown,
         'wallet_budgets': wallet_budgets,
+        'self_healing_stats': self_healing_stats,
+        'self_healing_months_json': json.dumps(self_healing_months),
+        'self_healing_counts_json': json.dumps(self_healing_counts),
+        'self_healing_top_merchants_json': json.dumps(
+            self_healing_stats['top_merchants']
+        ).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026'),
     }
     return render(request, 'analytics.html', context)
 
