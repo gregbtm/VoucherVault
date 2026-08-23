@@ -332,18 +332,24 @@ one-time NAS/Container-Manager setup and `docs/AUTO_DEPLOY.md` for the
 webhook mechanics below.
 
 **What triggers a live redeploy** — two mechanisms, both off by default,
-both hitting the same Portainer stack webhook URL
-(`https://<portainer-host>:9443/api/webhooks/<uuid>`):
+now on **different** APIs since the 2026-08-23 GHCR migration (see below):
 1. **In-app "Redeploy now" button** — `myapp/portainer.py`, superuser-gated
    server-side. Reads `PORTAINER_WEBHOOK_URL` from `SiteConfiguration`
    (takes effect immediately, no restart) with the env var of the same
-   name as the seed/fallback.
+   name as the seed/fallback. Still POSTs to Portainer's plain stack
+   webhook (`https://<portainer-host>:9443/api/webhooks/<uuid>`) —
+   unchanged by the GHCR migration.
 2. **`.github/workflows/portainer-redeploy.yml`** — fires on every push to
-   `main` plus manual `workflow_dispatch`. POSTs to
-   `PORTAINER_WEBHOOK_URL` stored as a **GitHub repo secret** (not the
-   Site Settings value — this is CI, a separate config point). If the
-   secret isn't set, it logs and exits 0 — never fails CI. Requires the
-   Portainer webhook endpoint to be reachable from the public internet.
+   `main` plus manual `workflow_dispatch`. Reworked 2026-08-23 for the
+   prebuilt-image model: instead of pinging the webhook, it calls
+   Portainer's `PUT /api/stacks/{id}` API directly with `pullImage: true`
+   (auth via `X-API-Key`), which reliably forces a fresh image pull —
+   the plain webhook doesn't guarantee that for a non-git stack. Needs
+   **GitHub repo secrets** `PORTAINER_URL`, `PORTAINER_API_KEY`,
+   `PORTAINER_STACK_IDS`, `PORTAINER_ENDPOINT_IDS` (the latter two are
+   space-separated lists — VoucherVault runs as two live deployments,
+   `vouchervault-475` and `vouchervault-476`). If any is unset, it logs
+   and exits 0 — never fails CI. See `docs/AUTO_DEPLOY.md`.
 
 **CI pipeline** — `.github/workflows/conventional-commits.yml` (workflow
 name `CI`), on push-to-main and PRs:
@@ -355,12 +361,13 @@ name `CI`), on push-to-main and PRs:
 - `zap-scan` — DAST baseline, `continue-on-error: true` (advisory only).
 - `deploy` (main-only, "Deploy Image") — needs all scan jobs green;
   builds a multi-arch (amd64/arm64) image via `docker/build-push-action`
-  and pushes to Docker Hub as `docker.io/<DOCKER_HUB_USERNAME>/vouchervault`
-  (secrets `DOCKER_HUB_USERNAME`, `DOCKER_HUB_ACCESS_TOKEN`). **This
-  image is not what nasmatrix.app runs** — the live instance builds from
-  source via git, per above. A comment in the workflow file itself
-  confirms this fork doesn't rely on the Docker Hub image for its own
-  deployment.
+  and pushes to GHCR as `ghcr.io/gregbtm/vouchervault` (migrated off
+  Docker Hub 2026-08-23, matching the pattern used by
+  `synology-proxy-mcp` — login uses the automatic `GITHUB_TOKEN`, no
+  repo secrets needed). **Whether nasmatrix.app actually runs this image
+  depends on which Portainer model each stack uses** — see the redeploy
+  section above; this fork now supports both git-build and
+  prebuilt-image stacks side by side.
 - `release` (main-only, "Version bump & Release") — needs only
   `[changelog, test]`, **deliberately not gated on the security scan
   jobs** (an in-file comment notes those have historically failed on
@@ -369,10 +376,11 @@ name `CI`), on push-to-main and PRs:
   [skip ci]`, tags `vX.Y.Z`, pushes to main, creates a GitHub Release.
 
 **What actually gates a real redeploy of the running instance**: `test`
-passing → `release` bumping VERSION/tagging → `portainer-redeploy.yml`
-firing the webhook (if the secret is configured) → Portainer git-pulls and
-rebuilds → `entrypoint.sh` auto-migrates. No SSH or manual
-`docker-compose` command needed for routine updates.
+passing → `release` bumping VERSION/tagging, and separately `deploy`
+pushing the new image to GHCR → `portainer-redeploy.yml` firing (if its
+secrets are configured) → Portainer re-pulls and redeploys (image-based)
+or git-pulls and rebuilds (git-based) → `entrypoint.sh` auto-migrates. No
+SSH or manual `docker-compose` command needed for routine updates.
 
 ### Environment variables — where secrets actually live
 
@@ -393,9 +401,12 @@ rebuilds → `entrypoint.sh` auto-migrates. No SSH or manual
   "check where a secret is configured," always check Site Settings /
   `SiteConfiguration` first for anything feature-specific — most secrets
   are NOT plain env vars once the app has actually run.**
-- **CI-tier, GitHub repo secrets**: `PORTAINER_WEBHOOK_URL`,
-  `DOCKER_HUB_USERNAME`, `DOCKER_HUB_ACCESS_TOKEN`, `GITHUB_TOKEN`
-  (implicit). These are separate from any Site Settings value of a similar
+- **CI-tier, GitHub repo secrets**: `PORTAINER_WEBHOOK_URL` (git-build
+  redeploy path only — see above), `PORTAINER_URL` / `PORTAINER_API_KEY` /
+  `PORTAINER_STACK_IDS` / `PORTAINER_ENDPOINT_IDS` (prebuilt-image
+  redeploy path, added 2026-08-23), `GITHUB_TOKEN` (implicit — also now
+  used to authenticate the GHCR image push, no separate secret needed).
+  These are separate from any Site Settings value of a similar
   name — don't assume setting one configures the other.
 
 ### Integration status (per docs, not independently verified live in this session)

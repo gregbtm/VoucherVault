@@ -1,25 +1,36 @@
 # Redeploying without clicking through Portainer
 
-If you're running this fork the way [`docs/UPGRADE.md`](UPGRADE.md)
-describes - a git-based Portainer stack that builds the image from this
-repo's `docker/Dockerfile` rather than pulling a published one - "update
-to the latest code" normally means opening Portainer, finding the stack,
-and clicking pull-and-redeploy by hand. Portainer has a built-in webhook
-for exactly this, and this fork wires two different triggers up to it:
+This fork can run either of two ways: a **git-based Portainer stack**
+that builds the image from this repo's `docker/Dockerfile` (the original
+model - see [`docs/UPGRADE.md`](UPGRADE.md)), or a **prebuilt-image
+stack** that pulls `ghcr.io/gregbtm/vouchervault` from GHCR (built and
+pushed automatically by the `deploy` job in
+[`conventional-commits.yml`](../.github/workflows/conventional-commits.yml)
+on every push to `main` that passes CI). Either way, "update to the
+latest code" normally means opening Portainer, finding the stack, and
+clicking pull-and-redeploy by hand. This fork wires two different
+triggers up to automate that:
 
 - An **in-app "Redeploy now" button** on the update-available banner
   (`myapp/portainer.py`) - a superuser sees the banner, clicks the button,
-  and the app container calls the webhook itself, server-side, over the
-  same Docker network Portainer and the app already share. Nothing needs
-  to be reachable from outside your host for this to work.
+  and the app container calls Portainer's stack webhook itself, server-side,
+  over the same Docker network Portainer and the app already share.
+  Nothing needs to be reachable from outside your host for this to work.
+  This still uses the plain webhook (Steps 1-2 below) regardless of which
+  model you're running - on a prebuilt-image stack, make sure the webhook
+  is configured with Portainer's "force pull image" option (where your
+  Portainer version supports it), or the button may redeploy without
+  actually picking up the new image.
 - A **GitHub Action** ([`.github/workflows/portainer-redeploy.yml`](../.github/workflows/portainer-redeploy.yml))
-  that calls the same webhook automatically after every push to `main`,
-  so a merge alone triggers a redeploy. This one *does* need Portainer's
-  webhook endpoint reachable from the public internet, since GitHub's
-  runners are cloud-hosted, not on your LAN.
+  that fires after every push to `main` (Step 3 below). It only supports
+  the **prebuilt-image** model: it calls Portainer's stack-update API
+  directly with `pullImage: true`, which reliably forces a fresh pull
+  regardless of webhook/Portainer-version quirks. If you're still on a
+  git-based stack, rely on the in-app button (or Portainer's own webhook)
+  instead - this workflow no-ops without its own set of secrets.
 
-Both are optional and off by default - the app runs exactly as before if
-you don't set anything up.
+Both triggers are optional and off by default - the app runs exactly as
+before if you don't set anything up.
 
 ## Step 1 — Enable the stack webhook in Portainer
 
@@ -79,36 +90,45 @@ This button is only ever shown to superusers (`request.user.is_superuser`
 is checked in the view itself, not just hidden by the template), and does
 nothing at all if `PORTAINER_WEBHOOK_URL` isn't set.
 
-## Step 3 — Wire up the GitHub Action (optional, needs public exposure)
+## Step 3 — Wire up the GitHub Action (prebuilt-image stacks, needs public exposure)
 
-This step only makes sense if Portainer's webhook endpoint is reachable
-from the public internet - GitHub Actions runs on GitHub's own cloud
-infrastructure and cannot reach an address that only resolves on your
-home network. If your Portainer instance isn't exposed at all, skip this
-step and stick to the in-app button, or trigger the webhook by hand /
-from your own network (e.g. a cron job on the Docker host itself, or a
-phone shortcut on your home Wi-Fi).
+This step only applies if you've switched your Portainer stack(s) to pull
+`ghcr.io/gregbtm/vouchervault` instead of building from source, and only
+makes sense if Portainer's API is reachable from the public internet -
+GitHub Actions runs on GitHub's own cloud infrastructure and cannot reach
+an address that only resolves on your home network. If your Portainer
+instance isn't exposed at all, skip this step and stick to the in-app
+button, or trigger a redeploy by hand from your own network.
 
 If you do want this:
 
-1. Expose **only the webhook path**, not the whole Portainer UI/API,
-   through your reverse proxy if at all possible. A rule like
-   "`/api/webhooks/<uuid>` on `portainer.example.com` proxies to
-   Portainer; everything else is blocked" keeps the actual admin UI off
-   the public internet while still letting this one URL through. Exactly
-   how to do this depends on your reverse proxy (Traefik, Nginx Proxy
-   Manager, Caddy, etc.) - the UUID in the path is the only thing
-   standing in for auth here, so this is materially safer than exposing
-   the whole Portainer login page.
-2. In your GitHub repository, go to **Settings → Secrets and variables →
-   Actions → New repository secret**, name it `PORTAINER_WEBHOOK_URL`,
-   and paste the URL from Step 1.
-3. That's it - [`.github/workflows/portainer-redeploy.yml`](../.github/workflows/portainer-redeploy.yml)
-   already exists in this repo and fires on every push to `main`. If the
-   secret isn't set, the workflow logs a message and exits successfully
-   without failing your CI - it's safe to leave the workflow file in
-   place even if you never configure the secret.
-4. You can also fire it manually from the **Actions** tab (**Trigger
+1. Expose Portainer's API (or at least reach it via a reverse-proxied
+   hostname) from the public internet. Unlike the single-purpose webhook
+   path used by the in-app button, this workflow calls the general
+   `/api/stacks/{id}` endpoints authenticated with an API key, so treat
+   that exposure with the same care you'd give the Portainer UI itself.
+2. In Portainer, create an **API access token** (your user's account
+   settings → Access Tokens) scoped to the account that can manage the
+   VoucherVault stack(s).
+3. Note each stack's numeric **stack ID** and **environment (endpoint)
+   ID** - both are visible in the URL when you open the stack in the
+   Portainer UI (`.../#!/<endpointId>/docker/stacks/<name>?id=<stackId>`).
+   VoucherVault normally runs as two separate live deployments
+   (`vouchervault-475` and `vouchervault-476`), so you'll typically have
+   two of each.
+4. In your GitHub repository, go to **Settings → Secrets and variables →
+   Actions → New repository secret** and add:
+   - `PORTAINER_URL` - e.g. `https://portainer.example.com`
+   - `PORTAINER_API_KEY` - the token from step 2
+   - `PORTAINER_STACK_IDS` - space-separated stack IDs, e.g. `12 13`
+   - `PORTAINER_ENDPOINT_IDS` - space-separated endpoint IDs, same order/
+     count as `PORTAINER_STACK_IDS`, e.g. `3 3`
+5. That's it - [`.github/workflows/portainer-redeploy.yml`](../.github/workflows/portainer-redeploy.yml)
+   already exists in this repo and fires on every push to `main`. If any
+   of the four secrets is unset, the workflow logs a message and exits
+   successfully without failing your CI - it's safe to leave the workflow
+   file in place even if you never configure the secrets.
+6. You can also fire it manually from the **Actions** tab (**Trigger
    Portainer redeploy → Run workflow**) without waiting for a push.
 
 ## Troubleshooting
@@ -121,10 +141,13 @@ If you do want this:
   hostname/port from inside the Docker network than from outside it
   (common with reverse-proxy setups), use the internal address for
   `PORTAINER_WEBHOOK_URL` rather than the public one.
-- **GitHub Action fails**: almost always the webhook endpoint not being
-  reachable from the public internet - re-check Step 3's reverse-proxy
-  rule, or fall back to the in-app button only.
-- **Webhook fires but nothing changes**: Portainer's git-based rebuild
-  only re-pulls the branch/ref the stack is already configured to track.
-  Double check the stack's configured branch matches where you're
-  actually merging (`main`, per this fork's normal workflow).
+- **GitHub Action fails**: check the job log - it prints Portainer's raw
+  API response on every call. Common causes: `PORTAINER_URL` not
+  reachable from GitHub's runners, an expired/wrong-scoped API token, or
+  a stack/endpoint ID that no longer matches (IDs change if a stack is
+  deleted and recreated).
+- **Redeploy succeeds but the container still runs the old image**:
+  double-check `pullImage: true` actually reached Portainer (visible in
+  the request body logged by the workflow) and that the stack's
+  `image:` line uses a mutable tag like `:latest` rather than a tag or
+  digest pinned to an older build.
