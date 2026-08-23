@@ -16,6 +16,15 @@ name: Trigger Portainer redeploy
 # vouchervault-475 and vouchervault-476). If any is unset, this workflow
 # no-ops rather than failing, since not every deployment wants this wired
 # up.
+#
+# Confirmed live (2026-08-23): Portainer/DSM's reverse proxy can stall or
+# 504 on the PUT that triggers a redeploy even when the redeploy itself
+# succeeds server-side (same "DSM stalls on writes" behavior documented in
+# this repo's CLAUDE.md-equivalent for other DSM APIs) - a real redeploy
+# of stack 475 landed successfully while the HTTP response back to this
+# workflow timed out and got reported as a failure. To avoid that false
+# negative, a PUT that errors or comes back non-2xx is followed by polling
+# the stack's UpdateDate for a change before actually failing the job.
 
 on:
   push:
@@ -58,31 +67,55 @@ jobs:
             endpoint_id="${ENDPOINT_IDS[$i]}"
             echo "== Redeploying stack $stack_id (endpoint $endpoint_id) =="
 
-            file_json=$(curl -sf -H "X-API-Key: $PORTAINER_API_KEY" \
+            file_json=$(curl -sf --max-time 30 -H "X-API-Key: $PORTAINER_API_KEY" \
               "$PORTAINER_URL/api/stacks/$stack_id/file") || { echo "Failed to fetch stack file"; fail=1; continue; }
-            stack_json=$(curl -sf -H "X-API-Key: $PORTAINER_API_KEY" \
+            stack_json=$(curl -sf --max-time 30 -H "X-API-Key: $PORTAINER_API_KEY" \
               "$PORTAINER_URL/api/stacks/$stack_id") || { echo "Failed to fetch stack details"; fail=1; continue; }
 
+            before_update_date=$(echo "$stack_json" | jq -r '.UpdateDate // 0')
             stack_content=$(echo "$file_json" | jq -r '.StackFileContent')
             env_json=$(echo "$stack_json" | jq -c '.Env // []')
 
             body=$(jq -n --arg content "$stack_content" --argjson env "$env_json" \
               '{stackFileContent: $content, env: $env, prune: false, pullImage: true}')
 
-            status=$(curl -s -o /tmp/redeploy_response.json -w "%{http_code}" \
+            # --max-time 240: a git-based stack's redeploy rebuilds the image
+            # synchronously, which can legitimately take minutes - this must
+            # outlast that, not just a normal API call.
+            status=$(curl -s --max-time 240 -o /tmp/redeploy_response.json -w "%{http_code}" \
               -X PUT \
               -H "X-API-Key: $PORTAINER_API_KEY" \
               -H "Content-Type: application/json" \
               "$PORTAINER_URL/api/stacks/$stack_id?endpointId=$endpoint_id" \
               -d "$body")
+            curl_exit=$?
 
-            cat /tmp/redeploy_response.json
+            cat /tmp/redeploy_response.json 2>/dev/null
             echo
-            if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
-              echo "Redeploy of stack $stack_id failed with HTTP $status"
-              fail=1
-            else
+
+            if [ "$curl_exit" -eq 0 ] && [ "$status" -ge 200 ] && [ "$status" -lt 300 ]; then
               echo "Redeploy of stack $stack_id triggered (pullImage=true), HTTP $status"
+              continue
+            fi
+
+            echo "Redeploy of stack $stack_id got curl_exit=$curl_exit HTTP=$status - Portainer/DSM is known to stall on writes even when they succeed server-side. Polling for a real outcome before failing..."
+            confirmed=0
+            for attempt in 1 2 3 4 5 6; do
+              sleep 15
+              after_json=$(curl -sf --max-time 30 -H "X-API-Key: $PORTAINER_API_KEY" \
+                "$PORTAINER_URL/api/stacks/$stack_id") || { echo "  poll $attempt: stack API still unreachable"; continue; }
+              after_update_date=$(echo "$after_json" | jq -r '.UpdateDate // 0')
+              if [ "$after_update_date" != "$before_update_date" ] && [ "$after_update_date" -gt 0 ]; then
+                echo "  poll $attempt: UpdateDate changed ($before_update_date -> $after_update_date) - redeploy actually succeeded"
+                confirmed=1
+                break
+              fi
+              echo "  poll $attempt: UpdateDate unchanged ($before_update_date) - still waiting"
+            done
+
+            if [ "$confirmed" -ne 1 ]; then
+              echo "Redeploy of stack $stack_id failed - no confirmed update after polling"
+              fail=1
             fi
           done
 
