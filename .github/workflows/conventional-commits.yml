@@ -408,7 +408,19 @@ jobs:
     # skipped=true - "0 features, 0 breaking changes" - which skipped
     # `deploy` entirely, so no image ever reached GHCR). `test` and the
     # security scan jobs are the gates that actually matter here.
-    needs: [test, bandit, grype, semgrep, pip-audit, secret-scan, trivy]
+    #
+    # Needs `release`, and uses ITS version output, not changelog's -
+    # confirmed live 2026-08-23 (the very next run after removing the
+    # changelog gate above): changelog.outputs.version is only populated
+    # when it detects Conventional Commits-format commits, same as its
+    # `skipped` flag - on a push with none (as here), the version was
+    # empty, producing the tag `ghcr.io/gregbtm/vouchervault:.x`
+    # ("invalid reference format", build failed immediately). `release`
+    # is this fork's actual, always-populated source of truth for its
+    # own version (bumps the committed VERSION file's patch number
+    # unconditionally - see its own comments below), so deploy uses that
+    # instead.
+    needs: [test, bandit, grype, semgrep, pip-audit, secret-scan, trivy, release]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
 
@@ -416,7 +428,7 @@ jobs:
       - name: Get repository name
         id: get_repo
         run: echo "REPO_NAME=$(echo ${{ github.repository }} | cut -d'/' -f2 | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-    
+
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
 
@@ -433,7 +445,7 @@ jobs:
       - name: Extract version parts
         id: extract_version
         run: |
-          VERSION=${{ needs.changelog.outputs.version }}
+          VERSION=${{ needs.release.outputs.version }}
           MAJOR_MINOR=$(echo $VERSION | cut -d'.' -f1,2)
           echo "MAJOR_MINOR_TAG=${MAJOR_MINOR}.x" >> $GITHUB_ENV
 
@@ -445,7 +457,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/${{ env.REPO_NAME }}
           tags: |
             latest
-            ${{ needs.changelog.outputs.version }}
+            ${{ needs.release.outputs.version }}
             ${{ env.MAJOR_MINOR_TAG }}
 
       - name: Build and Push Docker Image
@@ -458,7 +470,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-              VERSION=${{ needs.changelog.outputs.version }}          
+              VERSION=${{ needs.release.outputs.version }}
 
   # Deliberately independent of bandit/grype/semgrep/deploy: those gate the
   # Docker Hub image publish, which this fork doesn't use (deployment here
@@ -479,6 +491,10 @@ jobs:
     needs: [changelog, test]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
 
     steps:
       - name: Checkout
