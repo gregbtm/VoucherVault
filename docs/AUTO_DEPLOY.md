@@ -138,6 +138,29 @@ two things worth knowing before relying on this further - both covered
 in Troubleshooting below: a false-failure from Portainer/DSM stalling on
 the write, and stack 476 having no running containers at all.
 
+**Stack 476 deleted (2026-08-23)**: turned out to be a stale duplicate,
+not a second real deployment - its stored compose was identical to
+475's `container_name` and host port, so the two could never run
+simultaneously on the same endpoint. Removed via the Portainer API.
+`PORTAINER_STACK_IDS`/`PORTAINER_ENDPOINT_IDS` still need updating from
+`475 476`/`3 3` to just `475`/`3` to match.
+
+**⚠️ Real incident, 2026-08-23: switching stack 475 to `image:` pull
+caused a ~7-minute outage.** The config write succeeded (Portainer's
+`UpdateDate` advanced), but neither `VoucherVault` nor
+`VoucherVault-REDIS` came back up - `docker compose up` failed outright
+rather than the app failing to start. Leading theory: Portainer has a
+stored `ghcr.io` registry credential (added for a different, private
+image) that auto-applies to *any* `ghcr.io` pull on the host; if that
+credential is stale, Portainer's automatic `docker login ghcr.io` step
+can fail and abort the whole `compose up` before it ever attempts the
+otherwise-fine unauthenticated pull of this public image - which would
+explain why the unrelated `redis:7.2-alpine` container vanished too.
+**Not yet confirmed or fixed** - verify/refresh that credential
+(Portainer → Settings → Registries → the entry named "GHCR") before
+retrying this cutover. Reverted back to the `build:`-from-git compose
+to restore service; confirmed healthy again afterward.
+
 ## Troubleshooting
 
 - **Button doesn't appear**: `PORTAINER_WEBHOOK_URL` isn't set on the app
