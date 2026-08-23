@@ -346,10 +346,31 @@ now on **different** APIs since the 2026-08-23 GHCR migration (see below):
    (auth via `X-API-Key`), which reliably forces a fresh image pull —
    the plain webhook doesn't guarantee that for a non-git stack. Needs
    **GitHub repo secrets** `PORTAINER_URL`, `PORTAINER_API_KEY`,
-   `PORTAINER_STACK_IDS`, `PORTAINER_ENDPOINT_IDS` (the latter two are
-   space-separated lists — VoucherVault runs as two live deployments,
-   `vouchervault-475` and `vouchervault-476`). If any is unset, it logs
-   and exits 0 — never fails CI. See `docs/AUTO_DEPLOY.md`.
+   `PORTAINER_STACK_IDS`, `PORTAINER_ENDPOINT_IDS` — **all 4 are
+   confirmed set as of 2026-08-23.** If any is unset, it logs and exits
+   0 — never fails CI. See `docs/AUTO_DEPLOY.md`.
+   - **Real incident, 2026-08-23 (confirmed, not assumed)**: the first
+     time this fired for real (on PR #246's merge), the `PUT` for stack
+     475 came back `HTTP 504` with a Synology DSM error page as the
+     body, and the call for stack 476 hung for 60s before failing
+     outright — the workflow run reported failure. Directly checking
+     Portainer afterward showed stack 475 **had actually redeployed
+     successfully** (`UpdateDate` advanced, `VoucherVault` container
+     came back `running (healthy)`) — the HTTP round-trip stalled, not
+     the actual redeploy. Matches the "DSM stalls on writes" behavior
+     documented for other DSM APIs elsewhere in this project. PR #247
+     (open, not yet merged as of this note) hardens the workflow to
+     poll for a real outcome instead of trusting a failed/timed-out
+     HTTP response.
+   - **Confirmed live oddity found during that incident**: stack 476
+     (`PORTAINER_STACK_IDS` includes both `475` and `476`) has **no
+     running containers at all** on endpoint 3 as of 2026-08-23 — only
+     stack 475's `VoucherVault`/`VoucherVault-REDIS` containers exist
+     (confirmed via the Docker API's container list, filtered by the
+     `com.docker.compose.project` label). Stack 476 may be stale/
+     orphaned. Not yet resolved — worth confirming with the account
+     owner whether 476 should still be in `PORTAINER_STACK_IDS` before
+     it's redeployed again.
 
 **CI pipeline** — `.github/workflows/conventional-commits.yml` (workflow
 name `CI`), on push-to-main and PRs:
@@ -359,15 +380,30 @@ name `CI`), on push-to-main and PRs:
 - `bandit`, `grype`, `semgrep`, `pip-audit`, `secret-scan` (TruffleHog),
   `trivy` — security scans, PR and push.
 - `zap-scan` — DAST baseline, `continue-on-error: true` (advisory only).
-- `deploy` (main-only, "Deploy Image") — needs all scan jobs green;
-  builds a multi-arch (amd64/arm64) image via `docker/build-push-action`
-  and pushes to GHCR as `ghcr.io/gregbtm/vouchervault` (migrated off
-  Docker Hub 2026-08-23, matching the pattern used by
-  `synology-proxy-mcp` — login uses the automatic `GITHUB_TOKEN`, no
-  repo secrets needed). **Whether nasmatrix.app actually runs this image
-  depends on which Portainer model each stack uses** — see the redeploy
-  section above; this fork now supports both git-build and
-  prebuilt-image stacks side by side.
+- `deploy` (main-only, "Deploy Image") — needs `test` and the security
+  scan jobs green; builds a multi-arch (amd64/arm64) image via
+  `docker/build-push-action` and pushes to GHCR as
+  `ghcr.io/gregbtm/vouchervault` (migrated off Docker Hub 2026-08-23,
+  matching the pattern used by `synology-proxy-mcp` — login uses the
+  automatic `GITHUB_TOKEN`, no repo secrets needed).
+  - **Confirmed bug, found live 2026-08-23**: this job used to also
+    require `needs.changelog.outputs.skipped == 'false'`. The very
+    first push to `main` after the GHCR migration had `changelog`
+    report `skipped=true` ("0 features, 0 breaking changes" — none of
+    the merged commits used Conventional Commits syntax), which
+    silently skipped `deploy` too — **confirmed via that run's own job
+    list: `deploy` shows `conclusion: skipped`, not `success`. No image
+    had ever reached `ghcr.io/gregbtm/vouchervault` as of this note.**
+    Whether `CHANGELOG.md` gets a new entry has nothing to do with
+    whether the image should publish, so PR #247 (open, not yet merged)
+    removes that dependency — `deploy` now only needs `test` + the
+    security scan jobs.
+  - **Whether nasmatrix.app actually runs this image depends on which
+    Portainer model each stack uses** — see the redeploy section above;
+    this fork now supports both git-build and prebuilt-image stacks
+    side by side, but as of this note **both live stacks (475, 476)
+    are still on the original `build:`-from-git model** — nothing has
+    switched to pulling the GHCR image yet.
 - `release` (main-only, "Version bump & Release") — needs only
   `[changelog, test]`, **deliberately not gated on the security scan
   jobs** (an in-file comment notes those have historically failed on

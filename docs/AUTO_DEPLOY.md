@@ -129,7 +129,14 @@ If you do want this:
    successfully without failing your CI - it's safe to leave the workflow
    file in place even if you never configure the secrets.
 6. You can also fire it manually from the **Actions** tab (**Trigger
-   Portainer redeploy → Run workflow**) without waiting for a push.
+   Portainer redeploy → Run workflow**) without waiting for a push -
+   **but note this triggers a real production redeploy**, not a dry run.
+
+**Confirmed status (2026-08-23)**: all 4 secrets are set. The first real
+run (triggered automatically by pushing this feature to `main`) found
+two things worth knowing before relying on this further - both covered
+in Troubleshooting below: a false-failure from Portainer/DSM stalling on
+the write, and stack 476 having no running containers at all.
 
 ## Troubleshooting
 
@@ -151,3 +158,19 @@ If you do want this:
   the request body logged by the workflow) and that the stack's
   `image:` line uses a mutable tag like `:latest` rather than a tag or
   digest pinned to an older build.
+- **Workflow reports failure but the redeploy actually worked**:
+  confirmed live 2026-08-23 - Portainer/DSM's reverse proxy can stall or
+  return a `504` on the `PUT` that triggers a redeploy even when the
+  redeploy succeeds server-side (the response never made it back, not
+  that anything failed). Always verify against the stack's own state
+  (`GET /api/stacks/{id}`'s `UpdateDate`, or the container's actual
+  `Status`) before assuming a workflow failure means nothing happened.
+  A hardening fix that polls for this automatically is in PR #247.
+- **A stack ID in `PORTAINER_STACK_IDS` never seems to actually
+  redeploy anything visible**: confirmed live 2026-08-23 - stack 476
+  (one of VoucherVault's two configured deployments) has zero running
+  containers on its endpoint; only stack 475's containers exist. If a
+  stack has no live containers, a redeploy call to it is a no-op from
+  the outside even when the API responds successfully. Worth confirming
+  whether 476 is still meant to be a live deployment before leaving it
+  in this list.
