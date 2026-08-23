@@ -399,8 +399,17 @@ jobs:
 
   deploy:
     name: Deploy Image
-    needs: [changelog, test, bandit, grype, semgrep, pip-audit, secret-scan, trivy]
-    if: github.event_name != 'pull_request' && needs.changelog.outputs.skipped == 'false'
+    # Deliberately not gated on changelog.outputs.skipped (unlike an
+    # earlier version of this job): whether CHANGELOG.md got a new entry
+    # is orthogonal to whether the image should be published - that gate
+    # meant `deploy` silently no-op'd on every push whose commits didn't
+    # follow Conventional Commits syntax (confirmed live 2026-08-23: the
+    # first post-GHCR-migration push to main had `changelog` report
+    # skipped=true - "0 features, 0 breaking changes" - which skipped
+    # `deploy` entirely, so no image ever reached GHCR). `test` and the
+    # security scan jobs are the gates that actually matter here.
+    needs: [test, bandit, grype, semgrep, pip-audit, secret-scan, trivy]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
 
     steps:
