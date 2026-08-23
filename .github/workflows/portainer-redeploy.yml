@@ -1,12 +1,19 @@
 name: Trigger Portainer redeploy
 
-# Companion to the in-app "Redeploy now" button (myapp/portainer.py): this
-# workflow calls the same Portainer stack webhook automatically after every
-# push to main, so a merge alone is enough to redeploy - no need to notice
-# the banner and click the button. See docs/AUTO_DEPLOY.md.
+# Companion to the in-app "Redeploy now" button (myapp/portainer.py): after
+# the GHCR migration (see docs/AUTO_DEPLOY.md), Portainer stacks pull a
+# prebuilt ghcr.io/gregbtm/vouchervault image instead of building from
+# source, so a plain webhook ping is no longer enough to guarantee a fresh
+# image - Portainer's stack webhook redeploys the stack as-is but doesn't
+# reliably force a re-pull of an already-cached `:latest` tag. This calls
+# Portainer's stack-update API directly with pullImage: true instead,
+# which does force it.
 #
-# Requires the PORTAINER_WEBHOOK_URL repository secret to be set (Settings
-# -> Secrets and variables -> Actions). If it isn't set, this workflow
+# Requires these repository secrets (Settings -> Secrets and variables ->
+# Actions) - PORTAINER_URL and PORTAINER_API_KEY, plus PORTAINER_STACK_IDS
+# and PORTAINER_ENDPOINT_IDS as equal-length space-separated lists (one
+# entry per live Portainer deployment - VoucherVault runs on two:
+# vouchervault-475 and vouchervault-476). If any is unset, this workflow
 # no-ops rather than failing, since not every deployment wants this wired
 # up.
 
@@ -21,23 +28,62 @@ permissions:
 
 jobs:
   redeploy:
-    name: Call Portainer webhook
+    name: Pull image and redeploy via Portainer API
     runs-on: ubuntu-latest
 
     steps:
-      - name: Trigger redeploy
+      - name: Redeploy stack(s)
         env:
-          WEBHOOK_URL: ${{ secrets.PORTAINER_WEBHOOK_URL }}
+          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+          PORTAINER_API_KEY: ${{ secrets.PORTAINER_API_KEY }}
+          PORTAINER_STACK_IDS: ${{ secrets.PORTAINER_STACK_IDS }}
+          PORTAINER_ENDPOINT_IDS: ${{ secrets.PORTAINER_ENDPOINT_IDS }}
         run: |
-          if [ -z "$WEBHOOK_URL" ]; then
-            echo "PORTAINER_WEBHOOK_URL secret is not set - skipping. See docs/AUTO_DEPLOY.md to enable this."
+          if [ -z "$PORTAINER_URL" ] || [ -z "$PORTAINER_API_KEY" ] || [ -z "$PORTAINER_STACK_IDS" ] || [ -z "$PORTAINER_ENDPOINT_IDS" ]; then
+            echo "PORTAINER_URL / PORTAINER_API_KEY / PORTAINER_STACK_IDS / PORTAINER_ENDPOINT_IDS not fully set - skipping. See docs/AUTO_DEPLOY.md to enable this."
             exit 0
           fi
 
-          status=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$WEBHOOK_URL")
-          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
-            echo "Portainer webhook call failed with HTTP $status"
+          read -ra STACK_IDS <<< "$PORTAINER_STACK_IDS"
+          read -ra ENDPOINT_IDS <<< "$PORTAINER_ENDPOINT_IDS"
+
+          if [ "${#STACK_IDS[@]}" -ne "${#ENDPOINT_IDS[@]}" ]; then
+            echo "PORTAINER_STACK_IDS and PORTAINER_ENDPOINT_IDS must have the same number of entries" >&2
             exit 1
           fi
 
-          echo "Portainer webhook call succeeded (HTTP $status)"
+          fail=0
+          for i in "${!STACK_IDS[@]}"; do
+            stack_id="${STACK_IDS[$i]}"
+            endpoint_id="${ENDPOINT_IDS[$i]}"
+            echo "== Redeploying stack $stack_id (endpoint $endpoint_id) =="
+
+            file_json=$(curl -sf -H "X-API-Key: $PORTAINER_API_KEY" \
+              "$PORTAINER_URL/api/stacks/$stack_id/file") || { echo "Failed to fetch stack file"; fail=1; continue; }
+            stack_json=$(curl -sf -H "X-API-Key: $PORTAINER_API_KEY" \
+              "$PORTAINER_URL/api/stacks/$stack_id") || { echo "Failed to fetch stack details"; fail=1; continue; }
+
+            stack_content=$(echo "$file_json" | jq -r '.StackFileContent')
+            env_json=$(echo "$stack_json" | jq -c '.Env // []')
+
+            body=$(jq -n --arg content "$stack_content" --argjson env "$env_json" \
+              '{stackFileContent: $content, env: $env, prune: false, pullImage: true}')
+
+            status=$(curl -s -o /tmp/redeploy_response.json -w "%{http_code}" \
+              -X PUT \
+              -H "X-API-Key: $PORTAINER_API_KEY" \
+              -H "Content-Type: application/json" \
+              "$PORTAINER_URL/api/stacks/$stack_id?endpointId=$endpoint_id" \
+              -d "$body")
+
+            cat /tmp/redeploy_response.json
+            echo
+            if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+              echo "Redeploy of stack $stack_id failed with HTTP $status"
+              fail=1
+            else
+              echo "Redeploy of stack $stack_id triggered (pullImage=true), HTTP $status"
+            fi
+          done
+
+          exit $fail

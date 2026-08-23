@@ -391,7 +391,7 @@ edited a setting in Site Settings, that's the value that's actually used.
 | `UPDATE_CHECK_ENABLED`            | Set to `False` to disable the periodic GitHub Releases check (footer version + update banner for superusers).  | `True`                     | Optional            |
 | `UPDATE_CHECK_REPO`               | `owner/repo` to check for releases. Only change this if you're running a fork of this fork.                    | `gregbtm/VoucherVault`     | Optional            |
 | `VERSION`                         | Overrides the version shown in the footer. Normally unset - the `VERSION` file baked into the image is the source of truth. | `<VERSION file>` | Optional |
-| `PORTAINER_WEBHOOK_URL`           | Your Portainer stack's redeploy webhook URL. Adds a "Redeploy now" button to the update banner for superusers, and enables the companion GitHub Action to auto-redeploy on every push to `main`. See [`docs/AUTO_DEPLOY.md`](docs/AUTO_DEPLOY.md). | `None` | Optional |
+| `PORTAINER_WEBHOOK_URL`           | Your Portainer stack's redeploy webhook URL. Adds a "Redeploy now" button to the update banner for superusers. For a prebuilt-image stack, auto-redeploy on push to `main` instead uses the `PORTAINER_URL`/`PORTAINER_API_KEY`/`PORTAINER_STACK_IDS`/`PORTAINER_ENDPOINT_IDS` GitHub repo secrets, not this env var. See [`docs/AUTO_DEPLOY.md`](docs/AUTO_DEPLOY.md). | `None` | Optional |
 
 </details>
 
