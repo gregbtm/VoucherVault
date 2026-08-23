@@ -100,7 +100,12 @@ jobs:
 
             echo "Redeploy of stack $stack_id got curl_exit=$curl_exit HTTP=$status - Portainer/DSM is known to stall on writes even when they succeed server-side. Polling for a real outcome before failing..."
             confirmed=0
-            for attempt in 1 2 3 4 5 6; do
+            # 24 attempts x 15s = 6 minutes: confirmed live 2026-08-23 that a
+            # 90s window (6 attempts) isn't enough - stack 475's real
+            # git-based rebuild completed ~100s after that window closed
+            # (UpdateDate advanced, container came back healthy), so the
+            # job had already given up and reported a false failure.
+            for attempt in $(seq 1 24); do
               sleep 15
               after_json=$(curl -sf --max-time 30 -H "X-API-Key: $PORTAINER_API_KEY" \
                 "$PORTAINER_URL/api/stacks/$stack_id") || { echo "  poll $attempt: stack API still unreachable"; continue; }
